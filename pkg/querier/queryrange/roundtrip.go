@@ -239,7 +239,6 @@ func NewMiddleware(
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
 		limits,
-		schema,
 		limitedTripperware,
 		logFilterTripperware,
 	)
@@ -506,32 +505,34 @@ func getOperation(path string) string {
 	switch {
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
+	case strings.HasSuffix(path, "/query"):
+		return InstantQueryOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
 	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
-	case strings.HasSuffix(path, "/v1/query"):
-		return InstantQueryOp
-	case path == "/loki/api/v1/index/stats":
+	case strings.HasSuffix(path, "/index/stats"):
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/volume":
+	case strings.HasSuffix(path, "/index/volume"):
 		return VolumeOp
-	case path == "/loki/api/v1/index/volume_range":
+	case strings.HasSuffix(path, "/index/volume_range"):
 		return VolumeRangeOp
-	case path == "/loki/api/v1/index/shards":
+	case strings.HasSuffix(path, "/index/shards"):
 		return IndexShardsOp
-	case path == "/loki/api/v1/detected_fields":
+	case strings.HasSuffix(path, "/detected_fields"):
 		return DetectedFieldsOp
+	case strings.HasSuffix(path, "/patterns"):
+		return PatternsQueryOp
+	case strings.HasSuffix(path, "/detected_labels"):
+		return DetectedLabelsOp
 	case strings.HasSuffix(path, "/values"):
-		if strings.HasPrefix(path, "/loki/api/v1/label") || strings.HasPrefix(path, "/api/prom/label") {
+		if strings.Contains(path, "/label") {
 			return LabelNamesOp
 		}
-
-		return DetectedFieldsOp
-	case path == "/loki/api/v1/patterns":
-		return PatternsQueryOp
-	case path == "/loki/api/v1/detected_labels":
-		return DetectedLabelsOp
+		if strings.Contains(path, "/detected_field") {
+			return DetectedFieldsOp
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -1220,7 +1221,6 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	limits Limits,
-	_ config.SchemaConfig,
 	limitedTripperware base.Middleware,
 	logTripperware base.Middleware,
 ) (base.Middleware, error) {

@@ -26,6 +26,20 @@ type BuilderOptions struct {
 
 	// CompressionOptions holds optional configuration for compression.
 	CompressionOptions CompressionOptions
+
+	// StatisticsOptions holds optional configuration for statistics.
+	Statistics StatisticsOptions
+}
+
+// StatisticsOptions customizes the collection of statistics for a column.
+type StatisticsOptions struct {
+	// StoreRangeStats indicates whether to store value range statistics for the
+	// column and pages.
+	StoreRangeStats bool
+
+	// StoreCardinalityStats indicates whether to store cardinality estimations,
+	// facilitated by hyperloglog
+	StoreCardinalityStats bool
 }
 
 // CompressionOptions customizes the compressor used when building pages.
@@ -44,8 +58,9 @@ type ColumnBuilder struct {
 
 	rows int // Total number of rows in the column.
 
-	pages   []*MemPage
-	builder *pageBuilder
+	pages        []*MemPage
+	statsBuilder *columnStatsBuilder
+	pageBuilder  *pageBuilder
 }
 
 // NewColumnBuilder creates a new ColumnBuilder from the optional name and
@@ -57,11 +72,17 @@ func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) 
 		return nil, fmt.Errorf("creating page builder: %w", err)
 	}
 
+	statsBuilder, err := newColumnStatsBuilder(opts.Statistics)
+	if err != nil {
+		return nil, fmt.Errorf("creating stats builder: %w", err)
+	}
+
 	return &ColumnBuilder{
 		name: name,
 		opts: opts,
 
-		builder: builder,
+		pageBuilder:  builder,
+		statsBuilder: statsBuilder,
 	}, nil
 }
 
@@ -83,6 +104,7 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 	for range 2 {
 		if cb.append(row, value) {
 			cb.rows = row + 1
+			cb.statsBuilder.Append(value)
 			return nil
 		}
 
@@ -103,7 +125,7 @@ func (cb *ColumnBuilder) EstimatedSize() int {
 	for _, p := range cb.pages {
 		size += p.Info.CompressedSize
 	}
-	size += cb.builder.EstimatedSize()
+	size += cb.pageBuilder.EstimatedSize()
 	return size
 }
 
@@ -128,7 +150,7 @@ func (cb *ColumnBuilder) Backfill(row int) {
 
 func (cb *ColumnBuilder) backfill(row int) bool {
 	for row > cb.rows {
-		if !cb.builder.AppendNull() {
+		if !cb.pageBuilder.AppendNull() {
 			return false
 		}
 		cb.rows++
@@ -142,7 +164,7 @@ func (cb *ColumnBuilder) append(row int, value Value) bool {
 	if !cb.backfill(row) {
 		return false
 	}
-	return cb.builder.Append(value)
+	return cb.pageBuilder.Append(value)
 }
 
 // Flush converts data in cb into a [MemColumn]. Afterwards, cb is reset to a
@@ -155,13 +177,8 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 		Type: cb.opts.Value,
 
 		Compression: cb.opts.Compression,
+		Statistics:  cb.statsBuilder.Flush(cb.pages),
 	}
-
-	// TODO(rfratto): Should we compute column-wide statistics if they're
-	// available in pages?
-	//
-	// That would potentially work for min/max values, but not for count
-	// distinct, unless we had a way to pass sketches around.
 
 	for _, page := range cb.pages {
 		info.RowsCount += page.Info.RowCount
@@ -180,11 +197,11 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 }
 
 func (cb *ColumnBuilder) flushPage() {
-	if cb.builder.Rows() == 0 {
+	if cb.pageBuilder.Rows() == 0 {
 		return
 	}
 
-	page, err := cb.builder.Flush()
+	page, err := cb.pageBuilder.Flush()
 	if err != nil {
 		// Flush should only return an error when it's empty, which we already
 		// ensure it's not in the lines above.
@@ -197,5 +214,5 @@ func (cb *ColumnBuilder) flushPage() {
 func (cb *ColumnBuilder) Reset() {
 	cb.rows = 0
 	cb.pages = nil
-	cb.builder.Reset()
+	cb.pageBuilder.Reset()
 }

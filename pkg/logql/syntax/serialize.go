@@ -204,7 +204,7 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 	v.Flush()
 }
 
-func (v *JSONSerializer) VisitLogRange(e *LogRange) {
+func (v *JSONSerializer) VisitLogRange(e *LogRangeExpr) {
 	v.WriteObjectStart()
 
 	v.WriteObjectField(IntervalNanos)
@@ -306,17 +306,17 @@ func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 
 // Below are StageExpr visitors that we are skipping since a pipeline is
 // serialized as a string.
-func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                     {}
-func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                     {}
-func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParser)     {}
-func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                      {}
-func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                   {}
-func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                         {}
-func (*JSONSerializer) VisitLabelParser(*LabelParserExpr)                   {}
-func (*JSONSerializer) VisitLineFilter(*LineFilterExpr)                     {}
-func (*JSONSerializer) VisitLineFmt(*LineFmtExpr)                           {}
-func (*JSONSerializer) VisitLogfmtExpressionParser(*LogfmtExpressionParser) {}
-func (*JSONSerializer) VisitLogfmtParser(*LogfmtParserExpr)                 {}
+func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                         {}
+func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                         {}
+func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParserExpr)     {}
+func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                          {}
+func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                       {}
+func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                             {}
+func (*JSONSerializer) VisitLabelParser(*LineParserExpr)                        {}
+func (*JSONSerializer) VisitLineFilter(*LineFilterExpr)                         {}
+func (*JSONSerializer) VisitLineFmt(*LineFmtExpr)                               {}
+func (*JSONSerializer) VisitLogfmtExpressionParser(*LogfmtExpressionParserExpr) {}
+func (*JSONSerializer) VisitLogfmtParser(*LogfmtParserExpr)                     {}
 
 func encodeGrouping(s *jsoniter.Stream, g *Grouping) {
 	s.WriteObjectStart()
@@ -858,8 +858,8 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 	return expr, err
 }
 
-func decodeLogRange(iter *jsoniter.Iterator) (*LogRange, error) {
-	expr := &LogRange{}
+func decodeLogRange(iter *jsoniter.Iterator) (*LogRangeExpr, error) {
+	expr := &LogRangeExpr{}
 	var err error
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {

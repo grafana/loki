@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -978,7 +981,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			mgr.MarkPhaseFinished()
 
-			processedRequests, err := mockDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusProcessed)
+			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
 			require.NoError(t, err)
 			require.Len(t, processedRequests, len(tc.expectedRequestsMarkedAsProcessed))
 
@@ -1015,14 +1018,24 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 }
 
+type storeAddReqDetails struct {
+	userID, query      string
+	startTime, endTime model.Time
+	shardByInterval    time.Duration
+}
+
+type removeReqDetails struct {
+	userID, reqID string
+}
+
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests           []DeleteRequest
-	addReqs                  []DeleteRequest
+	addReq                   storeAddReqDetails
 	addErr                   error
 	returnZeroDeleteRequests bool
 
-	removeReqs []DeleteRequest
+	removeReqs removeReqDetails
 	removeErr  error
 
 	getUser   string
@@ -1037,7 +1050,11 @@ type mockDeleteRequestsStore struct {
 	genNumber string
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
+	return m.getDeleteRequestsByStatus(StatusReceived)
+}
+
+func (m *mockDeleteRequestsStore) getDeleteRequestsByStatus(status DeleteRequestStatus) ([]DeleteRequest, error) {
 	reqs := make([]DeleteRequest, 0, len(m.deleteRequests))
 	for i := range m.deleteRequests {
 		if m.deleteRequests[i].Status == status {
@@ -1047,23 +1064,36 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, s
 	return reqs, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
-	m.addReqs = reqs
-	if m.returnZeroDeleteRequests {
-		return []DeleteRequest{}, m.addErr
-	}
-	return m.addReqs, m.addErr
+func (m *mockDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
+	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
-	m.removeReqs = reqs
+func (m *mockDeleteRequestsStore) AddDeleteRequest(_ context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	m.addReq = storeAddReqDetails{
+		userID:          userID,
+		query:           query,
+		startTime:       startTime,
+		endTime:         endTime,
+		shardByInterval: shardByInterval,
+	}
+	return "", m.addErr
+}
+
+func (m *mockDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, userID string, requestID string) error {
+	m.removeReqs = removeReqDetails{
+		userID: userID,
+		reqID:  requestID,
+	}
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, requestID string) (DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
-	return m.getResult, m.getErr
+	if m.getErr != nil {
+		return DeleteRequest{}, m.getErr
+	}
+	return m.getResult[0], m.getErr
 }
 
 func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
@@ -1075,13 +1105,17 @@ func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ 
 	return m.genNumber, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) UpdateStatus(_ context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req DeleteRequest) error {
 	for i := range m.deleteRequests {
 		if requestsAreEqual(m.deleteRequests[i], req) {
-			m.deleteRequests[i].Status = newStatus
+			m.deleteRequests[i].Status = StatusProcessed
 		}
 	}
 
+	return nil
+}
+
+func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
 	return nil
 }
 
@@ -1089,9 +1123,29 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	if req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
-		req1.EndTime == req2.EndTime {
+		req1.EndTime == req2.EndTime &&
+		req1.SequenceNum == req2.SequenceNum &&
+		req1.Status == req2.Status {
 		return true
 	}
 
 	return false
+}
+
+func setupManager(t *testing.T) *DeleteRequestsManager {
+	t.Helper()
+	// build the store
+	tempDir := t.TempDir()
+
+	workingDir := filepath.Join(tempDir, "working-dir")
+	objectStorePath := filepath.Join(tempDir, "object-store")
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: objectStorePath,
+	})
+	require.NoError(t, err)
+	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	require.NoError(t, err)
+
+	return NewDeleteRequestsManager(ds, time.Hour, 1, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 }

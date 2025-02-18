@@ -79,6 +79,10 @@ func (p *PrefixedBucket) GetRange(ctx context.Context, name string, off int64, l
 	return p.bkt.GetRange(ctx, conditionalPrefix(p.prefix, name), off, length)
 }
 
+func (b *PrefixedBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	return b.bkt.GetAndReplace(ctx, conditionalPrefix(b.prefix, name), f)
+}
+
 // Exists checks if the given object exists in the bucket.
 func (p *PrefixedBucket) Exists(ctx context.Context, name string) (bool, error) {
 	return p.bkt.Exists(ctx, conditionalPrefix(p.prefix, name))

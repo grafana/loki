@@ -86,10 +86,11 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Metadata field extraction
-	DiscoverGenericFields FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
-	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
-	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
-	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverServiceName      []string            `yaml:"discover_service_name" json:"discover_service_name"`
+	DiscoverLogLevels        bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields           []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	LogLevelFromJSONMaxDepth int                 `yaml:"log_level_from_json_max_depth" json:"log_level_from_json_max_depth"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -226,9 +227,12 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string           `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
+	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
+	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4"`
+	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -297,6 +301,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
 	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
+	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -443,6 +448,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
+	l.PolicyEnforcedLabels = make(map[string][]string)
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
@@ -506,6 +512,12 @@ func (l *Limits) Validate() error {
 			}
 			// populate matchers during validation
 			l.StreamRetention[i].Matchers = matchers
+		}
+	}
+
+	if l.PolicyStreamMapping != nil {
+		if err := l.PolicyStreamMapping.Validate(); err != nil {
+			return err
 		}
 	}
 
@@ -1016,6 +1028,10 @@ func (o *Overrides) LogLevelFields(userID string) []string {
 	return o.getOverridesForUser(userID).LogLevelFields
 }
 
+func (o *Overrides) LogLevelFromJSONMaxDepth(userID string) int {
+	return o.getOverridesForUser(userID).LogLevelFromJSONMaxDepth
+}
+
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
@@ -1101,8 +1117,28 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
+func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time.Time {
+	limits := o.getOverridesForUser(userID)
+	if limits == nil || limits.BlockIngestionPolicyUntil == nil {
+		return time.Time{} // Zero time means no blocking
+	}
+
+	if blockUntil, ok := limits.BlockIngestionPolicyUntil[policy]; ok {
+		return time.Time(blockUntil)
+	}
+	return time.Time{} // Zero time means no blocking
+}
+
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+func (o *Overrides) PolicyEnforcedLabels(userID string, policy string) []string {
+	return o.getOverridesForUser(userID).PolicyEnforcedLabels[policy]
+}
+
+func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
+	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
 func (o *Overrides) ShardAggregations(userID string) []string {

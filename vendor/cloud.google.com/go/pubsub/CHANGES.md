@@ -1,5 +1,25 @@
 # Changes
 
+## [1.47.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.46.0...pubsub/v1.47.0) (2025-01-31)
+
+
+### Features
+
+* **pubsub:** Support new forms of topic ingestion ([#11537](https://github.com/googleapis/google-cloud-go/issues/11537)) ([46d6ed4](https://github.com/googleapis/google-cloud-go/commit/46d6ed475e6ae6b96f3e11e17496fd75fd8ea7c4))
+
+## [1.46.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.3...pubsub/v1.46.0) (2025-01-24)
+
+
+### Features
+
+* **pubsub:** Add Kafka-based sources to IngestionDataSourceSettings proto and IngestionFailureEvent proto ([e4e1a49](https://github.com/googleapis/google-cloud-go/commit/e4e1a498f21b0792e0a7662f82f9e062e5aa0fe9))
+
+
+### Bug Fixes
+
+* **pubsub:** Fix defer call in for loop ([#11175](https://github.com/googleapis/google-cloud-go/issues/11175)) ([7aec711](https://github.com/googleapis/google-cloud-go/commit/7aec711200d8e79686370f5d40915e21df7651a4))
+* **pubsub:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
 ## [1.45.3](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.2...pubsub/v1.45.3) (2024-12-04)
 
 
