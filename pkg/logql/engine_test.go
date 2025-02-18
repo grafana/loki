@@ -2484,7 +2484,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			eng := NewEngine(
 				EngineOpts{
-					ExperimentalMutiVariantQueries: true,
+					EnableMutiVariantQueries: true,
 				},
 				newQuerierRecorder(t, test.data, test.params),
 				NoLimits,
@@ -2686,7 +2686,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 
 			eng := NewEngine(
 				EngineOpts{
-					ExperimentalMutiVariantQueries: true,
+					EnableMutiVariantQueries: true,
 				},
 				newQuerierRecorder(t, test.data, test.params),
 				NoLimits,

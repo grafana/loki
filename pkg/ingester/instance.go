@@ -539,6 +539,84 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
+<<<<<<< HEAD
+=======
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
+	if err != nil {
+		return nil, err
+	}
+
+	if i.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+	}
+
+	stats := stats.FromContext(ctx)
+	var iters []iter.SampleIterator
+
+	shard, err := parseShardFromRequest(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	err = i.forMatchingStreams(
+		ctx,
+		req.Start,
+		selector.Matchers(),
+		shard,
+		func(stream *stream) error {
+			iter, err := stream.SampleIterator(
+				ctx,
+				stats,
+				req.Start,
+				req.End,
+				extractor.ForStream(stream.labels),
+			)
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortSampleIterator(iters), nil
+}
+
+func (i *instance) QueryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	it, err := i.queryVariants(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) queryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+>>>>>>> 87548ca5d5 (chore: reduce duplication in code paths)
 	extractors, err := expr.Extractors()
 	if err != nil {
 		return nil, err
@@ -590,7 +668,11 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 				stats,
 				req.Start,
 				req.End,
+<<<<<<< HEAD
 				streamExtractors...,
+=======
+				streamSampleExtractors...,
+>>>>>>> 87548ca5d5 (chore: reduce duplication in code paths)
 			)
 			if err != nil {
 				return err
