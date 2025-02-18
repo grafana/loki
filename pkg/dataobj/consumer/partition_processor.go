@@ -290,7 +290,7 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	return lastErr
 }
 
-// idleFlush flushes the builder if it has been idle for too long.
+// idleFlush flushes the file if it has been idle for too long.
 // This is used to avoid holding on to memory for too long.
 // We compare the current time with the last flush time to determine if the builder has been idle.
 func (p *partitionProcessor) idleFlush() {
