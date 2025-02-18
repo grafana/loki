@@ -847,10 +847,10 @@ dataobj:
       # CLI flag: -dataobj-consumer.sha-prefix-size
       [shaprefixsize: <int> | default = 2]
 
-    # The maximum amount of time to wait in seconds before flushing the buffer
-    # to a data object.
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
     # CLI flag: -dataobj-consumer.idle-flush-timeout
-    [idle_flush_timeout: <duration> | default = 0s]
+    [idle_flush_timeout: <duration> | default = 1h]
 
   querier:
     # Enable the dataobj querier.
