@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type sampleWithLabels struct {
@@ -38,7 +39,7 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -191,7 +192,7 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -515,4 +516,275 @@ func readAllEntries(it iter.EntryIterator) ([]entryWithLabels, error) {
 		})
 	}
 	return result, it.Err()
+}
+
+func TestShardSections(t *testing.T) {
+	tests := []struct {
+		name      string
+		metadatas []dataobj.Metadata
+		shard     logql.Shard
+		want      [][]int
+	}{
+		{
+			name: "single section, no sharding",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 1},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    1,
+				},
+			},
+			want: [][]int{
+				{0},
+			},
+		},
+		{
+			name: "multiple sections, no sharding",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 3},
+				{LogsSections: 2},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    1,
+				},
+			},
+			want: [][]int{
+				{0, 1, 2},
+				{0, 1},
+			},
+		},
+		{
+			name: "multiple sections, shard 0 of 2",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 3},
+				{LogsSections: 2},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    2,
+				},
+			},
+			want: [][]int{
+				{0, 2},
+				{1},
+			},
+		},
+		{
+			name: "multiple sections, shard 1 of 2",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 3},
+				{LogsSections: 2},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 1,
+					Of:    2,
+				},
+			},
+			want: [][]int{
+				{1},
+				{0},
+			},
+		},
+		{
+			name: "more sections than shards, shard 0 of 2",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 5},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    2,
+				},
+			},
+			want: [][]int{
+				{0, 2, 4},
+			},
+		},
+		{
+			name: "more sections than shards, shard 1 of 2",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 5},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 1,
+					Of:    2,
+				},
+			},
+			want: [][]int{
+				{1, 3},
+			},
+		},
+		{
+			name: "complex case, shard 0 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 7}, // sections 0,4
+				{LogsSections: 5}, // sections 0,4
+				{LogsSections: 3}, // sections 0
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    4,
+				},
+			},
+			want: [][]int{
+				{0, 4},
+				{1},
+				{0},
+			},
+		},
+		{
+			name: "complex case, shard 1 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 7}, // sections 1,5
+				{LogsSections: 5}, // sections 1
+				{LogsSections: 3}, // sections 1
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 1,
+					Of:    4,
+				},
+			},
+			want: [][]int{
+				{1, 5},
+				{2},
+				{1},
+			},
+		},
+		{
+			name: "complex case, shard 2 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 7}, // sections 2,6
+				{LogsSections: 5}, // sections 2
+				{LogsSections: 3}, // sections 2
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 2,
+					Of:    4,
+				},
+			},
+			want: [][]int{
+				{2, 6},
+				{3},
+				{2},
+			},
+		},
+		{
+			name: "complex case, shard 3 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 7}, // sections 3
+				{LogsSections: 5}, // sections 3
+				{LogsSections: 3}, // no sections
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 3,
+					Of:    4,
+				},
+			},
+			want: [][]int{
+				{3},
+				{0, 4},
+				{},
+			},
+		},
+		{
+			name: "less sections than shards, shard 1 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 1},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 1,
+					Of:    4,
+				},
+			},
+			want: [][]int{{}},
+		},
+		{
+			name: "less sections than shards, shard 0 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 1},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    4,
+				},
+			},
+			want: [][]int{{0}},
+		},
+		{
+			name: "multiple streams sections not supported",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 1, StreamsSections: 2},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    1,
+				},
+			},
+			want: [][]int{nil},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shardSections(tt.metadatas, tt.shard)
+			require.Equal(t, tt.want, got)
+
+			// For test cases with multiple shards, verify that all sections are covered exactly once
+			if tt.shard.PowerOfTwo != nil && tt.shard.PowerOfTwo.Of > 1 {
+				// Skip verification for invalid metadata
+				for _, meta := range tt.metadatas {
+					if meta.StreamsSections > 1 {
+						return
+					}
+				}
+
+				// Track which sections are assigned
+				type sectionKey struct {
+					metaIdx int
+					section int
+				}
+				sectionCounts := make(map[sectionKey]int)
+
+				// Count sections from all shards
+				for shardIdx := uint32(0); shardIdx < tt.shard.PowerOfTwo.Of; shardIdx++ {
+					shard := logql.Shard{
+						PowerOfTwo: &index.ShardAnnotation{
+							Shard: shardIdx,
+							Of:    tt.shard.PowerOfTwo.Of,
+						},
+					}
+					sections := shardSections(tt.metadatas, shard)
+					for metaIdx, metaSections := range sections {
+						for _, section := range metaSections {
+							key := sectionKey{metaIdx: metaIdx, section: section}
+							sectionCounts[key]++
+						}
+					}
+				}
+
+				// Verify each section is assigned exactly once
+				for metaIdx, meta := range tt.metadatas {
+					for section := 0; section < meta.LogsSections; section++ {
+						key := sectionKey{metaIdx: metaIdx, section: section}
+						count := sectionCounts[key]
+						require.Equal(t, 1, count, "section %d in metadata %d was assigned %d times", section, metaIdx, count)
+					}
+				}
+			}
+		})
+	}
 }

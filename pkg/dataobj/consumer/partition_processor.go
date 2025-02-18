@@ -39,6 +39,10 @@ type partitionProcessor struct {
 	bucket      objstore.Bucket
 	bufPool     *sync.Pool
 
+	// Idle stream handling
+	idleFlushTimeout time.Duration
+	lastFlush        time.Time
+
 	// Metrics
 	metrics *partitionOffsetMetrics
 
@@ -50,7 +54,21 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, uploaderCfg uploader.Config, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer, bufPool *sync.Pool) *partitionProcessor {
+func newPartitionProcessor(
+	ctx context.Context,
+	client *kgo.Client,
+	builderCfg dataobj.BuilderConfig,
+	uploaderCfg uploader.Config,
+	bucket objstore.Bucket,
+	tenantID string,
+	virtualShard int32,
+	topic string,
+	partition int32,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	bufPool *sync.Pool,
+	idleFlushTimeout time.Duration,
+) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -95,6 +113,8 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		uploader:         uploader,
 		metastoreManager: metastoreManager,
 		bufPool:          bufPool,
+		idleFlushTimeout: idleFlushTimeout,
+		lastFlush:        time.Now(),
 	}
 }
 
@@ -115,6 +135,9 @@ func (p *partitionProcessor) start() {
 					return
 				}
 				p.processRecord(record)
+
+			case <-time.After(p.idleFlushTimeout):
+				p.idleFlush()
 			}
 		}
 	}()
@@ -163,6 +186,29 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
+func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
+	flushedDataobjStats, err := p.builder.Flush(flushBuffer)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+		return err
+	}
+
+	objectPath, err := p.uploader.Upload(p.ctx, flushBuffer)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+		return err
+	}
+
+	if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
+		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+		return err
+	}
+
+	p.lastFlush = time.Now()
+
+	return nil
+}
+
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	// Update offset metric at the end of processing
 	defer p.metrics.updateOffset(record.Offset)
@@ -200,20 +246,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 			flushBuffer.Reset()
 
-			flushedDataobjStats, err := p.builder.Flush(flushBuffer)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-				return
-			}
-
-			objectPath, err := p.uploader.Upload(p.ctx, flushBuffer)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
-				return
-			}
-
-			if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
-				level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+			if err := p.flushStream(flushBuffer); err != nil {
+				level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 				return
 			}
 		}()
@@ -250,4 +284,31 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 		backoff.Wait()
 	}
 	return lastErr
+}
+
+// idleFlush flushes the file if it has been idle for too long.
+// This is used to avoid holding on to memory for too long.
+// We compare the current time with the last flush time to determine if the builder has been idle.
+func (p *partitionProcessor) idleFlush() {
+	if p.builder == nil {
+		return
+	}
+
+	if time.Since(p.lastFlush) < p.idleFlushTimeout {
+		return // Avoid checking too frequently
+	}
+
+	func() {
+		flushBuffer := p.bufPool.Get().(*bytes.Buffer)
+		defer p.bufPool.Put(flushBuffer)
+
+		flushBuffer.Reset()
+
+		if err := p.flushStream(flushBuffer); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
+			return
+		}
+
+		p.lastFlush = time.Now()
+	}()
 }
