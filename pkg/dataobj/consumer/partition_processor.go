@@ -40,8 +40,8 @@ type partitionProcessor struct {
 	bufPool     *sync.Pool
 
 	// Idle stream handling
-	targetIdleSeconds time.Duration
-	lastFlush         time.Time
+	idleFlushTimout time.Duration
+	lastFlush       time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -54,7 +54,21 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, uploaderCfg uploader.Config, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer, bufPool *sync.Pool) *partitionProcessor {
+func newPartitionProcessor(
+	ctx context.Context,
+	client *kgo.Client,
+	builderCfg dataobj.BuilderConfig,
+	uploaderCfg uploader.Config,
+	bucket objstore.Bucket,
+	tenantID string,
+	virtualShard int32,
+	topic string,
+	partition int32,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	bufPool *sync.Pool,
+	idleFlushTimeout time.Duration,
+) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -82,25 +96,29 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
 	}
 
+	if idleFlushTimeout <= 0 {
+		idleFlushTimeout = 60 * 60 * time.Second // default to 1 hour
+	}
+
 	return &partitionProcessor{
-		client:            client,
-		logger:            log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
-		topic:             topic,
-		partition:         partition,
-		records:           make(chan *kgo.Record, 1000),
-		ctx:               ctx,
-		cancel:            cancel,
-		decoder:           decoder,
-		reg:               reg,
-		builderCfg:        builderCfg,
-		bucket:            bucket,
-		tenantID:          []byte(tenantID),
-		metrics:           metrics,
-		uploader:          uploader,
-		metastoreManager:  metastoreManager,
-		bufPool:           bufPool,
-		targetIdleSeconds: builderCfg.TargetIdleSeconds,
-		lastFlush:         time.Now(),
+		client:           client,
+		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		topic:            topic,
+		partition:        partition,
+		records:          make(chan *kgo.Record, 1000),
+		ctx:              ctx,
+		cancel:           cancel,
+		decoder:          decoder,
+		reg:              reg,
+		builderCfg:       builderCfg,
+		bucket:           bucket,
+		tenantID:         []byte(tenantID),
+		metrics:          metrics,
+		uploader:         uploader,
+		metastoreManager: metastoreManager,
+		bufPool:          bufPool,
+		idleFlushTimout:  idleFlushTimeout,
+		lastFlush:        time.Now(),
 	}
 }
 
@@ -122,7 +140,7 @@ func (p *partitionProcessor) start() {
 				}
 				p.processRecord(record)
 
-			case <-time.After(p.targetIdleSeconds):
+			case <-time.After(p.idleFlushTimout):
 				p.idleFlush()
 			}
 		}
@@ -281,7 +299,7 @@ func (p *partitionProcessor) idleFlush() {
 	}
 
 	now := time.Now()
-	if now.Sub(p.lastFlush) < p.targetIdleSeconds {
+	if now.Sub(p.lastFlush) < p.idleFlushTimout {
 		return // Avoid checking too frequently
 	}
 
