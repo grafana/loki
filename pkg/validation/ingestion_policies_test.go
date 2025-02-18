@@ -100,6 +100,8 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		},
 	}
 
+	require.NoError(t, mapping.Validate())
+
 	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar")))
 	// matches both policy2 and policy1 but policy1 has higher priority.
 	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar", "daz", "baz")))

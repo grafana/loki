@@ -515,14 +515,8 @@ func (l *Limits) Validate() error {
 	}
 
 	if l.PolicyStreamMapping != nil {
-		for policyName, policyStreams := range l.PolicyStreamMapping {
-			for idx, policyStream := range policyStreams {
-				matchers, err := syntax.ParseMatchers(policyStream.Selector, true)
-				if err != nil {
-					return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
-				}
-				l.PolicyStreamMapping[policyName][idx].Matchers = matchers
-			}
+		if err := l.PolicyStreamMapping.Validate(); err != nil {
+			return err
 		}
 	}
 
