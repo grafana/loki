@@ -711,6 +711,19 @@ func TestShardSections(t *testing.T) {
 			want: [][]int{{}},
 		},
 		{
+			name: "less sections than shards, shard 0 of 4",
+			metadatas: []dataobj.Metadata{
+				{LogsSections: 1},
+			},
+			shard: logql.Shard{
+				PowerOfTwo: &index.ShardAnnotation{
+					Shard: 0,
+					Of:    4,
+				},
+			},
+			want: [][]int{{0}},
+		},
+		{
 			name: "multiple streams sections not supported",
 			metadatas: []dataobj.Metadata{
 				{LogsSections: 1, StreamsSections: 2},

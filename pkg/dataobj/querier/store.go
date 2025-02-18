@@ -324,12 +324,11 @@ func shardObjects(
 
 	// Count total sections that will be read
 	var totalSections int
-	for _, sections := range sectionsPerMetadata {
+	var objectSections []int
+	for i, sections := range sectionsPerMetadata {
 		totalSections += len(sections)
+		objectSections = append(objectSections, metadatas[i].LogsSections)
 	}
-
-	logger = log.With(logger, "objects", len(objects))
-	logger = log.With(logger, "total_sections", totalSections)
 
 	shardedReaders := make([]*shardedObject, 0, len(objects))
 
@@ -350,15 +349,17 @@ func shardObjects(
 		shardedReaders = append(shardedReaders, reader)
 	}
 	var sectionsString strings.Builder
-	for i, sections := range sectionsPerMetadata {
-		sectionsString.WriteString(fmt.Sprintf("%d(%d): %v,", i, metadatas[i].LogsSections, sections))
+	for _, sections := range sectionsPerMetadata {
+		sectionsString.WriteString(fmt.Sprintf("%v ", sections))
 	}
 
 	level.Debug(logger).Log("msg", "sharding sections",
-		"total_sections", totalSections,
-		"sharded_total_objects", len(shardedReaders),
 		"sharded_factor", shard.String(),
-		"sections", sectionsString.String())
+		"total_objects", len(objects),
+		"total_sections", totalSections,
+		"object_sections", objectSections,
+		"sharded_total_objects", len(shardedReaders),
+		"sharded_sections", sectionsString.String())
 
 	return shardedReaders, nil
 }
