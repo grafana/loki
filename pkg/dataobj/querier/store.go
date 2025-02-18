@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -270,6 +271,43 @@ type shardedObject struct {
 	streams    map[int64]dataobj.Stream
 }
 
+// shardSections returns a list of section indices to read per metadata based on the sharding configuration.
+// The returned slice has the same length as the input metadatas, and each element contains the list of section indices
+// that should be read for that metadata.
+func shardSections(metadatas []dataobj.Metadata, shard logql.Shard) [][]int {
+	// Count total sections before sharding
+	var totalSections int
+	for _, metadata := range metadatas {
+		totalSections += metadata.LogsSections
+		if metadata.StreamsSections > 1 {
+			// We don't support multiple streams sections, but we still need to return a slice
+			// with the same length as the input metadatas.
+			return make([][]int, len(metadatas))
+		}
+	}
+
+	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
+	var sectionIndex uint64
+	result := make([][]int, len(metadatas))
+
+	for i, metadata := range metadatas {
+		sections := make([]int, 0, metadata.LogsSections)
+		for j := 0; j < metadata.LogsSections; j++ {
+			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
+				if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
+					sectionIndex++
+					continue
+				}
+			}
+			sections = append(sections, j)
+			sectionIndex++
+		}
+		result[i] = sections
+	}
+
+	return result
+}
+
 func shardObjects(
 	ctx context.Context,
 	objects []*dataobj.Object,
@@ -281,54 +319,46 @@ func shardObjects(
 		return nil, err
 	}
 
-	// Count total sections before sharding
+	// Get the sections to read per metadata
+	sectionsPerMetadata := shardSections(metadatas, shard)
+
+	// Count total sections that will be read
 	var totalSections int
-	for _, metadata := range metadatas {
-		totalSections += metadata.LogsSections
-		if metadata.StreamsSections > 1 {
-			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
-		}
+	for _, sections := range sectionsPerMetadata {
+		totalSections += len(sections)
 	}
+
 	logger = log.With(logger, "objects", len(objects))
 	logger = log.With(logger, "total_sections", totalSections)
 
-	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
-	var sectionIndex uint64
-	var shardedSections int
 	shardedReaders := make([]*shardedObject, 0, len(objects))
 
-	for i, metadata := range metadatas {
-		var reader *shardedObject
+	for i, sections := range sectionsPerMetadata {
+		if len(sections) == 0 {
+			continue
+		}
 
-		for j := 0; j < metadata.LogsSections; j++ {
-			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
-				if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
-					sectionIndex++
-					continue
-				}
-			}
-			shardedSections++
+		reader := shardedObjectsPool.Get().(*shardedObject)
+		reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
+		reader.streamReader.Reset(objects[i], 0)
 
-			if reader == nil {
-				reader = shardedObjectsPool.Get().(*shardedObject)
-				reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
-				reader.streamReader.Reset(objects[i], 0)
-			}
+		for _, section := range sections {
 			logReader := logReaderPool.Get().(*dataobj.LogsReader)
-			logReader.Reset(objects[i], j)
+			logReader.Reset(objects[i], section)
 			reader.logReaders = append(reader.logReaders, logReader)
-			sectionIndex++
 		}
-		// if reader is not nil, it means we have at least one log reader
-		if reader != nil {
-			shardedReaders = append(shardedReaders, reader)
-		}
+		shardedReaders = append(shardedReaders, reader)
+	}
+	var sectionsString strings.Builder
+	for i, sections := range sectionsPerMetadata {
+		sectionsString.WriteString(fmt.Sprintf("%d(%d): %v,", i, metadatas[i].LogsSections, sections))
 	}
 
 	level.Debug(logger).Log("msg", "sharding sections",
-		"sharded_total_sections", shardedSections,
+		"total_sections", totalSections,
 		"sharded_total_objects", len(shardedReaders),
-		"sharded_factor", shard.String())
+		"sharded_factor", shard.String(),
+		"sections", sectionsString.String())
 
 	return shardedReaders, nil
 }
