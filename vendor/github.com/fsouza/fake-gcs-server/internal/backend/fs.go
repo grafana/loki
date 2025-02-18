@@ -277,7 +277,7 @@ func (s *storageFS) CreateObject(obj StreamingObject, conditions Conditions) (St
 }
 
 // ListObjects lists the objects in a given bucket with a given prefix and
-// delimeter.
+// delimiter.
 func (s *storageFS) ListObjects(bucketName string, prefix string, versions bool) ([]ObjectAttrs, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -318,7 +318,7 @@ func (s *storageFS) GetObject(bucketName, objectName string) (StreamingObject, e
 	return s.getObject(bucketName, objectName)
 }
 
-// GetObjectWithGeneration retrieves an specific version of the object. Not
+// GetObjectWithGeneration retrieves a specific version of the object. Not
 // implemented for this backend.
 func (s *storageFS) GetObjectWithGeneration(bucketName, objectName string, generation int64) (StreamingObject, error) {
 	obj, err := s.GetObject(bucketName, objectName)

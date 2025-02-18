@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.2](https://github.com/grafana/loki/compare/v3.4.1...v3.4.2) (2025-02-14)
+
+
+### Bug Fixes
+
+* **blooms:** Initialize bloom gateway client only once (backport release-3.4.x) ([#16268](https://github.com/grafana/loki/issues/16268)) ([1b9829b](https://github.com/grafana/loki/commit/1b9829b48935ffc9f99d741cab11864ac9d0f35c))
+* **ci:** do not disable CGO in Makefile (backport release-3.4.x) ([#16272](https://github.com/grafana/loki/issues/16272)) ([4fa045d](https://github.com/grafana/loki/commit/4fa045d3807f4de0543b06e6ce79b89afb741adc))
+
 ## [3.4.1](https://github.com/grafana/loki/compare/v3.4.0...v3.4.1) (2025-02-12)
 
 
