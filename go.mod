@@ -118,6 +118,7 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.18.5
 	github.com/IBM/ibm-cos-sdk-go v1.12.1
 	github.com/axiomhq/hyperloglog v0.2.3
+	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
@@ -143,7 +144,6 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.9.0
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
-	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.26.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.26.0
@@ -165,6 +165,7 @@ require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.6 // indirect
+	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/containerd/containerd v1.7.25 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/ebitengine/purego v0.8.2 // indirect
@@ -347,13 +348,11 @@ require (
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
-	github.com/willf/bitset v1.1.11 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
