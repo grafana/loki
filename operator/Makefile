@@ -177,6 +177,7 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
+	$(GOLANGCI_LINT) config verify
 	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-fix

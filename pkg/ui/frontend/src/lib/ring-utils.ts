@@ -1,6 +1,7 @@
 import { RingType, RingTypes } from "@/types/ring";
 import { formatDistanceToNowStrict, formatISO } from "date-fns";
 import { findNodeName, hasService } from "./utils";
+import { absolutePath } from "@/util";
 
 export function formatRelativeTime(timestamp: string) {
   const date = new Date(timestamp);
@@ -202,7 +203,7 @@ export function getRingProxyPath(
   const nodeName = findNodeName(members, serviceName);
   if (!nodeName) return "";
 
-  const proxyPath = `/ui/api/v1/proxy/${nodeName}`;
+  const proxyPath = absolutePath(`/api/v1/proxy/${nodeName}`);
   const ringPath = RingServices[serviceName].ringPath;
   const tokensParam = RingServices[serviceName].needsTokens
     ? "?tokens=true"

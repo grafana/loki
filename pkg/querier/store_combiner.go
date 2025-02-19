@@ -2,10 +2,15 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -35,6 +40,12 @@ func NewStoreCombiner(stores []StoreConfig) *StoreCombiner {
 	sort.Slice(stores, func(i, j int) bool {
 		return stores[i].From < stores[j].From
 	})
+	for i, s := range stores {
+		stores[i] = StoreConfig{
+			Store: newInstrumentedStore(s.Store, i),
+			From:  s.From,
+		}
+	}
 	return &StoreCombiner{stores: stores}
 }
 
@@ -341,4 +352,154 @@ func (sc *StoreCombiner) GetShards(ctx context.Context, userID string, from, thr
 		})
 		return groups[0], nil
 	}
+}
+
+type instrumentedStore struct {
+	Store Store
+	name  string
+}
+
+func newInstrumentedStore(store Store, index int) *instrumentedStore {
+	storeName := fmt.Sprintf("#%d", index)
+	if stringer, ok := store.(interface{ String() string }); ok {
+		storeName = stringer.String()
+	}
+	return &instrumentedStore{
+		Store: store,
+		name:  storeName,
+	}
+}
+
+func (s *instrumentedStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".SelectSamples")
+	defer span.Finish()
+
+	tenantID, _ := tenant.TenantID(ctx)
+
+	span.SetTag("tenantID", tenantID)
+	span.SetTag("start", req.Start)
+	span.SetTag("end", req.End)
+	span.SetTag("shards", req.Shards)
+	if req.Plan != nil && req.Plan.AST != nil {
+		span.SetTag("expr", req.Plan.AST.String())
+	}
+
+	return s.Store.SelectSamples(ctx, req)
+}
+
+func (s *instrumentedStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".SelectLogs")
+	defer span.Finish()
+
+	tenantID, _ := tenant.TenantID(ctx)
+
+	span.SetTag("tenantID", tenantID)
+	span.SetTag("start", req.Start)
+	span.SetTag("end", req.End)
+	span.SetTag("shards", req.Shards)
+	span.SetTag("direction", req.Direction)
+	if req.Plan != nil && req.Plan.AST != nil {
+		span.SetTag("expr", req.Plan.AST.String())
+	}
+
+	return s.Store.SelectLogs(ctx, req)
+}
+
+func (s *instrumentedStore) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".SelectSeries")
+	defer span.Finish()
+
+	tenantID, _ := tenant.TenantID(ctx)
+
+	span.SetTag("tenantID", tenantID)
+	span.SetTag("start", req.Start)
+	span.SetTag("end", req.End)
+	span.SetTag("shards", req.Shards)
+	if req.Plan != nil && req.Plan.AST != nil {
+		span.SetTag("expr", req.Plan.AST.String())
+	}
+
+	return s.Store.SelectSeries(ctx, req)
+}
+
+func (s *instrumentedStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".LabelValuesForMetricName")
+	defer span.Finish()
+
+	span.SetTag("tenantID", userID)
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+	span.SetTag("metricName", metricName)
+	span.SetTag("labelName", labelName)
+	span.SetTag("matchers", stringifyMatchers(matchers))
+
+	return s.Store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+}
+
+func (s *instrumentedStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".LabelNamesForMetricName")
+	defer span.Finish()
+
+	span.SetTag("tenantID", userID)
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+	span.SetTag("metricName", metricName)
+	span.SetTag("matchers", stringifyMatchers(matchers))
+
+	return s.Store.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
+}
+
+func (s *instrumentedStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".Stats")
+	defer span.Finish()
+
+	span.SetTag("tenantID", userID)
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+	span.SetTag("matchers", stringifyMatchers(matchers))
+
+	return s.Store.Stats(ctx, userID, from, through, matchers...)
+}
+
+func (s *instrumentedStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".Volume")
+	defer span.Finish()
+
+	span.SetTag("tenantID", userID)
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+	span.SetTag("limit", limit)
+	span.SetTag("targetLabels", targetLabels)
+	span.SetTag("aggregateBy", aggregateBy)
+	span.SetTag("matchers", stringifyMatchers(matchers))
+
+	return s.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+}
+
+func (s *instrumentedStore) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "querier.Store."+s.name+".GetShards")
+	defer span.Finish()
+
+	span.SetTag("tenantID", userID)
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+	span.SetTag("targetBytesPerShard", targetBytesPerShard)
+	span.SetTag("matchers", stringifyMatchers(predicate.Matchers))
+
+	return s.Store.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+}
+
+func (s *instrumentedStore) String() string {
+	return s.name
+}
+
+func stringifyMatchers(matchers []*labels.Matcher) string {
+	var result strings.Builder
+	for i, m := range matchers {
+		if i > 0 {
+			result.WriteString(", ")
+		}
+		result.WriteString(fmt.Sprintf("%s %s %s", m.Type.String(), m.Name, m.Value))
+	}
+	return result.String()
 }
