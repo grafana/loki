@@ -143,3 +143,15 @@ variable "sqs_queue_name_prefix" {
   description = "Name prefix for SQS queues"
   default     = "s3-to-lambda-promtail"
 }
+
+variable "s3_source_file" {
+  type        = string
+  description = "Full path to a file (zip) in S3 containing the lambda function"
+  default = ""
+}
+
+variable "s3_source_bucket" {
+  type        = string
+  description = "Name of an S3 bucket containing the Lambda function file (zip)"
+  default = ""
+}
