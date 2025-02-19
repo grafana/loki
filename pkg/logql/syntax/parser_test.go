@@ -3236,6 +3236,110 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
+	{
+		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		exp: &MultiVariantExpr{
+			logRange: &LogRangeExpr{
+				Left: &MatchersExpr{
+					Mts: []*labels.Matcher{
+						{
+							Name:  "foo",
+							Value: "bar",
+							Type:  labels.MatchEqual,
+						},
+					},
+				},
+				Interval: 5 * time.Minute,
+				Offset:   0,
+				Unwrap:   nil,
+			},
+			variants: []SampleExpr{
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeCount,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+			},
+		},
+		err: nil,
+	},
+	{
+		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		exp: &MultiVariantExpr{
+			logRange: &LogRangeExpr{
+				Left: &MatchersExpr{
+					Mts: []*labels.Matcher{
+						{
+							Name:  "foo",
+							Value: "bar",
+							Type:  labels.MatchEqual,
+						},
+					},
+				},
+				Interval: 5 * time.Minute,
+				Offset:   0,
+				Unwrap:   nil,
+			},
+			variants: []SampleExpr{
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeCount,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeRate,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+			},
+		},
+		err: nil,
+	},
 }
 
 func TestParse(t *testing.T) {
