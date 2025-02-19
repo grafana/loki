@@ -1,6 +1,6 @@
 ---
 # golangci.com configuration
-# https://github.com/golangci/golangci/wiki/Configuration
+# https://golangci-lint.run/usage/configuration/
 linters-settings:
   copyloopvar:
     check-alias: true

@@ -9,6 +9,8 @@ weight:
 
 # metrics
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `metrics` stage is an action stage that allows for defining and updating
 metrics based on data from the extracted map. Note that created metrics are not
 pushed to Loki and are instead exposed via Promtail's `/metrics` endpoint.

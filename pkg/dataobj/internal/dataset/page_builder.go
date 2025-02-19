@@ -99,10 +99,10 @@ func (b *pageBuilder) Append(value Value) bool {
 		return false
 	}
 
-	// Update min/max values for stats. We only do this for non-NULL values,
+	// Update statistics. We only do this for non-NULL values,
 	// otherwise NULL would always be the min for columns that contain a single
 	// NULL.
-	b.updateMinMax(value)
+	b.accumulateStatistics(value)
 
 	// The following calls won't fail; they only return errors when the
 	// underlying writers fail, which ours cannot.
@@ -140,14 +140,16 @@ func (b *pageBuilder) AppendNull() bool {
 	return true
 }
 
-func (b *pageBuilder) updateMinMax(value Value) {
+func (b *pageBuilder) accumulateStatistics(value Value) {
 	// As a small optimization, we only update min/max values if we're intending
-	// on populating the stats. This avoids unnecessary comparisons for very
+	// on populating them in statistics. This avoids unnecessary comparisons for very
 	// large values.
-	if !b.opts.StoreRangeStats {
-		return
+	if b.opts.Statistics.StoreRangeStats {
+		b.updateMinMax(value)
 	}
+}
 
+func (b *pageBuilder) updateMinMax(value Value) {
 	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
@@ -259,9 +261,15 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 }
 
 func (b *pageBuilder) buildStats() *datasetmd.Statistics {
-	if !b.opts.StoreRangeStats {
-		return nil
+	var stats datasetmd.Statistics
+	if b.opts.Statistics.StoreRangeStats {
+		b.buildRangeStats(&stats)
+		return &stats
 	}
+	return nil
+}
+
+func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
 
 	minValueBytes, err := b.minValue.MarshalBinary()
 	if err != nil {
@@ -272,10 +280,8 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal max value: %s", err))
 	}
 
-	return &datasetmd.Statistics{
-		MinValue: minValueBytes,
-		MaxValue: maxValueBytes,
-	}
+	dst.MinValue = minValueBytes
+	dst.MaxValue = maxValueBytes
 }
 
 // Reset resets the pageBuilder to a fresh state, allowing it to be reused.

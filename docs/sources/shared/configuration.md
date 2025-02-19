@@ -109,6 +109,42 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "<hostname>"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 15s]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -786,36 +822,52 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
-dataobj_consumer:
-  builderconfig:
-    # The size of the SHA prefix to use for the data object builder.
-    # CLI flag: -dataobj-consumer.sha-prefix-size
-    [sha_prefix_size: <int> | default = 2]
+dataobj:
+  consumer:
+    builderconfig:
+      # The size of the target page to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-page-size
+      [target_page_size: <int> | default = 2MiB]
 
-    # The size of the target page to use for the data object builder.
-    # CLI flag: -dataobj-consumer.target-page-size
-    [target_page_size: <int> | default = 2MiB]
+      # The size of the target object to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-object-size
+      [target_object_size: <int> | default = 1GiB]
 
-    # The size of the target object to use for the data object builder.
-    # CLI flag: -dataobj-consumer.target-object-size
-    [target_object_size: <int> | default = 1GiB]
+      # Configures a maximum size for sections, for sections that support it.
+      # CLI flag: -dataobj-consumer.target-section-size
+      [target_section_size: <int> | default = 128MiB]
 
-    # Configures a maximum size for sections, for sections that support it.
-    # CLI flag: -dataobj-consumer.target-section-size
-    [target_section_size: <int> | default = 128MiB]
+      # The size of the buffer to use for sorting logs.
+      # CLI flag: -dataobj-consumer.buffer-size
+      [buffer_size: <int> | default = 16MiB]
 
-    # The size of the buffer to use for sorting logs.
-    # CLI flag: -dataobj-consumer.buffer-size
-    [buffer_size: <int> | default = 16MiB]
+    uploader:
+      # The size of the SHA prefix to use for generating object storage keys for
+      # data objects.
+      # CLI flag: -dataobj-consumer.sha-prefix-size
+      [shaprefixsize: <int> | default = 2]
+
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
+  querier:
+    # Enable the dataobj querier.
+    # CLI flag: -dataobj-querier-enabled
+    [enabled: <boolean> | default = false]
+
+    # The date of the first day of when the dataobj querier should start
+    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
+    # CLI flag: -dataobj-querier-from
+    [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
 
   # The prefix to use for the storage bucket.
-  # CLI flag: -dataobj-consumer.storage-bucket-prefix
-  [storage_bucket_prefix: <string> | default = "dataobj/"]
-
-dataobj_explorer:
-  # Prefix to use when exploring the bucket. If set, only objects under this
-  # prefix will be visible.
-  # CLI flag: -dataobj-explorer.storage-bucket-prefix
+  # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
@@ -3594,6 +3646,11 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
+# Block ingestion for policy until the configured date. The time should be in
+# RFC3339 format. The policy is based on the policy_stream_mapping
+# configuration.
+[block_ingestion_policy_until: <map of string to Time>]
+
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
 # CLI flag: -limits.block-ingestion-until
@@ -3610,6 +3667,29 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+[policy_enforced_labels: <map of string to list of strings>]
+
+# Map of policies to stream selectors with a priority. Experimental.  Example:
+#  policy_stream_mapping: 
+#   finance: 
+#     - selector: '{namespace="prod", container="billing"}' 
+#       priority: 2 
+#   ops: 
+#     - selector: '{namespace="prod", container="ops"}' 
+#       priority: 1 
+#   staging: 
+#     - selector: '{namespace="staging"}' 
+#       priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0

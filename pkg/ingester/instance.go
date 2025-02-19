@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -297,13 +298,30 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
-
+	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
+	policies := mapping.PolicyFor(labels)
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}
 
+	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
+	// As on distributors, we use the first policy by alphabetical order.
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(util_log.Logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", i.instanceID,
+				"stream", pushReqStream.Labels,
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+			)
+		}
+	}
+
 	if err != nil {
-		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours)
+		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours, policy)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -333,7 +351,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
-func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours string) (*stream, error) {
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy string) (*stream, error) {
 	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
 
@@ -349,9 +367,9 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 		)
 	}
 
-	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours).Add(float64(len(pushReqStream.Entries)))
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(len(pushReqStream.Entries)))
 	bytes := util.EntriesTotalSize(pushReqStream.Entries)
-	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours).Add(float64(bytes))
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 	}

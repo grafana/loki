@@ -323,6 +323,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
+	case syntax.VariantsExpr:
+		return nil, logqlmodel.ErrVariantsDisabled
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
@@ -489,7 +491,7 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 	var err error
 	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
-		case *syntax.LogRange:
+		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
 				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}

@@ -18,8 +18,9 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.5
-BUILD_IMAGE_TAG    := 0.34.4
+GO_VERSION         := 1.23.6
+# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
+BUILD_IMAGE_TAG    := 0.34.5
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -31,8 +32,6 @@ GOHOSTOS           ?= $(shell go env GOHOSTOS)
 GOARCH             ?= $(shell go env GOARCH)
 GOARM              ?= $(shell go env GOARM)
 GOEXPERIMENT       ?= $(shell go env GOEXPERIMENT)
-CGO_ENABLED        := 0
-GO_ENV             := GOEXPERIMENT=$(GOEXPERIMENT) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) CGO_ENABLED=$(CGO_ENABLED)
 
 GOTEST             ?= go test
 
@@ -200,7 +199,7 @@ cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
 ui-assets:
-	make -C pkg/dataobj/explorer/ui build
+	make -C pkg/ui/frontend build
 ###############
 # Loki-Canary #
 ###############
@@ -424,9 +423,7 @@ yacc: $(YACC_GOS)
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
-	goyacc -p $(basename $(notdir $<)) -o $@ $<
-	sed -i.back '/^\/\/line/ d' $@
-	rm ${@}.back
+	goyacc -l -p $(basename $(notdir $<)) -o $@ $<
 endif
 
 #########

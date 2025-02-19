@@ -284,15 +284,24 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	}
 	defer fileLock.Unlock()
 
-	var r io.ReadCloser
-	r, err = os.Open(file)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	} else if err == nil {
-		defer r.Close()
+	var missing bool
+	openedFile, err := os.Open(file)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		missing = true
 	}
 
-	newContent, err := f(r)
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
+	if !missing {
+		reader = openedFile
+		defer openedFile.Close()
+	}
+
+	newContent, err := f(reader)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -39,12 +40,11 @@ type Service struct {
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
+
+	bufPool *sync.Pool
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
-	if cfg.StorageBucketPrefix != "" {
-		bucket = objstore.NewPrefixedBucket(bucket, cfg.StorageBucketPrefix)
-	}
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
@@ -52,6 +52,11 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
+		bufPool: &sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, cfg.BuilderConfig.TargetObjectSize))
+			},
+		},
 	}
 
 	client, err := consumer.NewGroupClient(
@@ -95,7 +100,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
@@ -104,6 +109,10 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 
 func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
+	if s.State() == services.Stopping {
+		// On shutdown, franz-go will send one more partitionRevoked event which we need to ignore to shutdown gracefully.
+		return
+	}
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
 

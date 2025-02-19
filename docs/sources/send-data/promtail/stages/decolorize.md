@@ -9,6 +9,8 @@ weight:
 
 # decolorize
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `decolorize` stage is a transform stage that lets you strip
 ANSI color codes from the log line, thus making it easier to
 parse logs further.

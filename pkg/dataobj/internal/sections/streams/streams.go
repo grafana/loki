@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -35,6 +34,7 @@ type Stream struct {
 	Rows         int           // Number of rows in the stream.
 }
 
+// Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
 	s.Labels = nil
@@ -82,18 +82,8 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	}
 }
 
-func (s *Streams) Iter() result.Seq[Stream] {
-	return result.Iter(func(yield func(Stream) bool) error {
-		for _, stream := range s.ordered {
-			if !yield(*stream) {
-				return nil
-			}
-		}
-		return nil
-	})
-}
-
-func (s *Streams) GetBounds() (time.Time, time.Time) {
+// TimeRange returns the minimum and maximum timestamp across all streams.
+func (s *Streams) TimeRange() (time.Time, time.Time) {
 	return s.globalMinTimestamp, s.globalMaxTimestamp
 }
 
@@ -261,11 +251,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint:    s.pageSize,
-			Value:           datasetmd.VALUE_TYPE_STRING,
-			Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
-			StoreRangeStats: true,
+			PageSizeHint: s.pageSize,
+			Value:        datasetmd.VALUE_TYPE_STRING,
+			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			Statistics: dataset.StatisticsOptions{
+				StoreRangeStats: true,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("creating label column: %w", err)
@@ -333,11 +325,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSize,
-		Value:           datasetmd.VALUE_TYPE_INT64,
-		Encoding:        datasetmd.ENCODING_TYPE_DELTA,
-		Compression:     datasetmd.COMPRESSION_TYPE_NONE,
-		StoreRangeStats: true,
+		PageSizeHint: pageSize,
+		Value:        datasetmd.VALUE_TYPE_INT64,
+		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 }
 

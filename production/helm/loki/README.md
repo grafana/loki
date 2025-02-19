@@ -1,6 +1,6 @@
 # loki
 
-![Version: 6.25.0](https://img.shields.io/badge/Version-6.25.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.3.2](https://img.shields.io/badge/AppVersion-3.3.2-informational?style=flat-square)
+![Version: 6.27.0](https://img.shields.io/badge/Version-6.27.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.4.2](https://img.shields.io/badge/AppVersion-3.4.2-informational?style=flat-square)
 
 Helm chart for Grafana Loki and Grafana Enterprise Logs supporting both simple, scalable and distributed modes.
 
@@ -15,7 +15,7 @@ Helm chart for Grafana Loki and Grafana Enterprise Logs supporting both simple, 
 | Repository | Name | Version |
 |------------|------|---------|
 | https://charts.min.io/ | minio(minio) | 5.4.0 |
-| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.0 |
+| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.1 |
 | https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.23.0 |
 
 Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/next/installation/helm).

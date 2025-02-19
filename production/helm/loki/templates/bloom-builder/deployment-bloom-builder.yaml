@@ -34,12 +34,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.bloomBuilderSelectorLabels" . | nindent 8 }}
+        {{- include "loki.bloomBuilderLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.bloomBuilder.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.bloomBuilder.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -67,7 +64,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-builder
-            {{- with .Values.bloomBuilder.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.bloomBuilder.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -80,11 +77,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomBuilder.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.bloomBuilder.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomBuilder.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomBuilder.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -105,7 +102,7 @@ spec:
               mountPath: /tmp
             - name: data
               mountPath: /var/loki
-            {{- with .Values.bloomBuilder.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomBuilder.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -144,7 +141,7 @@ spec:
           emptyDir: {}
         - name: data
           emptyDir: {}
-        {{- with .Values.bloomBuilder.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomBuilder.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end -}}
