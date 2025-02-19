@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-
+import { absolutePath } from "@/util";
 interface MetricSample {
   timestamp: number;
   values: Record<string, number>;
@@ -41,7 +41,7 @@ export const useRateNodeMetrics = () => {
         nodeNames.map(async (nodeName) => {
           try {
             const response = await fetch(
-              `/ui/api/v1/proxy/${nodeName}/metrics`
+              absolutePath(`/api/v1/proxy/${nodeName}/metrics`)
             );
 
             if (!response.ok) {

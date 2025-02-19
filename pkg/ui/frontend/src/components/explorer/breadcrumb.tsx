@@ -10,6 +10,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Link } from "react-router-dom";
+import { absolutePath } from "@/util";
 
 const getProviderStyles = (
   provider: string
@@ -105,7 +106,7 @@ export function ExplorerBreadcrumb() {
   }, [cluster?.members]);
   React.useEffect(() => {
     if (nodeName) {
-      fetch(`/ui/api/v1/proxy/${nodeName}/dataobj/api/v1/provider`)
+      fetch(absolutePath(`/api/v1/proxy/${nodeName}/dataobj/api/v1/provider`))
         .then((res) => res.json())
         .then((data) => setProvider(data.provider))
         .catch(console.error);
