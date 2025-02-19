@@ -802,6 +802,10 @@ http {
     {{- end }}
     {{- end }}
 
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    http2 on;
+    {{- end }}
+
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
     auth_basic_user_file /etc/nginx/secrets/.htpasswd;
@@ -826,6 +830,9 @@ http {
     {{- $httpSchema := .Values.gateway.nginxConfig.schema }}
 
     {{- $writeUrl    := printf "%s://%s.%s.svc.%s:%s" $httpSchema $writeHost   .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    {{- $writeGRPCUrl := printf "%s://%s.%s.svc.%s:%s" grpc $writeHost   .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) }}
+    {{- end }}
     {{- $readUrl     := printf "%s://%s.%s.svc.%s:%s" $httpSchema $readHost    .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $backendUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $backendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
@@ -841,6 +848,9 @@ http {
 
     {{- $singleBinaryHost := include "loki.singleBinaryFullname" . }}
     {{- $singleBinaryUrl  := printf "%s://%s.%s.svc.%s:%s" $httpSchema $singleBinaryHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    {{- $singleBinaryGRPCUrl  := printf "%s://%s.%s.svc.%s:%s" grpc $singleBinaryHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) }}
+    {{- end }}
 
     {{- $distributorHost := include "loki.distributorFullname" .}}
     {{- $ingesterHost := include "loki.ingesterFullname" .}}
@@ -852,6 +862,9 @@ http {
 
 
     {{- $distributorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $distributorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) -}}
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    {{- $distributorGRPCUrl := printf "%s://%s.%s.svc.%s:%s" grpc $distributorHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+    {{- end }}
     {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $queryFrontendUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $queryFrontendHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $indexGatewayUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $indexGatewayHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
@@ -860,6 +873,9 @@ http {
     {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $schedulerHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    {{- $distributorGRPCUrl = $singleBinaryGRPCUrl }}
+    {{- end }}
     {{- $distributorUrl = $singleBinaryUrl }}
     {{- $ingesterUrl = $singleBinaryUrl }}
     {{- $queryFrontendUrl = $singleBinaryUrl }}
@@ -868,6 +884,9 @@ http {
     {{- $compactorUrl = $singleBinaryUrl }}
     {{- $schedulerUrl = $singleBinaryUrl }}
     {{- else if eq (include "loki.deployment.isScalable" .) "true"}}
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    {{- $distributorGRPCUrl = $writeGRPCUrl }}
+    {{- end }}
     {{- $distributorUrl = $writeUrl }}
     {{- $ingesterUrl = $writeUrl }}
     {{- $queryFrontendUrl = $readUrl }}
@@ -995,6 +1014,11 @@ http {
     location = /loki/api/v1 {
       internal;        # to suppress 301
     }
+    {{- if .Values.gateway.nginxConfig.grpcEnabled }}
+    location = /opentelemetry.proto.collector.logs.v1.LogsService {
+      grpc_pass       {{ $distributorGRPCUrl }};
+    }
+    {{- end }}
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}
