@@ -56,8 +56,9 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger) (*Service, er
 	}
 	advertiseAddr := fmt.Sprintf("%s:%d", cfg.AdvertiseAddr, cfg.AdvertisePort)
 	node, err := ckit.NewNode(httpClient, ckit.Config{
-		Name:          cfg.NodeName,
-		Log:           logger,
+		Name: cfg.NodeName,
+		// TODO(cyriltovena): ckit debug logs are too verbose
+		Log:           level.NewFilter(logger, level.AllowInfo()),
 		AdvertiseAddr: advertiseAddr,
 		Label:         cfg.ClusterName,
 	})
