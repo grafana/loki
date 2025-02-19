@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "d38f71c2aebadba3b097061b11d7cdce081785cd"
+  RELEASE_LIB_REF: "ff87b418529d99dc0fa9f757ff6253eb5695d833"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
