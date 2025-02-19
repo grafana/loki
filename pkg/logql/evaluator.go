@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -261,7 +258,6 @@ func Sortable(q Params) (bool, error) {
 type EvaluatorFactory interface {
 	SampleEvaluatorFactory
 	EntryEvaluatorFactory
-	VariantEvaluatorFactory
 }
 
 type SampleEvaluatorFactory interface {
@@ -1341,32 +1337,6 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m, nil
-}
-
-type VariantEvaluatorFactory interface {
-	NewVariantsStepEvaluator(
-		ctx context.Context,
-		expr syntax.VariantsExpr,
-		p Params,
-	) (StepEvaluator, error)
-}
-
-type VariantsEvaluatorFunc func(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error)
-
-func (s VariantsEvaluatorFunc) NewVariantsStepEvaluator(
-	ctx context.Context,
-	expr syntax.VariantsExpr,
-	p Params,
-) (StepEvaluator, error) {
-	return s(ctx, expr, p)
-}
-
-type bufferedVariantsIterator struct {
-	iter          iter.PeekingSampleIterator
-	buffer        map[int][]sampleWithLabelsAndStreamHash
-	current       sampleWithLabelsAndStreamHash
-	currentLabels string
-	err           error
 }
 
 type sampleWithLabelsAndStreamHash struct {

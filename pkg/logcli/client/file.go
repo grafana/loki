@@ -262,10 +262,6 @@ func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (
 	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
 }
 
-func (q *querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("Variants Query: %w", ErrNotSupported)
-}
-
 func newFileIterator(
 	r io.Reader,
 	params logql.SelectLogParams,

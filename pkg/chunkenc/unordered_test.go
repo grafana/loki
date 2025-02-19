@@ -742,7 +742,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
 		"ordered":                            &headBlock{},
 	} {
-		t.Run(fmt.Sprintf("%s sampleIterator", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s SampleIterator", name), func(t *testing.T) {
 			dup, err := b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}})
 			require.False(t, dup)
 			require.NoError(t, err)
@@ -758,7 +758,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 			}
 		})
 
-		t.Run(fmt.Sprintf("%s multiExtractorSampleIterator", name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
 			dup, err := b.Append(1, "bar", labels.Labels{{Name: "bar", Value: "foo"}})
 			require.False(t, dup)
 			require.NoError(t, err)
@@ -774,8 +774,13 @@ func Test_HeadIteratorHash(t *testing.T) {
 				require.Equal(t, lbs.Hash(), eit.StreamHash())
 			}
 
-			sit := b.MultiExtractorSampleIterator(context.TODO(), 0, 2, []log.StreamSampleExtractor{
-				countEx.ForStream(lbs), bytesEx.ForStream(lbs)})
+			sit := b.SampleIterator(
+				context.TODO(),
+				0,
+				2,
+				countEx.ForStream(lbs),
+				bytesEx.ForStream(lbs),
+			)
 			for sit.Next() {
 				require.Equal(t, lbs.Hash(), sit.StreamHash())
 			}

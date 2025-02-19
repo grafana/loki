@@ -1146,7 +1146,7 @@ func BenchmarkHeadBlockMultiExtractorSampleIterator(b *testing.B) {
 				b.ResetTimer()
 
 				for n := 0; n < b.N; n++ {
-					iter := h.MultiExtractorSampleIterator(context.Background(), 0, math.MaxInt64, []log.StreamSampleExtractor{countExtractor, bytesExtractor})
+					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor, bytesExtractor)
 
 					for iter.Next() {
 						_ = iter.At()

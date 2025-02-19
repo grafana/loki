@@ -1107,11 +1107,7 @@ func (c *MemChunk) SampleIterator(
 		if from < lastMax {
 			ordered = false
 		}
-		if len(extractors) == 1 {
-			its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors[0]))
-		} else {
-			its = append(its, c.head.MultiExtractorSampleIterator(ctx, mint, maxt, extractors))
-		}
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
 	}
 
 	var it iter.SampleIterator
@@ -1299,70 +1295,14 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
-func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
-	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopSampleIterator
-	}
-	stats := stats.FromContext(ctx)
-	stats.AddHeadChunkLines(int64(len(hb.entries)))
-	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
-
-	for _, e := range hb.entries {
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-		if !ok {
-			continue
-		}
-		stats.AddPostFilterLines(1)
-		var (
-			found bool
-			s     *logproto.Series
-		)
-
-		lbs := parsedLabels.String()
-		if s, found = series[lbs]; !found {
-			s = &logproto.Series{
-				Labels:     lbs,
-				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-				StreamHash: baseHash,
-			}
-			series[lbs] = s
-		}
-
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-		})
-	}
-
-	if extractor.ReferencedStructuredMetadata() {
-		stats.SetQueryReferencedStructuredMetadata()
-	}
-	if len(series) == 0 {
-		return iter.NoopSampleIterator
-	}
-	seriesRes := make([]logproto.Series, 0, len(series))
-	for _, s := range series {
-		seriesRes = append(seriesRes, *s)
-	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
-		for _, s := range series {
-			SamplesPool.Put(s.Samples)
-		}
-		return nil
-	})
-}
-
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
-func (hb *headBlock) MultiExtractorSampleIterator(
+func (hb *headBlock) SampleIterator(
 	ctx context.Context,
 	mint, maxt int64,
-	extractors []log.StreamSampleExtractor,
+	extractors ...log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
