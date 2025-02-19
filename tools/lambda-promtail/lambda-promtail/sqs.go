@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 // Notification represents the top-level SNS message structure
@@ -24,35 +26,20 @@ type Notification struct {
 type S3Record struct {
 }
 
-func parseSQSEvent(ctx context.Context, b *batch, ev *events.SQSEvent) error {
+func parseSQSEvent(ctx context.Context, b *batch, ev *events.SQSEvent, log *log.Logger, handler func(ctx context.Context, ev map[string]interface{}) error) error {
 	if ev == nil {
 		return nil
 	}
 	for _, record := range ev.Records {
 		var notification Notification
 		var sesNotification SESNotification
-		// fmt.Println("HERE--------------")
-		// fmt.Println(record.Body)
 		err := json.Unmarshal([]byte(record.Body), &notification)
 		if err == nil {
-			fmt.Println("Its an sqsMessage")
-			// fmt.Println(notification)
-			// fmt.Println(notification.Type)
-
-			// Now lets see if its an sesNotification
-
-			// fmt.Println(notification.Message)
-			// fmt.Println("HERE--------------22")
-
 			sesNotErr := json.Unmarshal([]byte(notification.Message), &sesNotification)
 			if sesNotErr == nil {
-				fmt.Println("Its an sesMessage FROM an SQS message")
-				// fmt.Println(sesNotification)
-				// fmt.Println(sesNotification.NotificationType)
-				// fmt.Println("Now calling the ses module")
-				sesErr := parseSESEvent(ctx, b, &sesNotification)
+				level.Info(*log).Log("msg", fmt.Sprintf("Its an sesMessage FROM an SQS message"))
+				sesErr := parseSESEvent(ctx, b, log, &sesNotification)
 				if sesErr != nil {
-					// fmt.Println("Error processing SES Event")
 					return sesErr
 				}
 				continue // We want to stop processing the record as its a sesNotification message.
@@ -61,15 +48,15 @@ func parseSQSEvent(ctx context.Context, b *batch, ev *events.SQSEvent) error {
 
 		//Check if its NOT a notification event
 		processSQSS3Event(ctx, ev, handler)
-		fmt.Println("Currently only SQS messages from SES are supported. The current message is NOT an SES notification. Moving on.")
+		level.Info(*log).Log("msg", fmt.Sprintf("Currently only SQS messages from SES are supported. The current message is NOT an SES notification. Moving on."))
 	}
 	return nil
 }
 
-func processSQSEvent(ctx context.Context, ev *events.SQSEvent, pClient Client) error {
+func processSQSEvent(ctx context.Context, ev *events.SQSEvent, pClient Client, log *log.Logger, handler func(ctx context.Context, ev map[string]interface{}) error) error {
 	batch, _ := newBatch(ctx, pClient)
 
-	err := parseSQSEvent(ctx, batch, ev)
+	err := parseSQSEvent(ctx, batch, ev, log, handler)
 	if err != nil {
 		return err
 	}

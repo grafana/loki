@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func mockHandler(ctx context.Context, ev map[string]interface{}) error {
+	return nil
+}
+
 func TestLambdaPromtail_SQSParseEventsNoMatch(t *testing.T) {
 	tc := &events.SQSEvent{
 		Records: []events.SQSMessage{
@@ -30,13 +34,13 @@ func TestLambdaPromtail_SQSParseEventsNoMatch(t *testing.T) {
 		},
 	}
 
+	log := NewLogger("Info")
 	mockBatch := &batch{
 		streams: map[string]*logproto.Stream{},
 	}
-
 	ctx := context.TODO()
 
-	err := parseSQSEvent(ctx, mockBatch, tc)
+	err := parseSQSEvent(ctx, mockBatch, tc, log, mockHandler)
 	require.Equal(t, 0, mockBatch.size) //The size of the batch is equal to the entire Mail object above
 	require.Nil(t, err)
 
@@ -68,8 +72,8 @@ func TestLambdaPromtail_SQSParseEventsDelivery(t *testing.T) {
 	}
 
 	ctx := context.TODO()
-
-	err := parseSQSEvent(ctx, mockBatch, tc)
+	log := NewLogger("Info")
+	err := parseSQSEvent(ctx, mockBatch, tc, log, mockHandler)
 	require.Nil(t, err)
 	require.Equal(t, 1107, mockBatch.size) //The size of the batch is equal to the entire Mail object above
 }
@@ -100,8 +104,8 @@ func TestLambdaPromtail_SQSParseEventsBounce(t *testing.T) {
 	}
 
 	ctx := context.TODO()
-
-	err := parseSQSEvent(ctx, mockBatch, tc)
+	log := NewLogger("Info")
+	err := parseSQSEvent(ctx, mockBatch, tc, log, mockHandler)
 	require.Nil(t, err)
 	require.Equal(t, 1748, mockBatch.size) //The size of the batch is equal to the entire Mail object above
 }
@@ -132,8 +136,8 @@ func TestLambdaPromtail_SQSParseEventsComplaint(t *testing.T) {
 	}
 
 	ctx := context.TODO()
-
-	err := parseSQSEvent(ctx, mockBatch, tc)
+	log := NewLogger("Info")
+	err := parseSQSEvent(ctx, mockBatch, tc, log, mockHandler)
 	require.Nil(t, err)
 	require.Equal(t, 1332, mockBatch.size) //The size of the batch is equal to the entire Mail object above
 }

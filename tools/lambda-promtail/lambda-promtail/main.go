@@ -272,7 +272,7 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 	case *events.KinesisEvent:
 		err = processKinesisEvent(ctx, evt, pClient)
 	case *events.SQSEvent:
-		err = processSQSEvent(ctx, evt, pClient)
+		err = processSQSEvent(ctx, evt, pClient, pClient.log, handler)
 	case *events.SNSEvent:
 		err = processSNSEvent(ctx, evt, handler)
 	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html

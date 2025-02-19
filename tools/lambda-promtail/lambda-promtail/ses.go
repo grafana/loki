@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
@@ -115,17 +117,17 @@ type Delivery struct {
 	ReportingMTA         string   `json:"reportingMTA"`
 }
 
-func parseSESEvent(ctx context.Context, b *batch, ev *SESNotification) error {
+func parseSESEvent(ctx context.Context, b *batch, log *log.Logger, ev *SESNotification) error {
 	labels := model.LabelSet{
 		model.LabelName("__aws_log_type"): model.LabelValue("SQS - SES"),
 		model.LabelName("__aws_ses_type"): model.LabelValue(ev.NotificationType),
 		model.LabelName("service_name"):   model.LabelValue("AWS - SES"),
 	}
 
-	fmt.Println("Getting here to process the SESEvent")
+	level.Debug(*log).Log("msg", fmt.Sprintf("Processing SES Event"))
 	if ev.Bounce != nil {
 		// Message is of type Bounce
-		fmt.Println("Getting here to process the SESEvent - Type Bounce")
+		level.Debug(*log).Log("msg", fmt.Sprintf("Processing SES Event as type Bounce"))
 
 		timestamp, _ := time.Parse(time.RFC3339, ev.Bounce.Timestamp)
 
@@ -156,7 +158,7 @@ func parseSESEvent(ctx context.Context, b *batch, ev *SESNotification) error {
 	}
 	if ev.Complaint != nil {
 		// Message is of type complaint
-		fmt.Println("Getting here to process the SESEvent - Type complaint")
+		level.Debug(*log).Log("msg", fmt.Sprintf("Processing SES Event as type Complaint"))
 		timestamp, _ := time.Parse(time.RFC3339, ev.Complaint.Timestamp)
 
 		ceventLabels := model.LabelSet{
@@ -181,7 +183,7 @@ func parseSESEvent(ctx context.Context, b *batch, ev *SESNotification) error {
 	}
 	if ev.Delivery != nil {
 		// Message is of type delivery
-		fmt.Println("Getting here to process the SESEvent - Type delivery")
+		level.Debug(*log).Log("msg", fmt.Sprintf("Processing SES Event as type Delivery"))
 		timestamp, _ := time.Parse(time.RFC3339, ev.Delivery.Timestamp)
 
 		if batchErr := b.add(ctx, entry{labels, logproto.Entry{
