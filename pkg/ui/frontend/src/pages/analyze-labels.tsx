@@ -54,6 +54,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { absolutePath } from "@/util";
 
 const formSchema = z.object({
   tenant: z.string().min(1, "Tenant ID is required"),
@@ -151,9 +152,11 @@ export default function AnalyzeLabels() {
         const start = new Date(end.getTime() - parseDuration(values.since));
 
         const response = await fetch(
-          `/ui/api/v1/proxy/${nodeName}/loki/api/v1/series?match[]=${encodeURIComponent(
-            values.matcher
-          )}&start=${start.getTime() * 1e6}&end=${end.getTime() * 1e6}`,
+          absolutePath(
+            `/api/v1/proxy/${nodeName}/loki/api/v1/series?match[]=${encodeURIComponent(
+              values.matcher
+            )}&start=${start.getTime() * 1e6}&end=${end.getTime() * 1e6}`
+          ),
           {
             headers: {
               "X-Scope-OrgID": values.tenant,

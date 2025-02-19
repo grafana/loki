@@ -66,6 +66,7 @@ func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
 func (OffsetExpr) isExpr()                 {}
 func (UnwrapExpr) isExpr()                 {}
+func (MultiVariantExpr) isExpr()           {}
 
 // LogSelectorExpr is a expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -1318,6 +1319,10 @@ const (
 
 	// probabilistic aggregations
 	OpTypeApproxTopK = "approx_topk"
+
+	// variants
+	OpVariants = "variants"
+	VariantsOf = "of"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -2411,4 +2416,170 @@ func groupingReducesLabels(grp *Grouping) bool {
 	}
 
 	return false
+}
+
+// VariantsExpr is a LogQL expression that can produce multiple streams, defined by a set of variants,
+// over a single log selector.
+//
+//sumtype:decl
+type VariantsExpr interface {
+	LogRange() *LogRangeExpr
+	Matchers() []*labels.Matcher
+	Variants() []SampleExpr
+	SetVariant(i int, e SampleExpr) error
+	Interval() time.Duration
+	Offset() time.Duration
+	Extractors() ([]SampleExtractor, error)
+	Expr
+}
+
+type MultiVariantExpr struct {
+	logRange *LogRangeExpr
+	variants []SampleExpr
+	err      error
+}
+
+func NewMultiVariantExpr(
+	logRange *LogRangeExpr,
+	variants []SampleExpr,
+) MultiVariantExpr {
+	return MultiVariantExpr{
+		logRange: logRange,
+		variants: variants,
+	}
+}
+
+func (m *MultiVariantExpr) LogRange() *LogRangeExpr {
+	return m.logRange
+}
+
+func (m *MultiVariantExpr) SetLogSelector(e *LogRangeExpr) {
+	m.logRange = e
+}
+
+func (m *MultiVariantExpr) Matchers() []*labels.Matcher {
+	return m.logRange.Left.Matchers()
+}
+
+func (m *MultiVariantExpr) Interval() time.Duration {
+	return m.logRange.Interval
+}
+
+func (m *MultiVariantExpr) Offset() time.Duration {
+	return m.logRange.Offset
+}
+
+func (m *MultiVariantExpr) Variants() []SampleExpr {
+	return m.variants
+}
+
+func (m *MultiVariantExpr) AddVariant(v SampleExpr) {
+	m.variants = append(m.variants, v)
+}
+
+func (m *MultiVariantExpr) SetVariant(i int, v SampleExpr) error {
+	if i >= len(m.variants) {
+		return fmt.Errorf("variant index out of range")
+	}
+
+	m.variants[i] = v
+	return nil
+}
+
+func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
+	if !m.logRange.Shardable(topLevel) {
+		return false
+	}
+
+	for _, v := range m.variants {
+		if !v.Shardable(topLevel) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *MultiVariantExpr) Walk(f WalkFn) {
+	f(m)
+
+	if m.logRange != nil {
+		m.logRange.Walk(f)
+	}
+
+	for _, v := range m.variants {
+		v.Walk(f)
+	}
+}
+
+func (m *MultiVariantExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpVariants)
+	sb.WriteString("(")
+	for i, v := range m.variants {
+		sb.WriteString(v.String())
+		if i+1 != len(m.variants) {
+			sb.WriteString(", ")
+		}
+	}
+	sb.WriteString(") ")
+
+	sb.WriteString(VariantsOf)
+	sb.WriteString(" (")
+	sb.WriteString(m.logRange.String())
+	sb.WriteString(")")
+
+	return sb.String()
+}
+
+func (m *MultiVariantExpr) Accept(v RootVisitor) {
+	v.VisitVariants(m)
+}
+
+// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
+func (m *MultiVariantExpr) Pretty(level int) string {
+	s := Indent(level)
+
+	s += OpVariants + "(\n"
+
+	variants := make([]string, 0, len(m.variants))
+	for _, v := range m.variants {
+		variants = append(variants, v.Pretty(level+1))
+	}
+
+	for i, v := range variants {
+		s += v
+		// LogQL doesn't allow `,` at the end of last argument.
+		if i < len(variants)-1 {
+			s += ","
+		}
+		s += "\n"
+	}
+
+	s += Indent(level) + ") of (\n"
+	s += m.logRange.Pretty(level + 1)
+	s += Indent(level) + "\n)"
+
+	return s
+}
+
+func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
+	extractors := make([]log.SampleExtractor, 0, len(m.variants))
+	for _, v := range m.variants {
+		e, err := v.Extractor()
+		if err != nil {
+			return nil, err
+		}
+
+		extractors = append(extractors, e)
+	}
+
+	return extractors, nil
+}
+
+func newVariantsExpr(variants []SampleExpr, logRange *LogRangeExpr) VariantsExpr {
+	return &MultiVariantExpr{
+		variants: variants,
+		logRange: logRange,
+	}
 }
