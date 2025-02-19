@@ -100,24 +100,24 @@ OpenTelemetry Attributes:
 		}
 
 		g := bench.NewGenerator(opt)
-		for batch := range g.Generate(100) {
+		for batch := range g.Batches() {
 			for _, stream := range batch.Streams {
 				// Parse labels into a map
 				labels := parseLabels(stream.Labels)
 
 				// Filter by application if specified
 				if appFilter != nil {
-					component := labels["component"]
+					component := labels["service_name"]
 					var matchesFilter bool
 					switch component {
-					case "api":
+					case "web-server":
 						matchesFilter = appFilter["web-server"]
-					case "proxy":
-						matchesFilter = appFilter["nginx"]
-					case "database":
+					case "mysql":
 						matchesFilter = appFilter["mysql"]
-					case "messaging":
-						matchesFilter = appFilter["kafka"]
+					case "redis":
+						matchesFilter = appFilter["redis"]
+					case "auth-service":
+						matchesFilter = appFilter["auth-service"]
 					}
 					if !matchesFilter {
 						continue

@@ -38,6 +38,7 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		timeSpread:     cfg.TimeSpread,
 		denseIntervals: cfg.DenseIntervals,
 		labelConfig:    cfg.LabelConfig,
+		NumStreams:     numStreams,
 	})
 
 	g2 := NewGenerator(Opt{
@@ -45,15 +46,16 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		timeSpread:     cfg.TimeSpread,
 		denseIntervals: cfg.DenseIntervals,
 		labelConfig:    cfg.LabelConfig,
+		NumStreams:     numStreams,
 	})
 
 	// Collect streams from first generator
-	for batch := range g1.Generate(numStreams) {
+	for batch := range g1.Batches() {
 		streams1 = append(streams1, batch.Streams...)
 	}
 
 	// Collect streams from second generator
-	for batch := range g2.Generate(numStreams) {
+	for batch := range g2.Batches() {
 		streams2 = append(streams2, batch.Streams...)
 	}
 
@@ -90,6 +92,8 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		}
 	}
 }
+
+//go:generate go run ./cmd/generate/main.go -size 1073741824 -dir ./data -tenant test-tenant
 
 func BenchmarkLogQL(b *testing.B) {
 	// builder := newTestDataBuilder(b, "test-tenant")

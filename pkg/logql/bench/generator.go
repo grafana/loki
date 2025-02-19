@@ -83,12 +83,14 @@ type GeneratorConfig struct {
 		Duration time.Duration
 	}
 	LabelConfig LabelConfig
+	NumStreams  int // Number of streams to generate per batch
 }
 
 var defaultGeneratorConfig = GeneratorConfig{
 	StartTime:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	TimeSpread:  24 * time.Hour,
 	LabelConfig: defaultLabelConfig,
+	NumStreams:  1000, // Default to 1000 streams per batch
 	DenseIntervals: []struct {
 		Start    time.Time
 		Duration time.Duration
@@ -119,6 +121,7 @@ type Opt struct {
 		Duration time.Duration
 	}
 	labelConfig LabelConfig
+	NumStreams  int // Number of streams to generate per batch
 }
 
 // WithStartTime sets the start time for log generation
@@ -161,6 +164,12 @@ func (o Opt) WithLabelConfig(cfg LabelConfig) Opt {
 	return o
 }
 
+// WithNumStreams sets the number of streams to generate per batch
+func (o Opt) WithNumStreams(n int) Opt {
+	o.NumStreams = n
+	return o
+}
+
 // DefaultOpt returns the default options
 func DefaultOpt() Opt {
 	return Opt{
@@ -168,6 +177,7 @@ func DefaultOpt() Opt {
 		timeSpread:     defaultGeneratorConfig.TimeSpread,
 		denseIntervals: defaultGeneratorConfig.DenseIntervals,
 		labelConfig:    defaultGeneratorConfig.LabelConfig,
+		NumStreams:     1000, // Default to 1000 streams per batch
 	}
 }
 
@@ -179,16 +189,22 @@ func NewGenerator(opt Opt) *Generator {
 			TimeSpread:     opt.timeSpread,
 			DenseIntervals: opt.denseIntervals,
 			LabelConfig:    opt.labelConfig,
+			NumStreams:     opt.NumStreams,
 		},
 		rnd: rand.New(rand.NewSource(1)), // Use fixed seed for reproducibility
 	}
 }
 
 // Generate returns an iterator of batches with the configured number of streams
-func (g *Generator) Generate(numStreams int) iter.Seq[*Batch] {
+func (g *Generator) Batches() iter.Seq[*Batch] {
 	return func(yield func(*Batch) bool) {
 		// Pre-generate all possible label combinations
 		var streams []logproto.Stream
+		numStreams := g.config.NumStreams
+		if numStreams == 0 {
+			numStreams = defaultGeneratorConfig.NumStreams
+		}
+
 		for i := 0; i < numStreams; i++ {
 			cluster := fmt.Sprintf("cluster-%d", g.rnd.Intn(g.config.LabelConfig.Clusters))
 			namespace := fmt.Sprintf("namespace-%d", g.rnd.Intn(g.config.LabelConfig.Namespaces))
@@ -216,7 +232,7 @@ func (g *Generator) Generate(numStreams int) iter.Seq[*Batch] {
 		}
 
 		// Send streams in batches
-		batchSize := 100
+		batchSize := 100 // TODO: Make this configurable if needed
 		for i := 0; i < len(streams); i += batchSize {
 			end := i + batchSize
 			if end > len(streams) {
@@ -231,12 +247,10 @@ func (g *Generator) Generate(numStreams int) iter.Seq[*Batch] {
 
 // GenerateDataset generates a dataset of approximately the specified size
 func (g *Generator) GenerateDataset(targetSize int64, outputFile string) error {
-	// Start with a reasonable number of streams and adjust based on size
-	numStreams := 1000
 	var totalSize int64
-	streams := make([]logproto.Stream, 0, numStreams)
+	streams := make([]logproto.Stream, 0, g.config.NumStreams)
 
-	for batch := range g.Generate(numStreams) {
+	for batch := range g.Batches() {
 		batchSize := int64(batch.Size())
 		streams = append(streams, batch.Streams...)
 		totalSize += batchSize
@@ -797,23 +811,4 @@ func generateMySQLQuery(rnd *rand.Rand) string {
 		query = fmt.Sprintf(query, rnd.Intn(10000))
 	}
 	return query
-}
-
-//go:generate go run ./cmd/generate/main.go -size 1073741824 -output dataset.pb
-
-// GenerateDataset generates a dataset of approximately the specified size in bytes
-func GenerateDataset(targetSize int64, outputFile string) error {
-	g := NewGenerator(DefaultOpt())
-	return g.GenerateDataset(targetSize, outputFile)
-}
-
-// GenerateDatasetWithConfig generates a dataset with custom configuration
-func GenerateDatasetWithConfig(targetSize int64, outputFile string, cfg GeneratorConfig) error {
-	g := NewGenerator(Opt{
-		startTime:      cfg.StartTime,
-		timeSpread:     cfg.TimeSpread,
-		denseIntervals: cfg.DenseIntervals,
-		labelConfig:    cfg.LabelConfig,
-	})
-	return g.GenerateDataset(targetSize, outputFile)
 }
