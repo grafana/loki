@@ -1338,9 +1338,3 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	}
 	return m, nil
 }
-
-type sampleWithLabelsAndStreamHash struct {
-	sample     logproto.Sample
-	labels     string
-	streamHash uint64
-}

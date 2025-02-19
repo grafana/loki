@@ -4055,8 +4055,8 @@ engine:
   # Enable experimental support for running multiple query variants over the
   # same underlying data. For example, running both a rate() and
   # count_over_time() query over the same range selector.
-  # CLI flag: -querier.engine.experimental-multi-variant-queries
-  [experimental_multi_variant_queries: <boolean> | default = false]
+  # CLI flag: -querier.engine.enable-multi-variant-queries
+  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
