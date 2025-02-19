@@ -1,7 +1,6 @@
 package bench
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -10,10 +9,6 @@ import (
 )
 
 func TestGenerateDatasetDeterminism(t *testing.T) {
-	// Create two temporary files for the datasets
-	file1 := t.TempDir() + "/dataset1.pb"
-	file2 := t.TempDir() + "/dataset2.pb"
-
 	// Create a test configuration with fixed timestamps
 	cfg := GeneratorConfig{
 		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -34,34 +29,41 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		LabelConfig: defaultLabelConfig,
 	}
 
-	// Generate two datasets with the same configuration
-	size := int64(1024 * 1024) // 1MB for testing
-	err := GenerateDatasetWithConfig(size, file1, cfg)
-	require.NoError(t, err)
-	err = GenerateDatasetWithConfig(size, file2, cfg)
-	require.NoError(t, err)
+	// Generate two sets of streams with the same configuration
+	numStreams := 100
+	var streams1, streams2 []logproto.Stream
 
-	// Read both files
-	data1, err := os.ReadFile(file1)
-	require.NoError(t, err)
-	data2, err := os.ReadFile(file2)
-	require.NoError(t, err)
+	g1 := NewGenerator(Opt{
+		startTime:      cfg.StartTime,
+		timeSpread:     cfg.TimeSpread,
+		denseIntervals: cfg.DenseIntervals,
+		labelConfig:    cfg.LabelConfig,
+	})
 
-	// Unmarshal protobuf data
-	req1 := &logproto.PushRequest{}
-	req2 := &logproto.PushRequest{}
-	err = req1.Unmarshal(data1)
-	require.NoError(t, err)
-	err = req2.Unmarshal(data2)
-	require.NoError(t, err)
+	g2 := NewGenerator(Opt{
+		startTime:      cfg.StartTime,
+		timeSpread:     cfg.TimeSpread,
+		denseIntervals: cfg.DenseIntervals,
+		labelConfig:    cfg.LabelConfig,
+	})
+
+	// Collect streams from first generator
+	for batch := range g1.Generate(numStreams) {
+		streams1 = append(streams1, batch.Streams...)
+	}
+
+	// Collect streams from second generator
+	for batch := range g2.Generate(numStreams) {
+		streams2 = append(streams2, batch.Streams...)
+	}
 
 	// Compare number of streams
-	require.Equal(t, len(req1.Streams), len(req2.Streams), "Number of streams should match")
+	require.Equal(t, len(streams1), len(streams2), "Number of streams should match")
 
 	// Compare each stream
-	for i := range req1.Streams {
-		stream1 := req1.Streams[i]
-		stream2 := req2.Streams[i]
+	for i := range streams1 {
+		stream1 := streams1[i]
+		stream2 := streams2[i]
 
 		// Compare labels
 		require.Equal(t, stream1.Labels, stream2.Labels, "Labels should match for stream %d", i)
