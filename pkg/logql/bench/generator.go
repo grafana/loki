@@ -5,6 +5,7 @@ import (
 	"iter"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -323,20 +324,26 @@ func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, c
 			// Generate the log line
 			line := generateLogLine(format, level, rnd)
 
-			// Create OTEL metadata
-			metadata := []logproto.LabelAdapter{
-				{Name: "level", Value: level},
-			}
+			// Create metadata in a deterministic order
+			var metadata []logproto.LabelAdapter
 
-			// Add resource attributes
-			for k, v := range otel.Resource {
+			// First add the level
+			metadata = append(metadata, logproto.LabelAdapter{Name: "level", Value: level})
+
+			// Then add resource attributes in sorted order
+			var resourceKeys []string
+			for k := range otel.Resource {
+				resourceKeys = append(resourceKeys, k)
+			}
+			sort.Strings(resourceKeys)
+			for _, k := range resourceKeys {
 				metadata = append(metadata, logproto.LabelAdapter{
 					Name:  "resource_" + k,
-					Value: v,
+					Value: otel.Resource[k],
 				})
 			}
 
-			// Add trace context if present
+			// Finally add trace context if present
 			if traceCtx != nil {
 				metadata = append(metadata,
 					logproto.LabelAdapter{Name: "trace_id", Value: traceCtx.TraceID},
