@@ -97,4 +97,5 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 
 func BenchmarkLogQL(b *testing.B) {
 	// builder := newTestDataBuilder(b, "test-tenant")
+	// todo if the data folder is empty, report an error and ask to go generate
 }

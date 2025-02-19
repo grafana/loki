@@ -8,12 +8,16 @@ import (
 	"path/filepath"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 // Store represents a storage backend for log data
@@ -34,21 +38,28 @@ type DataObjStore struct {
 	buf      *bytes.Buffer
 	uploader *uploader.Uploader
 	meta     *metastore.Manager
+
+	bucket objstore.Bucket
+
+	logger log.Logger
 }
 
 // NewDataObjStore creates a new DataObjStore
 func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Create store-specific directory
+	storeDir := filepath.Join(dir, "dataobj")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Create required directories for metastore
-	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
+	// Create required directories for metastore and tenant
+	tenantDir := filepath.Join(storeDir, "tenant-"+tenantID)
+	metastoreDir := filepath.Join(tenantDir, "metastore")
 	if err := os.MkdirAll(metastoreDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create metastore directory: %w", err)
 	}
 
-	bucket, err := filesystem.NewBucket(dir)
+	bucket, err := filesystem.NewBucket(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket: %w", err)
 	}
@@ -63,16 +74,19 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
 	}
 
-	meta := metastore.NewManager(bucket, tenantID, log.NewNopLogger())
+	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
+	meta := metastore.NewManager(bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
 
 	return &DataObjStore{
-		dir:      dir,
+		dir:      storeDir,
 		tenantID: tenantID,
 		builder:  builder,
 		buf:      bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
 		uploader: uploader,
 		meta:     meta,
+		bucket:   bucket,
+		logger:   logger,
 	}, nil
 }
 
@@ -93,6 +107,10 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 		}
 	}
 	return nil
+}
+
+func (s *DataObjStore) Querier() (logql.Querier, error) {
+	return querier.NewStore(s.bucket, s.logger), nil
 }
 
 func (s *DataObjStore) flush() error {
@@ -152,23 +170,22 @@ func NewBuilder(store Store, opt Opt) *Builder {
 
 // Generate generates and stores the specified amount of data
 func (b *Builder) Generate(ctx context.Context, targetSize int64) error {
-	// Clear the data directory first if it exists
-	if store, ok := b.store.(*DataObjStore); ok {
-		if err := os.RemoveAll(store.dir); err != nil {
-			return fmt.Errorf("failed to clear data directory: %w", err)
-		}
-		if err := os.MkdirAll(store.dir, 0o755); err != nil {
-			return fmt.Errorf("failed to recreate data directory: %w", err)
-		}
-	}
-
 	var totalSize int64
+	lastProgress := 0
 
 	for totalSize < targetSize {
 		var streams []logproto.Stream
 		for batch := range b.gen.Batches() {
 			streams = append(streams, batch.Streams...)
 			totalSize += int64(batch.Size())
+
+			// Report progress every 5%
+			progress := int(float64(totalSize) / float64(targetSize) * 100)
+			if progress/5 > lastProgress/5 {
+				fmt.Printf("Generated %d%% (%s/%s)\n", progress, formatBytes(totalSize), formatBytes(targetSize))
+				lastProgress = progress
+			}
+
 			if totalSize >= targetSize {
 				break
 			}
@@ -184,5 +201,20 @@ func (b *Builder) Generate(ctx context.Context, targetSize int64) error {
 		return fmt.Errorf("failed to close store: %w", err)
 	}
 
+	fmt.Printf("Generated 100%% (%s/%s)\n", formatBytes(totalSize), formatBytes(targetSize))
 	return nil
+}
+
+// formatBytes converts bytes to a human readable string
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

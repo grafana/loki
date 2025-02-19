@@ -17,6 +17,12 @@ func main() {
 	)
 	flag.Parse()
 
+	// Clean the store-specific output directory
+	if err := os.RemoveAll(*dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to clear output directory: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Create the store
 	store, err := bench.NewDataObjStore(*dir, *tenantID)
 	if err != nil {
