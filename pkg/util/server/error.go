@@ -100,6 +100,8 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusBadRequest, err
 	case errors.As(err, &userErr):
 		return http.StatusBadRequest, err
+	case errors.Is(err, logqlmodel.ErrVariantsDisabled):
+		return http.StatusBadRequest, err
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			return int(grpcErr.Code), errors.New(string(grpcErr.Body))
