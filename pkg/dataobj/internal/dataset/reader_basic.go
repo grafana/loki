@@ -143,6 +143,12 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 	startRow := int64(s[0].Index)
 
+	// Ensure that each Row.Values slice has enough capacity to store all values.
+	for i := range s {
+		s[i].Values = slices.Grow(s[i].Values, len(pr.columns))
+		s[i].Values = s[i].Values[:len(pr.columns)]
+	}
+
 	for n < len(s) {
 		var (
 			// maxRead tracks the maximum number of read rows across all columns. This
@@ -190,7 +196,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 		// We check for atEOF here instead of maxRead == 0 to preserve the pattern
 		// of io.Reader: readers may return 0, nil even when they're not at EOF.
-		if atEOF {
+		if maxRead == 0 && atEOF {
 			return n, io.EOF
 		}
 
@@ -304,6 +310,7 @@ func (pr *basicReader) Reset(columns []Column) {
 	// length can be garbage collected.
 	pr.readers = pr.readers[:len(columns)]
 	clear(pr.readers[len(columns):cap(pr.readers)])
+	pr.nextRow = 0
 }
 
 // Close closes the basicReader. Closed basicReaders can be reused by calling

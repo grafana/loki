@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"context"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
@@ -109,4 +110,12 @@ func lazyColumnIter(ctx context.Context, column *ColumnInfo, pages []Page) resul
 type Row struct {
 	Index  int     // Index of the row in the dataset.
 	Values []Value // Values for the row, one per [Column].
+}
+
+// Clone returns a deep copy of r.
+func (r Row) Clone() Row {
+	return Row{
+		Index:  r.Index,
+		Values: slices.Clone(r.Values),
+	}
 }
