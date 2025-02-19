@@ -27,6 +27,7 @@ import * as z from "zod";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { PageContainer } from "@/layout/page-container";
+import { absolutePath } from "@/util";
 
 const formSchema = z.object({
   tenant_id: z.string().min(1, "Tenant ID is required"),
@@ -72,7 +73,9 @@ const NewDeleteRequest = () => {
       setQueryValidating(true);
       try {
         const response = await fetch(
-          `/ui/api/v1/proxy/${nodeName}/loki/api/v1/format_query?query=${query}`,
+          absolutePath(
+            `/api/v1/proxy/${nodeName}/loki/api/v1/format_query?query=${query}`
+          ),
           {
             method: "POST",
           }
@@ -121,7 +124,9 @@ const NewDeleteRequest = () => {
 
     try {
       const response = await fetch(
-        `/ui/api/v1/proxy/${nodeName}/compactor/ui/api/v1/deletes?${params.toString()}`,
+        absolutePath(
+          `/api/v1/proxy/${nodeName}/compactor/ui/api/v1/deletes?${params.toString()}`
+        ),
         {
           method: "POST",
           headers: {

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { Cluster } from "@/types/cluster";
 import { ClusterContext } from "./cluster-context";
+import { absolutePath } from "@/util";
 
 interface ClusterProviderProps {
   children: ReactNode;
@@ -21,7 +22,7 @@ export function ClusterProvider({ children }: ClusterProviderProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/ui/api/v1/cluster/nodes");
+      const response = await fetch(absolutePath("/api/v1/cluster/nodes"));
       if (!response.ok) {
         throw new Error(`Failed to fetch cluster data: ${response.statusText}`);
       }
