@@ -60,7 +60,7 @@ func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
 	if c == nil {
 		return errors.New(ErrEmptyEvtLogMsgStageConfig)
 	}
-	if c.Source != nil && !model.LabelName(*c.Source).IsValid() {
+	if c.Source != nil && !model.LabelName(*c.Source).IsValidLegacy() {
 		return fmt.Errorf(ErrInvalidLabelName, *c.Source)
 	}
 	return nil
@@ -108,7 +108,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			continue
 		}
 		mkey := parts[0]
-		if !model.LabelName(mkey).IsValid() {
+		if !model.LabelName(mkey).IsValidLegacy() {
 			if m.cfg.DropInvalidLabels {
 				if Debug {
 					level.Debug(m.logger).Log("msg", "invalid label parsed from message", "key", mkey)
@@ -148,17 +148,26 @@ func (*eventLogMessageStage) Cleanup() {
 }
 
 // Sanitize a input string to convert it into a valid prometheus label
-// TODO: switch to prometheus/prometheus/util/strutil/SanitizeFullLabelName
 func SanitizeFullLabelName(input string) string {
 	if len(input) == 0 {
 		return "_"
 	}
 	var validSb strings.Builder
-	for i, b := range input {
-		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
-			validSb.WriteRune('_')
-		} else {
+	// Handle first character - must be a letter or underscore
+	if len(input) > 0 {
+		b := rune(input[0])
+		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' {
 			validSb.WriteRune(b)
+		} else {
+			validSb.WriteRune('_')
+		}
+	}
+	// Handle rest of characters
+	for _, b := range input[1:] {
+		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9') {
+			validSb.WriteRune(b)
+		} else {
+			validSb.WriteRune('_')
 		}
 	}
 	return validSb.String()

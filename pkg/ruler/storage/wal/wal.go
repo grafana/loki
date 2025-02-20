@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -68,7 +69,7 @@ type Storage struct {
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
-	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
+	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +379,7 @@ func (w *Storage) Truncate(mint int64) error {
 		w.deletedMtx.Unlock()
 		return ok
 	}
-	if _, err = wlog.Checkpoint(w.logger, w.wal, first, last, keep, mint); err != nil {
+	if _, err = wlog.Checkpoint(util_log.SlogFromGoKit(w.logger), w.wal, first, last, keep, mint); err != nil {
 		return errors.Wrap(err, "create checkpoint")
 	}
 	if err := w.wal.Truncate(last + 1); err != nil {
@@ -655,10 +656,17 @@ func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64
 	return 0, nil
 }
 
+func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram created timestamps
+	return 0, nil
+}
+
 func (a *appender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	// TODO: support created timestamp
 	return 0, nil
 }
+
+func (a *appender) SetOptions(_ *storage.AppendOptions) {}
 
 // Commit submits the collected samples and purges the batch.
 func (a *appender) Commit() error {
