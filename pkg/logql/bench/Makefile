@@ -1,4 +1,4 @@
-.PHONY: generate bench list run
+.PHONY: generate bench list run run-debug stream
 
 # Default size for data generation (1GB)
 SIZE ?= 1073741824
@@ -17,6 +17,9 @@ list:
 
 run:
 	@go run ./cmd/bench/main.go run
+
+run-debug:
+	@DEBUG=1 go run ./cmd/bench/main.go run
 
 stream:
 	@go run ./cmd/stream/main.go | less

@@ -4,3 +4,6 @@ cpu.prof
 mem.prof
 bench.test
 trace.out
+result.new.txt
+result.old.txt
+debug.log
