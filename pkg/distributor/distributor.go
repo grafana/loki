@@ -245,9 +245,7 @@ func New(
 		return nil, err
 	}
 
-	limitsFrontendClientFactory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return limits_frontend_client.New(limitsFrontendCfg, addr)
-	})
+	limitsFrontendClientFactory := limits_frontend_client.NewPoolFactory(limitsFrontendCfg)
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
