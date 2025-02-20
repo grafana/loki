@@ -71,7 +71,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 		name               string
 		tenant             string
 		maxGlobalStreams   int
-		streams            []*logproto.StreamMetadataWithSize
+		streams            []*logproto.StreamMetadata
 		backendResponses   []*logproto.GetStreamUsageResponse
 		expectedRejections []*logproto.RejectedStream
 	}{
@@ -79,7 +79,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "no streams",
 			tenant:           "test",
 			maxGlobalStreams: 10,
-			streams:          []*logproto.StreamMetadataWithSize{},
+			streams:          []*logproto.StreamMetadata{},
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{
 					Tenant:        "test",
@@ -92,7 +92,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "under limit",
 			tenant:           "test",
 			maxGlobalStreams: 10,
-			streams: []*logproto.StreamMetadataWithSize{
+			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 				{StreamHash: 2},
 			},
@@ -112,7 +112,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "exceeds limit with new streams",
 			tenant:           "test",
 			maxGlobalStreams: 5,
-			streams: []*logproto.StreamMetadataWithSize{
+			streams: []*logproto.StreamMetadata{
 				{StreamHash: 6},
 				{StreamHash: 7},
 			},
@@ -138,7 +138,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "exceeds limit but reject only new streams",
 			tenant:           "test",
 			maxGlobalStreams: 5,
-			streams: []*logproto.StreamMetadataWithSize{
+			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 				{StreamHash: 2},
 				{StreamHash: 3},
@@ -169,7 +169,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "multiple backends with duplicates",
 			tenant:           "test",
 			maxGlobalStreams: 3,
-			streams: []*logproto.StreamMetadataWithSize{
+			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 				{StreamHash: 2},
 			},
@@ -199,7 +199,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "empty response from backend",
 			tenant:           "test",
 			maxGlobalStreams: 10,
-			streams: []*logproto.StreamMetadataWithSize{
+			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{

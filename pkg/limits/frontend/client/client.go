@@ -22,6 +22,10 @@ import (
 )
 
 var (
+	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+)
+
+var (
 	frontendClients = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "loki_ingest_limits_frontend_clients",
 		Help: "The current number of ingest limits frontend clients.",
@@ -46,8 +50,12 @@ type Config struct {
 	Internal bool `yaml:"-"`
 }
 
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("ingest-limits-frontend-client", f)
+}
+
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".limits-frontend-client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
@@ -64,16 +72,15 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
-// IngestLimitsFrontendClient is a gRPC client for the ingest-limits-frontend.
-type IngestLimitsFrontendClient struct {
+// Client is a gRPC client for the ingest-limits-frontend.
+type Client struct {
 	logproto.IngestLimitsFrontendClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
 
-// NewIngestLimitsFrontendClient returns a new IngestLimitsFrontendClient for the
-// specified ingest-limits-frontend.
-func NewIngestLimitsFrontendClient(cfg Config, addr string) (*IngestLimitsFrontendClient, error) {
+// New returns a new Client for the specified ingest-limits-frontend.
+func New(cfg Config, addr string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
@@ -87,7 +94,7 @@ func NewIngestLimitsFrontendClient(cfg Config, addr string) (*IngestLimitsFronte
 	if err != nil {
 		return nil, err
 	}
-	return &IngestLimitsFrontendClient{
+	return &Client{
 		IngestLimitsFrontendClient: logproto.NewIngestLimitsFrontendClient(conn),
 		HealthClient:               grpc_health_v1.NewHealthClient(conn),
 		Closer:                     conn,
@@ -122,8 +129,8 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	return unaryInterceptors, streamInterceptors
 }
 
-// NewIngestLimitsFrontendClientPool returns a new pool of IngestLimitsFrontendClients.
-func NewIngestLimitsFrontendClientPool(
+// NewPool returns a new pool of clients for the ingest-limits-frontend.
+func NewPool(
 	name string,
 	cfg PoolConfig,
 	ring ring.ReadRing,

@@ -65,12 +65,7 @@ service IngestLimitsFrontend {
 
 message ExceedsLimitsRequest {
   string tenant = 1;
-  repeated StreamMetadataWithSize streams = 2;
-}
-
-message StreamMetadataWithSize {
-  uint64 streamHash = 1;
-  uint64 size = 2;
+  repeated StreamMetadata streams = 2;
 }
 
 message ExceedsLimitsResponse {

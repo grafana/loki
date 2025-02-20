@@ -17,7 +17,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -47,15 +46,15 @@ type Frontend struct {
 }
 
 // New returns a new Frontend.
-func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	var servs []services.Service
 
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return NewIngestLimitsBackendClient(cfg.ClientConfig, addr)
 	})
 
-	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, readRing, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(readRing, pool, limits, logger, reg)
+	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
+	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, logger, reg)
 
 	f := &Frontend{
 		cfg:    cfg,
@@ -76,7 +75,7 @@ func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, log
 	servs = append(servs, pool)
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
-		return nil, errors.Wrap(err, "services manager")
+		return nil, err
 	}
 
 	f.subservices = mgr
@@ -121,7 +120,7 @@ func (f *Frontend) running(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	case err := <-f.subservicesWatcher.Chan():
-		return errors.Wrap(err, "ingest limits frontend subservice failed")
+		return fmt.Errorf("ingest limits frontend subservice failed: %w", err)
 	}
 }
 
@@ -161,10 +160,10 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Convert request to protobuf format
 	protoReq := &logproto.ExceedsLimitsRequest{
 		Tenant:  req.TenantID,
-		Streams: make([]*logproto.StreamMetadataWithSize, len(req.StreamHashes)),
+		Streams: make([]*logproto.StreamMetadata, len(req.StreamHashes)),
 	}
 	for i, hash := range req.StreamHashes {
-		protoReq.Streams[i] = &logproto.StreamMetadataWithSize{
+		protoReq.Streams[i] = &logproto.StreamMetadata{
 			StreamHash: hash,
 		}
 	}

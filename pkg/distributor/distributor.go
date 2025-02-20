@@ -2,8 +2,10 @@ package distributor
 
 import (
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"net/http"
 	"runtime/pprof"
@@ -47,6 +49,7 @@ import (
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -96,9 +99,10 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
-	KafkaEnabled    bool         `yaml:"kafka_writes_enabled"`
-	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
-	KafkaConfig     kafka.Config `yaml:"-"`
+	KafkaEnabled        bool         `yaml:"kafka_writes_enabled"`
+	IngesterEnabled     bool         `yaml:"ingester_writes_enabled"`
+	IngestLimitsEnabled bool         `yaml:"ingest_limits_enabled"`
+	KafkaConfig         kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
@@ -114,6 +118,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 }
 
 func (cfg *Config) Validate() error {
@@ -185,6 +190,10 @@ type Distributor struct {
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
 
+	// Will succeed usage tracker in future.
+	limitsFrontendRing ring.ReadRing
+	limitsFrontends    *ring_client.Pool
+
 	// kafka
 	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
@@ -209,6 +218,8 @@ func New(
 	metricsNamespace string,
 	tee Tee,
 	usageTracker push.UsageTracker,
+	limitsFrontendCfg limits_frontend_client.Config,
+	limitsFrontendRing ring.ReadRing,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -233,6 +244,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+
+	limitsFrontendClientFactory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return limits_frontend_client.New(limitsFrontendCfg, addr)
+	})
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
@@ -342,6 +357,14 @@ func New(
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
 		partitionRing:        partitionRing,
+		limitsFrontendRing:   limitsFrontendRing,
+		limitsFrontends: limits_frontend_client.NewPool(
+			"ingest-limits-frontend",
+			limitsFrontendCfg.PoolConfig,
+			limitsFrontendRing,
+			limitsFrontendClientFactory,
+			logger,
+		),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -472,6 +495,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+	}
+
+	if d.cfg.IngestLimitsEnabled {
+		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, req.Streams)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
+		} else if len(exceedsLimits.RejectedStreams) > 0 {
+			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+		} else {
+			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
+		}
 	}
 
 	// First we flatten out the request into a list of samples.
@@ -1099,6 +1133,62 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 			task.pushTracker.doneWithResult(nil)
 		}
 	}
+}
+
+func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []logproto.Stream) (*logproto.ExceedsLimitsResponse, error) {
+	// We use an FNV-1 of all stream hashes in the request to load balance requests
+	// to limits-frontends instances.
+	h := fnv.New32()
+
+	// The distributor sends the hashes of all streams in the request to the
+	// limits-frontend. The limits-frontend is responsible for deciding if
+	// the request would exceed the tenants limits, and if so, which streams
+	// from the request caused it to exceed its limits.
+	streamHashes := make([]*logproto.StreamMetadata, 0, len(streams))
+	for _, stream := range streams {
+		// Add the stream hash to FNV-1.
+		buf := make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(buf, stream.Hash)
+		_, _ = h.Write(buf)
+		// Add the stream hash to the request. This is sent to limits-frontend.
+		streamHashes = append(streamHashes, &logproto.StreamMetadata{
+			StreamHash: stream.Hash,
+		})
+	}
+
+	req := logproto.ExceedsLimitsRequest{
+		Tenant:  tenantID,
+		Streams: streamHashes,
+	}
+
+	// Get the limits-frontend instances from the ring.
+	var descs [5]ring.InstanceDesc
+	rs, err := d.limitsFrontendRing.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+
+	var lastErr error
+	// Send the request to the limits-frontend to see if it exceeds the tenant
+	// limits. If the RPC fails, failover to the next instance in the ring.
+	for _, instance := range rs.Instances {
+		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		client := c.(logproto.IngestLimitsFrontendClient)
+		resp, err := client.ExceedsLimits(ctx, &req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		return resp, nil
+	}
+
+	return nil, lastErr
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
