@@ -16,23 +16,24 @@ import (
 
 // RunView represents the benchmark run view
 type RunView struct {
-	state SharedState
-	ready bool // track if we've received initial window size
+	RunConfig RunConfig
+	Running   bool
+	Output    string
+	Viewport  viewport.Model
+	ready     bool // track if we've received initial window size
 }
 
 // NewRunView creates a new RunView
 func NewRunView(config RunConfig) *RunView {
 	return &RunView{
-		state: SharedState{
-			RunConfig: config,
-			Running:   false,
-		},
-		ready: false,
+		RunConfig: config,
+		Running:   false,
+		ready:     false,
 	}
 }
 
 func (m *RunView) SetSelectedTests(tests []string) {
-	m.state.RunConfig.Selected = tests
+	m.RunConfig.Selected = tests
 }
 
 func (m *RunView) Init() tea.Cmd {
@@ -46,41 +47,41 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			if m.state.Viewport.Height > 0 {
-				m.state.Viewport.LineUp(1)
+			if m.Viewport.Height > 0 {
+				m.Viewport.LineUp(1)
 				return m, nil
 			}
 		case "down", "j":
-			if m.state.Viewport.Height > 0 {
-				m.state.Viewport.LineDown(1)
+			if m.Viewport.Height > 0 {
+				m.Viewport.LineDown(1)
 				return m, nil
 			}
 		case "pgup", "b":
-			if m.state.Viewport.Height > 0 {
-				m.state.Viewport.HalfViewUp()
+			if m.Viewport.Height > 0 {
+				m.Viewport.HalfViewUp()
 				return m, nil
 			}
 		case "pgdown", " ":
-			if m.state.Viewport.Height > 0 {
-				m.state.Viewport.HalfViewDown()
+			if m.Viewport.Height > 0 {
+				m.Viewport.HalfViewDown()
 				return m, nil
 			}
 		case "+":
-			m.state.RunConfig.Count++
+			m.RunConfig.Count++
 			return m, nil
 		case "-":
-			if m.state.RunConfig.Count > 1 {
-				m.state.RunConfig.Count--
+			if m.RunConfig.Count > 1 {
+				m.RunConfig.Count--
 			}
 			return m, nil
 		case "t":
-			m.state.RunConfig.TraceEnabled = !m.state.RunConfig.TraceEnabled
+			m.RunConfig.TraceEnabled = !m.RunConfig.TraceEnabled
 			return m, nil
 		case "enter", "r":
-			if !m.state.Running {
-				m.state.Output = "" // Clear output before starting new run
-				if m.state.Viewport.Height > 0 {
-					m.state.Viewport.SetContent("")
+			if !m.Running {
+				m.Output = "" // Clear output before starting new run
+				if m.Viewport.Height > 0 {
+					m.Viewport.SetContent("")
 				}
 				log.Println("starting benchmark")
 				return m, m.startBenchmark()
@@ -100,39 +101,39 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.ready {
 			// First time initialization
 			log.Printf("Initializing viewport: width=%d height=%d", msg.Width, msg.Height-verticalMarginHeight)
-			m.state.Viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
-			m.state.Viewport.YPosition = headerHeight // Place viewport below header
-			m.state.Viewport.Style = ViewportStyle
-			m.state.Viewport.Width = msg.Width
-			m.state.Viewport.Height = msg.Height - verticalMarginHeight
-			m.state.Viewport.SetContent("\n  Press ENTER to start the benchmark run\n")
+			m.Viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
+			m.Viewport.YPosition = headerHeight // Place viewport below header
+			m.Viewport.Style = ViewportStyle
+			m.Viewport.Width = msg.Width
+			m.Viewport.Height = msg.Height - verticalMarginHeight
+			m.Viewport.SetContent("\n  Press ENTER to start the benchmark run\n")
 			m.ready = true
 		} else {
 			// Always update viewport dimensions
-			m.state.Viewport.Width = msg.Width
-			m.state.Viewport.Height = msg.Height - verticalMarginHeight
+			m.Viewport.Width = msg.Width
+			m.Viewport.Height = msg.Height - verticalMarginHeight
 		}
 
 		// Update content if we have any
-		if m.state.Output != "" {
-			m.state.Viewport.SetContent(m.state.Output)
+		if m.Output != "" {
+			m.Viewport.SetContent(m.Output)
 		}
 
 	case BenchmarkOutputMsg:
 		log.Printf("Received benchmark output: length=%d", len(string(msg)))
-		m.state.Output += string(msg)
-		m.state.Viewport.SetContent(m.state.Output)
-		m.state.Viewport.GotoBottom()
+		m.Output += string(msg)
+		m.Viewport.SetContent(m.Output)
+		m.Viewport.GotoBottom()
 
 	case BenchmarkFinishedMsg:
 		log.Println("Benchmark finished")
-		m.state.Running = false
+		m.Running = false
 	}
 
 	// Handle viewport messages
 	if m.ready {
 		var cmd tea.Cmd
-		m.state.Viewport, cmd = m.state.Viewport.Update(msg)
+		m.Viewport, cmd = m.Viewport.Update(msg)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -146,7 +147,7 @@ func (m *RunView) View() string {
 	if !m.ready {
 		content = "\n  Initializing...\n"
 	} else {
-		content = m.state.Viewport.View()
+		content = m.Viewport.View()
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,
@@ -160,14 +161,14 @@ func (m *RunView) headerView() string {
 	header := HeaderStyle.Render("Benchmark Configuration")
 	config := ConfigStyle.Render(fmt.Sprintf(
 		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Status: %s",
-		m.state.RunConfig.Count,
-		m.state.RunConfig.TraceEnabled,
-		StatusText(m.state.Running),
+		m.RunConfig.Count,
+		m.RunConfig.TraceEnabled,
+		StatusText(m.Running),
 	))
 
 	// Format selected benchmarks with proper indentation
 	var formattedSelected []string
-	for _, s := range m.state.RunConfig.Selected {
+	for _, s := range m.RunConfig.Selected {
 		formattedSelected = append(formattedSelected, "  "+s)
 	}
 
@@ -182,7 +183,7 @@ func (m *RunView) headerView() string {
 
 	separator := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(strings.Repeat("─", m.state.Viewport.Width))
+		Render(strings.Repeat("─", m.Viewport.Width))
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -195,7 +196,7 @@ func (m *RunView) headerView() string {
 func (m *RunView) footerView() string {
 	separator := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(strings.Repeat("─", m.state.Viewport.Width))
+		Render(strings.Repeat("─", m.Viewport.Width))
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		separator,
@@ -221,7 +222,7 @@ func (m *RunView) startBenchmark() tea.Cmd {
 		}
 
 		// Build the benchmark command
-		regex := strings.Join(m.state.RunConfig.Selected, "|")
+		regex := strings.Join(m.RunConfig.Selected, "|")
 		args := []string{
 			"test", "-v",
 			"-test.run=^$",              // Skip tests
@@ -229,10 +230,10 @@ func (m *RunView) startBenchmark() tea.Cmd {
 			"-test.benchmem",            // Show memory stats
 			"-test.cpuprofile=cpu.prof", // CPU profiling
 			"-test.memprofile=mem.prof", // Memory profiling
-			fmt.Sprintf("-count=%d", m.state.RunConfig.Count),
+			fmt.Sprintf("-count=%d", m.RunConfig.Count),
 		}
 
-		if m.state.RunConfig.TraceEnabled {
+		if m.RunConfig.TraceEnabled {
 			args = append(args, "-test.trace=trace.out")
 		}
 
@@ -242,7 +243,6 @@ func (m *RunView) startBenchmark() tea.Cmd {
 
 		// Create and configure the command
 		cmd := exec.Command("go", args...)
-		m.state.Cmd = cmd
 
 		// Create a pipe for capturing output
 		stdout, err := cmd.StdoutPipe()
@@ -304,7 +304,7 @@ func (m *RunView) startBenchmark() tea.Cmd {
 			globalProgram.Send(BenchmarkFinishedMsg{})
 		}()
 
-		m.state.Running = true
+		m.Running = true
 		return nil
 	}
 }

@@ -1,9 +1,6 @@
 package views
 
 import (
-	"os/exec"
-
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -88,14 +85,4 @@ type RunConfig struct {
 type ViewportConfig struct {
 	Width  int
 	Height int
-}
-
-// SharedState holds state that needs to be shared between views
-type SharedState struct {
-	RunConfig      RunConfig
-	ViewportConfig ViewportConfig
-	Running        bool
-	Output         string
-	Cmd            *exec.Cmd
-	Viewport       viewport.Model
 }
