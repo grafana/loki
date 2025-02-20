@@ -27,7 +27,10 @@ type ChainedTokenCredentialOptions struct {
 }
 
 // ChainedTokenCredential links together multiple credentials and tries them sequentially when authenticating. By default,
-// it tries all the credentials until one authenticates, after which it always uses that credential.
+// it tries all the credentials until one authenticates, after which it always uses that credential. For more information,
+// see [ChainedTokenCredential overview].
+//
+// [ChainedTokenCredential overview]: https://aka.ms/azsdk/go/identity/credential-chains#chainedtokencredential-overview
 type ChainedTokenCredential struct {
 	cond                 *sync.Cond
 	iterating            bool
@@ -45,6 +48,9 @@ func NewChainedTokenCredential(sources []azcore.TokenCredential, options *Chaine
 	for _, source := range sources {
 		if source == nil { // cannot have a nil credential in the chain or else the application will panic when GetToken() is called on nil
 			return nil, errors.New("sources cannot contain nil")
+		}
+		if mc, ok := source.(*ManagedIdentityCredential); ok {
+			mc.mic.chained = true
 		}
 	}
 	cp := make([]azcore.TokenCredential, len(sources))
@@ -113,11 +119,19 @@ func (c *ChainedTokenCredential) GetToken(ctx context.Context, opts policy.Token
 	if err != nil {
 		// return credentialUnavailableError iff all sources did so; return AuthenticationFailedError otherwise
 		msg := createChainedErrorMessage(errs)
-		if errors.As(err, &unavailableErr) {
+		var authFailedErr *AuthenticationFailedError
+		switch {
+		case errors.As(err, &authFailedErr):
+			err = newAuthenticationFailedError(c.name, msg, authFailedErr.RawResponse)
+			if af, ok := err.(*AuthenticationFailedError); ok {
+				// stop Error() printing the response again; it's already in msg
+				af.omitResponse = true
+			}
+		case errors.As(err, &unavailableErr):
 			err = newCredentialUnavailableError(c.name, msg)
-		} else {
+		default:
 			res := getResponseFromError(err)
-			err = newAuthenticationFailedError(c.name, msg, res, err)
+			err = newAuthenticationFailedError(c.name, msg, res)
 		}
 	}
 	return token, err
@@ -126,7 +140,7 @@ func (c *ChainedTokenCredential) GetToken(ctx context.Context, opts policy.Token
 func createChainedErrorMessage(errs []error) string {
 	msg := "failed to acquire a token.\nAttempted credentials:"
 	for _, err := range errs {
-		msg += fmt.Sprintf("\n\t%s", err.Error())
+		msg += fmt.Sprintf("\n\t%s", strings.ReplaceAll(err.Error(), "\n", "\n\t\t"))
 	}
 	return msg
 }
