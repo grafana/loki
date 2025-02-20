@@ -8,8 +8,8 @@ resource "aws_s3_bucket_notification" "sqs" {
   queue {
     queue_arn     = aws_sqs_queue.main[0].arn
     events        = ["s3:ObjectCreated:*"]
-    filter_suffix = ".log.gz"
-    filter_prefix = "VPC_FL/"
+    filter_prefix = var.filter_prefix
+    filter_suffix = var.filter_suffix
   }
 }
 
