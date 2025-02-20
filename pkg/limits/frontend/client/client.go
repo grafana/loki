@@ -1,7 +1,6 @@
 // Package client provides gRPC client implementation for limits-frontend.
 // An example use case is the distributor, which needs to ask limits-frontend
 // if a push request has exceeded per-tenant limits.
-
 package client
 
 import (
