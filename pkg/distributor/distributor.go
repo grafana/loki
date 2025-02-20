@@ -516,6 +516,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
+	var ingestionBlockedError error
+
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
 		if sp != nil {
@@ -547,7 +549,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
@@ -560,14 +562,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
 				d.validator.reportDiscardedData(reason, validationContext, retentionHours, policy, discardedBytes, len(stream.Entries))
 
-				// If the status code is 200, return success.
+				// If the status code is 200, return no error.
 				// Note that we still log the error and increment the metrics.
 				if statusCode == http.StatusOK {
-					// do not add error to validationErrors.
 					continue
 				}
 
-				validationErrors.Add(err)
+				// return an error but do not add it to validationErrors
+				// otherwise client will get a 400 and will log it.
+				ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
 				continue
 			}
 
@@ -647,6 +650,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErr error
 	if validationErrors.Err() != nil {
 		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
+	} else if ingestionBlockedError != nil {
+		// Any validation error takes precedence over the status code and error message for blocked ingestion.
+		validationErr = ingestionBlockedError
 	}
 
 	// Return early if none of the streams contained entries
