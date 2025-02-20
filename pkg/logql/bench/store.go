@@ -154,22 +154,33 @@ func (s *DataObjStore) Close() error {
 	return nil
 }
 
-// Builder helps construct test datasets using a Store
+const (
+	configFileName = "generator.json"
+)
+
+// Builder helps construct test datasets using multiple stores
 type Builder struct {
-	store Store
-	gen   *Generator
+	stores []Store
+	gen    *Generator
+	dir    string
 }
 
 // NewBuilder creates a new Builder
-func NewBuilder(store Store, opt Opt) *Builder {
+func NewBuilder(dir string, opt Opt, stores ...Store) *Builder {
 	return &Builder{
-		store: store,
-		gen:   NewGenerator(opt),
+		stores: stores,
+		gen:    NewGenerator(opt),
+		dir:    dir,
 	}
 }
 
-// Generate generates and stores the specified amount of data
+// Generate generates and stores the specified amount of data across all stores
 func (b *Builder) Generate(ctx context.Context, targetSize int64) error {
+	// Save the generator config once at the root directory
+	if err := SaveConfig(b.dir, &b.gen.config); err != nil {
+		return fmt.Errorf("failed to save generator config: %w", err)
+	}
+
 	var totalSize int64
 	lastProgress := 0
 
@@ -191,14 +202,19 @@ func (b *Builder) Generate(ctx context.Context, targetSize int64) error {
 			}
 		}
 
-		if err := b.store.Write(ctx, streams); err != nil {
-			return fmt.Errorf("failed to write to store: %w", err)
+		// Write to all stores
+		for _, store := range b.stores {
+			if err := store.Write(ctx, streams); err != nil {
+				return fmt.Errorf("failed to write to store %s: %w", store.Name(), err)
+			}
 		}
 	}
 
-	// Close the store to ensure all data is flushed
-	if err := b.store.Close(); err != nil {
-		return fmt.Errorf("failed to close store: %w", err)
+	// Close all stores to ensure data is flushed
+	for _, store := range b.stores {
+		if err := store.Close(); err != nil {
+			return fmt.Errorf("failed to close store %s: %w", store.Name(), err)
+		}
 	}
 
 	fmt.Printf("Generated 100%% (%s/%s)\n", formatBytes(totalSize), formatBytes(targetSize))

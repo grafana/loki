@@ -16,7 +16,7 @@ func TestGenerate(t *testing.T) {
 	store, err := bench.NewDataObjStore(dir, tenantID)
 	require.NoError(t, err)
 
-	builder := bench.NewBuilder(store, bench.DefaultOpt())
+	builder := bench.NewBuilder(dir, bench.DefaultOpt(), store)
 
 	ctx := context.Background()
 	if err := builder.Generate(ctx, size); err != nil {

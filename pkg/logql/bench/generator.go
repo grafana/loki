@@ -1,10 +1,12 @@
 package bench
 
 import (
+	"encoding/json"
 	"fmt"
 	"iter"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -83,7 +85,8 @@ type GeneratorConfig struct {
 		Duration time.Duration
 	}
 	LabelConfig LabelConfig
-	NumStreams  int // Number of streams to generate per batch
+	NumStreams  int   // Number of streams to generate per batch
+	Seed        int64 // Source of randomness
 }
 
 var defaultGeneratorConfig = GeneratorConfig{
@@ -91,6 +94,7 @@ var defaultGeneratorConfig = GeneratorConfig{
 	TimeSpread:  24 * time.Hour,
 	LabelConfig: defaultLabelConfig,
 	NumStreams:  1000, // Default to 1000 streams per batch
+	Seed:        1,    // Default to seed 1 for reproducibility
 	DenseIntervals: []struct {
 		Start    time.Time
 		Duration time.Duration
@@ -104,6 +108,11 @@ var defaultGeneratorConfig = GeneratorConfig{
 			Duration: 30 * time.Minute,
 		},
 	},
+}
+
+// NewRand creates a new rand.Rand using the generator config seed
+func (c *GeneratorConfig) NewRand() *rand.Rand {
+	return rand.New(rand.NewSource(c.Seed))
 }
 
 // Generator represents a log generator with configuration
@@ -121,7 +130,8 @@ type Opt struct {
 		Duration time.Duration
 	}
 	labelConfig LabelConfig
-	NumStreams  int // Number of streams to generate per batch
+	numStreams  int   // Number of streams to generate per batch
+	seed        int64 // Source of randomness
 }
 
 // WithStartTime sets the start time for log generation
@@ -166,7 +176,13 @@ func (o Opt) WithLabelConfig(cfg LabelConfig) Opt {
 
 // WithNumStreams sets the number of streams to generate per batch
 func (o Opt) WithNumStreams(n int) Opt {
-	o.NumStreams = n
+	o.numStreams = n
+	return o
+}
+
+// WithSeed sets the seed for random number generation using an int64
+func (o Opt) WithSeed(seed int64) Opt {
+	o.seed = seed
 	return o
 }
 
@@ -177,7 +193,8 @@ func DefaultOpt() Opt {
 		timeSpread:     defaultGeneratorConfig.TimeSpread,
 		denseIntervals: defaultGeneratorConfig.DenseIntervals,
 		labelConfig:    defaultGeneratorConfig.LabelConfig,
-		NumStreams:     1000, // Default to 1000 streams per batch
+		numStreams:     defaultGeneratorConfig.NumStreams,
+		seed:           1, // Default to seed 1 for reproducibility
 	}
 }
 
@@ -189,9 +206,10 @@ func NewGenerator(opt Opt) *Generator {
 			TimeSpread:     opt.timeSpread,
 			DenseIntervals: opt.denseIntervals,
 			LabelConfig:    opt.labelConfig,
-			NumStreams:     opt.NumStreams,
+			NumStreams:     opt.numStreams,
+			Seed:           opt.seed,
 		},
-		rnd: rand.New(rand.NewSource(1)), // Use fixed seed for reproducibility
+		rnd: rand.New(rand.NewSource(opt.seed)), // Use configured source
 	}
 }
 
@@ -811,4 +829,33 @@ func generateMySQLQuery(rnd *rand.Rand) string {
 		query = fmt.Sprintf(query, rnd.Intn(10000))
 	}
 	return query
+}
+
+// SaveConfig saves the generator configuration to a file in the data directory
+func SaveConfig(dataDir string, config *GeneratorConfig) error {
+	configPath := filepath.Join(dataDir, configFileName)
+	configData, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal generator config: %w", err)
+	}
+	if err := os.WriteFile(configPath, configData, 0o644); err != nil {
+		return fmt.Errorf("failed to write generator config: %w", err)
+	}
+	return nil
+}
+
+// LoadConfig loads the generator configuration from the data directory
+func LoadConfig(dataDir string) (*GeneratorConfig, error) {
+	configPath := filepath.Join(dataDir, configFileName)
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read generator config: %w", err)
+	}
+
+	var config GeneratorConfig
+	if err := json.Unmarshal(configData, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal generator config: %w", err)
+	}
+
+	return &config, nil
 }

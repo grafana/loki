@@ -17,7 +17,7 @@ func main() {
 	)
 	flag.Parse()
 
-	// Clean the store-specific output directory
+	// Clean the output directory
 	if err := os.RemoveAll(*dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to clear output directory: %v\n", err)
 		os.Exit(1)
@@ -30,8 +30,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create builder with default options
-	builder := bench.NewBuilder(store, bench.DefaultOpt())
+	// Create builder with default options and the store
+	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), store)
 
 	// Generate the data
 	ctx := context.Background()
