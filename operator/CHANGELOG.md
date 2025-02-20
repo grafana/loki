@@ -1,5 +1,9 @@
 ## Main
 
+## Release 6.1.5
+
+- [16390](https://github.com/grafana/loki/pull/16390) **xperimental**: Enable time-based stream-sharding
+
 ## Release 6.1.4
 
 - [16492](https://github.com/grafana/loki/pull/16492) **xperimental**: Select non-zero delete worker count for all sizes
