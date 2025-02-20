@@ -217,8 +217,9 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var sqsEvent events.SQSEvent
 	var snsEvent events.SNSEvent
 	var eventBridgeEvent events.CloudWatchEvent
+	var sqsMessage events.SQSMessage
 
-	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent, &eventBridgeEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent, &eventBridgeEvent, &sqsMessage}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
