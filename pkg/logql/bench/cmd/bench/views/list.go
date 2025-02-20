@@ -158,37 +158,6 @@ func NewListView(items []string) *ListView {
 	}
 }
 
-// SetSize sets the size of the list view
-func (m *ListView) SetSize(width, height int) {
-	m.list.SetSize(width, height)
-}
-
-// Refresh reinitializes the list view with current dimensions
-func (m *ListView) Refresh() {
-	// Store current dimensions
-	width := m.list.Width()
-	height := m.list.Height()
-
-	// Update title with current selection count
-	m.list.Title = fmt.Sprintf("Select benchmarks to run (%d selected)", len(m.selected))
-
-	// Reset the list's internal state
-	m.list.ResetFilter()
-
-	// Force the list to redraw by resetting selection
-	m.list.Select(0)
-
-	// Ensure the list is redrawn with all components
-	m.list.SetShowTitle(true)
-	m.list.SetShowFilter(true)
-	m.list.SetFilteringEnabled(true)
-	m.list.SetShowStatusBar(true)
-	m.list.SetShowHelp(true)
-
-	// Restore dimensions
-	m.list.SetSize(width, height)
-}
-
 func (m *ListView) Init() tea.Cmd {
 	return nil
 }
@@ -199,7 +168,6 @@ func (m *ListView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height)
-		return m, nil
 	case tea.KeyMsg:
 		// Handle filter mode differently
 		if m.list.FilterState() == list.Filtering {

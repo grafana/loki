@@ -22,7 +22,6 @@ type RunView struct {
 
 // NewRunView creates a new RunView
 func NewRunView(config RunConfig) *RunView {
-	log.Println("Creating new RunView")
 	return &RunView{
 		state: SharedState{
 			RunConfig: config,
@@ -32,10 +31,12 @@ func NewRunView(config RunConfig) *RunView {
 	}
 }
 
+func (m *RunView) SetSelectedTests(tests []string) {
+	m.state.RunConfig.Selected = tests
+}
+
 func (m *RunView) Init() tea.Cmd {
-	log.Println("Initializing RunView")
-	// Request the initial window size and enter alt screen
-	return tea.WindowSize()
+	return nil
 }
 
 func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -91,7 +92,6 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		log.Printf("Window size changed: width=%d height=%d", msg.Width, msg.Height)
 
 		headerHeight := lipgloss.Height(m.headerView())
 		footerHeight := lipgloss.Height(m.footerView())
@@ -115,26 +115,14 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		// Update content if we have any
 		if m.state.Output != "" {
-			log.Printf("Updating viewport content on resize, content length: %d", len(m.state.Output))
-			m.state.Viewport.SetContent(wordWrap(m.state.Output, msg.Width))
+			m.state.Viewport.SetContent(m.state.Output)
 		}
-
-		// Return sync command to ensure viewport is rendered correctly
-		cmds = append(cmds, viewport.Sync(m.state.Viewport))
 
 	case BenchmarkOutputMsg:
 		log.Printf("Received benchmark output: length=%d", len(string(msg)))
 		m.state.Output += string(msg)
-		if m.ready && m.state.Viewport.Height > 0 {
-			log.Printf("Updating viewport with new content, viewport height: %d", m.state.Viewport.Height)
-			m.state.Viewport.SetContent(wordWrap(m.state.Output, m.state.Viewport.Width))
-			m.state.Viewport.GotoBottom()
-			cmds = append(cmds, viewport.Sync(m.state.Viewport))
-		} else {
-			log.Printf("Viewport not ready or height is 0: ready=%v height=%d", m.ready, m.state.Viewport.Height)
-			// If we have content but viewport isn't ready, request window size
-			cmds = append(cmds, tea.WindowSize())
-		}
+		m.state.Viewport.SetContent(m.state.Output)
+		m.state.Viewport.GotoBottom()
 
 	case BenchmarkFinishedMsg:
 		log.Println("Benchmark finished")
@@ -321,49 +309,49 @@ func (m *RunView) startBenchmark() tea.Cmd {
 	}
 }
 
-// wordWrap wraps text at the specified width
-func wordWrap(text string, width int) string {
-	if width <= 0 {
-		return text
-	}
+// // wordWrap wraps text at the specified width
+// func wordWrap(text string, width int) string {
+// 	if width <= 0 {
+// 		return text
+// 	}
 
-	var wrapped strings.Builder
-	lines := strings.Split(text, "\n")
+// 	var wrapped strings.Builder
+// 	lines := strings.Split(text, "\n")
 
-	for i, line := range lines {
-		if len(line) <= width {
-			wrapped.WriteString(line)
-		} else {
-			// Preserve indentation
-			indent := ""
-			for _, r := range line {
-				if r == ' ' || r == '\t' {
-					indent += string(r)
-				} else {
-					break
-				}
-			}
+// 	for i, line := range lines {
+// 		if len(line) <= width {
+// 			wrapped.WriteString(line)
+// 		} else {
+// 			// Preserve indentation
+// 			indent := ""
+// 			for _, r := range line {
+// 				if r == ' ' || r == '\t' {
+// 					indent += string(r)
+// 				} else {
+// 					break
+// 				}
+// 			}
 
-			// Wrap the line
-			currentWidth := 0
-			words := strings.Fields(strings.TrimSpace(line))
-			for j, word := range words {
-				wordLength := len(word)
-				if currentWidth+wordLength+1 > width && currentWidth > 0 {
-					wrapped.WriteString("\n" + indent)
-					currentWidth = len(indent)
-				} else if j > 0 {
-					wrapped.WriteString(" ")
-					currentWidth++
-				}
-				wrapped.WriteString(word)
-				currentWidth += wordLength
-			}
-		}
-		if i < len(lines)-1 {
-			wrapped.WriteString("\n")
-		}
-	}
+// 			// Wrap the line
+// 			currentWidth := 0
+// 			words := strings.Fields(strings.TrimSpace(line))
+// 			for j, word := range words {
+// 				wordLength := len(word)
+// 				if currentWidth+wordLength+1 > width && currentWidth > 0 {
+// 					wrapped.WriteString("\n" + indent)
+// 					currentWidth = len(indent)
+// 				} else if j > 0 {
+// 					wrapped.WriteString(" ")
+// 					currentWidth++
+// 				}
+// 				wrapped.WriteString(word)
+// 				currentWidth += wordLength
+// 			}
+// 		}
+// 		if i < len(lines)-1 {
+// 			wrapped.WriteString("\n")
+// 		}
+// 	}
 
-	return wrapped.String()
-}
+// 	return wrapped.String()
+// }
