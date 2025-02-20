@@ -1015,7 +1015,7 @@ http {
       internal;        # to suppress 301
     }
     {{- if .Values.gateway.nginxConfig.grpcEnabled }}
-    location = /opentelemetry.proto.collector.logs.v1.LogsService {
+    location = /opentelemetry.proto.collector.logs.v1.LogsService/Export {
       grpc_pass       {{ $distributorGRPCUrl }};
     }
     {{- end }}
