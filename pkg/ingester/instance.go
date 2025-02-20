@@ -539,23 +539,28 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	extractor, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	if err != nil {
 		return nil, err
 	}
 
-	extractor, err = deletion.SetupExtractor(req, extractor)
-	if err != nil {
-		return nil, err
-	}
-
-	if i.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-		userID, err := tenant.TenantID(ctx)
+	for j, extractor := range extractors {
+		extractor, err = deletion.SetupExtractor(req, extractor)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		if i.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[j] = extractor
 	}
 
 	stats := stats.FromContext(ctx)
@@ -575,12 +580,17 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
+			streamExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
+			for _, extractor := range extractors {
+				streamExtractors = append(streamExtractors, extractor.ForStream(stream.labels))
+			}
+
 			iter, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
 				req.End,
-				extractor.ForStream(stream.labels),
+				streamExtractors...,
 			)
 			if err != nil {
 				return err

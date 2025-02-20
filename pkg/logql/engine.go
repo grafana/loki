@@ -347,7 +347,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	case syntax.VariantsExpr:
-		return nil, logqlmodel.ErrVariantsDisabled
+		if !q.multiVariant {
+			return nil, logqlmodel.ErrVariantsDisabled
+		}
+
+		return nil, errors.New("variants not yet implemented")
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}

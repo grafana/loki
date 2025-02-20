@@ -1419,13 +1419,24 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					ex, err := expr.Extractor()
+					ex, err := expr.Extractors()
 					if err != nil {
 						b.Fatal(err)
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
+						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
+						for _, extractor := range ex {
+							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
+						}
+						iters = append(
+							iters,
+							c.SampleIterator(
+								context.Background(),
+								time.Unix(0, 0),
+								time.Now(),
+								streamExtractors...),
+						)
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
@@ -2092,14 +2103,30 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						expr, err := syntax.ParseSampleExpr(query)
 						require.NoError(t, err)
 
-						extractor, err := expr.Extractor()
+						extractors, err := expr.Extractors()
 						require.NoError(t, err)
 
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+
+							streamExtractors := make(
+								[]log.StreamSampleExtractor,
+								0,
+								len(extractors),
+							)
+							for _, extractor := range extractors {
+								streamExtractors = append(
+									streamExtractors,
+									extractor.ForStream(streamLabels),
+								)
+							}
+							it := chk.SampleIterator(
+								ctx,
+								time.Unix(0, 0),
+								time.Unix(0, math.MaxInt64),
+								streamExtractors...)
 
 							var sumValues int
 							var streams []string
