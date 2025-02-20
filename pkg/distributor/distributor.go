@@ -516,7 +516,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	var secondTierErr error
+	var ingestionBlockedError error
 
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
@@ -570,7 +570,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 				// return an error but do not add it to validationErrors
 				// otherwise client will get a 400 and will log it.
-				secondTierErr = httpgrpc.Errorf(statusCode, "%s", err.Error())
+				ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
 				continue
 			}
 
@@ -650,8 +650,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErr error
 	if validationErrors.Err() != nil {
 		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
-	} else if secondTierErr != nil {
-		validationErr = secondTierErr
+	} else if ingestionBlockedError != nil {
+		// Any validation error takes precedence over the status code and error message for blocked ingestion.
+		validationErr = ingestionBlockedError
 	}
 
 	// Return early if none of the streams contained entries
