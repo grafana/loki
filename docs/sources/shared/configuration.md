@@ -3641,11 +3641,6 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
-# Block ingestion for policy until the configured date. The time should be in
-# RFC3339 format. The policy is based on the policy_stream_mapping
-# configuration.
-[block_ingestion_policy_until: <map of string to Time>]
-
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
 # CLI flag: -limits.block-ingestion-until
