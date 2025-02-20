@@ -16,19 +16,31 @@ import (
 
 // RunView represents the benchmark run view
 type RunView struct {
-	RunConfig RunConfig
-	Running   bool
-	Output    string
-	Viewport  viewport.Model
-	ready     bool // track if we've received initial window size
+	RunConfig         RunConfig
+	Running           bool
+	Output            string
+	Viewport          viewport.Model
+	ready             bool   // track if we've received initial window size
+	lastBenchmarkLine string // track the last benchmark line for stats formatting
+
+	// Profiling state
+	cpuProfilePort int
+	memProfilePort int
+	tracePort      int
+	cpuProfileOn   bool
+	memProfileOn   bool
+	traceProfileOn bool
 }
 
 // NewRunView creates a new RunView
 func NewRunView(config RunConfig) *RunView {
 	return &RunView{
-		RunConfig: config,
-		Running:   false,
-		ready:     false,
+		RunConfig:      config,
+		Running:        false,
+		ready:          false,
+		cpuProfilePort: 6060,
+		memProfilePort: 6061,
+		tracePort:      6062,
 	}
 }
 
@@ -90,6 +102,24 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return SwitchViewMsg{View: ListID}
 			}
+		case "p":
+			if !m.cpuProfileOn {
+				return m, m.startCPUProfile()
+			} else {
+				return m, m.stopCPUProfile()
+			}
+		case "m":
+			if !m.memProfileOn {
+				return m, m.startMemProfile()
+			} else {
+				return m, m.stopMemProfile()
+			}
+		case "x":
+			if !m.traceProfileOn {
+				return m, m.startTraceProfile()
+			} else {
+				return m, m.stopTraceProfile()
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -121,7 +151,32 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case BenchmarkOutputMsg:
 		log.Printf("Received benchmark output: length=%d", len(string(msg)))
-		m.Output += string(msg)
+		line := string(msg)
+
+		// Process the line
+		if strings.HasPrefix(strings.TrimSpace(line), "Benchmark") {
+			// Split the line into benchmark name and stats
+			parts := strings.Fields(line)
+			benchName := parts[0]
+
+			// Format stats with fixed width fields
+			// Format: iterations time ns/op bytes B/op allocs allocs/op
+			if len(parts) >= 6 {
+				stats := fmt.Sprintf("%8s %12s ns/op %12s B/op %8s allocs/op",
+					parts[1], // iterations
+					parts[2], // time
+					parts[4], // bytes
+					parts[6], // allocs
+				)
+				line = benchName + "\n    " + stats + "\n"
+			} else {
+				// If we don't have all the expected parts, just join them as is
+				stats := strings.Join(parts[1:], " ")
+				line = benchName + "\n    " + stats + "\n"
+			}
+		}
+
+		m.Output += line
 		m.Viewport.SetContent(m.Output)
 		m.Viewport.GotoBottom()
 
@@ -160,10 +215,13 @@ func (m *RunView) View() string {
 func (m *RunView) headerView() string {
 	header := HeaderStyle.Render("Benchmark Configuration")
 	config := ConfigStyle.Render(fmt.Sprintf(
-		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Status: %s",
+		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Status: %s • CPU: %s:%d • MEM: %s:%d • TRACE: %s:%d",
 		m.RunConfig.Count,
 		m.RunConfig.TraceEnabled,
 		StatusText(m.Running),
+		m.profileStatus(m.cpuProfileOn), m.cpuProfilePort,
+		m.profileStatus(m.memProfileOn), m.memProfilePort,
+		m.profileStatus(m.traceProfileOn), m.tracePort,
 	))
 
 	// Format selected benchmarks with proper indentation
@@ -198,9 +256,18 @@ func (m *RunView) footerView() string {
 		Foreground(lipgloss.Color("241")).
 		Render(strings.Repeat("─", m.Viewport.Width))
 
+	controls := []string{
+		"↑/↓: scroll",
+		"ENTER/r: restart",
+		"p: cpu",
+		"m: mem",
+		"x: trace",
+		"ESC: back",
+	}
+
 	return lipgloss.JoinVertical(lipgloss.Left,
 		separator,
-		ControlStyle.Render("↑/↓: scroll • ENTER: start • ESC: back"),
+		ControlStyle.Render(strings.Join(controls, " • ")),
 	)
 }
 
@@ -325,4 +392,88 @@ func buildTestRegex(tests []string) string {
 		formatted = append(formatted, escaped)
 	}
 	return strings.Join(formatted, "|")
+}
+
+func (m *RunView) profileStatus(on bool) string {
+	if on {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42")).
+			Render("ON")
+	}
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("OFF")
+}
+
+// Profile control functions
+func (m *RunView) startCPUProfile() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("go", "tool", "pprof", "-http", fmt.Sprintf(":%d", m.cpuProfilePort), "cpu.prof")
+		if err := cmd.Start(); err != nil {
+			m.cpuProfilePort++ // Try next port if this one fails
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to start CPU profile: %v\n", err))
+		}
+		m.cpuProfileOn = true
+		return BenchmarkOutputMsg("CPU profile started\n")
+	}
+}
+
+func (m *RunView) stopCPUProfile() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("pkill", "-f", fmt.Sprintf("pprof.*:%d", m.cpuProfilePort))
+		if err := cmd.Run(); err != nil {
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to stop CPU profile: %v\n", err))
+		}
+		m.cpuProfileOn = false
+		return BenchmarkOutputMsg("CPU profile stopped\n")
+	}
+}
+
+func (m *RunView) startMemProfile() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("go", "tool", "pprof", "-http", fmt.Sprintf(":%d", m.memProfilePort), "mem.prof")
+		if err := cmd.Start(); err != nil {
+			m.memProfilePort++ // Try next port if this one fails
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to start memory profile: %v\n", err))
+		}
+		m.memProfileOn = true
+		return BenchmarkOutputMsg("Memory profile started\n")
+	}
+}
+
+func (m *RunView) stopMemProfile() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("pkill", "-f", fmt.Sprintf("pprof.*:%d", m.memProfilePort))
+		if err := cmd.Run(); err != nil {
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to stop memory profile: %v\n", err))
+		}
+		m.memProfileOn = false
+		return BenchmarkOutputMsg("Memory profile stopped\n")
+	}
+}
+
+func (m *RunView) startTraceProfile() tea.Cmd {
+	return func() tea.Msg {
+		if _, err := os.Stat("trace.out"); err != nil {
+			return BenchmarkOutputMsg("No trace file found\n")
+		}
+		cmd := exec.Command("go", "tool", "trace", "-http", fmt.Sprintf(":%d", m.tracePort), "trace.out")
+		if err := cmd.Start(); err != nil {
+			m.tracePort++ // Try next port if this one fails
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to start trace viewer: %v\n", err))
+		}
+		m.traceProfileOn = true
+		return BenchmarkOutputMsg("Trace viewer started\n")
+	}
+}
+
+func (m *RunView) stopTraceProfile() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("pkill", "-f", fmt.Sprintf("trace.*:%d", m.tracePort))
+		if err := cmd.Run(); err != nil {
+			return BenchmarkOutputMsg(fmt.Sprintf("Failed to stop trace viewer: %v\n", err))
+		}
+		m.traceProfileOn = false
+		return BenchmarkOutputMsg("Trace viewer stopped\n")
+	}
 }

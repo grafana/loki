@@ -141,7 +141,6 @@ func main() {
 		p := tea.NewProgram(
 			initialModel(),
 			tea.WithAltScreen(),
-			tea.WithMouseCellMotion(),
 		)
 		views.SetProgram(p) // Set global program reference for message sending
 		if _, err := p.Run(); err != nil {
