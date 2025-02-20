@@ -1,3 +1,4 @@
+// Package logical implements logical query plan operations and expressions
 package logical
 
 import (
@@ -7,10 +8,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
+// LiteralString represents a string constant in the query plan
 type LiteralString struct {
+	// str holds the string value
 	str string
 }
 
+// ToField converts the string literal to a column schema
 func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: l.str,
@@ -18,10 +22,13 @@ func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
 	}
 }
 
+// LiteralI64 represents a 64-bit integer constant in the query plan
 type LiteralI64 struct {
+	// n holds the integer value
 	n int64
 }
 
+// ToField converts the integer literal to a column schema
 func (l LiteralI64) ToField(_ Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: fmt.Sprint(l.n),
