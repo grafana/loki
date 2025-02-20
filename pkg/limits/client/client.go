@@ -1,4 +1,5 @@
-package frontend
+// Package client provides gRPC client implementation for limits service.
+package client
 
 import (
 	"flag"
@@ -33,10 +34,10 @@ var (
 	}, []string{"operation", "status_code"})
 )
 
-// BackendClientConfig contains the config for an ingest-limits client.
-type BackendClientConfig struct {
+// Config contains the config for an ingest-limits client.
+type Config struct {
 	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config" doc:"description=Configures client gRPC connections to limits service."`
-	PoolConfig                   BackendPoolConfig              `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
+	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 
@@ -46,37 +47,33 @@ type BackendClientConfig struct {
 	Internal bool `yaml:"-"`
 }
 
-func (cfg *BackendClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".limits-client", f)
 	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
-// BackendPoolConfig contains the config for a pool of ingest-limits backend
-// clients.
-type BackendPoolConfig struct {
+// PoolConfig contains the config for a pool of ingest-limits clients.
+type PoolConfig struct {
 	ClientCleanupPeriod     time.Duration `yaml:"client_cleanup_period"`
 	HealthCheckIngestLimits bool          `yaml:"health_check_ingest_limits"`
 	RemoteTimeout           time.Duration `yaml:"remote_timeout"`
 }
 
-func (cfg *BackendPoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+".client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingest-limits that have gone away.")
 	f.BoolVar(&cfg.HealthCheckIngestLimits, prefix+".health-check-ingest-limits", true, "Run a health check on each ingest-limits client during periodic cleanup.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
-// IngestLimitsBackendClient is a gRPC client for the ingest-limits backend.
-// The ingest limits service gets usage data from individual backends, and
-// data is sharded over a ring of backends.
-type IngestLimitsBackendClient struct {
+// Client is a gRPC client for the ingest-limits.
+type Client struct {
 	logproto.IngestLimitsClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
 
-// NewIngestLimitsBackendClient returns a new IngestLimitsBackendClient for
-// the specified ingest-limits backend.
-func NewIngestLimitsBackendClient(cfg BackendClientConfig, addr string) (*IngestLimitsBackendClient, error) {
+// New returns a new Client for the specified ingest-limits.
+func New(cfg Config, addr string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
@@ -90,7 +87,7 @@ func NewIngestLimitsBackendClient(cfg BackendClientConfig, addr string) (*Ingest
 	if err != nil {
 		return nil, err
 	}
-	return &IngestLimitsBackendClient{
+	return &Client{
 		IngestLimitsClient: logproto.NewIngestLimitsClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		Closer:             conn,
@@ -98,7 +95,7 @@ func NewIngestLimitsBackendClient(cfg BackendClientConfig, addr string) (*Ingest
 }
 
 // getInterceptors returns the gRPC interceptors for the given ClientConfig.
-func getGRPCInterceptors(cfg *BackendClientConfig) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var (
 		unaryInterceptors  []grpc.UnaryClientInterceptor
 		streamInterceptors []grpc.StreamClientInterceptor
@@ -125,10 +122,10 @@ func getGRPCInterceptors(cfg *BackendClientConfig) ([]grpc.UnaryClientIntercepto
 	return unaryInterceptors, streamInterceptors
 }
 
-// NewIngestLimitsClientPool returns a new pool of IngestLimitsClients.
-func NewIngestLimitsClientPool(
+// NewPool returns a new pool of clients for the ingest-limits.
+func NewPool(
 	name string,
-	cfg BackendPoolConfig,
+	cfg PoolConfig,
 	ring ring.ReadRing,
 	factory ring_client.PoolFactory,
 	logger log.Logger,
@@ -138,5 +135,19 @@ func NewIngestLimitsClientPool(
 		HealthCheckEnabled: cfg.HealthCheckIngestLimits,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
-	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, backendClients, logger)
+	return ring_client.NewPool(
+		name,
+		poolCfg,
+		ring_client.NewRingServiceDiscovery(ring),
+		factory,
+		backendClients,
+		logger,
+	)
+}
+
+// NewPoolFactory returns a new factory for ingest-limits clients.
+func NewPoolFactory(cfg Config) ring_client.PoolFactory {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return New(cfg, addr)
+	})
 }

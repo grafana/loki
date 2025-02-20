@@ -8,25 +8,45 @@ package frontend
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
-	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 
+	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
 	RingKey  = "ingest-limits-frontend"
 	RingName = "ingest-limits-frontend"
 )
+
+// Config contains the config for an ingest-limits-frontend.
+type Config struct {
+	ClientConfig     limits_client.Config  `yaml:"client_config"`
+	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
+}
+
+func (cfg *Config) Validate() error {
+	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid gRPC client config: %w", err)
+	}
+	return nil
+}
 
 // Frontend is the limits-frontend service, and acts a service wrapper for
 // all components needed to run the limits-frontend.
@@ -49,11 +69,8 @@ type Frontend struct {
 func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	var servs []services.Service
 
-	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return NewIngestLimitsBackendClient(cfg.ClientConfig, addr)
-	})
-
-	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
+	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
+	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
 	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, logger, reg)
 
 	f := &Frontend{
