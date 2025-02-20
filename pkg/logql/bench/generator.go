@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
@@ -32,10 +33,11 @@ type TestCase struct {
 // For log queries, it includes the direction.
 // For metric queries (rate, sum), it returns the query with step size.
 func (c TestCase) Name() string {
-	if strings.Contains(c.Query, "rate(") || strings.Contains(c.Query, "sum(") {
-		if c.Step > 0 {
-			return fmt.Sprintf("%s @ %s", c.Query, c.Step)
-		}
+	expr, err := syntax.ParseExpr(c.Query)
+	if err != nil {
+		return fmt.Sprintf("%s [%v]", c.Query, c.Direction)
+	}
+	if _, ok := expr.(syntax.SampleExpr); ok {
 		return c.Query
 	}
 	return fmt.Sprintf("%s [%v]", c.Query, c.Direction)

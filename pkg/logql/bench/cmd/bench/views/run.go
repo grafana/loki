@@ -222,11 +222,10 @@ func (m *RunView) startBenchmark() tea.Cmd {
 		}
 
 		// Build the benchmark command
-		regex := strings.Join(m.RunConfig.Selected, "|")
 		args := []string{
 			"test", "-v",
-			"-test.run=^$",              // Skip tests
-			"-test.bench=" + regex,      // Run only selected benchmarks
+			"-test.run=^$", // Skip tests
+			"-test.bench=" + buildTestRegex(m.RunConfig.Selected), // Run only selected benchmarks
 			"-test.benchmem",            // Show memory stats
 			"-test.cpuprofile=cpu.prof", // CPU profiling
 			"-test.memprofile=mem.prof", // Memory profiling
@@ -309,49 +308,21 @@ func (m *RunView) startBenchmark() tea.Cmd {
 	}
 }
 
-// // wordWrap wraps text at the specified width
-// func wordWrap(text string, width int) string {
-// 	if width <= 0 {
-// 		return text
-// 	}
-
-// 	var wrapped strings.Builder
-// 	lines := strings.Split(text, "\n")
-
-// 	for i, line := range lines {
-// 		if len(line) <= width {
-// 			wrapped.WriteString(line)
-// 		} else {
-// 			// Preserve indentation
-// 			indent := ""
-// 			for _, r := range line {
-// 				if r == ' ' || r == '\t' {
-// 					indent += string(r)
-// 				} else {
-// 					break
-// 				}
-// 			}
-
-// 			// Wrap the line
-// 			currentWidth := 0
-// 			words := strings.Fields(strings.TrimSpace(line))
-// 			for j, word := range words {
-// 				wordLength := len(word)
-// 				if currentWidth+wordLength+1 > width && currentWidth > 0 {
-// 					wrapped.WriteString("\n" + indent)
-// 					currentWidth = len(indent)
-// 				} else if j > 0 {
-// 					wrapped.WriteString(" ")
-// 					currentWidth++
-// 				}
-// 				wrapped.WriteString(word)
-// 				currentWidth += wordLength
-// 			}
-// 		}
-// 		if i < len(lines)-1 {
-// 			wrapped.WriteString("\n")
-// 		}
-// 	}
-
-// 	return wrapped.String()
-// }
+func buildTestRegex(tests []string) string {
+	formatted := []string{}
+	for _, t := range tests {
+		// Escape special regex characters in the benchmark name
+		escaped := strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/%s", t), "{", "\\{")
+		escaped = strings.ReplaceAll(escaped, "}", "\\}")
+		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
+		escaped = strings.ReplaceAll(escaped, "[", "\\[")
+		escaped = strings.ReplaceAll(escaped, "]", "\\]")
+		escaped = strings.ReplaceAll(escaped, "(", "\\(")
+		escaped = strings.ReplaceAll(escaped, ")", "\\)")
+		escaped = strings.ReplaceAll(escaped, "=", "\\=")
+		escaped = strings.ReplaceAll(escaped, "|", "\\|")
+		escaped = "^" + escaped + "$" // Ensure exact match
+		formatted = append(formatted, escaped)
+	}
+	return strings.Join(formatted, "|")
+}

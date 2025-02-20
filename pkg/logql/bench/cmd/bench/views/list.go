@@ -3,7 +3,6 @@ package views
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -232,18 +231,7 @@ func (m *ListView) View() string {
 func (m *ListView) GetSelectedTests() []string {
 	var selected []string
 	for name := range m.selected {
-		// Escape special regex characters in the benchmark name
-		escaped := strings.ReplaceAll(name, "{", "\\{")
-		escaped = strings.ReplaceAll(escaped, "}", "\\}")
-		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
-		escaped = strings.ReplaceAll(escaped, "[", "\\[")
-		escaped = strings.ReplaceAll(escaped, "]", "\\]")
-		escaped = strings.ReplaceAll(escaped, "(", "\\(")
-		escaped = strings.ReplaceAll(escaped, ")", "\\)")
-		escaped = strings.ReplaceAll(escaped, "=", "\\=")
-		escaped = strings.ReplaceAll(escaped, "|", "\\|")
-		escaped = "^" + escaped + "$" // Ensure exact match
-		selected = append(selected, escaped)
+		selected = append(selected, name)
 	}
 	return selected
 }

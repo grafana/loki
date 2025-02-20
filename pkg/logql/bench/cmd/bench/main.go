@@ -112,7 +112,7 @@ func loadBenchmarks() []string {
 	cases := config.GenerateTestCases()
 	var names []string
 	for _, c := range cases {
-		names = append(names, fmt.Sprintf("BenchmarkLogQL/%s", c.Name()))
+		names = append(names, c.Name())
 	}
 	return names
 }
