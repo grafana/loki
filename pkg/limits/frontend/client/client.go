@@ -1,3 +1,6 @@
+// Package client provides gRPC client implementation for limits-frontend.
+// An example use case is the distributor, which needs to ask limits-frontend
+// if a push request has exceeded per-tenant limits.
 package client
 
 import (
@@ -142,5 +145,19 @@ func NewPool(
 		HealthCheckEnabled: cfg.HealthCheckIngestLimits,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
-	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, frontendClients, logger)
+	return ring_client.NewPool(
+		name,
+		poolCfg,
+		ring_client.NewRingServiceDiscovery(ring),
+		factory,
+		frontendClients,
+		logger,
+	)
+}
+
+// NewPoolFactory returns a new factory for ingest-limits-frontend clients.
+func NewPoolFactory(cfg Config) ring_client.PoolFactory {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return New(cfg, addr)
+	})
 }
