@@ -236,6 +236,8 @@ func ParamOverridesFromShard(base Params, shard *ShardWithChunkRefs) (result Par
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	switch expr := q.GetExpression().(type) {
+	case syntax.VariantsExpr:
+		return false, nil
 	case syntax.SampleExpr:
 		var sortable bool
 		expr.Walk(func(e syntax.Expr) {
@@ -247,8 +249,6 @@ func Sortable(q Params) (bool, error) {
 			}
 		})
 		return sortable, nil
-	case syntax.VariantsExpr:
-		return false, nil
 	default:
 		return false, errors.New("only sample and variants expressions supported")
 	}

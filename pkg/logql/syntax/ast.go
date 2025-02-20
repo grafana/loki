@@ -101,6 +101,7 @@ func (VectorAggregationExpr) isSampleExpr() {}
 func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
 func (LabelReplaceExpr) isSampleExpr()      {}
+func (MultiVariantExpr) isSampleExpr()      {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -2431,13 +2432,15 @@ func groupingReducesLabels(grp *Grouping) bool {
 //
 //sumtype:decl
 type VariantsExpr interface {
-	LogRange() *LogRangeExpr
-	Matchers() []*labels.Matcher
-	Variants() []SampleExpr
-	SetVariant(i int, e SampleExpr) error
-	Interval() time.Duration
-	Offset() time.Duration
 	Extractors() ([]SampleExtractor, error)
+	Interval() time.Duration
+	LogRange() *LogRangeExpr
+	MatcherGroups() ([]MatcherRange, error)
+	Matchers() []*labels.Matcher
+	Offset() time.Duration
+	SetVariant(i int, e SampleExpr) error
+	Variants() []SampleExpr
+	Selector() (LogSelectorExpr, error)
 	Expr
 }
 
@@ -2569,6 +2572,28 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 	s += Indent(level) + "\n)"
 
 	return s
+}
+
+func (m *MultiVariantExpr) MatcherGroups() ([]MatcherRange, error) {
+	xs := m.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: m.Interval(),
+				Offset:   m.Offset(),
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	return m.logRange.Left, nil
 }
 
 func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
