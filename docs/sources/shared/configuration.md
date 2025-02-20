@@ -847,6 +847,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.sha-prefix-size
       [shaprefixsize: <int> | default = 2]
 
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
@@ -3640,6 +3645,11 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+# Block ingestion for policy until the configured date. The time should be in
+# RFC3339 format. The policy is based on the policy_stream_mapping
+# configuration.
+[block_ingestion_policy_until: <map of string to Time>]
 
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
