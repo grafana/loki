@@ -1,2 +1,6 @@
 # Ignore generated data directory
 data/
+cpu.prof
+mem.prof
+bench.test
+trace.out

@@ -154,10 +154,6 @@ func (s *DataObjStore) Close() error {
 	return nil
 }
 
-const (
-	configFileName = "generator.json"
-)
-
 // Builder helps construct test datasets using multiple stores
 type Builder struct {
 	stores []Store

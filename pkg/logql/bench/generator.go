@@ -14,6 +14,49 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+const (
+	DefaultDataDir = "./data"
+	configFileName = "generator.json"
+)
+
+// TestCase represents a LogQL test case for benchmarking and testing
+type TestCase struct {
+	Query     string
+	Start     time.Time
+	End       time.Time
+	Direction logproto.Direction
+	Step      time.Duration // Step size for metric queries
+}
+
+// Name returns a descriptive name for the test case.
+// For log queries, it includes the direction.
+// For metric queries (rate, sum), it returns the query with step size.
+func (c TestCase) Name() string {
+	if strings.Contains(c.Query, "rate(") || strings.Contains(c.Query, "sum(") {
+		if c.Step > 0 {
+			return fmt.Sprintf("%s @ %s", c.Query, c.Step)
+		}
+		return c.Query
+	}
+	return fmt.Sprintf("%s [%v]", c.Query, c.Direction)
+}
+
+// Description returns a detailed description of the test case including time range
+func (c TestCase) Description() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Query: %s\n", c.Query))
+	b.WriteString(fmt.Sprintf("Time Range: %v to %v\n", c.Start.Format(time.RFC3339), c.End.Format(time.RFC3339)))
+	if c.Step > 0 {
+		b.WriteString(fmt.Sprintf("Step: %v\n", c.Step))
+	}
+	b.WriteString(fmt.Sprintf("Direction: %v", c.Direction))
+	return b.String()
+}
+
+type labelMatcher struct {
+	name, value string
+}
+
 type Batch struct {
 	Streams []logproto.Stream
 }
@@ -235,7 +278,7 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 			component := g.config.LabelConfig.Components[g.rnd.Intn(len(g.config.LabelConfig.Components))]
 
 			labels := fmt.Sprintf(
-				`{cluster="%s", namespace="%s", service="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", component="%s"}`,
+				`{cluster="%s", namespace="%s", service_name="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", component="%s"}`,
 				cluster, namespace, service, pod, container, env, region, dc, component,
 			)
 
@@ -359,8 +402,11 @@ func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, c
 			// Create metadata in a deterministic order
 			var metadata []logproto.LabelAdapter
 
-			// First add the level
-			metadata = append(metadata, logproto.LabelAdapter{Name: "level", Value: level})
+			// First add the level and detected_level
+			metadata = append(metadata,
+				logproto.LabelAdapter{Name: "level", Value: level},
+				logproto.LabelAdapter{Name: "detected_level", Value: detectLogLevel(line)},
+			)
 
 			// Then add resource attributes in sorted order
 			var resourceKeys []string
@@ -392,6 +438,24 @@ func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, c
 	}
 
 	return entries
+}
+
+// detectLogLevel analyzes a log line to determine its level
+func detectLogLevel(line string) string {
+	line = strings.ToLower(line)
+	if strings.Contains(line, "error") || strings.Contains(line, "exception") || strings.Contains(line, "fail") {
+		return "error"
+	}
+	if strings.Contains(line, "warn") || strings.Contains(line, "warning") {
+		return "warn"
+	}
+	if strings.Contains(line, "info") || strings.Contains(line, "information") {
+		return "info"
+	}
+	if strings.Contains(line, "debug") {
+		return "debug"
+	}
+	return "info" // default level
 }
 
 // generateEntries creates log entries in different formats with OTEL attributes
@@ -484,12 +548,12 @@ var defaultApplications = []Application{
 			},
 		},
 		OTELResource: map[string]string{
-			"service.name":           "web-server",
-			"service.version":        "1.0.0",
-			"service.namespace":      "default",
-			"telemetry.sdk.name":     "opentelemetry",
-			"telemetry.sdk.language": "go",
-			"deployment.environment": "production",
+			"service_name":           "web-server",
+			"service_version":        "1.0.0",
+			"service_namespace":      "default",
+			"telemetry_sdk_name":     "opentelemetry",
+			"telemetry_sdk_language": "go",
+			"deployment_environment": "production",
 		},
 	},
 	{
@@ -519,12 +583,12 @@ var defaultApplications = []Application{
 			},
 		},
 		OTELResource: map[string]string{
-			"service.name":    "mysql",
-			"service.version": "8.0.28",
-			"db.system":       "mysql",
-			"db.version":      "8.0.28",
-			"db.instance":     "primary",
-			"db.cluster":      "production",
+			"service_name":    "mysql",
+			"service_version": "8.0.28",
+			"db_system":       "mysql",
+			"db_version":      "8.0.28",
+			"db_instance":     "primary",
+			"db_cluster":      "production",
 		},
 	},
 	{
@@ -553,11 +617,11 @@ var defaultApplications = []Application{
 			},
 		},
 		OTELResource: map[string]string{
-			"service.name":     "redis",
-			"service.version":  "6.2.6",
-			"redis.cluster":    "false",
-			"redis.db":         "0",
-			"redis.max_memory": "17179869184",
+			"service_name":     "redis",
+			"service_version":  "6.2.6",
+			"redis_cluster":    "false",
+			"redis_db":         "0",
+			"redis_max_memory": "17179869184",
 		},
 	},
 	{
@@ -587,12 +651,12 @@ var defaultApplications = []Application{
 			},
 		},
 		OTELResource: map[string]string{
-			"service.name":           "auth-service",
-			"service.version":        "1.0.0",
-			"service.namespace":      "default",
-			"telemetry.sdk.name":     "opentelemetry",
-			"telemetry.sdk.language": "go",
-			"deployment.environment": "production",
+			"service_name":           "auth-service",
+			"service_version":        "1.0.0",
+			"service_namespace":      "default",
+			"telemetry_sdk_name":     "opentelemetry",
+			"telemetry_sdk_language": "go",
+			"deployment_environment": "production",
 		},
 	},
 }
@@ -858,4 +922,168 @@ func LoadConfig(dataDir string) (*GeneratorConfig, error) {
 	}
 
 	return &config, nil
+}
+
+func (c *GeneratorConfig) buildLabelSelector(matchers []labelMatcher) string {
+	var parts []string
+	for _, m := range matchers {
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, m.name, m.value))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
+	rnd := c.NewRand()
+
+	// Helper to create a matcher with random value
+	randomMatcher := func(name string, values []string) labelMatcher {
+		return labelMatcher{name: name, value: values[rnd.Intn(len(values))]}
+	}
+
+	combinations := [][]labelMatcher{
+		// Single label matchers
+		{randomMatcher("component", c.LabelConfig.Components)},
+		{randomMatcher("region", c.LabelConfig.Regions)},
+
+		// Two label combinations
+		{
+			randomMatcher("region", c.LabelConfig.Regions),
+			randomMatcher("env", c.LabelConfig.EnvTypes),
+		},
+
+		// Three label combinations
+		{
+			randomMatcher("component", c.LabelConfig.Components),
+			randomMatcher("env", c.LabelConfig.EnvTypes),
+			randomMatcher("region", c.LabelConfig.Regions),
+		},
+	}
+
+	return combinations
+}
+
+// GenerateTestCases creates a sorted list of test cases using the configuration
+func (c *GeneratorConfig) GenerateTestCases() []TestCase {
+	var cases []TestCase
+	labelCombos := c.generateLabelCombinations()
+	end := c.StartTime.Add(c.TimeSpread)
+
+	// Use a map to track unique queries
+	uniqueQueries := make(map[string]struct{})
+
+	// Helper to add both forward and backward variants if query is unique
+	addBidirectional := func(query string, start, end time.Time) {
+		if _, exists := uniqueQueries[query]; exists {
+			return // Skip duplicate queries
+		}
+		uniqueQueries[query] = struct{}{}
+		cases = append(cases,
+			TestCase{
+				Query:     query,
+				Start:     start,
+				End:       end,
+				Direction: logproto.FORWARD,
+			},
+			TestCase{
+				Query:     query,
+				Start:     start,
+				End:       end,
+				Direction: logproto.BACKWARD,
+			},
+		)
+	}
+
+	// Helper to add metric query if unique
+	addMetricQuery := func(query string, start, end time.Time, step time.Duration) {
+		if _, exists := uniqueQueries[query]; exists {
+			return // Skip duplicate queries
+		}
+		uniqueQueries[query] = struct{}{}
+		cases = append(cases,
+			TestCase{
+				Query:     query,
+				Start:     start,
+				End:       end,
+				Direction: logproto.FORWARD,
+				Step:      step,
+			},
+		)
+	}
+
+	// Calculate step size to get ~20 points over the time range
+	step := c.TimeSpread / 19
+
+	// Basic label selector queries with line filters and structured metadata
+	for _, combo := range labelCombos {
+		selector := c.buildLabelSelector(combo)
+
+		// Basic selector
+		addBidirectional(selector, c.StartTime, end)
+
+		// With structured metadata filters
+		addBidirectional(selector+` | detected_level="error"`, c.StartTime, end)
+		addBidirectional(selector+` | detected_level="warn"`, c.StartTime, end)
+
+		// Combined filters
+		addBidirectional(selector+` |~ "error|exception" | detected_level="error"`, c.StartTime, end)
+		addBidirectional(selector+` | json | duration_seconds > 0.1 | detected_level!="debug"`, c.StartTime, end)
+		addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, c.StartTime, end)
+
+		// Metric queries with structured metadata
+		baseMetricQuery := fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [5m])`, selector)
+
+		// Single dimension aggregations
+		dimensions := []string{"pod", "namespace", "env"}
+		for _, dim := range dimensions {
+			query := fmt.Sprintf(`sum by (%s) (%s)`, dim, baseMetricQuery)
+			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+		}
+
+		// Two dimension aggregations
+		twoDimCombos := [][]string{
+			{"cluster", "namespace"},
+			{"env", "component"},
+		}
+		for _, dims := range twoDimCombos {
+			query := fmt.Sprintf(`sum by (%s, %s) (%s)`, dims[0], dims[1], baseMetricQuery)
+			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+		}
+
+		// Error rates by severity
+		errorQueries := []string{
+			fmt.Sprintf(`sum by (component) (rate(%s | detected_level="error" [5m]))`, selector),
+			fmt.Sprintf(`sum by (component) (rate(%s | detected_level="warn" [5m]))`, selector),
+			fmt.Sprintf(`sum by (component, detected_level) (rate(%s | detected_level=~"error|warn" [5m]))`, selector),
+		}
+		for _, query := range errorQueries {
+			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+		}
+	}
+
+	// Dense period queries
+	for _, interval := range c.DenseIntervals {
+		combo := labelCombos[c.NewRand().Intn(len(labelCombos))]
+		selector := c.buildLabelSelector(combo)
+		addBidirectional(
+			selector+` | detected_level=~"error|warn"`,
+			interval.Start,
+			interval.Start.Add(interval.Duration),
+		)
+
+		// Add metric queries for dense periods
+		rateQuery := fmt.Sprintf(`sum by (component, detected_level) (rate(%s[1m]))`, selector)
+		addMetricQuery(
+			rateQuery,
+			interval.Start,
+			interval.Start.Add(interval.Duration),
+			interval.Duration/19,
+		)
+	}
+
+	// Sort test cases by name for consistent ordering
+	sort.Slice(cases, func(i, j int) bool {
+		return cases[i].Name() < cases[j].Name()
+	})
+
+	return cases
 }
