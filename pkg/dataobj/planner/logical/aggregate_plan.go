@@ -50,7 +50,7 @@ func (a *Aggregate) Schema() schema.Schema {
 		columns = append(columns, expr.ToField(a.input))
 	}
 
-	return schema.SchemaFromColumns(columns)
+	return schema.FromColumns(columns)
 }
 
 // Children returns the child plan nodes

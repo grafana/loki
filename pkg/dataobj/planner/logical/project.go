@@ -38,7 +38,7 @@ func (p *Projection) Schema() schema.Schema {
 	for _, expr := range p.exprs {
 		columns = append(columns, expr.ToField(p.input))
 	}
-	return schema.SchemaFromColumns(columns)
+	return schema.FromColumns(columns)
 }
 
 // Children returns the child plan nodes
