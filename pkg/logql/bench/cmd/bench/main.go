@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 	"github.com/grafana/loki/v3/pkg/logql/bench/cmd/bench/views"
 )
@@ -46,16 +48,35 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			if m.currentView == views.ListID {
+			if m.currentView == views.ListID && m.listView.FilterState() != list.Filtering {
 				return m, tea.Quit
 			} else {
 				m.currentView = views.ListID
-				return m, nil
+				newModel, cmd := m.listView.Update(msg)
+				if listView, ok := newModel.(*views.ListView); ok {
+					m.listView = listView
+				}
+				return m, cmd
 			}
 		case "esc":
 			if m.currentView != views.ListID {
 				m.currentView = views.ListID
 				return m, nil
+			}
+		default:
+			if m.currentView == views.ListID {
+				newModel, cmd := m.listView.Update(msg)
+				if listView, ok := newModel.(*views.ListView); ok {
+					m.listView = listView
+				}
+				return m, cmd
+			}
+			if m.currentView == views.RunID {
+				newModel, cmd := m.runView.Update(msg)
+				if runView, ok := newModel.(*views.RunView); ok {
+					m.runView = runView
+				}
+				return m, cmd
 			}
 		}
 

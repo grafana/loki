@@ -161,6 +161,10 @@ func (m *ListView) Init() tea.Cmd {
 	return nil
 }
 
+func (m *ListView) FilterState() list.FilterState {
+	return m.list.FilterState()
+}
+
 func (m *ListView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 
