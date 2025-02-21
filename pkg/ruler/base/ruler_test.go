@@ -312,12 +312,14 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	amCfg := map[string]*config.AlertManagerConfig{
 		tenant1: {
-			AlertmanagerURL:       ts1.URL,
-			AlertmanagerDiscovery: false,
+			AlertmanagerURL:          ts1.URL,
+			AlertmanagerDiscovery:    false,
+			AlertmanangerEnableV2API: true,
 		},
 		tenant2: {
-			AlertmanagerURL:       ts2.URL,
-			AlertmanagerDiscovery: false,
+			AlertmanagerURL:          ts2.URL,
+			AlertmanagerDiscovery:    false,
+			AlertmanangerEnableV2API: true,
 		},
 	}
 

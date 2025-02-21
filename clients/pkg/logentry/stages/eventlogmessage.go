@@ -148,26 +148,17 @@ func (*eventLogMessageStage) Cleanup() {
 }
 
 // Sanitize a input string to convert it into a valid prometheus label
+// TODO: switch to prometheus/prometheus/util/strutil/SanitizeFullLabelName
 func SanitizeFullLabelName(input string) string {
 	if len(input) == 0 {
 		return "_"
 	}
 	var validSb strings.Builder
-	// Handle first character - must be a letter or underscore
-	if len(input) > 0 {
-		b := rune(input[0])
-		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' {
-			validSb.WriteRune(b)
-		} else {
+	for i, b := range input {
+		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
 			validSb.WriteRune('_')
-		}
-	}
-	// Handle rest of characters
-	for _, b := range input[1:] {
-		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9') {
-			validSb.WriteRune(b)
 		} else {
-			validSb.WriteRune('_')
+			validSb.WriteRune(b)
 		}
 	}
 	return validSb.String()
