@@ -34,7 +34,7 @@ func (s *Schema) Filter(projection []string) Schema {
 	}
 }
 
-func SchemaFromColumns(columns []ColumnSchema) Schema {
+func FromColumns(columns []ColumnSchema) Schema {
 	return Schema{
 		Columns: columns,
 	}
