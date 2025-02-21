@@ -47,7 +47,7 @@ Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
     ├── BooleanCmpExpr op=(>) name=age_gt_21
     │   ├── Column #age
     │   └── LiteralI64 value=21
-    └── Scan data_souce=users`
+    └── Scan data_source=users`
 
 	require.Equal(t, expected, "\n"+f.Format())
 }
@@ -100,7 +100,7 @@ Aggregate groupings=(region) aggregates=(total_sales)
         ├── BooleanCmpExpr op=(==) name=year_2020
         │   ├── Column #year
         │   └── LiteralI64 value=2020
-        └── Scan data_souce=orders`
+        └── Scan data_source=orders`
 
 	require.Equal(t, expected, "\n"+f.Format())
 }
