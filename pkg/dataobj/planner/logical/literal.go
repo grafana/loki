@@ -8,6 +8,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
+// Compile-time checks to ensure types implement Expr interface
+var (
+	_ Expr = LiteralString{}
+	_ Expr = LiteralI64{}
+)
+
 // LiteralString represents a string constant in the query plan
 type LiteralString struct {
 	// str holds the string value

@@ -18,3 +18,24 @@ type Schema struct {
 	// Columns is a slice of ColumnSchema defining all columns in the dataset
 	Columns []ColumnSchema
 }
+
+// Filter returns a new Schema with only the columns specified in projection
+func (s *Schema) Filter(projection []string) Schema {
+	filteredColumns := make([]ColumnSchema, 0, len(projection))
+	for _, col := range s.Columns {
+		for _, pcol := range projection {
+			if col.Name == pcol {
+				filteredColumns = append(filteredColumns, col)
+			}
+		}
+	}
+	return Schema{
+		Columns: filteredColumns,
+	}
+}
+
+func SchemaFromColumns(columns []ColumnSchema) Schema {
+	return Schema{
+		Columns: columns,
+	}
+}
