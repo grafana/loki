@@ -248,7 +248,7 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
+				extractors := []log.StreamSampleExtractor{countExtractor, bytesExtractor}
 				sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 				idx = 0
 
