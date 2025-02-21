@@ -72,7 +72,7 @@ func TestSlogFromGoKit(t *testing.T) {
 		}
 	})
 
-	t.Run("wraps go-kit logger", func(t *testing.T) {
+	t.Run("wraps go-kit logger", func(_ *testing.T) {
 		mLogger := &mockLogger{}
 		slogger := SlogFromGoKit(mLogger)
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -30,6 +29,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // ErrWALClosed is an error returned when a WAL operation can't run because the
