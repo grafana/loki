@@ -20,6 +20,11 @@ type LiteralString struct {
 	str string
 }
 
+// LitStr creates a string literal expression
+func LitStr(v string) LiteralString {
+	return LiteralString{str: v}
+}
+
 // ToField converts the string literal to a column schema
 func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
@@ -32,6 +37,11 @@ func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
 type LiteralI64 struct {
 	// n holds the integer value
 	n int64
+}
+
+// LitI64 creates an int64 literal expression
+func LitI64(v int64) LiteralI64 {
+	return LiteralI64{n: v}
 }
 
 // ToField converts the integer literal to a column schema
