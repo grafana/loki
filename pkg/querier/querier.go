@@ -211,6 +211,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
 	ctx = NewPartitionContext(ctx)
 	var err error
+
 	params.Start, params.End, err = querier_limits.ValidateQueryRequest(ctx, params, q.limits)
 	if err != nil {
 		return nil, err

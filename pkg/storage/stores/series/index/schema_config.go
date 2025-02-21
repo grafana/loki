@@ -56,6 +56,8 @@ func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {
 			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}}), nil
 		case "v13":
 			return newSeriesStoreSchema(buckets, v13Entries{v12Entries{v11Entries{v10}}}), nil
+		case "v14":
+			return newSeriesStoreSchema(buckets, v14Entries{v13Entries{v12Entries{v11Entries{v10}}}}), nil
 		}
 	}
 	return nil, errInvalidSchemaVersion

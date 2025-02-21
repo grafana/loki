@@ -722,7 +722,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
-	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false, log.DefaultMode)
 	if err != nil {
 		panic(err)
 	}
@@ -742,7 +742,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 				require.Equal(t, lbs.Hash(), eit.StreamHash())
 			}
 
-			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs))
+			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs), false)
 			for sit.Next() {
 				require.Equal(t, lbs.Hash(), sit.StreamHash())
 			}
