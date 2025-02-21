@@ -38,13 +38,13 @@ func newMockBucket() *mockBucket {
 
 func (m *mockBucket) Close() error                                  { return nil }
 func (m *mockBucket) Delete(ctx context.Context, name string) error { return nil }
-func (m *mockBucket) Exists(ctx context.Context, name string) (bool, error) {
+func (m *mockBucket) Exists(_ context.Context, name string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, exists := m.uploads[name]
 	return exists, nil
 }
-func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	data, exists := m.uploads[name]
