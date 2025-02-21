@@ -57,7 +57,7 @@ func (s *Scan) Format(fm format.Formatter) {
 	n := format.Node{
 		Singletons: []string{"Scan"},
 		Tuples: []format.ContentTuple{{
-			Key:   "data_souce",
+			Key:   "data_source",
 			Value: format.SingleContent(s.dataSource.Name()),
 		}},
 	}
