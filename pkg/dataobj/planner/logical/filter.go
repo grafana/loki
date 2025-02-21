@@ -2,6 +2,7 @@
 package logical
 
 import (
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -39,4 +40,19 @@ func (f *Filter) Schema() schema.Schema {
 // Children returns the child plan nodes
 func (f *Filter) Children() []Plan {
 	return []Plan{f.input}
+}
+
+// Format implements format.Format
+func (f *Filter) Format(fm format.Formatter) {
+	n := format.Node{
+		Singletons: []string{"Filter"},
+		Tuples: []format.ContentTuple{{
+			Key:   "expr",
+			Value: format.SingleContent(f.expr.ToField(f.input).Name),
+		}},
+	}
+
+	nextFM := fm.WriteNode(n)
+	f.expr.Format(nextFM)
+	f.input.Format(nextFM)
 }

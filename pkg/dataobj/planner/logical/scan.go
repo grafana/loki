@@ -2,6 +2,7 @@
 package logical
 
 import (
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -49,4 +50,17 @@ func (s *Scan) deriveSchema() schema.Schema {
 // Children returns the child plan nodes (none for Scan)
 func (s *Scan) Children() []Plan {
 	return nil
+}
+
+// Format implements format.Format
+func (s *Scan) Format(fm format.Formatter) {
+	n := format.Node{
+		Singletons: []string{"Scan"},
+		Tuples: []format.ContentTuple{{
+			Key:   "data_souce",
+			Value: format.SingleContent(s.dataSource.Name()),
+		}},
+	}
+
+	fm.WriteNode(n)
 }

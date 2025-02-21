@@ -2,6 +2,7 @@
 package logical
 
 import (
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -43,4 +44,27 @@ func (p *Projection) Schema() schema.Schema {
 // Children returns the child plan nodes
 func (p *Projection) Children() []Plan {
 	return []Plan{p.input}
+}
+
+// Format implements format.Format
+func (p *Projection) Format(fm format.Formatter) {
+	var tuples []format.ContentTuple
+	for _, expr := range p.exprs {
+		field := expr.ToField(p.input)
+		tuples = append(tuples, format.ContentTuple{
+			Key:   field.Name,
+			Value: format.SingleContent(field.Type.String()),
+		})
+	}
+
+	n := format.Node{
+		Singletons: []string{"Projection"},
+		Tuples:     tuples,
+	}
+
+	nextFM := fm.WriteNode(n)
+	for _, expr := range p.exprs {
+		expr.Format(nextFM)
+	}
+	p.input.Format(nextFM)
 }

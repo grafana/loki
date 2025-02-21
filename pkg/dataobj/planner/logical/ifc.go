@@ -2,6 +2,7 @@
 package logical
 
 import (
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -16,16 +17,22 @@ type Plan interface {
 	Schema() schema.Schema
 	// Children returns the child plan nodes
 	Children() []Plan
+	// Format formats the plan as a string
+	Format(format.Formatter)
 }
 
 // Expr represents an expression that can be evaluated to produce a column
 type Expr interface {
 	// ToField converts the expression to a column schema
 	ToField(Plan) schema.ColumnSchema
+	// Format formats the expression as a string
+	Format(format.Formatter)
 }
 
 // DataSource represents a source of data that can be scanned
 type DataSource interface {
 	// Schema returns the schema of the data source
 	Schema() schema.Schema
+	// Name returns the name of the data source
+	Name() string
 }

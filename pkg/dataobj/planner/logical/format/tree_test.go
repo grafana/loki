@@ -26,7 +26,7 @@ func TestTreeFormatter(t *testing.T) {
 			Value: SingleContent("documents"),
 		}, {
 			Key:   "files",
-			Value: GroupContent{SingleContent("report.pdf"), SingleContent("notes.txt")},
+			Value: ListContent{SingleContent("report.pdf"), SingleContent("notes.txt")},
 		}},
 	})
 
@@ -38,7 +38,7 @@ func TestTreeFormatter(t *testing.T) {
 			Value: SingleContent("images"),
 		}, {
 			Key:   "files",
-			Value: GroupContent{SingleContent("photo1.jpg"), SingleContent("photo2.jpg")},
+			Value: ListContent{SingleContent("photo1.jpg"), SingleContent("photo2.jpg")},
 		}},
 	})
 
@@ -50,21 +50,14 @@ func TestTreeFormatter(t *testing.T) {
 			Value: SingleContent("downloads"),
 		}, {
 			Key:   "files",
-			Value: GroupContent{SingleContent("movie.mp4")},
+			Value: ListContent{SingleContent("movie.mp4")},
 		}},
 	})
 
-	// Should output something like:
-	//
-	// Directory path=(/home/user)
-	// ├── Directory path=(documents) files=(report.pdf, notes.txt)
-	// │   └── Directory path=(images) files=(photo1.jpg, photo2.jpg)
-	// └── Directory path=(downloads) files=(movie.mp4)
-
-	expected := `Directory path=(/home/user)
-├── Directory path=(documents) files=(report.pdf, notes.txt)
-│   └── Directory path=(images) files=(photo1.jpg, photo2.jpg)
-└── Directory path=(downloads) files=(movie.mp4)`
+	expected := `Directory path=/home/user
+├── Directory path=documents files=(report.pdf, notes.txt)
+│   └── Directory path=images files=(photo1.jpg, photo2.jpg)
+└── Directory path=downloads files=(movie.mp4)`
 
 	require.Equal(t, expected, f.Format())
 }
