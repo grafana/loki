@@ -65,11 +65,13 @@ type KubernetesServiceOp struct {
 
 // KubernetesClusterCreateRequest represents a request to create a Kubernetes cluster.
 type KubernetesClusterCreateRequest struct {
-	Name        string   `json:"name,omitempty"`
-	RegionSlug  string   `json:"region,omitempty"`
-	VersionSlug string   `json:"version,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	VPCUUID     string   `json:"vpc_uuid,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	RegionSlug    string   `json:"region,omitempty"`
+	VersionSlug   string   `json:"version,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	VPCUUID       string   `json:"vpc_uuid,omitempty"`
+	ClusterSubnet string   `json:"cluster_subnet,omitempty"`
+	ServiceSubnet string   `json:"service_subnet,omitempty"`
 
 	// Create cluster with highly available control plane
 	HA bool `json:"ha"`
