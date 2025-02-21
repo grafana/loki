@@ -2,7 +2,7 @@
 title: Quickstart to run Loki locally
 menuTitle: Loki quickstart
 weight: 200
-description: How to create and use a local Loki cluster for testing and evaluation purposes.
+description: How to deploy Loki locally using Docker Compose.
 killercoda:
   comment: |
     The killercoda front matter and the HTML comments that start '<!-- INTERACTIVE ' are used by a transformation tool that converts this Markdown source into a Killercoda tutorial.
@@ -12,10 +12,6 @@ killercoda:
     Changes to this source file affect the Killercoda tutorial.
 
     For more information about the transformation tool, refer to https://github.com/grafana/killercoda/blob/staging/docs/transformer.md.
-  preprocessing:
-    substitutions:
-      - regexp: evaluate-loki-([^-]+)-
-        replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
   details:
@@ -25,28 +21,13 @@ killercoda:
     imageid: ubuntu
 ---
 
-<!-- INTERACTIVE page intro.md START -->
-
 # Quickstart to run Loki locally
 
-If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [monolithic deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode and includes a sample application to generate logs.
+Grafana Loki by default runs in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode, which means all components run in a single binary. In this quickstart guide you will deploy the basic Loki stack for collecting logs:
 
-The Docker Compose configuration runs the following components, each in its own container:
-
-- **flog**: which generates log lines.
-  [flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
-
-- **Grafana Alloy**: which scrapes the log lines from flog, and pushes them to Loki through the gateway.
-- **Gateway** (nginx) which receives requests and redirects them to the appropriate container based on the request's URL.
-- **Loki read component**: which runs a Query Frontend and a Querier.
-- **Loki write component**: which runs a Distributor and an Ingester.
-- **Loki backend component**: which runs an Index Gateway, Compactor, Ruler, Bloom Planner (experimental), Bloom Builder (experimental), and Bloom Gateway (experimental).
-- **Minio**: which Loki uses to store its index and chunks.
-- **Grafana**: which provides visualization of the log lines captured within Loki.
-
-{{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application" >}}
-
-<!-- INTERACTIVE page intro.md END -->
+* **Loki**: A log aggregation system to store the collected logs. For more information on what Loki is, see [Loki overview.](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/overview/).
+* **Alloy**: Grafana Alloy is an open source telemtry collector for metrics, logs, traces and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all docker containers and forward them to Loki.
+* **Grafana**: Grafana is an open-source platform for monitoring and observability. Grafana will be used to query, vizualize and alert on the logs stored in Loki.
 
 <!-- INTERACTIVE ignore START -->
 ## Before you begin
@@ -64,119 +45,121 @@ It's a fully configured environment with all the dependencies already installed.
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
-
-
 <!-- INTERACTIVE ignore END -->
 
-<!-- INTERACTIVE page step1.md START -->
-
-## Install Loki and collecting sample logs
-
-<!-- INTERACTIVE ignore START -->
+## Install the Loki stack
 
 {{< admonition type="note" >}}
-This quickstart assumes you are running Linux.
+This quickstart assumes you are running Linux or MacOS. Windows users can follow the same steps using [WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
 {{< /admonition >}}
-
-<!-- INTERACTIVE ignore END -->
 
 **To install Loki locally, follow these steps:**
 
-1. Create a directory called `evaluate-loki` for the demo environment.
-   Make `evaluate-loki` your current working directory:
+1. Clone the Loki fundamentals repository and checkout the getting-started branch:
 
-   ```bash
-   mkdir evaluate-loki
-   cd evaluate-loki
-   ```
+     ```bash
+     git checkout https://github.com/grafana/loki-fundamentals.git -b getting-started
+     ```
 
-2. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
+1. Change to the `loki-fundamentals` directory:
 
-   <!-- INTERACTIVE ignore START -->
-   {{< tabs >}}
-   {{< tab-content name="wget" >}}
-   ```bash
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
-   ```
-   {{< /tab-content >}}
-   {{< tab-content name="curl" >}}
-   ```bash
-   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml --output loki-config.yaml
-   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml --output alloy-local-config.yaml
-   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml --output docker-compose.yaml
-   ```
-   {{< /tab-content >}}
-   {{< /tabs >}}
-   <!-- INTERACTIVE ignore END -->
+     ```bash
+     cd loki-fundamentals
+     ```
 
-   {{< docs/ignore >}}
-   ```bash
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
-   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
-   ```
-   {{< /docs/ignore >}}
+1. With `loki-fundamentals` as the current working directory deploy Loki, Alloy and Grafana using Docker Compose:
 
-3. Deploy the sample Docker image.
+     ```bash
+     docker compose up -d
+     ```
+      At the end of the command, you should see something similar to the following:
 
-   With `evaluate-loki` as the current working directory, start the demo environment using `docker compose`:
+      ```console
+       ✔ Container loki-fundamentals-grafana-1  Started  0.3s 
+       ✔ Container loki-fundamentals-loki-1     Started  0.3s 
+       ✔ Container loki-fundamentals-alloy-1    Started  0.4s
+      ```
 
-   ```bash
-   docker compose up -d
-   ```
+With the Loki stack running, you can now verify component is up and running:
 
-   At the end of the command, you should see something similar to the following:
+* **Alloy**: Open a browser and navigate to [http://localhost:12345/graph](http://localhost:12345/graph). You should see the Alloy UI.
+* **Grafana**: Open a browser and navigate to [http://localhost:3000](http://localhost:3000). You should see the Grafana home page.
+* **Loki**: Open a browser and navigate to [http://localhost:3100/metrics](http://localhost:3100/metrics). You should see the Loki metrics page.
 
-   ```console
-   ✔ Network evaluate-loki_loki          Created      0.1s
-   ✔ Container evaluate-loki-minio-1     Started      0.6s
-   ✔ Container evaluate-loki-flog-1      Started      0.6s
-   ✔ Container evaluate-loki-backend-1   Started      0.8s
-   ✔ Container evaluate-loki-write-1     Started      0.8s
-   ✔ Container evaluate-loki-read-1      Started      0.8s
-   ✔ Container evaluate-loki-gateway-1   Started      1.1s
-   ✔ Container evaluate-loki-grafana-1   Started      1.4s
-   ✔ Container evaluate-loki-alloy-1     Started      1.4s
-   ```
+Since Grafana Alloy is configured to tail logs from all docker containers, Loki should already be receiving logs. The best place to verify this is using the Grafana Drilldown Logs feature. To do navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
 
+{{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down.png" caption="Getting started sample application" alt="Grafana Drilldown" >}}
 
-4. (Optional) Verify that the Loki cluster is up and running.
+If you have only the getting started demo deployed in your docker environment, you should see three containers and their logs; `loki-fundamentals-alloy-1`, `loki-fundamentals-grafana-1` and `loki-fundamentals-loki-1`. Click **Show Logs** within the `loki-fundamentals-loki-1` container to drill down into the logs for that container.
 
-   - The read component returns `ready` when you browse to [http://localhost:3101/ready](http://localhost:3101/ready).
-     The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` shows until the read component is ready.
-   - The write component returns `ready` when you browse to [http://localhost:3102/ready](http://localhost:3102/ready).
-     The message `Ingester not ready: waiting for 15s after being ready` shows until the write component is ready.
+{{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Getting started sample application" alt="Grafana Drilldown Service View" >}}
 
-5. (Optional) Verify that Grafana Alloy is running.
-   - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
+We will not cover the rest of the Grafana Drilldown Log features in this quickstart guide. For more information on how to use the Grafana Drilldown Logs feature, see [Drilldown Logs](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
 
-6. (Optional) You can check all the containers are running by running the following command:
+## Collect Logs from a sample application
 
-   ```bash
-   docker ps -a
-   ```
+Currently, the Loki stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivourous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
+- **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
+- **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
+- **Simulation Service:** Generates sensor data for each plant.
+- **Websocket Service:** Manages the websocket connections for the application.
+- **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
+- **Main App:** The main application that ties all the services together.
+- **Database:** A database that stores user and plant data.
 
+The architecture of the application is shown below:
 
-<!-- INTERACTIVE page step1.md END -->
+{{< figure max-width="100%" src="/media/docs/loki/get-started-architecture.png" caption="Getting started sample application" alt="Getting started sample application" >}}
 
-<!-- INTERACTIVE page step2.md START -->
+To deploy the sample application, follow these steps:
 
-## View your logs in Grafana
+1. With `loki-fundamentals` as the current working directory, deploy the sample application using Docker Compose:
 
-After you have collected logs, you will want to view them.
-You can view your logs using the command line interface, [LogCLI](/docs/loki/<LOKI_VERSION>/query/logcli/), but the easiest way to view your logs is with Grafana.
+     ```bash
+     docker compose -f greenhouse/docker-compose-micro.yml up -d --build  
+     ```
+     {{< admonition type="note" >}}
+     This may take a few minutes to complete since the images for the sample application need to be built. Go grab a coffee and come back.
+     {{< /admonition >}}
 
-1. Use Grafana to query the Loki data source.
+     Once the command completes, you should see something similar to the following:
 
-   The test environment includes [Grafana](https://grafana.com/docs/grafana/latest/), which you can use to query and observe the sample logs generated by the flog application.
+     ```console
+       ✔ bug_service                                Built     0.0s 
+       ✔ main_app                                   Built     0.0s 
+       ✔ plant_service                              Built     0.0s 
+       ✔ simulation_service                         Built     0.0s 
+       ✔ user_service                               Built     0.0s 
+       ✔ websocket_service                          Built     0.0s 
+       ✔ Container greenhouse-websocket_service-1   Started   0.7s 
+       ✔ Container greenhouse-db-1                  Started   0.7s 
+       ✔ Container greenhouse-user_service-1        Started   0.8s 
+       ✔ Container greenhouse-bug_service-1         Started   0.8s 
+       ✔ Container greenhouse-plant_service-1       Started   0.8s 
+       ✔ Container greenhouse-simulation_service-1  Started   0.7s 
+       ✔ Container greenhouse-main_app-1            Started   0.7s
+     ```
 
-   You can access the Grafana cluster by browsing to [http://localhost:3000](http://localhost:3000).
+1. To verify the sample application is running, open a browser and navigate to [http://localhost:5005](http://localhost:5005). You should see the login page for the Carnivorous Greenhouse application.
 
-   The Grafana instance in this demonstration has a Loki [data source](https://grafana.com/docs/grafana/latest/datasources/loki/) already configured.
+   {{< figure max-width="100%" src="/media/docs/loki/get-started-login.png" caption="Getting started sample application" alt="Getting started sample application" >}}
 
-   {{< figure src="/media/docs/loki/grafana-query-builder-v2.png" caption="Grafana Explore" alt="Grafana Explore" >}}
+   Now that the sample application is running, run some actions in the application to generate logs. Here is a list of actions:
+   - **Create a user:** Click **Sign Up** and create a new user. Add a username and password and click **Sign Up**.
+   - **Login:** Use the username and password you created to login. Add the username and password and click **Login**.
+   - **Create a plant:** Once logged in, give your plant a name, select a plant type and click **Add Plant**. Do this a few times if you like.
+
+  Your greenhouse should look something like this:
+
+  {{< figure max-width="100%" src="/media/docs/loki/get-started-greenhouse.png" caption="Greenhouse Dashboard" alt="Greenhouse Dashboard" >}} 
+
+  Now that you have generated some logs, you can view them in Grafana. To do this, navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
+
+## Querying Logs
+
+At this point, you have viewed logs using the Grafana Drilldown Logs feature. In many cases this will provide you with all the information you need. However, we can also manually query Loki to ask more advanced questions about the logs. This can be done via the **Grafana Explore**.
+
+1. Open a browser and navigate to [http://localhost:3000](http://localhost:3000) to open Grafana.
 
 1. From the Grafana main menu, click the **Explore** icon (1) to open the Explore tab.
 
@@ -198,17 +181,12 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
 
 1. Click **Code** (3) to work in Code mode in the query editor.
 
-   Here are some sample queries to get you started using LogQL.
-   These queries assume that you followed the instructions to create a directory called `evaluate-loki`.
-
-   If you installed in a different directory, you’ll need to modify these queries to match your installation directory.
-
-   After copying any of these queries into the query editor, click **Run Query** (4) to execute the query.
+   Here are some sample queries to get you started using LogQL. After copying any of these queries into the query editor, click **Run Query** (4) to execute the query.
 
    1. View all the log lines which have the container label `evaluate-loki-flog-1`:
       <!-- INTERACTIVE copy START -->
       ```bash
-      {container="evaluate-loki-flog-1"}
+      {container="greenhouse-main_app-1"}
       ```
       <!-- INTERACTIVE copy END -->
       In Loki, this is a log stream.
@@ -216,143 +194,64 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
       Loki uses [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) as metadata to describe log streams.
 
       Loki queries always start with a label selector.
-      In the previous query, the label selector is `{container="evaluate-loki-flog-1"}`.
+      In the previous query, the label selector is `{container="greenhouse-main_app-1"}`.
 
-   1. To view all the log lines which have the container label `evaluate-loki-grafana-1`:
+      <!-- INTERACTIVE copy END -->
+   2. Find all the log lines in the `{container="greenhouse-main_app-1"}` stream that contain the string `POST`:
       <!-- INTERACTIVE copy START -->
       ```bash
-      {container="evaluate-loki-grafana-1"}
+      {container="greenhouse-main_app-1"} |= `POST`
       ```
       <!-- INTERACTIVE copy END -->
-   1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream that contain the string `status`:
-      <!-- INTERACTIVE copy START -->
-      ```bash
-      {container="evaluate-loki-flog-1"} |= `status`
-      ```
-      <!-- INTERACTIVE copy END -->
-   1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream where the JSON field `status` has the value `404`:
-      <!-- INTERACTIVE copy START -->
-      ```bash
-      {container="evaluate-loki-flog-1"} | json | status=`404`
-      ```
-      <!-- INTERACTIVE copy END -->
-   1. Calculate the number of logs per second where the JSON field `status` has the value `404`:
-      <!-- INTERACTIVE copy START -->
-      ```bash
-      sum by(container) (rate({container="evaluate-loki-flog-1"} | json | status=`404` [$__auto]))
-      ```
-      <!-- INTERACTIVE copy END -->
-   The final query is a metric query which returns a time series.
-   This makes Grafana draw a graph of the results.
 
-   You can change the type of graph for a different view of the data.
-   Click **Bars** to view a bar graph of the data.
+### Extracting Attributes from Logs
 
-1. Click the **Builder** tab (3) to return to builder mode in the query editor.
-   1. In builder mode, click **Kick start your query** (5).
-   1. Expand the **Log query starters** section.
-   1. Select the first choice, **Parse log lines with logfmt parser**, by clicking **Use this query**.
-   1. On the Explore tab, click **Label browser**, in the dialog select a container and click **Show logs**.
-
-For a thorough introduction to LogQL, refer to the [LogQL reference](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
-
-## Sample queries (code view)
-
-Here are some more sample queries that you can run using the Flog sample data.
-
-To see all the log lines that flog has generated, enter the LogQL query:
+Loki by design does not force log lines into a specific schema format. Whether you are using JSON, key-value pairs, or plain text, Logfmt, or any other format, Loki ingests these logs lines as a stream of characters. The sample application we are using stores logs in [Logfmt](https://brandur.org/logfmt) format:
 <!-- INTERACTIVE copy START -->
 ```bash
-{container="evaluate-loki-flog-1"}
+ts=2025-02-21 16:09:42,176 level=INFO line=97 msg="192.168.65.1 - - [21/Feb/2025 16:09:42] "GET /static/style.css HTTP/1.1" 304 -"
 ```
 <!-- INTERACTIVE copy END -->
-The flog app generates log lines for simulated HTTP requests.
-
-To see all `GET` log lines, enter the LogQL query:
+When querying Loki, you can pipe the result of the label selector through a formatter. This extracts attributes from the log line for further processing. For example lets pipe `{container="greenhouse-main_app-1"}` through the `logfmt` formatter to extract the `level` and `line` attributes:
 <!-- INTERACTIVE copy START -->
 ```bash
-{container="evaluate-loki-flog-1"} |= "GET"
+{container="greenhouse-main_app-1"} | logfmt
 ```
 <!-- INTERACTIVE copy END -->
-To see all `POST` methods, enter the LogQL query:
+When you now expand a log line in the query result, you will see the extracted attributes.
+
+**Before we move on** to the next section, let's generate some error logs. To do this, enable the bug service in the sample application. This is done by setting the `Toggle Error Mode` to `On` in the Carnivorous Greenhouse application. This will cause the bug service to randomly cause services to fail.
+
+### Advanced and Metrics Queries
+
+Now that are sample application is failing, we can query Loki to find the error logs. Lets start by parsing the logs to extract the `level` attribute and then filter for logs with a `level` of `ERROR`:
 <!-- INTERACTIVE copy START -->
 ```bash
-{container="evaluate-loki-flog-1"} |= "POST"
+{container="greenhouse-plant_service-1"} | logfmt | level="ERROR"
 ```
 <!-- INTERACTIVE copy END -->
-To see every log line with a 401 status (unauthorized error), enter the LogQL query:
+This query will return all the logs from the `greenhouse-plant_service-1` container that have a `level` attribute of `ERROR`. You can further refine this query by filtering for a specific code line:
 <!-- INTERACTIVE copy START -->
 ```bash
-{container="evaluate-loki-flog-1"} | json | status="401"
+{container="greenhouse-plant_service-1"} | logfmt | level="ERROR", line="58"
 ```
 <!-- INTERACTIVE copy END -->
-To see every log line that doesn't contain the text `401`:
+This query will return all the logs from the `greenhouse-plant_service-1` container that have a `level` attribute of `ERROR` and a `line` attribute of `58`.
+
+LogQL also supports metrics queries. Metrics are useful for abstracting the raw log data into a more manageable form. For example, you can use metrics to count the number of logs per second that have a specific attribute:
 <!-- INTERACTIVE copy START -->
 ```bash
-{container="evaluate-loki-flog-1"} != "401"
+sum(rate({container="greenhouse-plant_service-1"} | logfmt | level=`ERROR` [$__auto]))
 ```
 <!-- INTERACTIVE copy END -->
-For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
-## Loki data source in Grafana
-
-In this example, the Loki data source is already configured in Grafana. This can be seen within the `docker-compose.yaml` file:
-
-```yaml
-  grafana:
-    image: grafana/grafana:latest
-    environment:
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-    depends_on:
-      - gateway
-    entrypoint:
-      - sh
-      - -euc
-      - |
-        mkdir -p /etc/grafana/provisioning/datasources
-        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
-        apiVersion: 1
-        datasources:
-          - name: Loki
-            type: loki
-            access: proxy
-            url: http://gateway:3100
-            jsonData:
-              httpHeaderName1: "X-Scope-OrgID"
-            secureJsonData:
-              httpHeaderValue1: "tenant1"
-        EOF
-        /run.sh
+Another example is to get the top 10 services producing the highest rate of errors:
+<!-- INTERACTIVE copy START -->
+```bash
+topk(10,sum(rate({level="error"} | logfmt [5m])) by (service_name))
 ```
-Within the entrypoint section, the Loki data source is configured with the following details:
-- `Name: Loki` (name of the data source)
-- `Type: loki` (type of data source)
-- `Access: proxy` (access type)
-- `URL: http://gateway:3100` (URL of the Loki data source. Loki uses an nginx gateway to direct traffic to the appropriate component)
-- `jsonData.httpHeaderName1: "X-Scope-OrgID"` (header name for the organization ID)
-- `secureJsonData.httpHeaderValue1: "tenant1"` (header value for the organization ID)
+{{< admonition type="note" >}}
+`service_name` is a label created by Loki when no service name is provided in the log line. It will use the container name as the service name. A list of all labels can be found in [Labels](https://grafana.com/docs/loki/latest/get-started/labels/#default-labels-for-all-users).
+{{< /admonition >}}
 
-It is important to note when Loki is configured in any other mode other than monolithic deployment, you are required to pass a tenant ID in the header. Without this, queries will return an authorization error.
-
-<!-- INTERACTIVE page step2.md END -->
-
-<!-- INTERACTIVE page finish.md START -->
-
-## Complete metrics, logs, traces, and profiling example
-
-You have completed the Loki Quickstart demo. So where to go next?
-
-{{< docs/ignore >}}
-## Back to docs
-Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/get-started/quick-start/).
-{{< /docs/ignore >}}
-
-If you would like to run a demonstration environment that includes Mimir, Loki, Tempo, and Grafana, you can use [Introduction to Metrics, Logs, Traces, and Profiling in Grafana](https://github.com/grafana/intro-to-mlt).
-It's a self-contained environment for learning about Mimir, Loki, Tempo, and Grafana.
-
-The project includes detailed explanations of each component and annotated configurations for a single-instance deployment.
-You can also push the data from the environment to [Grafana Cloud](https://grafana.com/cloud/).
-
-<!-- INTERACTIVE page finish.md END -->
+## Alerting on Logs
