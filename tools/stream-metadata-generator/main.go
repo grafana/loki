@@ -40,7 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/limits/frontend"
-	frontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
@@ -101,7 +101,7 @@ type config struct {
 
 	// Frontend ring config
 	FrontendLifecyclerConfig ring.LifecyclerConfig `yaml:"frontend_lifecycler,omitempty"`
-	FrontendClientConfig     frontendclient.Config `yaml:"frontend_client,omitempty"`
+	FrontendClientConfig     frontend_client.Config `yaml:"frontend_client,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -227,10 +227,10 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	}
 
 	factory := ringclient.PoolAddrFunc(func(addr string) (ringclient.PoolClient, error) {
-		return frontendclient.New(cfg.FrontendClientConfig, addr)
+		return frontend_client.NewClient(cfg.FrontendClientConfig, addr)
 	})
 
-	s.frontentClientPool = frontendclient.NewPool(frontend.RingName, cfg.FrontendClientConfig.PoolConfig, s.frontendRing, factory, logger)
+	s.frontentClientPool = frontend_client.NewPool(frontend.RingName, cfg.FrontendClientConfig.PoolConfig, s.frontendRing, factory, logger)
 
 	// Init services
 	srvs := []services.Service{
@@ -254,7 +254,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 
 var frontendReadOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
-func (s *generator) getFrontendClient() (*frontendclient.Client, error) {
+func (s *generator) getFrontendClient() (*frontend_client.Client, error) {
 	instances, err := s.frontendRing.GetAllHealthy(frontendReadOp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingest limits frontend instances: %w", err)
@@ -269,7 +269,7 @@ func (s *generator) getFrontendClient() (*frontendclient.Client, error) {
 		return nil, fmt.Errorf("failed to get ingest limits frontend client: %w", err)
 	}
 
-	return client.(*frontendclient.Client), nil
+	return client.(*frontend_client.Client), nil
 }
 
 func (s *generator) starting(ctx context.Context) error {
