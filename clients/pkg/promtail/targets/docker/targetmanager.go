@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -61,7 +60,7 @@ func NewTargetManager(
 		positions: positions,
 		manager: discovery.NewManager(
 			ctx,
-			util_log.SlogFromGoKit(log.With(logger, "component", "docker_discovery")),
+			log.With(logger, "component", "docker_discovery"),
 			noopRegistry,
 			noopSdMetrics,
 		),

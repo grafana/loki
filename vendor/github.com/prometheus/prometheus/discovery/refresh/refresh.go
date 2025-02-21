@@ -16,17 +16,17 @@ package refresh
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
-	"github.com/prometheus/common/promslog"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
 type Options struct {
-	Logger              *slog.Logger
+	Logger              log.Logger
 	Mech                string
 	Interval            time.Duration
 	RefreshF            func(ctx context.Context) ([]*targetgroup.Group, error)
@@ -35,7 +35,7 @@ type Options struct {
 
 // Discovery implements the Discoverer interface.
 type Discovery struct {
-	logger   *slog.Logger
+	logger   log.Logger
 	interval time.Duration
 	refreshf func(ctx context.Context) ([]*targetgroup.Group, error)
 	metrics  *discovery.RefreshMetrics
@@ -45,9 +45,9 @@ type Discovery struct {
 func NewDiscovery(opts Options) *Discovery {
 	m := opts.MetricsInstantiator.Instantiate(opts.Mech)
 
-	var logger *slog.Logger
+	var logger log.Logger
 	if opts.Logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	} else {
 		logger = opts.Logger
 	}
@@ -68,7 +68,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 	tgs, err := d.refresh(ctx)
 	if err != nil {
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			d.logger.Error("Unable to refresh target groups", "err", err.Error())
+			level.Error(d.logger).Log("msg", "Unable to refresh target groups", "err", err.Error())
 		}
 	} else {
 		select {
@@ -87,7 +87,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 			tgs, err := d.refresh(ctx)
 			if err != nil {
 				if !errors.Is(ctx.Err(), context.Canceled) {
-					d.logger.Error("Unable to refresh target groups", "err", err.Error())
+					level.Error(d.logger).Log("msg", "Unable to refresh target groups", "err", err.Error())
 				}
 				continue
 			}

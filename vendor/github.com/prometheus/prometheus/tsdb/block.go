@@ -20,15 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
-
-	"github.com/prometheus/common/promslog"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -81,10 +80,6 @@ type IndexReader interface {
 	// PostingsForLabelMatching returns a sorted iterator over postings having a label with the given name and a value for which match returns true.
 	// If no postings are found having at least one matching label, an empty iterator is returned.
 	PostingsForLabelMatching(ctx context.Context, name string, match func(value string) bool) index.Postings
-
-	// PostingsForAllLabelValues returns a sorted iterator over all postings having a label with the given name.
-	// If no postings are found with the label in question, an empty iterator is returned.
-	PostingsForAllLabelValues(ctx context.Context, name string) index.Postings
 
 	// SortedPostings returns a postings list that is reordered to be sorted
 	// by the label set of the underlying series.
@@ -221,7 +216,7 @@ type BlockMetaCompaction struct {
 }
 
 func (bm *BlockMetaCompaction) SetOutOfOrder() {
-	if bm.FromOutOfOrder() {
+	if bm.containsHint(CompactionHintFromOutOfOrder) {
 		return
 	}
 	bm.Hints = append(bm.Hints, CompactionHintFromOutOfOrder)
@@ -229,7 +224,16 @@ func (bm *BlockMetaCompaction) SetOutOfOrder() {
 }
 
 func (bm *BlockMetaCompaction) FromOutOfOrder() bool {
-	return slices.Contains(bm.Hints, CompactionHintFromOutOfOrder)
+	return bm.containsHint(CompactionHintFromOutOfOrder)
+}
+
+func (bm *BlockMetaCompaction) containsHint(hint string) bool {
+	for _, h := range bm.Hints {
+		if h == hint {
+			return true
+		}
+	}
+	return false
 }
 
 const (
@@ -261,7 +265,7 @@ func readMetaFile(dir string) (*BlockMeta, int64, error) {
 	return &m, int64(len(b)), nil
 }
 
-func writeMetaFile(logger *slog.Logger, dir string, meta *BlockMeta) (int64, error) {
+func writeMetaFile(logger log.Logger, dir string, meta *BlockMeta) (int64, error) {
 	meta.Version = metaVersion1
 
 	// Make any changes to the file appear atomic.
@@ -269,7 +273,7 @@ func writeMetaFile(logger *slog.Logger, dir string, meta *BlockMeta) (int64, err
 	tmp := path + ".tmp"
 	defer func() {
 		if err := os.RemoveAll(tmp); err != nil {
-			logger.Error("remove tmp file", "err", err.Error())
+			level.Error(logger).Log("msg", "remove tmp file", "err", err.Error())
 		}
 	}()
 
@@ -315,7 +319,7 @@ type Block struct {
 	indexr     IndexReader
 	tombstones tombstones.Reader
 
-	logger *slog.Logger
+	logger log.Logger
 
 	numBytesChunks    int64
 	numBytesIndex     int64
@@ -325,9 +329,9 @@ type Block struct {
 
 // OpenBlock opens the block in the directory. It can be passed a chunk pool, which is used
 // to instantiate chunk structs.
-func OpenBlock(logger *slog.Logger, dir string, pool chunkenc.Pool, postingsDecoderFactory PostingsDecoderFactory) (pb *Block, err error) {
+func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, err error) {
 	if logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	}
 	var closers []io.Closer
 	defer func() {
@@ -346,11 +350,7 @@ func OpenBlock(logger *slog.Logger, dir string, pool chunkenc.Pool, postingsDeco
 	}
 	closers = append(closers, cr)
 
-	decoder := index.DecodePostingsRaw
-	if postingsDecoderFactory != nil {
-		decoder = postingsDecoderFactory(meta)
-	}
-	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename), decoder)
+	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename))
 	if err != nil {
 		return nil, err
 	}
@@ -524,10 +524,6 @@ func (r blockIndexReader) Postings(ctx context.Context, name string, values ...s
 
 func (r blockIndexReader) PostingsForLabelMatching(ctx context.Context, name string, match func(string) bool) index.Postings {
 	return r.ir.PostingsForLabelMatching(ctx, name, match)
-}
-
-func (r blockIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
-	return r.ir.PostingsForAllLabelValues(ctx, name)
 }
 
 func (r blockIndexReader) SortedPostings(p index.Postings) index.Postings {

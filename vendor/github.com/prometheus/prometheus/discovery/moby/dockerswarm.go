@@ -15,15 +15,14 @@ package moby
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -37,6 +36,8 @@ import (
 const (
 	swarmLabel = model.MetaLabelPrefix + "dockerswarm_"
 )
+
+var userAgent = fmt.Sprintf("Prometheus/%s", version.Version)
 
 // DefaultDockerSwarmSDConfig is the default Docker Swarm SD configuration.
 var DefaultDockerSwarmSDConfig = DockerSwarmSDConfig{
@@ -98,7 +99,7 @@ func (c *DockerSwarmSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) e
 		return err
 	}
 	if c.Host == "" {
-		return errors.New("host missing")
+		return fmt.Errorf("host missing")
 	}
 	if _, err = url.Parse(c.Host); err != nil {
 		return err
@@ -106,7 +107,7 @@ func (c *DockerSwarmSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) e
 	switch c.Role {
 	case "services", "nodes", "tasks":
 	case "":
-		return errors.New("role missing (one of: tasks, services, nodes)")
+		return fmt.Errorf("role missing (one of: tasks, services, nodes)")
 	default:
 		return fmt.Errorf("invalid role %s, expected tasks, services, or nodes", c.Role)
 	}
@@ -124,10 +125,10 @@ type Discovery struct {
 }
 
 // NewDiscovery returns a new Discovery which periodically refreshes its targets.
-func NewDiscovery(conf *DockerSwarmSDConfig, logger *slog.Logger, metrics discovery.DiscovererMetrics) (*Discovery, error) {
+func NewDiscovery(conf *DockerSwarmSDConfig, logger log.Logger, metrics discovery.DiscovererMetrics) (*Discovery, error) {
 	m, ok := metrics.(*dockerswarmMetrics)
 	if !ok {
-		return nil, errors.New("invalid discovery metrics type")
+		return nil, fmt.Errorf("invalid discovery metrics type")
 	}
 
 	d := &Discovery{
@@ -167,7 +168,7 @@ func NewDiscovery(conf *DockerSwarmSDConfig, logger *slog.Logger, metrics discov
 			}),
 			client.WithScheme(hostURL.Scheme),
 			client.WithHTTPHeaders(map[string]string{
-				"User-Agent": version.PrometheusUserAgent(),
+				"User-Agent": userAgent,
 			}),
 		)
 	}

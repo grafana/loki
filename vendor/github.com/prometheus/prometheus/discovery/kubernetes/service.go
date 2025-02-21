@@ -17,13 +17,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"strconv"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promslog"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -33,16 +33,16 @@ import (
 
 // Service implements discovery of Kubernetes services.
 type Service struct {
-	logger   *slog.Logger
+	logger   log.Logger
 	informer cache.SharedInformer
 	store    cache.Store
 	queue    *workqueue.Type
 }
 
 // NewService returns a new service discovery.
-func NewService(l *slog.Logger, inf cache.SharedInformer, eventCount *prometheus.CounterVec) *Service {
+func NewService(l log.Logger, inf cache.SharedInformer, eventCount *prometheus.CounterVec) *Service {
 	if l == nil {
-		l = promslog.NewNopLogger()
+		l = log.NewNopLogger()
 	}
 
 	svcAddCount := eventCount.WithLabelValues(RoleService.String(), MetricLabelRoleAdd)
@@ -71,7 +71,7 @@ func NewService(l *slog.Logger, inf cache.SharedInformer, eventCount *prometheus
 		},
 	})
 	if err != nil {
-		l.Error("Error adding services event handler.", "err", err)
+		level.Error(l).Log("msg", "Error adding services event handler.", "err", err)
 	}
 	return s
 }
@@ -91,7 +91,7 @@ func (s *Service) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 
 	if !cache.WaitForCacheSync(ctx.Done(), s.informer.HasSynced) {
 		if !errors.Is(ctx.Err(), context.Canceled) {
-			s.logger.Error("service informer unable to sync cache")
+			level.Error(s.logger).Log("msg", "service informer unable to sync cache")
 		}
 		return
 	}
@@ -128,7 +128,7 @@ func (s *Service) process(ctx context.Context, ch chan<- []*targetgroup.Group) b
 	}
 	eps, err := convertToService(o)
 	if err != nil {
-		s.logger.Error("converting to Service object failed", "err", err)
+		level.Error(s.logger).Log("msg", "converting to Service object failed", "err", err)
 		return true
 	}
 	send(ctx, ch, s.buildService(eps))

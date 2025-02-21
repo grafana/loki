@@ -233,7 +233,7 @@ type Config interface {
 }
 
 type DiscovererOptions struct {
-	Logger *slog.Logger
+	Logger log.Logger
 
 	// A registerer for the Discoverer's metrics.
 	Registerer prometheus.Registerer

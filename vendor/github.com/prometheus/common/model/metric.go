@@ -28,13 +28,13 @@ import (
 
 var (
 	// NameValidationScheme determines the method of name validation to be used by
-	// all calls to IsValidMetricName() and LabelName IsValid(). Setting UTF-8
-	// mode in isolation from other components that don't support UTF-8 may result
-	// in bugs or other undefined behavior. This value can be set to
-	// LegacyValidation during startup if a binary is not UTF-8-aware binaries. To
-	// avoid need for locking, this value should be set once, ideally in an
-	// init(), before multiple goroutines are started.
-	NameValidationScheme = UTF8Validation
+	// all calls to IsValidMetricName() and LabelName IsValid(). Setting UTF-8 mode
+	// in isolation from other components that don't support UTF-8 may result in
+	// bugs or other undefined behavior. This value is intended to be set by
+	// UTF-8-aware binaries as part of their startup. To avoid need for locking,
+	// this value should be set once, ideally in an init(), before multiple
+	// goroutines are started.
+	NameValidationScheme = LegacyValidation
 
 	// NameEscapingScheme defines the default way that names will be escaped when
 	// presented to systems that do not support UTF-8 names. If the Content-Type

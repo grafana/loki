@@ -16,10 +16,11 @@ package tsdbutil
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
@@ -33,7 +34,7 @@ const (
 )
 
 type DirLocker struct {
-	logger *slog.Logger
+	logger log.Logger
 
 	createdCleanly prometheus.Gauge
 
@@ -42,7 +43,7 @@ type DirLocker struct {
 }
 
 // NewDirLocker creates a DirLocker that can obtain an exclusive lock on dir.
-func NewDirLocker(dir, subsystem string, l *slog.Logger, r prometheus.Registerer) (*DirLocker, error) {
+func NewDirLocker(dir, subsystem string, l log.Logger, r prometheus.Registerer) (*DirLocker, error) {
 	lock := &DirLocker{
 		logger: l,
 		createdCleanly: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -73,7 +74,7 @@ func (l *DirLocker) Lock() error {
 	}
 
 	if _, err := os.Stat(l.path); err == nil {
-		l.logger.Warn("A lockfile from a previous execution already existed. It was replaced", "file", l.path)
+		level.Warn(l.logger).Log("msg", "A lockfile from a previous execution already existed. It was replaced", "file", l.path)
 
 		l.createdCleanly.Set(lockfileReplaced)
 	} else {

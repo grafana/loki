@@ -20,6 +20,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"math"
+	"unsafe"
 
 	"github.com/dennwc/varint"
 )
@@ -74,7 +75,8 @@ func (e *Encbuf) PutVarint64(x int64) {
 
 // PutUvarintStr writes a string to the buffer prefixed by its varint length (in bytes!).
 func (e *Encbuf) PutUvarintStr(s string) {
-	e.PutUvarint(len(s))
+	b := *(*[]byte)(unsafe.Pointer(&s))
+	e.PutUvarint(len(b))
 	e.PutString(s)
 }
 
@@ -199,9 +201,8 @@ func (d *Decbuf) UvarintStr() string {
 	return string(d.UvarintBytes())
 }
 
-// UvarintBytes returns a pointer to internal data;
-// the return value becomes invalid if the byte slice goes away.
-// Compared to UvarintStr, this avoids allocations.
+// UvarintBytes returns invalid values if the byte slice goes away.
+// Compared to UvarintStr, it avoid allocations.
 func (d *Decbuf) UvarintBytes() []byte {
 	l := d.Uvarint64()
 	if d.E != nil {

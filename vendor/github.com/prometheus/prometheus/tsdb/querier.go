@@ -193,11 +193,6 @@ func selectChunkSeriesSet(ctx context.Context, sortSeries bool, hints *storage.S
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
 func PostingsForMatchers(ctx context.Context, ix IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
-	if len(ms) == 1 && ms[0].Name == "" && ms[0].Value == "" {
-		k, v := index.AllPostingsKey()
-		return ix.Postings(ctx, k, v)
-	}
-
 	var its, notIts []index.Postings
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.
@@ -252,27 +247,13 @@ func PostingsForMatchers(ctx context.Context, ix IndexReader, ms ...*labels.Matc
 			return nil, ctx.Err()
 		}
 		switch {
-		case m.Name == "" && m.Value == "":
-			// We already handled the case at the top of the function,
-			// and it is unexpected to get all postings again here.
-			return nil, errors.New("unexpected all postings")
-
-		case m.Type == labels.MatchRegexp && m.Value == ".*":
-			// .* regexp matches any string: do nothing.
-		case m.Type == labels.MatchNotRegexp && m.Value == ".*":
-			return index.EmptyPostings(), nil
-
-		case m.Type == labels.MatchRegexp && m.Value == ".+":
-			// .+ regexp matches any non-empty string: get postings for all label values.
-			it := ix.PostingsForAllLabelValues(ctx, m.Name)
-			if index.IsEmptyPostingsType(it) {
-				return index.EmptyPostings(), nil
+		case m.Name == "" && m.Value == "": // Special-case for AllPostings, used in tests at least.
+			k, v := index.AllPostingsKey()
+			allPostings, err := ix.Postings(ctx, k, v)
+			if err != nil {
+				return nil, err
 			}
-			its = append(its, it)
-		case m.Type == labels.MatchNotRegexp && m.Value == ".+":
-			// .+ regexp matches any non-empty string: get postings for all label values and remove them.
-			notIts = append(notIts, ix.PostingsForAllLabelValues(ctx, m.Name))
-
+			its = append(its, allPostings)
 		case labelMustBeSet[m.Name]:
 			// If this matcher must be non-empty, we can be smarter.
 			matchesEmpty := m.Matches("")
@@ -307,7 +288,7 @@ func PostingsForMatchers(ctx context.Context, ix IndexReader, ms ...*labels.Matc
 					return index.EmptyPostings(), nil
 				}
 				its = append(its, it)
-			default: // l="a", l=~"a|b", l=~"a.b", etc.
+			default: // l="a"
 				// Non-Not matcher, use normal postingsForMatcher.
 				it, err := postingsForMatcher(ctx, ix, m)
 				if err != nil {
@@ -378,16 +359,29 @@ func inversePostingsForMatcher(ctx context.Context, ix IndexReader, m *labels.Ma
 		return ix.Postings(ctx, m.Name, m.Value)
 	}
 
-	// If the matcher being inverted is =~"" or ="", we just want all the values.
-	if m.Value == "" && (m.Type == labels.MatchRegexp || m.Type == labels.MatchEqual) {
-		it := ix.PostingsForAllLabelValues(ctx, m.Name)
-		return it, it.Err()
+	vals, err := ix.LabelValues(ctx, m.Name)
+	if err != nil {
+		return nil, err
 	}
 
-	it := ix.PostingsForLabelMatching(ctx, m.Name, func(s string) bool {
-		return !m.Matches(s)
-	})
-	return it, it.Err()
+	res := vals[:0]
+	// If the match before inversion was !="" or !~"", we just want all the values.
+	if m.Value == "" && (m.Type == labels.MatchRegexp || m.Type == labels.MatchEqual) {
+		res = vals
+	} else {
+		count := 1
+		for _, val := range vals {
+			if count%checkContextEveryNIterations == 0 && ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			count++
+			if !m.Matches(val) {
+				res = append(res, val)
+			}
+		}
+	}
+
+	return ix.Postings(ctx, m.Name, res...)
 }
 
 func labelValuesWithMatchers(ctx context.Context, r IndexReader, name string, matchers ...*labels.Matcher) ([]string, error) {
@@ -1024,9 +1018,9 @@ func (p *populateWithDelChunkSeriesIterator) populateChunksFromIterable() bool {
 		if newChunk != nil {
 			if !recoded {
 				p.chunksFromIterable = append(p.chunksFromIterable, chunks.Meta{Chunk: currentChunk, MinTime: cmint, MaxTime: cmaxt})
-				cmint = t
 			}
 			currentChunk = newChunk
+			cmint = t
 		}
 
 		cmaxt = t

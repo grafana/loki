@@ -13,10 +13,9 @@ import (
 	"github.com/grafana/dskit/user"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	common_sigv4 "github.com/prometheus/common/sigv4"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
-	prom_sigv4 "github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -210,7 +209,7 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 				},
 			},
 			sigV4ConfigTenant: {
-				RulerRemoteWriteSigV4Config: &common_sigv4.SigV4Config{
+				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
 					Region: sigV4TenantRegion,
 				},
 			},
@@ -283,7 +282,7 @@ func newFakeLimits() fakeLimits {
 			sigV4ConfigTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
 					remote1: {
-						SigV4Config: &prom_sigv4.SigV4Config{
+						SigV4Config: &sigv4.SigV4Config{
 							Region: sigV4TenantRegion,
 						},
 					},
@@ -339,7 +338,7 @@ func setupSigV4Registry(t *testing.T, cfg Config, limits fakeLimits) *walRegistr
 	// Remove the basic auth config and replace with sigv4
 	for id, clt := range reg.config.RemoteWrite.Clients {
 		clt.HTTPClientConfig.BasicAuth = nil
-		clt.SigV4Config = &prom_sigv4.SigV4Config{
+		clt.SigV4Config = &sigv4.SigV4Config{
 			Region: sigV4GlobalRegion,
 		}
 		reg.config.RemoteWrite.Clients[id] = clt

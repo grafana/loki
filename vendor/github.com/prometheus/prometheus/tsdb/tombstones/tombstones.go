@@ -19,12 +19,14 @@ import (
 	"fmt"
 	"hash"
 	"hash/crc32"
-	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -74,7 +76,7 @@ type Reader interface {
 	Close() error
 }
 
-func WriteFile(logger *slog.Logger, dir string, tr Reader) (int64, error) {
+func WriteFile(logger log.Logger, dir string, tr Reader) (int64, error) {
 	path := filepath.Join(dir, TombstonesFilename)
 	tmp := path + ".tmp"
 	hash := newCRC32()
@@ -87,11 +89,11 @@ func WriteFile(logger *slog.Logger, dir string, tr Reader) (int64, error) {
 	defer func() {
 		if f != nil {
 			if err := f.Close(); err != nil {
-				logger.Error("close tmp file", "err", err.Error())
+				level.Error(logger).Log("msg", "close tmp file", "err", err.Error())
 			}
 		}
 		if err := os.RemoveAll(tmp); err != nil {
-			logger.Error("remove tmp file", "err", err.Error())
+			level.Error(logger).Log("msg", "remove tmp file", "err", err.Error())
 		}
 	}()
 

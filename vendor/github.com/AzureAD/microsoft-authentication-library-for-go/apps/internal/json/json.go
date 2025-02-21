@@ -18,6 +18,10 @@ import (
 )
 
 const addField = "AdditionalFields"
+const (
+	marshalJSON   = "MarshalJSON"
+	unmarshalJSON = "UnmarshalJSON"
+)
 
 var (
 	leftBrace  = []byte("{")[0]
@@ -102,36 +106,46 @@ func delimIs(got json.Token, want rune) bool {
 // hasMarshalJSON will determine if the value or a pointer to this value has
 // the MarshalJSON method.
 func hasMarshalJSON(v reflect.Value) bool {
-	ok := false
-	if _, ok = v.Interface().(json.Marshaler); !ok {
-		var i any
-		if v.Kind() == reflect.Ptr {
-			i = v.Elem().Interface()
-		} else if v.CanAddr() {
-			i = v.Addr().Interface()
-		}
-		_, ok = i.(json.Marshaler)
+	if method := v.MethodByName(marshalJSON); method.Kind() != reflect.Invalid {
+		_, ok := v.Interface().(json.Marshaler)
+		return ok
 	}
-	return ok
+
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	} else {
+		if !v.CanAddr() {
+			return false
+		}
+		v = v.Addr()
+	}
+
+	if method := v.MethodByName(marshalJSON); method.Kind() != reflect.Invalid {
+		_, ok := v.Interface().(json.Marshaler)
+		return ok
+	}
+	return false
 }
 
 // callMarshalJSON will call MarshalJSON() method on the value or a pointer to this value.
 // This will panic if the method is not defined.
 func callMarshalJSON(v reflect.Value) ([]byte, error) {
-	if marsh, ok := v.Interface().(json.Marshaler); ok {
+	if method := v.MethodByName(marshalJSON); method.Kind() != reflect.Invalid {
+		marsh := v.Interface().(json.Marshaler)
 		return marsh.MarshalJSON()
 	}
 
 	if v.Kind() == reflect.Ptr {
-		if marsh, ok := v.Elem().Interface().(json.Marshaler); ok {
-			return marsh.MarshalJSON()
-		}
+		v = v.Elem()
 	} else {
 		if v.CanAddr() {
-			if marsh, ok := v.Addr().Interface().(json.Marshaler); ok {
-				return marsh.MarshalJSON()
-			}
+			v = v.Addr()
 		}
+	}
+
+	if method := v.MethodByName(unmarshalJSON); method.Kind() != reflect.Invalid {
+		marsh := v.Interface().(json.Marshaler)
+		return marsh.MarshalJSON()
 	}
 
 	panic(fmt.Sprintf("callMarshalJSON called on type %T that does not have MarshalJSON defined", v.Interface()))
@@ -148,8 +162,12 @@ func hasUnmarshalJSON(v reflect.Value) bool {
 		v = v.Addr()
 	}
 
-	_, ok := v.Interface().(json.Unmarshaler)
-	return ok
+	if method := v.MethodByName(unmarshalJSON); method.Kind() != reflect.Invalid {
+		_, ok := v.Interface().(json.Unmarshaler)
+		return ok
+	}
+
+	return false
 }
 
 // hasOmitEmpty indicates if the field has instructed us to not output

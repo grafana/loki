@@ -1,6 +1,3 @@
-// Code created by gotmpl. DO NOT MODIFY.
-// source: internal/shared/semconv/v120.0.go.tmpl
-
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvutil"
 	"go.opentelemetry.io/otel/attribute"
@@ -146,7 +144,7 @@ func (o OldHTTPServer) MetricAttributes(server string, req *http.Request, status
 
 	attributes := slices.Grow(additionalAttributes, n)
 	attributes = append(attributes,
-		semconv.HTTPMethod(standardizeHTTPMethod(req.Method)),
+		standardizeHTTPMethodMetric(req.Method),
 		o.scheme(req.TLS != nil),
 		semconv.NetHostName(host))
 
@@ -216,7 +214,7 @@ func (o OldHTTPClient) MetricAttributes(req *http.Request, statusCode int, addit
 
 	attributes := slices.Grow(additionalAttributes, n)
 	attributes = append(attributes,
-		semconv.HTTPMethod(standardizeHTTPMethod(req.Method)),
+		standardizeHTTPMethodMetric(req.Method),
 		semconv.NetPeerName(requestHost),
 	)
 
@@ -263,4 +261,14 @@ func (o OldHTTPClient) createMeasures(meter metric.Meter) (metric.Int64Counter, 
 	handleErr(err)
 
 	return requestBytesCounter, responseBytesCounter, latencyMeasure
+}
+
+func standardizeHTTPMethodMetric(method string) attribute.KeyValue {
+	method = strings.ToUpper(method)
+	switch method {
+	case http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut, http.MethodTrace:
+	default:
+		method = "_OTHER"
+	}
+	return semconv.HTTPMethod(method)
 }

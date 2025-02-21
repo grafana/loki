@@ -69,7 +69,6 @@ S     [ ]
 <sTimestamp>{S}#{S}\{                 l.state = sExemplar; return tComment
 
 <sExemplar>{L}({L}|{D})*              return tLName
-<sExemplar>\"(\\.|[^\\"\n])*\"        l.state = sExemplar; return tQString
 <sExemplar>\}                         l.state = sEValue; return tBraceClose
 <sExemplar>=                          l.state = sEValue; return tEqual
 <sEValue>\"(\\.|[^\\"\n])*\"          l.state = sExemplar; return tLValue

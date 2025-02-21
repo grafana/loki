@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"time"
@@ -30,9 +29,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/common/version"
-	"github.com/prometheus/sigv4"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -66,7 +64,7 @@ const (
 
 var (
 	// UserAgent represents Prometheus version to use for user agent header.
-	UserAgent = version.PrometheusUserAgent()
+	UserAgent = fmt.Sprintf("Prometheus/%s", version.Version)
 
 	remoteWriteContentTypeHeaders = map[config.RemoteWriteProtoMsg]string{
 		config.RemoteWriteProtoMsgV1: appProtoContentType, // Also application/x-protobuf;proto=prometheus.WriteRequest but simplified for compatibility with 1.x spec.
@@ -81,8 +79,8 @@ var (
 	remoteReadQueriesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "remote_read_client",
-			Name:      "queries_total",
+			Subsystem: subsystem,
+			Name:      "read_queries_total",
 			Help:      "The total number of remote read queries.",
 		},
 		[]string{remoteName, endpoint, "response_type", "code"},
@@ -90,8 +88,8 @@ var (
 	remoteReadQueries = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
-			Subsystem: "remote_read_client",
-			Name:      "queries",
+			Subsystem: subsystem,
+			Name:      "remote_read_queries",
 			Help:      "The number of in-flight remote read queries.",
 		},
 		[]string{remoteName, endpoint},
@@ -99,8 +97,8 @@ var (
 	remoteReadQueryDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace:                       namespace,
-			Subsystem:                       "remote_read_client",
-			Name:                            "request_duration_seconds",
+			Subsystem:                       subsystem,
+			Name:                            "read_request_duration_seconds",
 			Help:                            "Histogram of the latency for remote read requests. Note that for streamed responses this is only the duration of the initial call and does not include the processing of the stream.",
 			Buckets:                         append(prometheus.DefBuckets, 25, 60),
 			NativeHistogramBucketFactor:     1.1,
@@ -145,7 +143,6 @@ type ClientConfig struct {
 	RetryOnRateLimit bool
 	WriteProtoMsg    config.RemoteWriteProtoMsg
 	ChunkedReadLimit uint64
-	RoundRobinDNS    bool
 }
 
 // ReadClient will request the STREAMED_XOR_CHUNKS method of remote read but can
@@ -181,11 +178,7 @@ func NewReadClient(name string, conf *ClientConfig) (ReadClient, error) {
 
 // NewWriteClient creates a new client for remote write.
 func NewWriteClient(name string, conf *ClientConfig) (WriteClient, error) {
-	var httpOpts []config_util.HTTPClientOption
-	if conf.RoundRobinDNS {
-		httpOpts = []config_util.HTTPClientOption{config_util.WithDialContextFunc(newDialContextWithRoundRobinDNS().dialContextFn())}
-	}
-	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_write_client", httpOpts...)
+	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_write_client")
 	if err != nil {
 		return nil, err
 	}
@@ -220,11 +213,8 @@ func NewWriteClient(name string, conf *ClientConfig) (WriteClient, error) {
 	if conf.WriteProtoMsg != "" {
 		writeProtoMsg = conf.WriteProtoMsg
 	}
-	httpClient.Transport = otelhttp.NewTransport(
-		t,
-		otelhttp.WithClientTrace(func(ctx context.Context) *httptrace.ClientTrace {
-			return otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans())
-		}))
+
+	httpClient.Transport = otelhttp.NewTransport(t)
 	return &Client{
 		remoteName:       name,
 		urlString:        conf.URL.String(),

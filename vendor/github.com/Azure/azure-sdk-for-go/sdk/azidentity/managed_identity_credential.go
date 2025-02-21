@@ -22,9 +22,8 @@ const credNameManagedIdentity = "ManagedIdentityCredential"
 type managedIdentityIDKind int
 
 const (
-	miClientID managedIdentityIDKind = iota
-	miObjectID
-	miResourceID
+	miClientID   managedIdentityIDKind = 0
+	miResourceID managedIdentityIDKind = 1
 )
 
 // ManagedIDKind identifies the ID of a managed identity as either a client or resource ID
@@ -33,12 +32,7 @@ type ManagedIDKind interface {
 	idKind() managedIdentityIDKind
 }
 
-// ClientID is the client ID of a user-assigned managed identity. [NewManagedIdentityCredential]
-// returns an error when a ClientID is specified on the following platforms:
-//
-//   - Azure Arc
-//   - Cloud Shell
-//   - Service Fabric
+// ClientID is the client ID of a user-assigned managed identity.
 type ClientID string
 
 func (ClientID) idKind() managedIdentityIDKind {
@@ -50,31 +44,7 @@ func (c ClientID) String() string {
 	return string(c)
 }
 
-// ObjectID is the object ID of a user-assigned managed identity. [NewManagedIdentityCredential]
-// returns an error when an ObjectID is specified on the following platforms:
-//
-//   - Azure Arc
-//   - Azure ML
-//   - Cloud Shell
-//   - Service Fabric
-type ObjectID string
-
-func (ObjectID) idKind() managedIdentityIDKind {
-	return miObjectID
-}
-
-// String returns the string value of the ID.
-func (o ObjectID) String() string {
-	return string(o)
-}
-
-// ResourceID is the resource ID of a user-assigned managed identity. [NewManagedIdentityCredential]
-// returns an error when a ResourceID is specified on the following platforms:
-//
-//   - Azure Arc
-//   - Azure ML
-//   - Cloud Shell
-//   - Service Fabric
+// ResourceID is the resource ID of a user-assigned managed identity.
 type ResourceID string
 
 func (ResourceID) idKind() managedIdentityIDKind {
@@ -90,10 +60,9 @@ func (r ResourceID) String() string {
 type ManagedIdentityCredentialOptions struct {
 	azcore.ClientOptions
 
-	// ID of a managed identity the credential should authenticate. Set this field to use a specific identity instead of
-	// the hosting environment's default. The value may be the identity's client, object, or resource ID.
-	// NewManagedIdentityCredential returns an error when the hosting environment doesn't support user-assigned managed
-	// identities, or the specified kind of ID.
+	// ID is the ID of a managed identity the credential should authenticate. Set this field to use a specific identity
+	// instead of the hosting environment's default. The value may be the identity's client ID or resource ID, but note that
+	// some platforms don't accept resource IDs.
 	ID ManagedIDKind
 
 	// dac indicates whether the credential is part of DefaultAzureCredential. When true, and the environment doesn't have
@@ -104,11 +73,10 @@ type ManagedIdentityCredentialOptions struct {
 	dac bool
 }
 
-// ManagedIdentityCredential authenticates an [Azure managed identity] in any hosting environment supporting managed identities.
+// ManagedIdentityCredential authenticates an Azure managed identity in any hosting environment supporting managed identities.
 // This credential authenticates a system-assigned identity by default. Use ManagedIdentityCredentialOptions.ID to specify a
-// user-assigned identity.
-//
-// [Azure managed identity]: https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
+// user-assigned identity. See Microsoft Entra ID documentation for more information about managed identities:
+// https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
 type ManagedIdentityCredential struct {
 	client *confidentialClient
 	mic    *managedIdentityClient

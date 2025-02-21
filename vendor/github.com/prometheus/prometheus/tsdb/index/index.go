@@ -110,9 +110,13 @@ func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
 }
 
-type PostingsEncoder func(*encoding.Encbuf, []uint32) error
+type symbolCacheEntry struct {
+	index          uint32
+	lastValueIndex uint32
+	lastValue      string
+}
 
-type PostingsDecoder func(encoding.Decbuf) (int, Postings, error)
+type PostingsEncoder func(*encoding.Encbuf, []uint32) error
 
 // Writer implements the IndexWriter interface for the standard
 // serialization format.
@@ -140,7 +144,7 @@ type Writer struct {
 	symbols     *Symbols
 	symbolFile  *fileutil.MmapFile
 	lastSymbol  string
-	symbolCache map[string]uint32 // From symbol to index in table.
+	symbolCache map[string]symbolCacheEntry
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
@@ -240,7 +244,7 @@ func NewWriterWithEncoder(ctx context.Context, fn string, encoder PostingsEncode
 		buf1: encoding.Encbuf{B: make([]byte, 0, 1<<22)},
 		buf2: encoding.Encbuf{B: make([]byte, 0, 1<<22)},
 
-		symbolCache:     make(map[string]uint32, 1<<16),
+		symbolCache:     make(map[string]symbolCacheEntry, 1<<8),
 		labelNames:      make(map[string]uint64, 1<<8),
 		crc32:           newCRC32(),
 		postingsEncoder: encoder,
@@ -434,7 +438,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return err
 	}
 	if labels.Compare(lset, w.lastSeries) <= 0 {
-		return fmt.Errorf("out-of-order series added with label set %q, last label set %q", lset, w.lastSeries)
+		return fmt.Errorf("out-of-order series added with label set %q", lset)
 	}
 
 	if ref < w.lastSeriesRef && !w.lastSeries.IsEmpty() {
@@ -472,16 +476,29 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	w.buf2.PutUvarint(lset.Len())
 
 	if err := lset.Validate(func(l labels.Label) error {
-		nameIndex, ok := w.symbolCache[l.Name]
+		var err error
+		cacheEntry, ok := w.symbolCache[l.Name]
+		nameIndex := cacheEntry.index
 		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", l.Name)
+			nameIndex, err = w.symbols.ReverseLookup(l.Name)
+			if err != nil {
+				return fmt.Errorf("symbol entry for %q does not exist, %w", l.Name, err)
+			}
 		}
 		w.labelNames[l.Name]++
 		w.buf2.PutUvarint32(nameIndex)
 
-		valueIndex, ok := w.symbolCache[l.Value]
-		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", l.Value)
+		valueIndex := cacheEntry.lastValueIndex
+		if !ok || cacheEntry.lastValue != l.Value {
+			valueIndex, err = w.symbols.ReverseLookup(l.Value)
+			if err != nil {
+				return fmt.Errorf("symbol entry for %q does not exist, %w", l.Value, err)
+			}
+			w.symbolCache[l.Name] = symbolCacheEntry{
+				index:          nameIndex,
+				lastValueIndex: valueIndex,
+				lastValue:      l.Value,
+			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
 		return nil
@@ -540,7 +557,6 @@ func (w *Writer) AddSymbol(sym string) error {
 		return fmt.Errorf("symbol %q out-of-order", sym)
 	}
 	w.lastSymbol = sym
-	w.symbolCache[sym] = uint32(w.numSymbols)
 	w.numSymbols++
 	w.buf1.Reset()
 	w.buf1.PutUvarintStr(sym)
@@ -610,10 +626,10 @@ func (w *Writer) writeLabelIndices() error {
 	values := []uint32{}
 	for d.Err() == nil && cnt > 0 {
 		cnt--
-		d.Uvarint()               // Keycount.
-		name := d.UvarintBytes()  // Label name.
-		value := d.UvarintBytes() // Label value.
-		d.Uvarint64()             // Offset.
+		d.Uvarint()                           // Keycount.
+		name := d.UvarintBytes()              // Label name.
+		value := yoloString(d.UvarintBytes()) // Label value.
+		d.Uvarint64()                         // Offset.
 		if len(name) == 0 {
 			continue // All index is ignored.
 		}
@@ -626,9 +642,9 @@ func (w *Writer) writeLabelIndices() error {
 			values = values[:0]
 		}
 		current = name
-		sid, ok := w.symbolCache[string(value)]
-		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", string(value))
+		sid, err := w.symbols.ReverseLookup(value)
+		if err != nil {
+			return err
 		}
 		values = append(values, sid)
 	}
@@ -900,9 +916,9 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 		nameSymbols := map[uint32]string{}
 		for _, name := range batchNames {
-			sid, ok := w.symbolCache[name]
-			if !ok {
-				return fmt.Errorf("symbol entry for %q does not exist", name)
+			sid, err := w.symbols.ReverseLookup(name)
+			if err != nil {
+				return err
 			}
 			nameSymbols[sid] = name
 		}
@@ -939,9 +955,9 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 		for _, name := range batchNames {
 			// Write out postings for this label name.
-			sid, ok := w.symbolCache[name]
-			if !ok {
-				return fmt.Errorf("symbol entry for %q does not exist", name)
+			sid, err := w.symbols.ReverseLookup(name)
+			if err != nil {
+				return err
 			}
 			values := make([]uint32, 0, len(postings[sid]))
 			for v := range postings[sid] {
@@ -1141,17 +1157,17 @@ func (b realByteSlice) Sub(start, end int) ByteSlice {
 
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
-func NewReader(b ByteSlice, decoder PostingsDecoder) (*Reader, error) {
-	return newReader(b, io.NopCloser(nil), decoder)
+func NewReader(b ByteSlice) (*Reader, error) {
+	return newReader(b, io.NopCloser(nil))
 }
 
 // NewFileReader returns a new index reader against the given index file.
-func NewFileReader(path string, decoder PostingsDecoder) (*Reader, error) {
+func NewFileReader(path string) (*Reader, error) {
 	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(f.Bytes()), f, decoder)
+	r, err := newReader(realByteSlice(f.Bytes()), f)
 	if err != nil {
 		return nil, tsdb_errors.NewMulti(
 			err,
@@ -1162,7 +1178,7 @@ func NewFileReader(path string, decoder PostingsDecoder) (*Reader, error) {
 	return r, nil
 }
 
-func newReader(b ByteSlice, c io.Closer, postingsDecoder PostingsDecoder) (*Reader, error) {
+func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	r := &Reader{
 		b:        b,
 		c:        c,
@@ -1261,7 +1277,7 @@ func newReader(b ByteSlice, c io.Closer, postingsDecoder PostingsDecoder) (*Read
 		r.nameSymbols[off] = k
 	}
 
-	r.dec = &Decoder{LookupSymbol: r.lookupSymbol, DecodePostings: postingsDecoder}
+	r.dec = &Decoder{LookupSymbol: r.lookupSymbol}
 
 	return r, nil
 }
@@ -1690,7 +1706,7 @@ func (r *Reader) Postings(ctx context.Context, name string, values ...string) (P
 			}
 			// Read from the postings table.
 			d := encoding.NewDecbufAt(r.b, int(postingsOff), castagnoliTable)
-			_, p, err := r.dec.DecodePostings(d)
+			_, p, err := r.dec.Postings(d.Get())
 			if err != nil {
 				return nil, fmt.Errorf("decode postings: %w", err)
 			}
@@ -1733,7 +1749,7 @@ func (r *Reader) Postings(ctx context.Context, name string, values ...string) (P
 				if val == value {
 					// Read from the postings table.
 					d2 := encoding.NewDecbufAt(r.b, int(postingsOff), castagnoliTable)
-					_, p, err := r.dec.DecodePostings(d2)
+					_, p, err := r.dec.Postings(d2.Get())
 					if err != nil {
 						return false, fmt.Errorf("decode postings: %w", err)
 					}
@@ -1759,15 +1775,6 @@ func (r *Reader) Postings(ctx context.Context, name string, values ...string) (P
 }
 
 func (r *Reader) PostingsForLabelMatching(ctx context.Context, name string, match func(string) bool) Postings {
-	return r.postingsForLabelMatching(ctx, name, match)
-}
-
-func (r *Reader) PostingsForAllLabelValues(ctx context.Context, name string) Postings {
-	return r.postingsForLabelMatching(ctx, name, nil)
-}
-
-// postingsForLabelMatching implements PostingsForLabelMatching if match is non-nil, and PostingsForAllLabelValues otherwise.
-func (r *Reader) postingsForLabelMatching(ctx context.Context, name string, match func(string) bool) Postings {
 	if r.version == FormatV1 {
 		return r.postingsForLabelMatchingV1(ctx, name, match)
 	}
@@ -1777,19 +1784,13 @@ func (r *Reader) postingsForLabelMatching(ctx context.Context, name string, matc
 		return EmptyPostings()
 	}
 
-	postingsEstimate := 0
-	if match == nil {
-		// The caller wants all postings for name.
-		postingsEstimate = len(e) * symbolFactor
-	}
-
 	lastVal := e[len(e)-1].value
-	its := make([]Postings, 0, postingsEstimate)
+	var its []Postings
 	if err := r.traversePostingOffsets(ctx, e[0].off, func(val string, postingsOff uint64) (bool, error) {
-		if match == nil || match(val) {
-			// We want this postings iterator since the value is a match.
+		if match(val) {
+			// We want this postings iterator since the value is a match
 			postingsDec := encoding.NewDecbufAt(r.b, int(postingsOff), castagnoliTable)
-			_, p, err := r.dec.DecodePostings(postingsDec)
+			_, p, err := r.dec.PostingsFromDecbuf(postingsDec)
 			if err != nil {
 				return false, fmt.Errorf("decode postings: %w", err)
 			}
@@ -1816,13 +1817,13 @@ func (r *Reader) postingsForLabelMatchingV1(ctx context.Context, name string, ma
 			return ErrPostings(ctx.Err())
 		}
 		count++
-		if match != nil && !match(val) {
+		if !match(val) {
 			continue
 		}
 
 		// Read from the postings table.
 		d := encoding.NewDecbufAt(r.b, int(offset), castagnoliTable)
-		_, p, err := r.dec.DecodePostings(d)
+		_, p, err := r.dec.PostingsFromDecbuf(d)
 		if err != nil {
 			return ErrPostings(fmt.Errorf("decode postings: %w", err))
 		}
@@ -1917,12 +1918,17 @@ func (s stringListIter) Err() error { return nil }
 // It currently does not contain decoding methods for all entry types but can be extended
 // by them if there's demand.
 type Decoder struct {
-	LookupSymbol   func(context.Context, uint32) (string, error)
-	DecodePostings PostingsDecoder
+	LookupSymbol func(context.Context, uint32) (string, error)
 }
 
-// DecodePostingsRaw returns a postings list for d and its number of elements.
-func DecodePostingsRaw(d encoding.Decbuf) (int, Postings, error) {
+// Postings returns a postings list for b and its number of elements.
+func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
+	d := encoding.Decbuf{B: b}
+	return dec.PostingsFromDecbuf(d)
+}
+
+// PostingsFromDecbuf returns a postings list for d and its number of elements.
+func (dec *Decoder) PostingsFromDecbuf(d encoding.Decbuf) (int, Postings, error) {
 	n := d.Be32int()
 	l := d.Get()
 	if d.Err() != nil {
@@ -2061,5 +2067,5 @@ func (dec *Decoder) Series(b []byte, builder *labels.ScratchBuilder, chks *[]chu
 }
 
 func yoloString(b []byte) string {
-	return unsafe.String(unsafe.SliceData(b), len(b))
+	return *((*string)(unsafe.Pointer(&b)))
 }

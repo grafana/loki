@@ -1,57 +1,21 @@
 package zk
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"sync"
-	"time"
 )
-
-const _defaultLookupTimeout = 3 * time.Second
-
-type lookupHostFn func(context.Context, string) ([]string, error)
-
-// DNSHostProviderOption is an option for the DNSHostProvider.
-type DNSHostProviderOption interface {
-	apply(*DNSHostProvider)
-}
-
-type lookupTimeoutOption struct {
-	timeout time.Duration
-}
-
-// WithLookupTimeout returns a DNSHostProviderOption that sets the lookup timeout.
-func WithLookupTimeout(timeout time.Duration) DNSHostProviderOption {
-	return lookupTimeoutOption{
-		timeout: timeout,
-	}
-}
-
-func (o lookupTimeoutOption) apply(provider *DNSHostProvider) {
-	provider.lookupTimeout = o.timeout
-}
 
 // DNSHostProvider is the default HostProvider. It currently matches
 // the Java StaticHostProvider, resolving hosts from DNS once during
 // the call to Init.  It could be easily extended to re-query DNS
 // periodically or if there is trouble connecting.
 type DNSHostProvider struct {
-	mu            sync.Mutex // Protects everything, so we can add asynchronous updates later.
-	servers       []string
-	curr          int
-	last          int
-	lookupTimeout time.Duration
-	lookupHost    lookupHostFn // Override of net.LookupHost, for testing.
-}
-
-// NewDNSHostProvider creates a new DNSHostProvider with the given options.
-func NewDNSHostProvider(options ...DNSHostProviderOption) *DNSHostProvider {
-	var provider DNSHostProvider
-	for _, option := range options {
-		option.apply(&provider)
-	}
-	return &provider
+	mu         sync.Mutex // Protects everything, so we can add asynchronous updates later.
+	servers    []string
+	curr       int
+	last       int
+	lookupHost func(string) ([]string, error) // Override of net.LookupHost, for testing.
 }
 
 // Init is called first, with the servers specified in the connection
@@ -63,18 +27,8 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 
 	lookupHost := hp.lookupHost
 	if lookupHost == nil {
-		var resolver net.Resolver
-		lookupHost = resolver.LookupHost
+		lookupHost = net.LookupHost
 	}
-
-	timeout := hp.lookupTimeout
-	if timeout == 0 {
-		timeout = _defaultLookupTimeout
-	}
-
-	// TODO: consider using a context from the caller.
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 
 	found := []string{}
 	for _, server := range servers {
@@ -82,7 +36,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		if err != nil {
 			return err
 		}
-		addrs, err := lookupHost(ctx, host)
+		addrs, err := lookupHost(host)
 		if err != nil {
 			return err
 		}

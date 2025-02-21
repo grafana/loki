@@ -18,16 +18,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-zookeeper/zk"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promslog"
 
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -147,16 +146,16 @@ type Discovery struct {
 	treeCaches  []*treecache.ZookeeperTreeCache
 
 	parse  func(data []byte, path string) (model.LabelSet, error)
-	logger *slog.Logger
+	logger log.Logger
 }
 
 // NewNerveDiscovery returns a new Discovery for the given Nerve config.
-func NewNerveDiscovery(conf *NerveSDConfig, logger *slog.Logger) (*Discovery, error) {
+func NewNerveDiscovery(conf *NerveSDConfig, logger log.Logger) (*Discovery, error) {
 	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, logger, parseNerveMember)
 }
 
 // NewServersetDiscovery returns a new Discovery for the given serverset config.
-func NewServersetDiscovery(conf *ServersetSDConfig, logger *slog.Logger) (*Discovery, error) {
+func NewServersetDiscovery(conf *ServersetSDConfig, logger log.Logger) (*Discovery, error) {
 	return NewDiscovery(conf.Servers, time.Duration(conf.Timeout), conf.Paths, logger, parseServersetMember)
 }
 
@@ -166,11 +165,11 @@ func NewDiscovery(
 	srvs []string,
 	timeout time.Duration,
 	paths []string,
-	logger *slog.Logger,
+	logger log.Logger,
 	pf func(data []byte, path string) (model.LabelSet, error),
 ) (*Discovery, error) {
 	if logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	}
 
 	conn, _, err := zk.Connect(

@@ -239,8 +239,7 @@ func (p *PromParser) Metric(l *labels.Labels) string {
 		label := unreplace(s[a:b])
 		c := p.offsets[i+2] - p.start
 		d := p.offsets[i+3] - p.start
-		value := normalizeFloatsInLabelValues(p.mtype, label, unreplace(s[c:d]))
-
+		value := unreplace(s[c:d])
 		p.builder.Add(label, value)
 	}
 
@@ -503,13 +502,13 @@ func unreplace(s string) string {
 }
 
 func yoloString(b []byte) string {
-	return unsafe.String(unsafe.SliceData(b), len(b))
+	return *((*string)(unsafe.Pointer(&b)))
 }
 
 func parseFloat(s string) (float64, error) {
 	// Keep to pre-Go 1.13 float formats.
 	if strings.ContainsAny(s, "pP_") {
-		return 0, errors.New("unsupported character in float")
+		return 0, fmt.Errorf("unsupported character in float")
 	}
 	return strconv.ParseFloat(s, 64)
 }

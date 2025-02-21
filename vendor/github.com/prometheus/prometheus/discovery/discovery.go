@@ -15,9 +15,9 @@ package discovery
 
 import (
 	"context"
-	"log/slog"
 	"reflect"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 
@@ -47,7 +47,7 @@ type DiscovererMetrics interface {
 
 // DiscovererOptions provides options for a Discoverer.
 type DiscovererOptions struct {
-	Logger *slog.Logger
+	Logger log.Logger
 
 	Metrics DiscovererMetrics
 
@@ -109,7 +109,7 @@ func (c *Configs) SetDirectory(dir string) {
 
 // UnmarshalYAML implements yaml.Unmarshaler.
 func (c *Configs) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	cfgTyp := reflect.StructOf(configFields)
+	cfgTyp := getConfigType(configsType)
 	cfgPtr := reflect.New(cfgTyp)
 	cfgVal := cfgPtr.Elem()
 
@@ -124,7 +124,7 @@ func (c *Configs) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalYAML implements yaml.Marshaler.
 func (c Configs) MarshalYAML() (interface{}, error) {
-	cfgTyp := reflect.StructOf(configFields)
+	cfgTyp := getConfigType(configsType)
 	cfgPtr := reflect.New(cfgTyp)
 	cfgVal := cfgPtr.Elem()
 

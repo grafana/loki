@@ -18,6 +18,9 @@ import (
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
 )
 
+// ADFS is an active directory federation service authority type.
+const ADFS = "ADFS"
+
 type cacheEntry struct {
 	Endpoints             authority.Endpoints
 	ValidForDomainsInList map[string]bool
@@ -48,7 +51,7 @@ func (m *authorityEndpoint) ResolveEndpoints(ctx context.Context, authorityInfo 
 		return endpoints, nil
 	}
 
-	endpoint, err := m.openIDConfigurationEndpoint(ctx, authorityInfo)
+	endpoint, err := m.openIDConfigurationEndpoint(ctx, authorityInfo, userPrincipalName)
 	if err != nil {
 		return authority.Endpoints{}, err
 	}
@@ -80,7 +83,7 @@ func (m *authorityEndpoint) cachedEndpoints(authorityInfo authority.Info, userPr
 	defer m.mu.Unlock()
 
 	if cacheEntry, ok := m.cache[authorityInfo.CanonicalAuthorityURI]; ok {
-		if authorityInfo.AuthorityType == authority.ADFS {
+		if authorityInfo.AuthorityType == ADFS {
 			domain, err := adfsDomainFromUpn(userPrincipalName)
 			if err == nil {
 				if _, ok := cacheEntry.ValidForDomainsInList[domain]; ok {
@@ -99,7 +102,7 @@ func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, use
 
 	updatedCacheEntry := createcacheEntry(endpoints)
 
-	if authorityInfo.AuthorityType == authority.ADFS {
+	if authorityInfo.AuthorityType == ADFS {
 		// Since we're here, we've made a call to the backend.  We want to ensure we're caching
 		// the latest values from the server.
 		if cacheEntry, ok := m.cache[authorityInfo.CanonicalAuthorityURI]; ok {
@@ -116,12 +119,9 @@ func (m *authorityEndpoint) addCachedEndpoints(authorityInfo authority.Info, use
 	m.cache[authorityInfo.CanonicalAuthorityURI] = updatedCacheEntry
 }
 
-func (m *authorityEndpoint) openIDConfigurationEndpoint(ctx context.Context, authorityInfo authority.Info) (string, error) {
-	if authorityInfo.AuthorityType == authority.ADFS {
+func (m *authorityEndpoint) openIDConfigurationEndpoint(ctx context.Context, authorityInfo authority.Info, userPrincipalName string) (string, error) {
+	if authorityInfo.Tenant == "adfs" {
 		return fmt.Sprintf("https://%s/adfs/.well-known/openid-configuration", authorityInfo.Host), nil
-	} else if authorityInfo.AuthorityType == authority.DSTS {
-		return fmt.Sprintf("https://%s/dstsv2/%s/v2.0/.well-known/openid-configuration", authorityInfo.Host, authority.DSTSTenant), nil
-
 	} else if authorityInfo.ValidateAuthority && !authority.TrustedHost(authorityInfo.Host) {
 		resp, err := m.rest.Authority().AADInstanceDiscovery(ctx, authorityInfo)
 		if err != nil {
@@ -134,6 +134,7 @@ func (m *authorityEndpoint) openIDConfigurationEndpoint(ctx context.Context, aut
 			return "", err
 		}
 		return resp.TenantDiscoveryEndpoint, nil
+
 	}
 
 	return authorityInfo.CanonicalAuthorityURI + "v2.0/.well-known/openid-configuration", nil

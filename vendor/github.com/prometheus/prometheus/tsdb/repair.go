@@ -17,9 +17,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -27,7 +29,7 @@ import (
 
 // repairBadIndexVersion repairs an issue in index and meta.json persistence introduced in
 // commit 129773b41a565fde5156301e37f9a87158030443.
-func repairBadIndexVersion(logger *slog.Logger, dir string) error {
+func repairBadIndexVersion(logger log.Logger, dir string) error {
 	// All blocks written by Prometheus 2.1 with a meta.json version of 2 are affected.
 	// We must actually set the index file version to 2 and revert the meta.json version back to 1.
 	dirs, err := blockDirs(dir)
@@ -39,7 +41,7 @@ func repairBadIndexVersion(logger *slog.Logger, dir string) error {
 	defer func() {
 		for _, tmp := range tmpFiles {
 			if err := os.RemoveAll(tmp); err != nil {
-				logger.Error("remove tmp file", "err", err.Error())
+				level.Error(logger).Log("msg", "remove tmp file", "err", err.Error())
 			}
 		}
 	}()
@@ -47,20 +49,20 @@ func repairBadIndexVersion(logger *slog.Logger, dir string) error {
 	for _, d := range dirs {
 		meta, err := readBogusMetaFile(d)
 		if err != nil {
-			logger.Error("failed to read meta.json for a block during repair process; skipping", "dir", d, "err", err)
+			level.Error(logger).Log("msg", "failed to read meta.json for a block during repair process; skipping", "dir", d, "err", err)
 			continue
 		}
 		if meta.Version == metaVersion1 {
-			logger.Info(
-				"Found healthy block",
+			level.Info(logger).Log(
+				"msg", "Found healthy block",
 				"mint", meta.MinTime,
 				"maxt", meta.MaxTime,
 				"ulid", meta.ULID,
 			)
 			continue
 		}
-		logger.Info(
-			"Fixing broken block",
+		level.Info(logger).Log(
+			"msg", "Fixing broken block",
 			"mint", meta.MinTime,
 			"maxt", meta.MaxTime,
 			"ulid", meta.ULID,

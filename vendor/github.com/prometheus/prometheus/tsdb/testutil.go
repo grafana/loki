@@ -16,8 +16,6 @@ package tsdb
 import (
 	"testing"
 
-	"github.com/prometheus/prometheus/tsdb/tsdbutil"
-
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -29,13 +27,7 @@ import (
 )
 
 const (
-	float                       = "float"
-	intHistogram                = "integer histogram"
-	floatHistogram              = "float histogram"
-	customBucketsIntHistogram   = "custom buckets int histogram"
-	customBucketsFloatHistogram = "custom buckets float histogram"
-	gaugeIntHistogram           = "gauge int histogram"
-	gaugeFloatHistogram         = "gauge float histogram"
+	float = "float"
 )
 
 type testValue struct {
@@ -50,6 +42,7 @@ type sampleTypeScenario struct {
 	sampleFunc func(ts, value int64) sample
 }
 
+// TODO: native histogram sample types will be added as part of out-of-order native histogram support; see #11220.
 var sampleTypeScenarios = map[string]sampleTypeScenario{
 	float: {
 		sampleType: sampleMetricTypeFloat,
@@ -62,72 +55,50 @@ var sampleTypeScenarios = map[string]sampleTypeScenario{
 			return sample{t: ts, f: float64(value)}
 		},
 	},
-	intHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, h: tsdbutil.GenerateTestHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, h: tsdbutil.GenerateTestHistogram(value)}
-		},
-	},
-	floatHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, fh: tsdbutil.GenerateTestFloatHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, fh: tsdbutil.GenerateTestFloatHistogram(value)}
-		},
-	},
-	customBucketsIntHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, h: tsdbutil.GenerateTestCustomBucketsHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, h: tsdbutil.GenerateTestCustomBucketsHistogram(value)}
-		},
-	},
-	customBucketsFloatHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, fh: tsdbutil.GenerateTestCustomBucketsFloatHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, fh: tsdbutil.GenerateTestCustomBucketsFloatHistogram(value)}
-		},
-	},
-	gaugeIntHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, h: tsdbutil.GenerateTestGaugeHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, h: tsdbutil.GenerateTestGaugeHistogram(value)}
-		},
-	},
-	gaugeFloatHistogram: {
-		sampleType: sampleMetricTypeHistogram,
-		appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
-			s := sample{t: ts, fh: tsdbutil.GenerateTestGaugeFloatHistogram(value)}
-			ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
-			return ref, s, err
-		},
-		sampleFunc: func(ts, value int64) sample {
-			return sample{t: ts, fh: tsdbutil.GenerateTestGaugeFloatHistogram(value)}
-		},
-	},
+	// intHistogram: {
+	//	 sampleType: sampleMetricTypeHistogram,
+	//	 appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+	//		 s := sample{t: ts, h: tsdbutil.GenerateTestHistogram(int(value))}
+	//		 ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
+	//		 return ref, s, err
+	//	 },
+	//	 sampleFunc: func(ts, value int64) sample {
+	//		 return sample{t: ts, h: tsdbutil.GenerateTestHistogram(int(value))}
+	//	 },
+	// },
+	// floatHistogram: {
+	//	 sampleType: sampleMetricTypeHistogram,
+	//	 appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+	//		 s := sample{t: ts, fh: tsdbutil.GenerateTestFloatHistogram(int(value))}
+	//		 ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
+	//		 return ref, s, err
+	//	 },
+	//	 sampleFunc: func(ts, value int64) sample {
+	//		 return sample{t: ts, fh: tsdbutil.GenerateTestFloatHistogram(int(value))}
+	//	 },
+	// },
+	// gaugeIntHistogram: {
+	//	 sampleType: sampleMetricTypeHistogram,
+	//	 appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+	//		 s := sample{t: ts, h: tsdbutil.GenerateTestGaugeHistogram(int(value))}
+	//		 ref, err := appender.AppendHistogram(0, lbls, ts, s.h, nil)
+	//		 return ref, s, err
+	//	 },
+	//	 sampleFunc: func(ts, value int64) sample {
+	//		 return sample{t: ts, h: tsdbutil.GenerateTestGaugeHistogram(int(value))}
+	//	 },
+	// },
+	// gaugeFloatHistogram: {
+	//	 sampleType: sampleMetricTypeHistogram,
+	//	 appendFunc: func(appender storage.Appender, lbls labels.Labels, ts, value int64) (storage.SeriesRef, sample, error) {
+	//		 s := sample{t: ts, fh: tsdbutil.GenerateTestGaugeFloatHistogram(int(value))}
+	//		 ref, err := appender.AppendHistogram(0, lbls, ts, nil, s.fh)
+	//		 return ref, s, err
+	//	 },
+	//	 sampleFunc: func(ts, value int64) sample {
+	//		 return sample{t: ts, fh: tsdbutil.GenerateTestGaugeFloatHistogram(int(value))}
+	//	 },
+	// },
 }
 
 // requireEqualSeries checks that the actual series are equal to the expected ones. It ignores the counter reset hints for histograms.
@@ -135,11 +106,7 @@ func requireEqualSeries(t *testing.T, expected, actual map[string][]chunks.Sampl
 	for name, expectedItem := range expected {
 		actualItem, ok := actual[name]
 		require.True(t, ok, "Expected series %s not found", name)
-		if ignoreCounterResets {
-			requireEqualSamples(t, name, expectedItem, actualItem, requireEqualSamplesIgnoreCounterResets)
-		} else {
-			requireEqualSamples(t, name, expectedItem, actualItem)
-		}
+		requireEqualSamples(t, name, expectedItem, actualItem, ignoreCounterResets)
 	}
 	for name := range actual {
 		_, ok := expected[name]
@@ -154,28 +121,7 @@ func requireEqualOOOSamples(t *testing.T, expectedSamples int, db *DB) {
 		"number of ooo appended samples mismatch")
 }
 
-type requireEqualSamplesOption int
-
-const (
-	requireEqualSamplesNoOption requireEqualSamplesOption = iota
-	requireEqualSamplesIgnoreCounterResets
-	requireEqualSamplesInUseBucketCompare
-)
-
-func requireEqualSamples(t *testing.T, name string, expected, actual []chunks.Sample, options ...requireEqualSamplesOption) {
-	var (
-		ignoreCounterResets bool
-		inUseBucketCompare  bool
-	)
-	for _, option := range options {
-		switch option {
-		case requireEqualSamplesIgnoreCounterResets:
-			ignoreCounterResets = true
-		case requireEqualSamplesInUseBucketCompare:
-			inUseBucketCompare = true
-		}
-	}
-
+func requireEqualSamples(t *testing.T, name string, expected, actual []chunks.Sample, ignoreCounterResets bool) {
 	require.Equal(t, len(expected), len(actual), "Length not equal to expected for %s", name)
 	for i, s := range expected {
 		expectedSample := s
@@ -193,10 +139,6 @@ func requireEqualSamples(t *testing.T, name string, expected, actual []chunks.Sa
 				} else {
 					require.Equal(t, expectedHist.CounterResetHint, actualHist.CounterResetHint, "Sample header doesn't match for %s[%d] at ts %d, expected: %s, actual: %s", name, i, expectedSample.T(), counterResetAsString(expectedHist.CounterResetHint), counterResetAsString(actualHist.CounterResetHint))
 				}
-				if inUseBucketCompare {
-					expectedSample.H().Compact(0)
-					actualSample.H().Compact(0)
-				}
 				require.Equal(t, expectedHist, actualHist, "Sample doesn't match for %s[%d] at ts %d", name, i, expectedSample.T())
 			}
 		case s.FH() != nil:
@@ -208,10 +150,6 @@ func requireEqualSamples(t *testing.T, name string, expected, actual []chunks.Sa
 					actualHist.CounterResetHint = histogram.UnknownCounterReset
 				} else {
 					require.Equal(t, expectedHist.CounterResetHint, actualHist.CounterResetHint, "Sample header doesn't match for %s[%d] at ts %d, expected: %s, actual: %s", name, i, expectedSample.T(), counterResetAsString(expectedHist.CounterResetHint), counterResetAsString(actualHist.CounterResetHint))
-				}
-				if inUseBucketCompare {
-					expectedSample.FH().Compact(0)
-					actualSample.FH().Compact(0)
 				}
 				require.Equal(t, expectedHist, actualHist, "Sample doesn't match for %s[%d] at ts %d", name, i, expectedSample.T())
 			}

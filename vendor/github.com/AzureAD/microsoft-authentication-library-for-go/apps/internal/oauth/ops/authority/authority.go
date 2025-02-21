@@ -23,7 +23,7 @@ import (
 
 const (
 	authorizationEndpoint             = "https://%v/%v/oauth2/v2.0/authorize"
-	aadInstanceDiscoveryEndpoint      = "https://%v/common/discovery/instance"
+	instanceDiscoveryEndpoint         = "https://%v/common/discovery/instance"
 	tenantDiscoveryEndpointWithRegion = "https://%s.%s/%s/v2.0/.well-known/openid-configuration"
 	regionName                        = "REGION_NAME"
 	defaultAPIVersion                 = "2021-10-01"
@@ -47,12 +47,13 @@ type jsonCaller interface {
 }
 
 var aadTrustedHostList = map[string]bool{
-	"login.windows.net":                true, // Microsoft Azure Worldwide - Used in validation scenarios where host is not this list
-	"login.partner.microsoftonline.cn": true, // Microsoft Azure China
-	"login.microsoftonline.de":         true, // Microsoft Azure Blackforest
-	"login-us.microsoftonline.com":     true, // Microsoft Azure US Government - Legacy
-	"login.microsoftonline.us":         true, // Microsoft Azure US Government
-	"login.microsoftonline.com":        true, // Microsoft Azure Worldwide
+	"login.windows.net":            true, // Microsoft Azure Worldwide - Used in validation scenarios where host is not this list
+	"login.chinacloudapi.cn":       true, // Microsoft Azure China
+	"login.microsoftonline.de":     true, // Microsoft Azure Blackforest
+	"login-us.microsoftonline.com": true, // Microsoft Azure US Government - Legacy
+	"login.microsoftonline.us":     true, // Microsoft Azure US Government
+	"login.microsoftonline.com":    true, // Microsoft Azure Worldwide
+	"login.cloudgovapi.us":         true, // Microsoft Azure US Government
 }
 
 // TrustedHost checks if an AAD host is trusted/valid.
@@ -136,11 +137,7 @@ const (
 const (
 	AAD  = "MSSTS"
 	ADFS = "ADFS"
-	DSTS = "DSTS"
 )
-
-// DSTSTenant is referenced throughout multiple files, let us use a const in case we ever need to change it.
-const DSTSTenant = "7a433bfc-2514-4697-b467-e0933190487f"
 
 // AuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
 type AuthenticationScheme interface {
@@ -239,26 +236,23 @@ func NewAuthParams(clientID string, authorityInfo Info) AuthParams {
 //   - the client is configured to authenticate only Microsoft accounts via the "consumers" endpoint
 //   - the resulting authority URL is invalid
 func (p AuthParams) WithTenant(ID string) (AuthParams, error) {
-	if ID == "" || ID == p.AuthorityInfo.Tenant {
+	switch ID {
+	case "", p.AuthorityInfo.Tenant:
+		// keep the default tenant because the caller didn't override it
 		return p, nil
-	}
-
-	var authority string
-	switch p.AuthorityInfo.AuthorityType {
-	case AAD:
-		if ID == "common" || ID == "consumers" || ID == "organizations" {
+	case "common", "consumers", "organizations":
+		if p.AuthorityInfo.AuthorityType == AAD {
 			return p, fmt.Errorf(`tenant ID must be a specific tenant, not "%s"`, ID)
 		}
-		if p.AuthorityInfo.Tenant == "consumers" {
-			return p, errors.New(`client is configured to authenticate only personal Microsoft accounts, via the "consumers" endpoint`)
-		}
-		authority = "https://" + path.Join(p.AuthorityInfo.Host, ID)
-	case ADFS:
-		return p, errors.New("ADFS authority doesn't support tenants")
-	case DSTS:
-		return p, errors.New("dSTS authority doesn't support tenants")
+		// else we'll return a better error below
 	}
-
+	if p.AuthorityInfo.AuthorityType != AAD {
+		return p, errors.New("the authority doesn't support tenants")
+	}
+	if p.AuthorityInfo.Tenant == "consumers" {
+		return p, errors.New(`client is configured to authenticate only personal Microsoft accounts, via the "consumers" endpoint`)
+	}
+	authority := "https://" + path.Join(p.AuthorityInfo.Host, ID)
 	info, err := NewInfoFromAuthorityURI(authority, p.AuthorityInfo.ValidateAuthority, p.AuthorityInfo.InstanceDiscoveryDisabled)
 	if err == nil {
 		info.Region = p.AuthorityInfo.Region
@@ -350,57 +344,44 @@ type Info struct {
 	Host                      string
 	CanonicalAuthorityURI     string
 	AuthorityType             string
+	UserRealmURIPrefix        string
 	ValidateAuthority         bool
 	Tenant                    string
 	Region                    string
 	InstanceDiscoveryDisabled bool
 }
 
+func firstPathSegment(u *url.URL) (string, error) {
+	pathParts := strings.Split(u.EscapedPath(), "/")
+	if len(pathParts) >= 2 {
+		return pathParts[1], nil
+	}
+
+	return "", errors.New(`authority must be an https URL such as "https://login.microsoftonline.com/<your tenant>"`)
+}
+
 // NewInfoFromAuthorityURI creates an AuthorityInfo instance from the authority URL provided.
 func NewInfoFromAuthorityURI(authority string, validateAuthority bool, instanceDiscoveryDisabled bool) (Info, error) {
-
-	cannonicalAuthority := authority
-
-	// suffix authority with / if it doesn't have one
-	if !strings.HasSuffix(cannonicalAuthority, "/") {
-		cannonicalAuthority += "/"
+	u, err := url.Parse(strings.ToLower(authority))
+	if err != nil || u.Scheme != "https" {
+		return Info{}, errors.New(`authority must be an https URL such as "https://login.microsoftonline.com/<your tenant>"`)
 	}
 
-	u, err := url.Parse(strings.ToLower(cannonicalAuthority))
-
+	tenant, err := firstPathSegment(u)
 	if err != nil {
-		return Info{}, fmt.Errorf("couldn't parse authority url: %w", err)
+		return Info{}, err
 	}
-	if u.Scheme != "https" {
-		return Info{}, errors.New("authority url scheme must be https")
-	}
-
-	pathParts := strings.Split(u.EscapedPath(), "/")
-	if len(pathParts) < 3 {
-		return Info{}, errors.New(`authority must be an URL such as "https://login.microsoftonline.com/<your tenant>"`)
-	}
-
 	authorityType := AAD
-	tenant := pathParts[1]
-	switch tenant {
-	case "adfs":
+	if tenant == "adfs" {
 		authorityType = ADFS
-	case "dstsv2":
-		if len(pathParts) != 4 {
-			return Info{}, fmt.Errorf("dSTS authority must be an https URL such as https://<authority>/dstsv2/%s", DSTSTenant)
-		}
-		if pathParts[2] != DSTSTenant {
-			return Info{}, fmt.Errorf("dSTS authority only accepts a single tenant %q", DSTSTenant)
-		}
-		authorityType = DSTS
-		tenant = DSTSTenant
 	}
 
 	// u.Host includes the port, if any, which is required for private cloud deployments
 	return Info{
 		Host:                      u.Host,
-		CanonicalAuthorityURI:     cannonicalAuthority,
+		CanonicalAuthorityURI:     fmt.Sprintf("https://%v/%v/", u.Host, tenant),
 		AuthorityType:             authorityType,
+		UserRealmURIPrefix:        fmt.Sprintf("https://%v/common/userrealm/", u.Hostname()),
 		ValidateAuthority:         validateAuthority,
 		Tenant:                    tenant,
 		InstanceDiscoveryDisabled: instanceDiscoveryDisabled,
@@ -544,7 +525,7 @@ func (c Client) AADInstanceDiscovery(ctx context.Context, authorityInfo Info) (I
 			discoveryHost = authorityInfo.Host
 		}
 
-		endpoint := fmt.Sprintf(aadInstanceDiscoveryEndpoint, discoveryHost)
+		endpoint := fmt.Sprintf(instanceDiscoveryEndpoint, discoveryHost)
 		err = c.Comm.JSONCall(ctx, endpoint, http.Header{}, qv, nil, &resp)
 	}
 	return resp, err
@@ -562,19 +543,17 @@ func detectRegion(ctx context.Context) string {
 	client := http.Client{
 		Timeout: time.Duration(2 * time.Second),
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, imdsEndpoint, nil)
+	req, _ := http.NewRequest("GET", imdsEndpoint, nil)
 	req.Header.Set("Metadata", "true")
 	resp, err := client.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-	}
 	// If the request times out or there is an error, it is retried once
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil || resp.StatusCode != 200 {
 		resp, err = client.Do(req)
-		if err != nil || resp.StatusCode != http.StatusOK {
+		if err != nil || resp.StatusCode != 200 {
 			return ""
 		}
 	}
+	defer resp.Body.Close()
 	response, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ""

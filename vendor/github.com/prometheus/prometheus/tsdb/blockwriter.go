@@ -17,10 +17,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"os"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -30,7 +31,7 @@ import (
 
 // BlockWriter is a block writer that allows appending and flushing series to disk.
 type BlockWriter struct {
-	logger         *slog.Logger
+	logger         log.Logger
 	destinationDir string
 
 	head      *Head
@@ -49,7 +50,7 @@ var ErrNoSeriesAppended = errors.New("no series appended, aborting")
 // contains anything at all. It is the caller's responsibility to
 // ensure that the resulting blocks do not overlap etc.
 // Writer ensures the block flush is atomic (via rename).
-func NewBlockWriter(logger *slog.Logger, dir string, blockSize int64) (*BlockWriter, error) {
+func NewBlockWriter(logger log.Logger, dir string, blockSize int64) (*BlockWriter, error) {
 	w := &BlockWriter{
 		logger:         logger,
 		destinationDir: dir,
@@ -94,7 +95,7 @@ func (w *BlockWriter) Flush(ctx context.Context) (ulid.ULID, error) {
 	// Add +1 millisecond to block maxt because block intervals are half-open: [b.MinTime, b.MaxTime).
 	// Because of this block intervals are always +1 than the total samples it includes.
 	maxt := w.head.MaxTime() + 1
-	w.logger.Info("flushing", "series_count", w.head.NumSeries(), "mint", timestamp.Time(mint), "maxt", timestamp.Time(maxt))
+	level.Info(w.logger).Log("msg", "flushing", "series_count", w.head.NumSeries(), "mint", timestamp.Time(mint), "maxt", timestamp.Time(maxt))
 
 	compactor, err := NewLeveledCompactor(ctx,
 		nil,
@@ -120,7 +121,7 @@ func (w *BlockWriter) Flush(ctx context.Context) (ulid.ULID, error) {
 func (w *BlockWriter) Close() error {
 	defer func() {
 		if err := os.RemoveAll(w.chunkDir); err != nil {
-			w.logger.Error("error in deleting BlockWriter files", "err", err)
+			level.Error(w.logger).Log("msg", "error in deleting BlockWriter files", "err", err)
 		}
 	}()
 	return w.head.Close()

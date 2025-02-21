@@ -30,8 +30,6 @@ import (
 	"github.com/grafana/regexp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	common_templates "github.com/prometheus/common/helpers/templates"
 
@@ -168,7 +166,7 @@ func NewTemplateExpander(
 				return html_template.HTML(text)
 			},
 			"match":     regexp.MatchString,
-			"title":     cases.Title(language.AmericanEnglish, cases.NoLower).String,
+			"title":     strings.Title, //nolint:staticcheck // TODO(beorn7): Need to come up with a replacement using the cases package.
 			"toUpper":   strings.ToUpper,
 			"toLower":   strings.ToLower,
 			"graphLink": strutil.GraphLinkForExpression,

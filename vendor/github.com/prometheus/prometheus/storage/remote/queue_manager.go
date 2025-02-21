@@ -17,17 +17,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -407,7 +407,7 @@ type QueueManager struct {
 	reshardDisableStartTimestamp atomic.Int64 // Time that reshard was disabled.
 	reshardDisableEndTimestamp   atomic.Int64 // Time that reshard is disabled until.
 
-	logger               *slog.Logger
+	logger               log.Logger
 	flushDeadline        time.Duration
 	cfg                  config.QueueConfig
 	mcfg                 config.MetadataConfig
@@ -454,7 +454,7 @@ func NewQueueManager(
 	metrics *queueManagerMetrics,
 	watcherMetrics *wlog.WatcherMetrics,
 	readerMetrics *wlog.LiveReaderMetrics,
-	logger *slog.Logger,
+	logger log.Logger,
 	dir string,
 	samplesIn *ewmaRate,
 	cfg config.QueueConfig,
@@ -471,7 +471,7 @@ func NewQueueManager(
 	protoMsg config.RemoteWriteProtoMsg,
 ) *QueueManager {
 	if logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	}
 
 	// Copy externalLabels into a slice, which we need for processExternalLabels.
@@ -480,7 +480,7 @@ func NewQueueManager(
 		extLabelsSlice = append(extLabelsSlice, l)
 	})
 
-	logger = logger.With(remoteName, client.Name(), endpoint, client.Endpoint())
+	logger = log.With(logger, remoteName, client.Name(), endpoint, client.Endpoint())
 	t := &QueueManager{
 		logger:               logger,
 		flushDeadline:        flushDeadline,
@@ -526,7 +526,7 @@ func NewQueueManager(
 	// ships them alongside series. If both mechanisms are set, the new one
 	// takes precedence by implicitly disabling the older one.
 	if t.mcfg.Send && t.protoMsg != config.RemoteWriteProtoMsgV1 {
-		logger.Warn("usage of 'metadata_config.send' is redundant when using remote write v2 (or higher) as metadata will always be gathered from the WAL and included for every series within each write request")
+		level.Warn(logger).Log("msg", "usage of 'metadata_config.send' is redundant when using remote write v2 (or higher) as metadata will always be gathered from the WAL and included for every series within each write request")
 		t.mcfg.Send = false
 	}
 
@@ -550,7 +550,7 @@ func (t *QueueManager) AppendWatcherMetadata(ctx context.Context, metadata []scr
 	mm := make([]prompb.MetricMetadata, 0, len(metadata))
 	for _, entry := range metadata {
 		mm = append(mm, prompb.MetricMetadata{
-			MetricFamilyName: entry.MetricFamily,
+			MetricFamilyName: entry.Metric,
 			Help:             entry.Help,
 			Type:             prompb.FromMetadataType(entry.Type),
 			Unit:             entry.Unit,
@@ -567,7 +567,7 @@ func (t *QueueManager) AppendWatcherMetadata(ctx context.Context, metadata []scr
 		err := t.sendMetadataWithBackoff(ctx, mm[i*t.mcfg.MaxSamplesPerSend:last], pBuf)
 		if err != nil {
 			t.metrics.failedMetadataTotal.Add(float64(last - (i * t.mcfg.MaxSamplesPerSend)))
-			t.logger.Error("non-recoverable error while sending metadata", "count", last-(i*t.mcfg.MaxSamplesPerSend), "err", err)
+			level.Error(t.logger).Log("msg", "non-recoverable error while sending metadata", "count", last-(i*t.mcfg.MaxSamplesPerSend), "err", err)
 		}
 	}
 }
@@ -706,7 +706,7 @@ outer:
 		if !ok {
 			t.dataDropped.incr(1)
 			if _, ok := t.droppedSeries[s.Ref]; !ok {
-				t.logger.Info("Dropped sample for series that was not explicitly dropped via relabelling", "ref", s.Ref)
+				level.Info(t.logger).Log("msg", "Dropped sample for series that was not explicitly dropped via relabelling", "ref", s.Ref)
 				t.metrics.droppedSamplesTotal.WithLabelValues(reasonUnintentionalDroppedSeries).Inc()
 			} else {
 				t.metrics.droppedSamplesTotal.WithLabelValues(reasonDroppedSeries).Inc()
@@ -769,7 +769,7 @@ outer:
 			// Track dropped exemplars in the same EWMA for sharding calc.
 			t.dataDropped.incr(1)
 			if _, ok := t.droppedSeries[e.Ref]; !ok {
-				t.logger.Info("Dropped exemplar for series that was not explicitly dropped via relabelling", "ref", e.Ref)
+				level.Info(t.logger).Log("msg", "Dropped exemplar for series that was not explicitly dropped via relabelling", "ref", e.Ref)
 				t.metrics.droppedExemplarsTotal.WithLabelValues(reasonUnintentionalDroppedSeries).Inc()
 			} else {
 				t.metrics.droppedExemplarsTotal.WithLabelValues(reasonDroppedSeries).Inc()
@@ -825,7 +825,7 @@ outer:
 		if !ok {
 			t.dataDropped.incr(1)
 			if _, ok := t.droppedSeries[h.Ref]; !ok {
-				t.logger.Info("Dropped histogram for series that was not explicitly dropped via relabelling", "ref", h.Ref)
+				level.Info(t.logger).Log("msg", "Dropped histogram for series that was not explicitly dropped via relabelling", "ref", h.Ref)
 				t.metrics.droppedHistogramsTotal.WithLabelValues(reasonUnintentionalDroppedSeries).Inc()
 			} else {
 				t.metrics.droppedHistogramsTotal.WithLabelValues(reasonDroppedSeries).Inc()
@@ -880,7 +880,7 @@ outer:
 		if !ok {
 			t.dataDropped.incr(1)
 			if _, ok := t.droppedSeries[h.Ref]; !ok {
-				t.logger.Info("Dropped histogram for series that was not explicitly dropped via relabelling", "ref", h.Ref)
+				level.Info(t.logger).Log("msg", "Dropped histogram for series that was not explicitly dropped via relabelling", "ref", h.Ref)
 				t.metrics.droppedHistogramsTotal.WithLabelValues(reasonUnintentionalDroppedSeries).Inc()
 			} else {
 				t.metrics.droppedHistogramsTotal.WithLabelValues(reasonDroppedSeries).Inc()
@@ -944,8 +944,8 @@ func (t *QueueManager) Start() {
 // Stop stops sending samples to the remote storage and waits for pending
 // sends to complete.
 func (t *QueueManager) Stop() {
-	t.logger.Info("Stopping remote storage...")
-	defer t.logger.Info("Remote storage stopped.")
+	level.Info(t.logger).Log("msg", "Stopping remote storage...")
+	defer level.Info(t.logger).Log("msg", "Remote storage stopped.")
 
 	close(t.quit)
 	t.wg.Wait()
@@ -957,6 +957,13 @@ func (t *QueueManager) Stop() {
 	if t.mcfg.Send {
 		t.metadataWatcher.Stop()
 	}
+
+	// On shutdown, release the strings in the labels from the intern pool.
+	t.seriesMtx.Lock()
+	for _, labels := range t.seriesLabels {
+		t.releaseLabels(labels)
+	}
+	t.seriesMtx.Unlock()
 	t.metrics.unregister()
 }
 
@@ -978,6 +985,14 @@ func (t *QueueManager) StoreSeries(series []record.RefSeries, index int) {
 			continue
 		}
 		lbls := t.builder.Labels()
+		t.internLabels(lbls)
+
+		// We should not ever be replacing a series labels in the map, but just
+		// in case we do we need to ensure we do not leak the replaced interned
+		// strings.
+		if orig, ok := t.seriesLabels[s.Ref]; ok {
+			t.releaseLabels(orig)
+		}
 		t.seriesLabels[s.Ref] = lbls
 	}
 }
@@ -1022,6 +1037,7 @@ func (t *QueueManager) SeriesReset(index int) {
 	for k, v := range t.seriesSegmentIndexes {
 		if v < index {
 			delete(t.seriesSegmentIndexes, k)
+			t.releaseLabels(t.seriesLabels[k])
 			delete(t.seriesLabels, k)
 			delete(t.seriesMetadata, k)
 			delete(t.droppedSeries, k)
@@ -1041,6 +1057,14 @@ func (t *QueueManager) client() WriteClient {
 	t.clientMtx.RLock()
 	defer t.clientMtx.RUnlock()
 	return t.storeClient
+}
+
+func (t *QueueManager) internLabels(lbls labels.Labels) {
+	lbls.InternStrings(t.interner.intern)
+}
+
+func (t *QueueManager) releaseLabels(ls labels.Labels) {
+	ls.ReleaseStrings(t.interner.release)
 }
 
 // processExternalLabels merges externalLabels into b. If b contains
@@ -1069,10 +1093,10 @@ func (t *QueueManager) updateShardsLoop() {
 			// to stay close to shardUpdateDuration.
 			select {
 			case t.reshardChan <- desiredShards:
-				t.logger.Info("Remote storage resharding", "from", t.numShards, "to", desiredShards)
+				level.Info(t.logger).Log("msg", "Remote storage resharding", "from", t.numShards, "to", desiredShards)
 				t.numShards = desiredShards
 			default:
-				t.logger.Info("Currently resharding, skipping.")
+				level.Info(t.logger).Log("msg", "Currently resharding, skipping.")
 			}
 		case <-t.quit:
 			return
@@ -1090,14 +1114,14 @@ func (t *QueueManager) shouldReshard(desiredShards int) bool {
 	minSendTimestamp := time.Now().Add(-1 * shardUpdateDuration).Unix()
 	lsts := t.lastSendTimestamp.Load()
 	if lsts < minSendTimestamp {
-		t.logger.Warn("Skipping resharding, last successful send was beyond threshold", "lastSendTimestamp", lsts, "minSendTimestamp", minSendTimestamp)
+		level.Warn(t.logger).Log("msg", "Skipping resharding, last successful send was beyond threshold", "lastSendTimestamp", lsts, "minSendTimestamp", minSendTimestamp)
 		return false
 	}
 	if disableTimestamp := t.reshardDisableEndTimestamp.Load(); time.Now().Unix() < disableTimestamp {
 		disabledAt := time.Unix(t.reshardDisableStartTimestamp.Load(), 0)
 		disabledFor := time.Until(time.Unix(disableTimestamp, 0))
 
-		t.logger.Warn("Skipping resharding, resharding is disabled while waiting for recoverable errors", "disabled_at", disabledAt, "disabled_for", disabledFor)
+		level.Warn(t.logger).Log("msg", "Skipping resharding, resharding is disabled while waiting for recoverable errors", "disabled_at", disabledAt, "disabled_for", disabledFor)
 		return false
 	}
 	return true
@@ -1140,7 +1164,7 @@ func (t *QueueManager) calculateDesiredShards() int {
 		desiredShards = timePerSample * (dataInRate*dataKeptRatio + backlogCatchup)
 	)
 	t.metrics.desiredNumShards.Set(desiredShards)
-	t.logger.Debug("QueueManager.calculateDesiredShards",
+	level.Debug(t.logger).Log("msg", "QueueManager.calculateDesiredShards",
 		"dataInRate", dataInRate,
 		"dataOutRate", dataOutRate,
 		"dataKeptRatio", dataKeptRatio,
@@ -1158,7 +1182,7 @@ func (t *QueueManager) calculateDesiredShards() int {
 		lowerBound = float64(t.numShards) * (1. - shardToleranceFraction)
 		upperBound = float64(t.numShards) * (1. + shardToleranceFraction)
 	)
-	t.logger.Debug("QueueManager.updateShardsLoop",
+	level.Debug(t.logger).Log("msg", "QueueManager.updateShardsLoop",
 		"lowerBound", lowerBound, "desiredShards", desiredShards, "upperBound", upperBound)
 
 	desiredShards = math.Ceil(desiredShards) // Round up to be on the safe side.
@@ -1169,7 +1193,7 @@ func (t *QueueManager) calculateDesiredShards() int {
 	numShards := int(desiredShards)
 	// Do not downshard if we are more than ten seconds back.
 	if numShards < t.numShards && delay > 10.0 {
-		t.logger.Debug("Not downsharding due to being too far behind")
+		level.Debug(t.logger).Log("msg", "Not downsharding due to being too far behind")
 		return t.numShards
 	}
 
@@ -1297,7 +1321,7 @@ func (s *shards) stop() {
 	// Log error for any dropped samples, exemplars, or histograms.
 	logDroppedError := func(t string, counter atomic.Uint32) {
 		if dropped := counter.Load(); dropped > 0 {
-			s.qm.logger.Error(fmt.Sprintf("Failed to flush all %s on shutdown", t), "count", dropped)
+			level.Error(s.qm.logger).Log("msg", fmt.Sprintf("Failed to flush all %s on shutdown", t), "count", dropped)
 		}
 	}
 	logDroppedError("samples", s.samplesDroppedOnHardShutdown)
@@ -1540,7 +1564,7 @@ func (s *shards) runShard(ctx context.Context, shardID int, queue *queue) {
 			nPendingSamples, nPendingExemplars, nPendingHistograms := populateTimeSeries(batch, pendingData, s.qm.sendExemplars, s.qm.sendNativeHistograms)
 			n := nPendingSamples + nPendingExemplars + nPendingHistograms
 			if timer {
-				s.qm.logger.Debug("runShard timer ticked, sending buffered data", "samples", nPendingSamples,
+				level.Debug(s.qm.logger).Log("msg", "runShard timer ticked, sending buffered data", "samples", nPendingSamples,
 					"exemplars", nPendingExemplars, "shard", shardNum, "histograms", nPendingHistograms)
 			}
 			_ = s.sendSamples(ctx, pendingData[:n], nPendingSamples, nPendingExemplars, nPendingHistograms, pBuf, &buf, enc)
@@ -1667,9 +1691,9 @@ func (s *shards) updateMetrics(_ context.Context, err error, sampleCount, exempl
 		s.qm.metrics.failedExemplarsTotal.Add(float64(exemplarDiff))
 	}
 	if err != nil {
-		s.qm.logger.Error("non-recoverable error", "failedSampleCount", sampleDiff, "failedHistogramCount", histogramDiff, "failedExemplarCount", exemplarDiff, "err", err)
+		level.Error(s.qm.logger).Log("msg", "non-recoverable error", "failedSampleCount", sampleDiff, "failedHistogramCount", histogramDiff, "failedExemplarCount", exemplarDiff, "err", err)
 	} else if sampleDiff+exemplarDiff+histogramDiff > 0 {
-		s.qm.logger.Error("we got 2xx status code from the Receiver yet statistics indicate some dat was not written; investigation needed", "failedSampleCount", sampleDiff, "failedHistogramCount", histogramDiff, "failedExemplarCount", exemplarDiff)
+		level.Error(s.qm.logger).Log("msg", "we got 2xx status code from the Receiver yet statistics indicate some dat was not written; investigation needed", "failedSampleCount", sampleDiff, "failedHistogramCount", histogramDiff, "failedExemplarCount", exemplarDiff)
 	}
 
 	// These counters are used to calculate the dynamic sharding, and as such
@@ -1688,7 +1712,7 @@ func (s *shards) updateMetrics(_ context.Context, err error, sampleCount, exempl
 	s.enqueuedHistograms.Sub(int64(histogramCount))
 }
 
-// sendSamplesWithBackoff to the remote storage with backoff for recoverable errors.
+// sendSamples to the remote storage with backoff for recoverable errors.
 func (s *shards) sendSamplesWithBackoff(ctx context.Context, samples []prompb.TimeSeries, sampleCount, exemplarCount, histogramCount, metadataCount int, pBuf *proto.Buffer, buf *[]byte, enc Compression) (WriteResponseStats, error) {
 	// Build the WriteRequest with no metadata.
 	req, highest, lowest, err := buildWriteRequest(s.qm.logger, samples, nil, pBuf, buf, nil, enc)
@@ -1802,7 +1826,7 @@ func (s *shards) sendSamplesWithBackoff(ctx context.Context, samples []prompb.Ti
 	return accumulatedStats, err
 }
 
-// sendV2SamplesWithBackoff to the remote storage with backoff for recoverable errors.
+// sendV2Samples to the remote storage with backoff for recoverable errors.
 func (s *shards) sendV2SamplesWithBackoff(ctx context.Context, samples []writev2.TimeSeries, labels []string, sampleCount, exemplarCount, histogramCount, metadataCount int, pBuf, buf *[]byte, enc Compression) (WriteResponseStats, error) {
 	// Build the WriteRequest with no metadata.
 	req, highest, lowest, err := buildV2WriteRequest(s.qm.logger, samples, labels, pBuf, buf, nil, enc)
@@ -1919,17 +1943,12 @@ func populateV2TimeSeries(symbolTable *writev2.SymbolsTable, batch []timeSeries,
 	var nPendingSamples, nPendingExemplars, nPendingHistograms, nPendingMetadata int
 	for nPending, d := range batch {
 		pendingData[nPending].Samples = pendingData[nPending].Samples[:0]
+		// todo: should we also safeguard against empty metadata here?
 		if d.metadata != nil {
 			pendingData[nPending].Metadata.Type = writev2.FromMetadataType(d.metadata.Type)
 			pendingData[nPending].Metadata.HelpRef = symbolTable.Symbolize(d.metadata.Help)
-			pendingData[nPending].Metadata.UnitRef = symbolTable.Symbolize(d.metadata.Unit)
+			pendingData[nPending].Metadata.HelpRef = symbolTable.Symbolize(d.metadata.Unit)
 			nPendingMetadata++
-		} else {
-			// Safeguard against sending garbage in case of not having metadata
-			// for whatever reason.
-			pendingData[nPending].Metadata.Type = writev2.Metadata_METRIC_TYPE_UNSPECIFIED
-			pendingData[nPending].Metadata.HelpRef = 0
-			pendingData[nPending].Metadata.UnitRef = 0
 		}
 
 		if sendExemplars {
@@ -1999,16 +2018,16 @@ func (t *QueueManager) sendWriteRequestWithBackoff(ctx context.Context, attempt 
 		switch {
 		case backoffErr.retryAfter > 0:
 			sleepDuration = backoffErr.retryAfter
-			t.logger.Info("Retrying after duration specified by Retry-After header", "duration", sleepDuration)
+			level.Info(t.logger).Log("msg", "Retrying after duration specified by Retry-After header", "duration", sleepDuration)
 		case backoffErr.retryAfter < 0:
-			t.logger.Debug("retry-after cannot be in past, retrying using default backoff mechanism")
+			level.Debug(t.logger).Log("msg", "retry-after cannot be in past, retrying using default backoff mechanism")
 		}
 
 		// We should never reshard for a recoverable error; increasing shards could
 		// make the problem worse, particularly if we're getting rate limited.
 		//
 		// reshardDisableTimestamp holds the unix timestamp until which resharding
-		// is disabled. We'll update that timestamp if the period we were just told
+		// is diableld. We'll update that timestamp if the period we were just told
 		// to sleep for is newer than the existing disabled timestamp.
 		reshardWaitPeriod := time.Now().Add(time.Duration(sleepDuration) * 2)
 		if oldTS, updated := setAtomicToNewer(&t.reshardDisableEndTimestamp, reshardWaitPeriod.Unix()); updated {
@@ -2028,7 +2047,7 @@ func (t *QueueManager) sendWriteRequestWithBackoff(ctx context.Context, attempt 
 
 		// If we make it this far, we've encountered a recoverable error and will retry.
 		onRetry()
-		t.logger.Warn("Failed to send batch, retrying", "err", err)
+		level.Warn(t.logger).Log("msg", "Failed to send batch, retrying", "err", err)
 
 		backoff = sleepDuration * 2
 
@@ -2124,16 +2143,16 @@ func compressPayload(tmpbuf *[]byte, inp []byte, enc Compression) (compressed []
 		}
 		return compressed, nil
 	default:
-		return compressed, fmt.Errorf("unknown compression scheme [%v]", enc)
+		return compressed, fmt.Errorf("Unknown compression scheme [%v]", enc)
 	}
 }
 
-func buildWriteRequest(logger *slog.Logger, timeSeries []prompb.TimeSeries, metadata []prompb.MetricMetadata, pBuf *proto.Buffer, buf *[]byte, filter func(prompb.TimeSeries) bool, enc Compression) (compressed []byte, highest, lowest int64, _ error) {
+func buildWriteRequest(logger log.Logger, timeSeries []prompb.TimeSeries, metadata []prompb.MetricMetadata, pBuf *proto.Buffer, buf *[]byte, filter func(prompb.TimeSeries) bool, enc Compression) (compressed []byte, highest, lowest int64, _ error) {
 	highest, lowest, timeSeries,
 		droppedSamples, droppedExemplars, droppedHistograms := buildTimeSeries(timeSeries, filter)
 
 	if droppedSamples > 0 || droppedExemplars > 0 || droppedHistograms > 0 {
-		logger.Debug("dropped data due to their age", "droppedSamples", droppedSamples, "droppedExemplars", droppedExemplars, "droppedHistograms", droppedHistograms)
+		level.Debug(logger).Log("msg", "dropped data due to their age", "droppedSamples", droppedSamples, "droppedExemplars", droppedExemplars, "droppedHistograms", droppedHistograms)
 	}
 
 	req := &prompb.WriteRequest{
@@ -2166,11 +2185,11 @@ func buildWriteRequest(logger *slog.Logger, timeSeries []prompb.TimeSeries, meta
 	return compressed, highest, lowest, nil
 }
 
-func buildV2WriteRequest(logger *slog.Logger, samples []writev2.TimeSeries, labels []string, pBuf, buf *[]byte, filter func(writev2.TimeSeries) bool, enc Compression) (compressed []byte, highest, lowest int64, _ error) {
+func buildV2WriteRequest(logger log.Logger, samples []writev2.TimeSeries, labels []string, pBuf, buf *[]byte, filter func(writev2.TimeSeries) bool, enc Compression) (compressed []byte, highest, lowest int64, _ error) {
 	highest, lowest, timeSeries, droppedSamples, droppedExemplars, droppedHistograms := buildV2TimeSeries(samples, filter)
 
 	if droppedSamples > 0 || droppedExemplars > 0 || droppedHistograms > 0 {
-		logger.Debug("dropped data due to their age", "droppedSamples", droppedSamples, "droppedExemplars", droppedExemplars, "droppedHistograms", droppedHistograms)
+		level.Debug(logger).Log("msg", "dropped data due to their age", "droppedSamples", droppedSamples, "droppedExemplars", droppedExemplars, "droppedHistograms", droppedHistograms)
 	}
 
 	req := &writev2.Request{

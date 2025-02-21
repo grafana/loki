@@ -14,7 +14,6 @@
 package histogram
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -433,16 +432,16 @@ func (h *Histogram) Validate() error {
 			return fmt.Errorf("custom buckets: %w", err)
 		}
 		if h.ZeroCount != 0 {
-			return errors.New("custom buckets: must have zero count of 0")
+			return fmt.Errorf("custom buckets: must have zero count of 0")
 		}
 		if h.ZeroThreshold != 0 {
-			return errors.New("custom buckets: must have zero threshold of 0")
+			return fmt.Errorf("custom buckets: must have zero threshold of 0")
 		}
 		if len(h.NegativeSpans) > 0 {
-			return errors.New("custom buckets: must not have negative spans")
+			return fmt.Errorf("custom buckets: must not have negative spans")
 		}
 		if len(h.NegativeBuckets) > 0 {
-			return errors.New("custom buckets: must not have negative buckets")
+			return fmt.Errorf("custom buckets: must not have negative buckets")
 		}
 	} else {
 		if err := checkHistogramSpans(h.PositiveSpans, len(h.PositiveBuckets)); err != nil {
@@ -456,7 +455,7 @@ func (h *Histogram) Validate() error {
 			return fmt.Errorf("negative side: %w", err)
 		}
 		if h.CustomValues != nil {
-			return errors.New("histogram with exponential schema must not have custom bounds")
+			return fmt.Errorf("histogram with exponential schema must not have custom bounds")
 		}
 	}
 	err := checkHistogramBuckets(h.PositiveBuckets, &pCount, true)

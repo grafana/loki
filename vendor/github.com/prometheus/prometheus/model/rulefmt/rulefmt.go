@@ -111,20 +111,6 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 			)
 		}
 
-		for k, v := range g.Labels {
-			if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
-				errs = append(
-					errs, fmt.Errorf("invalid label name: %s", k),
-				)
-			}
-
-			if !model.LabelValue(v).IsValid() {
-				errs = append(
-					errs, fmt.Errorf("invalid label value: %s", v),
-				)
-			}
-		}
-
 		set[g.Name] = struct{}{}
 
 		for i, r := range g.Rules {
@@ -150,12 +136,11 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 
 // RuleGroup is a list of sequentially evaluated recording and alerting rules.
 type RuleGroup struct {
-	Name        string            `yaml:"name"`
-	Interval    model.Duration    `yaml:"interval,omitempty"`
-	QueryOffset *model.Duration   `yaml:"query_offset,omitempty"`
-	Limit       int               `yaml:"limit,omitempty"`
-	Rules       []RuleNode        `yaml:"rules"`
-	Labels      map[string]string `yaml:"labels,omitempty"`
+	Name        string          `yaml:"name"`
+	Interval    model.Duration  `yaml:"interval,omitempty"`
+	QueryOffset *model.Duration `yaml:"query_offset,omitempty"`
+	Limit       int             `yaml:"limit,omitempty"`
+	Rules       []RuleNode      `yaml:"rules"`
 }
 
 // Rule describes an alerting or recording rule.
@@ -184,14 +169,14 @@ type RuleNode struct {
 func (r *RuleNode) Validate() (nodes []WrappedError) {
 	if r.Record.Value != "" && r.Alert.Value != "" {
 		nodes = append(nodes, WrappedError{
-			err:     errors.New("only one of 'record' and 'alert' must be set"),
+			err:     fmt.Errorf("only one of 'record' and 'alert' must be set"),
 			node:    &r.Record,
 			nodeAlt: &r.Alert,
 		})
 	}
 	if r.Record.Value == "" && r.Alert.Value == "" {
 		nodes = append(nodes, WrappedError{
-			err:     errors.New("one of 'record' or 'alert' must be set"),
+			err:     fmt.Errorf("one of 'record' or 'alert' must be set"),
 			node:    &r.Record,
 			nodeAlt: &r.Alert,
 		})
@@ -199,7 +184,7 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 
 	if r.Expr.Value == "" {
 		nodes = append(nodes, WrappedError{
-			err:  errors.New("field 'expr' must be set in rule"),
+			err:  fmt.Errorf("field 'expr' must be set in rule"),
 			node: &r.Expr,
 		})
 	} else if _, err := parser.ParseExpr(r.Expr.Value); err != nil {
@@ -211,33 +196,25 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 	if r.Record.Value != "" {
 		if len(r.Annotations) > 0 {
 			nodes = append(nodes, WrappedError{
-				err:  errors.New("invalid field 'annotations' in recording rule"),
+				err:  fmt.Errorf("invalid field 'annotations' in recording rule"),
 				node: &r.Record,
 			})
 		}
 		if r.For != 0 {
 			nodes = append(nodes, WrappedError{
-				err:  errors.New("invalid field 'for' in recording rule"),
+				err:  fmt.Errorf("invalid field 'for' in recording rule"),
 				node: &r.Record,
 			})
 		}
 		if r.KeepFiringFor != 0 {
 			nodes = append(nodes, WrappedError{
-				err:  errors.New("invalid field 'keep_firing_for' in recording rule"),
+				err:  fmt.Errorf("invalid field 'keep_firing_for' in recording rule"),
 				node: &r.Record,
 			})
 		}
 		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
 			nodes = append(nodes, WrappedError{
 				err:  fmt.Errorf("invalid recording rule name: %s", r.Record.Value),
-				node: &r.Record,
-			})
-		}
-		// While record is a valid UTF-8 it's common mistake to put PromQL expression in the record name.
-		// Disallow "{}" chars.
-		if strings.Contains(r.Record.Value, "{") || strings.Contains(r.Record.Value, "}") {
-			nodes = append(nodes, WrappedError{
-				err:  fmt.Errorf("braces present in the recording rule name; should it be in expr?: %s", r.Record.Value),
 				node: &r.Record,
 			})
 		}
@@ -322,7 +299,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 }
 
 // Parse parses and validates a set of rules.
-func Parse(content []byte, ignoreUnknownFields bool) (*RuleGroups, []error) {
+func Parse(content []byte) (*RuleGroups, []error) {
 	var (
 		groups RuleGroups
 		node   ruleGroups
@@ -330,9 +307,7 @@ func Parse(content []byte, ignoreUnknownFields bool) (*RuleGroups, []error) {
 	)
 
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	if !ignoreUnknownFields {
-		decoder.KnownFields(true)
-	}
+	decoder.KnownFields(true)
 	err := decoder.Decode(&groups)
 	// Ignore io.EOF which happens with empty input.
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -351,12 +326,12 @@ func Parse(content []byte, ignoreUnknownFields bool) (*RuleGroups, []error) {
 }
 
 // ParseFile reads and parses rules from a file.
-func ParseFile(file string, ignoreUnknownFields bool) (*RuleGroups, []error) {
+func ParseFile(file string) (*RuleGroups, []error) {
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, []error{fmt.Errorf("%s: %w", file, err)}
 	}
-	rgs, errs := Parse(b, ignoreUnknownFields)
+	rgs, errs := Parse(b)
 	for i := range errs {
 		errs[i] = fmt.Errorf("%s: %w", file, errs[i])
 	}

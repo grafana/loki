@@ -29,7 +29,6 @@ type Sample interface {
 	H() *histogram.Histogram
 	FH() *histogram.FloatHistogram
 	Type() chunkenc.ValueType
-	Copy() Sample // Returns a deep copy.
 }
 
 type SampleSlice []Sample
@@ -69,17 +68,6 @@ func (s sample) Type() chunkenc.ValueType {
 	default:
 		return chunkenc.ValFloat
 	}
-}
-
-func (s sample) Copy() Sample {
-	c := sample{t: s.t, f: s.f}
-	if s.h != nil {
-		c.h = s.h.Copy()
-	}
-	if s.fh != nil {
-		c.fh = s.fh.Copy()
-	}
-	return c
 }
 
 // GenerateSamples starting at start and counting up numSamples.

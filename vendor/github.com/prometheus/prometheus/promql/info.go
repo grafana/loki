@@ -90,7 +90,7 @@ func (ev *evaluator) infoSelectHints(expr parser.Expr) storage.SelectHints {
 				nodeTimestamp = n.Timestamp
 			}
 			offset = durationMilliseconds(n.OriginalOffset)
-			return errors.New("end traversal")
+			return fmt.Errorf("end traversal")
 		default:
 			return nil
 		}

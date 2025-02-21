@@ -39,7 +39,6 @@ package testutil
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,7 +46,6 @@ import (
 	"github.com/kylelemons/godebug/diff"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/model"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -302,20 +300,20 @@ func compareMetricFamilies(got, expected []*dto.MetricFamily, metricNames ...str
 // result.
 func compare(got, want []*dto.MetricFamily) error {
 	var gotBuf, wantBuf bytes.Buffer
-	enc := expfmt.NewEncoder(&gotBuf, expfmt.NewFormat(expfmt.TypeTextPlain).WithEscapingScheme(model.NoEscaping))
+	enc := expfmt.NewEncoder(&gotBuf, expfmt.NewFormat(expfmt.TypeTextPlain))
 	for _, mf := range got {
 		if err := enc.Encode(mf); err != nil {
 			return fmt.Errorf("encoding gathered metrics failed: %w", err)
 		}
 	}
-	enc = expfmt.NewEncoder(&wantBuf, expfmt.NewFormat(expfmt.TypeTextPlain).WithEscapingScheme(model.NoEscaping))
+	enc = expfmt.NewEncoder(&wantBuf, expfmt.NewFormat(expfmt.TypeTextPlain))
 	for _, mf := range want {
 		if err := enc.Encode(mf); err != nil {
 			return fmt.Errorf("encoding expected metrics failed: %w", err)
 		}
 	}
 	if diffErr := diff.Diff(gotBuf.String(), wantBuf.String()); diffErr != "" {
-		return errors.New(diffErr)
+		return fmt.Errorf(diffErr)
 	}
 	return nil
 }

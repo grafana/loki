@@ -9,14 +9,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/pkg/errors"
@@ -152,19 +152,19 @@ type Discovery struct {
 	allowStale       bool
 	refreshInterval  time.Duration
 	finalizer        func()
-	logger           *slog.Logger
+	logger           log.Logger
 	metrics          *consulMetrics
 }
 
 // NewDiscovery returns a new Discovery for the given config.
-func NewDiscovery(conf *SDConfig, logger *slog.Logger, metrics discovery.DiscovererMetrics) (*Discovery, error) {
+func NewDiscovery(conf *SDConfig, logger log.Logger, metrics discovery.DiscovererMetrics) (*Discovery, error) {
 	m, ok := metrics.(*consulMetrics)
 	if !ok {
 		return nil, fmt.Errorf("invalid discovery metrics type")
 	}
 
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = log.NewNopLogger()
 	}
 
 	tls, err := config.NewTLSConfig(&conf.TLSConfig)
@@ -265,7 +265,7 @@ func (d *Discovery) getDatacenter() error {
 	}
 	info, err := d.client.Agent().Self()
 	if err != nil {
-		d.logger.Error("Error retrieving datacenter name", "err", err)
+		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		d.metrics.rpcFailuresCount.Inc()
 		return err
 	}
@@ -273,7 +273,7 @@ func (d *Discovery) getDatacenter() error {
 	dc, ok := info["Config"]["Datacenter"].(string)
 	if !ok {
 		err := errors.Errorf("invalid value '%v' for Config.Datacenter", info["Config"]["Datacenter"])
-		d.logger.Error("Error retrieving datacenter name", "err", err)
+		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
 		return err
 	}
 
@@ -342,7 +342,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // entire list of services.
 func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func(error)) {
 	agent := d.client.Agent()
-	d.logger.Debug("Watching services", "tags", strings.Join(d.watchedTags, ","))
+	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
 	t0 := time.Now()
 	srvs, err := agent.Services()
@@ -357,7 +357,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 	}
 
 	if err != nil {
-		d.logger.Error("Error refreshing service list", "err", err)
+		level.Error(d.logger).Log("msg", "Error refreshing service list", "err", err)
 		d.metrics.rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
@@ -386,7 +386,9 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 	// Check for removed services.
 	for name, cancel := range services {
 		if _, ok := discoveredServices[name]; !ok {
-			d.logger.Debug("removing service since consul no longer has a record of it", "name", name)
+			level.Debug(d.logger).Log(
+				"msg", "removing service since consul no longer has a record of it",
+				"name", name)
 			// Call the watch cancellation function.
 			cancel(errors.New("canceling service since consul no longer has a record of it"))
 			delete(services, name)
@@ -418,7 +420,7 @@ type consulService struct {
 	discovery          *Discovery
 	client             *consul.Client
 	tagSeparator       string
-	logger             *slog.Logger
+	logger             log.Logger
 	rpcFailuresCount   prometheus.Counter
 	serviceRPCDuration prometheus.Observer
 }
@@ -462,7 +464,7 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 
 // Get updates for a service.
 func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Group, agent *consul.Agent) {
-	srv.logger.Debug("Watching service", "service", srv.name, "tags", strings.Join(srv.tags, ","))
+	level.Debug(srv.logger).Log("msg", "Watching service", "service", srv.name, "tags", strings.Join(srv.tags, ","))
 
 	t0 := time.Now()
 	aggregatedStatus, serviceChecks, err := agent.AgentHealthServiceByName(srv.name)
@@ -478,7 +480,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	}
 
 	if err != nil {
-		srv.logger.Error("Error refreshing service", "service", srv.name, "tags", strings.Join(srv.tags, ","), "err", err)
+		level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tags", strings.Join(srv.tags, ","), "err", err)
 		srv.rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
@@ -486,18 +488,18 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 
 	self, err := agent.Self()
 	if err != nil {
-		srv.logger.Error("failed to get agent info from agent api", "err", err)
+		level.Error(srv.logger).Log("msg", "failed to get agent info from agent api", "err", err)
 		return
 	}
 	var member = consul.AgentMember{}
 	memberBytes, err := json.Marshal(self["Member"])
 	if err != nil {
-		srv.logger.Error("failed to get member information from agent", "err", err)
+		level.Error(srv.logger).Log("msg", "failed to get member information from agent", "err", err)
 		return
 	}
 	err = json.Unmarshal(memberBytes, &member)
 	if err != nil {
-		srv.logger.Error("failed to unmarshal member information from agent", "err", err)
+		level.Error(srv.logger).Log("msg", "failed to unmarshal member information from agent", "err", err)
 		return
 	}
 

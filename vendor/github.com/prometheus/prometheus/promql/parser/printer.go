@@ -14,10 +14,8 @@
 package parser
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -93,20 +91,13 @@ func (node *AggregateExpr) getAggOpStr() string {
 }
 
 func joinLabels(ss []string) string {
-	var bytea [1024]byte // On stack to avoid memory allocation while building the output.
-	b := bytes.NewBuffer(bytea[:0])
-
 	for i, s := range ss {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		if !model.IsValidLegacyMetricName(string(model.LabelValue(s))) {
-			b.Write(strconv.AppendQuote(b.AvailableBuffer(), s))
-		} else {
-			b.WriteString(s)
+		// If the label is already quoted, don't quote it again.
+		if s[0] != '"' && s[0] != '\'' && s[0] != '`' && !model.IsValidLegacyMetricName(string(model.LabelValue(s))) {
+			ss[i] = fmt.Sprintf("\"%s\"", s)
 		}
 	}
-	return b.String()
+	return strings.Join(ss, ", ")
 }
 
 func (node *BinaryExpr) returnBool() string {

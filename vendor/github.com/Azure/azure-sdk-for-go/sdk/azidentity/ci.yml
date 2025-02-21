@@ -27,15 +27,15 @@ extends:
       CloudConfig:
         Public:
           SubscriptionConfigurations:
+            - $(sub-config-azure-cloud-test-resources)
             - $(sub-config-identity-test-resources)
-      EnableRaceDetector: true
-      Location: westus2
+      EnvVars:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       RunLiveTests: true
       ServiceDirectory: azidentity
       UsePipelineProxy: false
 
       ${{ if endsWith(variables['Build.DefinitionName'], 'weekly') }}:
-        PersistOidcToken: true
         MatrixConfigs:
           - Name: managed_identity_matrix
             GenerateVMJobs: true

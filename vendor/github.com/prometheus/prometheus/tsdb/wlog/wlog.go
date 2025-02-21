@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,10 +28,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/promslog"
 
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
@@ -121,7 +121,7 @@ func (e *CorruptionErr) Unwrap() error {
 }
 
 // OpenWriteSegment opens segment k in dir. The returned segment is ready for new appends.
-func OpenWriteSegment(logger *slog.Logger, dir string, k int) (*Segment, error) {
+func OpenWriteSegment(logger log.Logger, dir string, k int) (*Segment, error) {
 	segName := SegmentName(dir, k)
 	f, err := os.OpenFile(segName, os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
@@ -138,7 +138,7 @@ func OpenWriteSegment(logger *slog.Logger, dir string, k int) (*Segment, error) 
 	// If it was torn mid-record, a full read (which the caller should do anyway
 	// to ensure integrity) will detect it as a corruption by the end.
 	if d := stat.Size() % pageSize; d != 0 {
-		logger.Warn("Last page of the wlog is torn, filling it with zeros", "segment", segName)
+		level.Warn(logger).Log("msg", "Last page of the wlog is torn, filling it with zeros", "segment", segName)
 		if _, err := f.Write(make([]byte, pageSize-d)); err != nil {
 			f.Close()
 			return nil, fmt.Errorf("zero-pad torn page: %w", err)
@@ -201,7 +201,7 @@ func ParseCompressionType(compress bool, compressType string) CompressionType {
 // beyond the most recent segment.
 type WL struct {
 	dir         string
-	logger      *slog.Logger
+	logger      log.Logger
 	segmentSize int
 	mtx         sync.RWMutex
 	segment     *Segment // Active segment.
@@ -286,7 +286,7 @@ func newWLMetrics(w *WL, r prometheus.Registerer) *wlMetrics {
 	}, func() float64 {
 		val, err := w.Size()
 		if err != nil {
-			w.logger.Error("Failed to calculate size of \"wal\" dir",
+			level.Error(w.logger).Log("msg", "Failed to calculate size of \"wal\" dir",
 				"err", err.Error())
 		}
 		return float64(val)
@@ -309,13 +309,13 @@ func newWLMetrics(w *WL, r prometheus.Registerer) *wlMetrics {
 }
 
 // New returns a new WAL over the given directory.
-func New(logger *slog.Logger, reg prometheus.Registerer, dir string, compress CompressionType) (*WL, error) {
+func New(logger log.Logger, reg prometheus.Registerer, dir string, compress CompressionType) (*WL, error) {
 	return NewSize(logger, reg, dir, DefaultSegmentSize, compress)
 }
 
 // NewSize returns a new write log over the given directory.
 // New segments are created with the specified size.
-func NewSize(logger *slog.Logger, reg prometheus.Registerer, dir string, segmentSize int, compress CompressionType) (*WL, error) {
+func NewSize(logger log.Logger, reg prometheus.Registerer, dir string, segmentSize int, compress CompressionType) (*WL, error) {
 	if segmentSize%pageSize != 0 {
 		return nil, errors.New("invalid segment size")
 	}
@@ -323,7 +323,7 @@ func NewSize(logger *slog.Logger, reg prometheus.Registerer, dir string, segment
 		return nil, fmt.Errorf("create dir: %w", err)
 	}
 	if logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	}
 
 	var zstdWriter *zstd.Encoder
@@ -378,9 +378,9 @@ func NewSize(logger *slog.Logger, reg prometheus.Registerer, dir string, segment
 }
 
 // Open an existing WAL.
-func Open(logger *slog.Logger, dir string) (*WL, error) {
+func Open(logger log.Logger, dir string) (*WL, error) {
 	if logger == nil {
-		logger = promslog.NewNopLogger()
+		logger = log.NewNopLogger()
 	}
 	zstdWriter, err := zstd.NewWriter(nil)
 	if err != nil {
@@ -443,7 +443,7 @@ func (w *WL) Repair(origErr error) error {
 	if cerr.Segment < 0 {
 		return errors.New("corruption error does not specify position")
 	}
-	w.logger.Warn("Starting corruption repair",
+	level.Warn(w.logger).Log("msg", "Starting corruption repair",
 		"segment", cerr.Segment, "offset", cerr.Offset)
 
 	// All segments behind the corruption can no longer be used.
@@ -451,7 +451,7 @@ func (w *WL) Repair(origErr error) error {
 	if err != nil {
 		return fmt.Errorf("list segments: %w", err)
 	}
-	w.logger.Warn("Deleting all segments newer than corrupted segment", "segment", cerr.Segment)
+	level.Warn(w.logger).Log("msg", "Deleting all segments newer than corrupted segment", "segment", cerr.Segment)
 
 	for _, s := range segs {
 		if w.segment.i == s.index {
@@ -473,7 +473,7 @@ func (w *WL) Repair(origErr error) error {
 	// Regardless of the corruption offset, no record reaches into the previous segment.
 	// So we can safely repair the WAL by removing the segment and re-inserting all
 	// its records up to the corruption.
-	w.logger.Warn("Rewrite corrupted segment", "segment", cerr.Segment)
+	level.Warn(w.logger).Log("msg", "Rewrite corrupted segment", "segment", cerr.Segment)
 
 	fn := SegmentName(w.Dir(), cerr.Segment)
 	tmpfn := fn + ".repair"
@@ -583,10 +583,10 @@ func (w *WL) nextSegment(async bool) (int, error) {
 	// Don't block further writes by fsyncing the last segment.
 	f := func() {
 		if err := w.fsync(prev); err != nil {
-			w.logger.Error("sync previous segment", "err", err)
+			level.Error(w.logger).Log("msg", "sync previous segment", "err", err)
 		}
 		if err := prev.Close(); err != nil {
-			w.logger.Error("close previous segment", "err", err)
+			level.Error(w.logger).Log("msg", "close previous segment", "err", err)
 		}
 	}
 	if async {
@@ -890,10 +890,10 @@ func (w *WL) Close() (err error) {
 	<-donec
 
 	if err = w.fsync(w.segment); err != nil {
-		w.logger.Error("sync previous segment", "err", err)
+		level.Error(w.logger).Log("msg", "sync previous segment", "err", err)
 	}
 	if err := w.segment.Close(); err != nil {
-		w.logger.Error("close previous segment", "err", err)
+		level.Error(w.logger).Log("msg", "close previous segment", "err", err)
 	}
 
 	w.metrics.Unregister()

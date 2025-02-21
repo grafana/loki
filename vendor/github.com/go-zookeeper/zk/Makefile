@@ -37,10 +37,6 @@ lint:
 build:
 	go build ./...
 
-.PHONY: unittest
-unittest:
-	go test -timeout 500s -v -race -covermode atomic -skip=Integration ./...
-
 .PHONY: test
 test: build zookeeper
 	go test -timeout 500s -v -race -covermode atomic -coverprofile=profile.cov $(PACKAGES)

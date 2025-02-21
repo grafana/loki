@@ -18,13 +18,12 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promslog"
 	"gopkg.in/yaml.v2"
 
 	"github.com/prometheus/prometheus/config"
@@ -52,9 +51,8 @@ type startTimeCallback func() (int64, error)
 // Storage represents all the remote read and write endpoints.  It implements
 // storage.Storage.
 type Storage struct {
-	deduper *logging.Deduper
-	logger  *slog.Logger
-	mtx     sync.Mutex
+	logger *logging.Deduper
+	mtx    sync.Mutex
 
 	rws *WriteStorage
 
@@ -64,16 +62,14 @@ type Storage struct {
 }
 
 // NewStorage returns a remote.Storage.
-func NewStorage(l *slog.Logger, reg prometheus.Registerer, stCallback startTimeCallback, walDir string, flushDeadline time.Duration, sm ReadyScrapeManager, metadataInWAL bool) *Storage {
+func NewStorage(l log.Logger, reg prometheus.Registerer, stCallback startTimeCallback, walDir string, flushDeadline time.Duration, sm ReadyScrapeManager, metadataInWAL bool) *Storage {
 	if l == nil {
-		l = promslog.NewNopLogger()
+		l = log.NewNopLogger()
 	}
-	deduper := logging.Dedupe(l, 1*time.Minute)
-	logger := slog.New(deduper)
+	logger := logging.Dedupe(l, 1*time.Minute)
 
 	s := &Storage{
 		logger:                 logger,
-		deduper:                deduper,
 		localStartTimeCallback: stCallback,
 	}
 	s.rws = NewWriteStorage(s.logger, reg, walDir, flushDeadline, sm, metadataInWAL)
@@ -200,7 +196,7 @@ func (s *Storage) LowestSentTimestamp() int64 {
 
 // Close the background processing of the storage queues.
 func (s *Storage) Close() error {
-	s.deduper.Stop()
+	s.logger.Stop()
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	return s.rws.Close()

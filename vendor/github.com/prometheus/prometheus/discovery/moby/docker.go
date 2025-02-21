@@ -15,9 +15,7 @@ package moby
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,10 +28,10 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/refresh"
@@ -112,7 +110,7 @@ func (c *DockerSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		return err
 	}
 	if c.Host == "" {
-		return errors.New("host missing")
+		return fmt.Errorf("host missing")
 	}
 	if _, err = url.Parse(c.Host); err != nil {
 		return err
@@ -130,10 +128,10 @@ type DockerDiscovery struct {
 }
 
 // NewDockerDiscovery returns a new DockerDiscovery which periodically refreshes its targets.
-func NewDockerDiscovery(conf *DockerSDConfig, logger *slog.Logger, metrics discovery.DiscovererMetrics) (*DockerDiscovery, error) {
+func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger, metrics discovery.DiscovererMetrics) (*DockerDiscovery, error) {
 	m, ok := metrics.(*dockerMetrics)
 	if !ok {
-		return nil, errors.New("invalid discovery metrics type")
+		return nil, fmt.Errorf("invalid discovery metrics type")
 	}
 
 	d := &DockerDiscovery{
@@ -174,7 +172,7 @@ func NewDockerDiscovery(conf *DockerSDConfig, logger *slog.Logger, metrics disco
 			}),
 			client.WithScheme(hostURL.Scheme),
 			client.WithHTTPHeaders(map[string]string{
-				"User-Agent": version.PrometheusUserAgent(),
+				"User-Agent": userAgent,
 			}),
 		)
 	}
