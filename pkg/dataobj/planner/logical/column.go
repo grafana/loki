@@ -16,6 +16,11 @@ type ColumnExpr struct {
 	name string
 }
 
+// Col creates a column reference expression
+func Col(name string) ColumnExpr {
+	return ColumnExpr{name: name}
+}
+
 // ToField looks up and returns the schema for the referenced column
 func (c ColumnExpr) ToField(p Plan) schema.ColumnSchema {
 	for _, col := range p.Schema().Columns {
