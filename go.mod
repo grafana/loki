@@ -133,10 +133,12 @@ require (
 	github.com/parquet-go/parquet-go v0.24.0
 	github.com/prometheus/alertmanager v0.28.0
 	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/prometheus/sigv4 v0.1.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.25.1
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
+	github.com/tjhop/slog-gokit v0.1.3
 	github.com/twmb/franz-go v1.18.1
 	github.com/twmb/franz-go/pkg/kadm v1.15.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
@@ -195,9 +197,7 @@ require (
 	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/prometheus/sigv4 v0.1.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tjhop/slog-gokit v0.1.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.13 // indirect
 	github.com/tklauser/numcpus v0.7.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
