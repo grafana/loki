@@ -6,6 +6,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
+// Compile-time checks to ensure types implement Expr interface
+var (
+	_ Expr = BinaryMathExpr{}
+	_ Expr = BooleanCmpExpr{}
+	_ Expr = BooleanSetExpr{}
+)
+
 // BinaryOpMath represents mathematical binary operations
 type BinaryOpMath string
 
