@@ -88,7 +88,7 @@ func (VectorExpr) isLogSelectorExpr()     {}
 // SampleExpr is a LogQL expression filtering logs and returning metric samples
 type SampleExpr interface {
 	Selector() (LogSelectorExpr, error)
-	Extractor() (SampleExtractor, error)
+	Extractors() ([]SampleExtractor, error)
 	MatcherGroups() ([]MatcherRange, error)
 
 	Expr
@@ -101,6 +101,7 @@ func (VectorAggregationExpr) isSampleExpr() {}
 func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
 func (LabelReplaceExpr) isSampleExpr()      {}
+func (MultiVariantExpr) isSampleExpr()      {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -1580,7 +1581,7 @@ func (e *VectorAggregationExpr) Selector() (LogSelectorExpr, error) {
 	return e.Left.Selector()
 }
 
-func (e *VectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
+func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -1589,10 +1590,14 @@ func (e *VectorAggregationExpr) Extractor() (log.SampleExtractor, error) {
 	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
-			return r.extractor(e.Grouping)
+			ext, err := r.extractor(e.Grouping)
+			if err != nil {
+				return []SampleExtractor{}, err
+			}
+			return []SampleExtractor{ext}, nil
 		}
 	}
-	return e.Left.Extractor()
+	return e.Left.Extractors()
 }
 
 // canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
@@ -2135,15 +2140,17 @@ func (e *LiteralExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
-func (e *LiteralExpr) HasFilter() bool                         { return false }
-func (e *LiteralExpr) Shardable(_ bool) bool                   { return true }
-func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
-func (e *LiteralExpr) Accept(v RootVisitor)                    { v.VisitLiteral(e) }
-func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
-func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
-func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) { return nil, e.err }
+func (e *LiteralExpr) Selector() (LogSelectorExpr, error)     { return e, e.err }
+func (e *LiteralExpr) HasFilter() bool                        { return false }
+func (e *LiteralExpr) Shardable(_ bool) bool                  { return true }
+func (e *LiteralExpr) Walk(f WalkFn)                          { f(e) }
+func (e *LiteralExpr) Accept(v RootVisitor)                   { v.VisitLiteral(e) }
+func (e *LiteralExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoopPipeline(), nil }
+func (e *LiteralExpr) Matchers() []*labels.Matcher            { return nil }
+func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
+func (e *LiteralExpr) Extractors() ([]log.SampleExtractor, error) {
+	return []log.SampleExtractor{}, e.err
+}
 func (e *LiteralExpr) Value() (float64, error) {
 	if e.err != nil {
 		return 0, e.err
@@ -2213,11 +2220,11 @@ func (e *LabelReplaceExpr) MatcherGroups() ([]MatcherRange, error) {
 	return e.Left.MatcherGroups()
 }
 
-func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
+func (e *LabelReplaceExpr) Extractors() ([]SampleExtractor, error) {
 	if e.err != nil {
-		return nil, e.err
+		return []SampleExtractor{}, e.err
 	}
-	return e.Left.Extractor()
+	return e.Left.Extractors()
 }
 
 func (e *LabelReplaceExpr) Shardable(_ bool) bool {
@@ -2357,15 +2364,17 @@ func (e *VectorExpr) Value() (float64, error) {
 	return e.Val, nil
 }
 
-func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
-func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable(_ bool) bool                   { return false }
-func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
-func (e *VectorExpr) Accept(v RootVisitor)                    { v.VisitVector(e) }
-func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
-func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
-func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
-func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
+func (e *VectorExpr) Selector() (LogSelectorExpr, error) { return e, e.err }
+func (e *VectorExpr) HasFilter() bool                    { return false }
+func (e *VectorExpr) Shardable(_ bool) bool              { return false }
+func (e *VectorExpr) Walk(f WalkFn)                      { f(e) }
+func (e *VectorExpr) Accept(v RootVisitor)               { v.VisitVector(e) }
+
+func (e *VectorExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoopPipeline(), nil }
+func (e *VectorExpr) Matchers() []*labels.Matcher            { return nil }
+func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
+
+func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
 	e.Walk(func(e Expr) {
@@ -2423,13 +2432,15 @@ func groupingReducesLabels(grp *Grouping) bool {
 //
 //sumtype:decl
 type VariantsExpr interface {
-	LogRange() *LogRangeExpr
-	Matchers() []*labels.Matcher
-	Variants() []SampleExpr
-	SetVariant(i int, e SampleExpr) error
-	Interval() time.Duration
-	Offset() time.Duration
 	Extractors() ([]SampleExtractor, error)
+	Interval() time.Duration
+	LogRange() *LogRangeExpr
+	MatcherGroups() ([]MatcherRange, error)
+	Matchers() []*labels.Matcher
+	Offset() time.Duration
+	SetVariant(i int, e SampleExpr) error
+	Variants() []SampleExpr
+	Selector() (LogSelectorExpr, error)
 	Expr
 }
 
@@ -2563,15 +2574,37 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 	return s
 }
 
+func (m *MultiVariantExpr) MatcherGroups() ([]MatcherRange, error) {
+	xs := m.Matchers()
+	if len(xs) > 0 {
+		return []MatcherRange{
+			{
+				Matchers: xs,
+				Interval: m.Interval(),
+				Offset:   m.Offset(),
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	return m.logRange.Left, nil
+}
+
 func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
 	extractors := make([]log.SampleExtractor, 0, len(m.variants))
 	for _, v := range m.variants {
-		e, err := v.Extractor()
+		e, err := v.Extractors()
 		if err != nil {
 			return nil, err
 		}
 
-		extractors = append(extractors, e)
+		extractors = append(extractors, e...)
 	}
 
 	return extractors, nil
