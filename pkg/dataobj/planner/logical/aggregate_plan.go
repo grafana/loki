@@ -1,6 +1,9 @@
 package logical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+import (
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+)
 
 // Compile-time check to ensure Aggregate implements Plan
 var (
@@ -53,4 +56,52 @@ func (a *Aggregate) Schema() schema.Schema {
 // Children returns the child plan nodes
 func (a *Aggregate) Children() []Plan {
 	return []Plan{a.input}
+}
+
+// Format implements format.Format
+func (a *Aggregate) Format(fm format.Formatter) {
+	// Collect grouping names
+	var groupNames []string
+	for _, expr := range a.groupExprs {
+		groupNames = append(groupNames, expr.ToField(a.input).Name)
+	}
+
+	// Collect aggregate names
+	var aggNames []string
+	for _, expr := range a.aggExprs {
+		aggNames = append(aggNames, expr.ToField(a.input).Name)
+	}
+
+	n := format.Node{
+		Singletons: []string{"Aggregate"},
+		Tuples: []format.ContentTuple{
+			{
+				Key:   "groupings",
+				Value: format.ListContentFrom(groupNames...),
+			},
+			{
+				Key:   "aggregates",
+				Value: format.ListContentFrom(aggNames...),
+			},
+		},
+	}
+
+	nextFM := fm.WriteNode(n)
+
+	// Format grouping expressions
+	groupNode := format.Node{Singletons: []string{"GroupExprs"}}
+	groupFM := nextFM.WriteNode(groupNode)
+	for _, expr := range a.groupExprs {
+		expr.Format(groupFM)
+	}
+
+	// Format aggregate expressions
+	aggNode := format.Node{Singletons: []string{"AggregateExprs"}}
+	aggFM := nextFM.WriteNode(aggNode)
+	for _, expr := range a.aggExprs {
+		expr.Format(aggFM)
+	}
+
+	// Format input plan
+	a.input.Format(nextFM)
 }

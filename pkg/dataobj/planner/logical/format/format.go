@@ -41,22 +41,31 @@ type ContentTuple struct {
 func (t ContentTuple) Content() string {
 	var sb strings.Builder
 	sb.WriteString(t.Key)
-	sb.WriteString("=(")
+	sb.WriteString("=")
 	sb.WriteString(t.Value.Content())
-	sb.WriteString(")")
 	return sb.String()
 }
 
-type GroupContent []Content
+type ListContent []Content
 
-func (g GroupContent) Content() string {
+func ListContentFrom(values ...string) ListContent {
+	var contents []Content
+	for _, value := range values {
+		contents = append(contents, SingleContent(value))
+	}
+	return ListContent(contents)
+}
+
+func (g ListContent) Content() string {
 	var sb strings.Builder
+	sb.WriteString("(")
 	for i, c := range g {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
 		sb.WriteString(c.Content())
 	}
+	sb.WriteString(")")
 	return sb.String()
 }
 
