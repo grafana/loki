@@ -76,25 +76,49 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			if m.Viewport.Height > 0 {
+			if m.showDiff {
+				if m.DiffViewport.AtTop() {
+					m.Viewport.LineUp(1)
+				} else {
+					m.DiffViewport.LineUp(1)
+				}
+			} else if m.Viewport.Height > 0 {
 				m.Viewport.LineUp(1)
-				return m, nil
 			}
+			return m, nil
 		case "down", "j":
-			if m.Viewport.Height > 0 {
+			if m.showDiff {
+				if m.DiffViewport.AtBottom() {
+					m.Viewport.LineDown(1)
+				} else {
+					m.DiffViewport.LineDown(1)
+				}
+			} else if m.Viewport.Height > 0 {
 				m.Viewport.LineDown(1)
-				return m, nil
 			}
+			return m, nil
 		case "pgup", "b":
-			if m.Viewport.Height > 0 {
+			if m.showDiff {
+				if m.DiffViewport.AtTop() {
+					m.Viewport.HalfViewUp()
+				} else {
+					m.DiffViewport.HalfViewUp()
+				}
+			} else if m.Viewport.Height > 0 {
 				m.Viewport.HalfViewUp()
-				return m, nil
 			}
+			return m, nil
 		case "pgdown", " ":
-			if m.Viewport.Height > 0 {
+			if m.showDiff {
+				if m.DiffViewport.AtBottom() {
+					m.Viewport.HalfViewDown()
+				} else {
+					m.DiffViewport.HalfViewDown()
+				}
+			} else if m.Viewport.Height > 0 {
 				m.Viewport.HalfViewDown()
-				return m, nil
 			}
+			return m, nil
 		case "+":
 			m.RunConfig.Count++
 			return m, nil
@@ -302,8 +326,12 @@ func (m *RunView) headerView() string {
 	selectedStyle := ConfigStyle.Foreground(lipgloss.Color("241"))
 	var selected string
 	if len(formattedSelected) > 0 {
-		selected = selectedStyle.Render("Selected:") + "\n" +
-			selectedStyle.Render(strings.Join(formattedSelected, "\n"))
+		if len(formattedSelected) > 1 {
+			selected = selectedStyle.Render(fmt.Sprintf("Selected: %d benchmarks", len(formattedSelected)))
+		} else {
+			selected = selectedStyle.Render("Selected:") + "\n" +
+				selectedStyle.Render(strings.Join(formattedSelected, "\n"))
+		}
 	} else {
 		selected = selectedStyle.Render("Selected: none")
 	}
