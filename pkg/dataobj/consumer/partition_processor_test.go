@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -36,8 +35,8 @@ func newMockBucket() *mockBucket {
 	}
 }
 
-func (m *mockBucket) Close() error                                  { return nil }
-func (m *mockBucket) Delete(ctx context.Context, name string) error { return nil }
+func (m *mockBucket) Close() error                             { return nil }
+func (m *mockBucket) Delete(_ context.Context, _ string) error { return nil }
 func (m *mockBucket) Exists(_ context.Context, name string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -53,10 +52,10 @@ func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) 
 	}
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
-func (m *mockBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+func (m *mockBucket) GetRange(_ context.Context, _ string, _, _ int64) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *mockBucket) Upload(_ context.Context, name string, r io.Reader) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -66,24 +65,23 @@ func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error
 	m.uploads[name] = data
 	return nil
 }
-func (m *mockBucket) Iter(ctx context.Context, dir string, f func(string) error, _ ...objstore.IterOption) error {
+func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
 	return nil
 }
 func (m *mockBucket) Name() string { return "mock" }
-func (m *mockBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
 	return objstore.ObjectAttributes{}, nil
 }
-func (m *mockBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
-	// Simple implementation that doesn't use the transform function
-	return m.Upload(ctx, name, bytes.NewReader([]byte{}))
+func (m *mockBucket) GetAndReplace(_ context.Context, name string, _ func(io.Reader) (io.Reader, error)) error {
+	return m.Upload(context.Background(), name, bytes.NewReader([]byte{}))
 }
-func (m *mockBucket) IsAccessDeniedErr(err error) bool {
+func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
 	return false
 }
 func (m *mockBucket) IsObjNotFoundErr(err error) bool {
 	return err != nil && err.Error() == "object not found"
 }
-func (m *mockBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
+func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
 	return nil
 }
 func (m *mockBucket) Provider() objstore.ObjProvider {
@@ -101,6 +99,8 @@ var testBuilderConfig = dataobj.BuilderConfig{
 	BufferSize: 2048 * 8,
 }
 
+// TestIdleFlush tests the idle flush behavior of the partition processor
+// under different timeout and initialization conditions.
 func TestIdleFlush(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -206,6 +206,8 @@ func TestIdleFlush(t *testing.T) {
 	}
 }
 
+// TestIdleFlushWithActiveProcessing tests the idle flush behavior
+// while the processor is actively processing records.
 func TestIdleFlushWithActiveProcessing(t *testing.T) {
 	// Setup test dependencies
 	bucket := newMockBucket()
@@ -260,12 +262,12 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 	// Wait longer than idle timeout
 	time.Sleep(300 * time.Millisecond)
 
-	fmt.Println("lastFlush", p.lastFlush, initialFlushTime)
-
 	// Verify that idle flush occurred
-	require.True(t, p.lastFlush.After(initialFlushTime)) // "expected idle flush to occur while processor is running"
+	require.True(t, p.lastFlush.After(initialFlushTime), "expected idle flush to occur while processor is running")
 }
 
+// TestIdleFlushWithEmptyData tests the idle flush behavior
+// when no data has been processed.
 func TestIdleFlushWithEmptyData(t *testing.T) {
 	// Setup test dependencies
 	bucket := newMockBucket()
@@ -303,8 +305,6 @@ func TestIdleFlushWithEmptyData(t *testing.T) {
 	// Wait longer than idle timeout
 	time.Sleep(300 * time.Millisecond)
 
-	fmt.Println("lastFlush", p.lastFlush, initialFlushTime)
-
 	// Verify that idle flush occurred
-	require.True(t, p.lastFlush.Equal(initialFlushTime)) // "expected idle flush to occur while processor is running"
+	require.True(t, p.lastFlush.Equal(initialFlushTime), "expected no idle flush with empty data")
 }
