@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,8 +21,15 @@ type RunView struct {
 	Running           bool
 	Output            string
 	Viewport          viewport.Model
+	DiffViewport      viewport.Model
+	showDiff          bool
 	ready             bool   // track if we've received initial window size
 	lastBenchmarkLine string // track the last benchmark line for stats formatting
+
+	// Window size tracking
+	width                int
+	height               int
+	verticalMarginHeight int
 
 	// Profiling state
 	cpuProfilePort int
@@ -30,10 +38,17 @@ type RunView struct {
 	cpuProfileOn   bool
 	memProfileOn   bool
 	traceProfileOn bool
+
+	// Spinner for running state
+	spinner spinner.Model
 }
 
 // NewRunView creates a new RunView
 func NewRunView(config RunConfig) *RunView {
+	sp := spinner.New()
+	sp.Spinner = spinner.MiniDot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return &RunView{
 		RunConfig:      config,
 		Running:        false,
@@ -41,6 +56,8 @@ func NewRunView(config RunConfig) *RunView {
 		cpuProfilePort: 6060,
 		memProfilePort: 6061,
 		tracePort:      6062,
+		showDiff:       false,
+		spinner:        sp,
 	}
 }
 
@@ -96,7 +113,7 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 					m.Viewport.SetContent("")
 				}
 				log.Println("starting benchmark")
-				return m, m.startBenchmark()
+				return m, tea.Batch(m.startBenchmark(), m.spinner.Tick)
 			}
 		case "esc":
 			return m, func() tea.Msg {
@@ -120,28 +137,38 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 			} else {
 				return m, m.stopTraceProfile()
 			}
+		case "d":
+			m.showDiff = !m.showDiff
+			m.updateViewportDimensions()
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
-
 		headerHeight := lipgloss.Height(m.headerView())
 		footerHeight := lipgloss.Height(m.footerView())
-		verticalMarginHeight := headerHeight + footerHeight
+		m.width = msg.Width
+		m.height = msg.Height
+		m.verticalMarginHeight = headerHeight + footerHeight
 
 		if !m.ready {
 			// First time initialization
-			log.Printf("Initializing viewport: width=%d height=%d", msg.Width, msg.Height-verticalMarginHeight)
-			m.Viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
+			log.Printf("Initializing viewport: width=%d height=%d", msg.Width, msg.Height-m.verticalMarginHeight)
+			height := m.height - m.verticalMarginHeight
+			if m.showDiff {
+				height = (m.height - m.verticalMarginHeight) / 2
+			}
+			m.Viewport = viewport.New(m.width, height)
+			m.DiffViewport = viewport.New(m.width, height)
 			m.Viewport.YPosition = headerHeight // Place viewport below header
+			m.DiffViewport.YPosition = headerHeight + height
 			m.Viewport.Style = ViewportStyle
-			m.Viewport.Width = msg.Width
-			m.Viewport.Height = msg.Height - verticalMarginHeight
+			m.DiffViewport.Style = ViewportStyle
 			m.Viewport.SetContent("\n  Press ENTER to start the benchmark run\n")
+			m.DiffViewport.SetContent("\n  No benchmark comparison available yet\n")
 			m.ready = true
 		} else {
-			// Always update viewport dimensions
-			m.Viewport.Width = msg.Width
-			m.Viewport.Height = msg.Height - verticalMarginHeight
+			// Update dimensions
+			m.updateViewportDimensions()
 		}
 
 		// Update content if we have any
@@ -183,6 +210,28 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case BenchmarkFinishedMsg:
 		log.Println("Benchmark finished")
 		m.Running = false
+
+		// Check if we have old results to compare
+		if _, err := os.Stat("result.old.txt"); err == nil {
+			// Run benchstat comparison
+			cmd := exec.Command("benchstat", "result.old.txt", "result.new.txt")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("Error running benchstat: %v", err)
+				m.DiffViewport.SetContent(fmt.Sprintf("\n  Error running benchmark comparison: %v\n", err))
+			} else {
+				m.DiffViewport.SetContent("\n" + string(output))
+				m.showDiff = true // Automatically show diff view when comparison is available
+				m.updateViewportDimensions()
+			}
+		}
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		if m.Running {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	// Handle viewport messages
@@ -202,7 +251,19 @@ func (m *RunView) View() string {
 	if !m.ready {
 		content = "\n  Initializing...\n"
 	} else {
-		content = m.Viewport.View()
+		if m.showDiff {
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				m.Viewport.View(),
+				lipgloss.NewStyle().
+					Foreground(lipgloss.Color("12")).
+					Bold(true).
+					Padding(0, 1).
+					Render("Benchmark Comparison"),
+				m.DiffViewport.View(),
+			)
+		} else {
+			content = m.Viewport.View()
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,
@@ -214,11 +275,17 @@ func (m *RunView) View() string {
 
 func (m *RunView) headerView() string {
 	header := HeaderStyle.Render("Benchmark Configuration")
+	var status string
+	if m.Running {
+		status = m.spinner.View()
+	} else {
+		status = "Idle"
+	}
 	config := ConfigStyle.Render(fmt.Sprintf(
 		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Status: %s • CPU: %s:%d • MEM: %s:%d • TRACE: %s:%d",
 		m.RunConfig.Count,
 		m.RunConfig.TraceEnabled,
-		StatusText(m.Running),
+		status,
 		m.profileStatus(m.cpuProfileOn), m.cpuProfilePort,
 		m.profileStatus(m.memProfileOn), m.memProfilePort,
 		m.profileStatus(m.traceProfileOn), m.tracePort,
@@ -262,6 +329,7 @@ func (m *RunView) footerView() string {
 		"p: cpu",
 		"m: mem",
 		"x: trace",
+		"d: diff",
 		"ESC: back",
 	}
 
@@ -275,6 +343,7 @@ func (m *RunView) footerView() string {
 func (m *RunView) startBenchmark() tea.Cmd {
 	return func() tea.Msg {
 		log.Println("Starting benchmark execution")
+		m.Running = true
 		// Move old results if they exist
 		if _, err := os.Stat("result.new.txt"); err == nil {
 			if err := os.Rename("result.new.txt", "result.old.txt"); err != nil {
@@ -370,7 +439,6 @@ func (m *RunView) startBenchmark() tea.Cmd {
 			globalProgram.Send(BenchmarkFinishedMsg{})
 		}()
 
-		m.Running = true
 		return nil
 	}
 }
@@ -476,4 +544,18 @@ func (m *RunView) stopTraceProfile() tea.Cmd {
 		m.traceProfileOn = false
 		return BenchmarkOutputMsg("Trace viewer stopped\n")
 	}
+}
+
+func (m *RunView) updateViewportDimensions() {
+	headerHeight := lipgloss.Height(m.headerView())
+	height := m.height - m.verticalMarginHeight
+	if m.showDiff {
+		height = (m.height - m.verticalMarginHeight) / 2
+	}
+
+	m.Viewport.Width = m.width
+	m.DiffViewport.Width = m.width
+	m.Viewport.Height = height
+	m.DiffViewport.Height = height
+	m.DiffViewport.YPosition = headerHeight + height
 }
