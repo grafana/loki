@@ -221,8 +221,10 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.DiffViewport.SetContent(fmt.Sprintf("\n  Error running benchmark comparison: %v\n", err))
 			} else {
 				m.DiffViewport.SetContent("\n" + string(output))
-				m.showDiff = true // Automatically show diff view when comparison is available
-				m.updateViewportDimensions()
+				if strings.TrimSpace(string(output)) != "" {
+					m.showDiff = true // Automatically show diff view when comparison is available
+					m.updateViewportDimensions()
+				}
 			}
 		}
 
