@@ -371,6 +371,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.UsageTracker,
 		t.Cfg.IngestLimitsFrontendClient,
 		t.ingestLimitsFrontendRing,
+		t.Cfg.IngestLimits.NumPartitions,
 		logger,
 	)
 	if err != nil {
