@@ -253,11 +253,13 @@ Outer:
 		heap.Pop(i.heap)
 		previous := i.buffer
 		var dupe bool
-		for _, t := range previous {
-			if t.Sample.Hash == sample.Hash {
-				i.stats.AddDuplicates(1)
-				dupe = true
-				break
+		if sample.Hash != 0 {
+			for _, t := range previous {
+				if t.Sample.Hash == sample.Hash {
+					i.stats.AddDuplicates(1)
+					dupe = true
+					break
+				}
 			}
 		}
 		if !dupe {
@@ -277,10 +279,12 @@ Outer:
 				sample.Timestamp != i.buffer[0].Timestamp {
 				break
 			}
-			for _, t := range previous {
-				if t.Hash == sample.Hash {
-					i.stats.AddDuplicates(1)
-					continue inner
+			if sample.Hash != 0 {
+				for _, t := range previous {
+					if t.Hash == sample.Hash {
+						i.stats.AddDuplicates(1)
+						continue inner
+					}
 				}
 			}
 			i.buffer = append(i.buffer, sampleWithLabels{

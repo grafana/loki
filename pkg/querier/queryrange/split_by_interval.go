@@ -195,10 +195,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
-	if err != nil {
-		return nil, err
-	}
+	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -260,18 +257,19 @@ func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, ti
 	if err != nil {
 		return 0, 0, err
 	}
-	return maxRangeVectorAndOffsetDuration(parsed)
+	dur, offset := maxRangeVectorAndOffsetDuration(parsed)
+	return dur, offset, nil
 }
 
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
-func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration, error) {
+func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration) {
 	if _, ok := expr.(syntax.SampleExpr); !ok {
-		return 0, 0, nil
+		return 0, 0
 	}
 
 	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e syntax.Expr) {
-		if r, ok := e.(*syntax.LogRange); ok {
+		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
 			}
@@ -280,5 +278,5 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 			}
 		}
 	})
-	return maxRVDuration, maxOffset, nil
+	return maxRVDuration, maxOffset
 }

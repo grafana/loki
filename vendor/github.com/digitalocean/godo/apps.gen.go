@@ -285,10 +285,11 @@ const (
 // AppFunctionsSpec struct for AppFunctionsSpec
 type AppFunctionsSpec struct {
 	// The name. Must be unique across all components within the same app.
-	Name   string            `json:"name"`
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Name      string               `json:"name"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// An optional path to the working directory to use for the build. Must be relative to the root of the repo.
 	SourceDir string `json:"source_dir,omitempty"`
 	// A list of environment variables made available to the component.
@@ -365,11 +366,12 @@ type AppIngressSpecRuleStringMatch struct {
 // AppJobSpec struct for AppJobSpec
 type AppJobSpec struct {
 	// The name. Must be unique across all components within the same app.
-	Name   string            `json:"name"`
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	Image  *ImageSourceSpec  `json:"image,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Name      string               `json:"name"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	Image     *ImageSourceSpec     `json:"image,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// The path to the Dockerfile relative to the root of the repo. If set, it will be used to build this component. Otherwise, App Platform will attempt to build it using buildpacks.
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
 	// An optional build command to run while building this component from source.
@@ -462,6 +464,14 @@ type AppLogDestinationSpecPapertrail struct {
 	Endpoint string `json:"endpoint"`
 }
 
+// AppMaintenanceSpec struct for AppMaintenanceSpec
+type AppMaintenanceSpec struct {
+	// Indicates whether maintenance mode should be enabled for the app.
+	Enabled bool `json:"enabled,omitempty"`
+	// Indicates whether the app should be archived. Setting this to true implies that enabled is set to true. Note that this feature is currently in closed beta.
+	Archive bool `json:"archive,omitempty"`
+}
+
 // AppRouteSpec struct for AppRouteSpec
 type AppRouteSpec struct {
 	// (Deprecated) An HTTP path prefix. Paths must start with / and must be unique across all components within an app.
@@ -473,11 +483,12 @@ type AppRouteSpec struct {
 // AppServiceSpec struct for AppServiceSpec
 type AppServiceSpec struct {
 	// The name. Must be unique across all components within the same app.
-	Name   string            `json:"name"`
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	Image  *ImageSourceSpec  `json:"image,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Name      string               `json:"name"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	Image     *ImageSourceSpec     `json:"image,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// The path to the Dockerfile relative to the root of the repo. If set, it will be used to build this component. Otherwise, App Platform will attempt to build it using buildpacks.
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
 	// An optional build command to run while building this component from source.
@@ -495,7 +506,8 @@ type AppServiceSpec struct {
 	InstanceCount int64               `json:"instance_count,omitempty"`
 	Autoscaling   *AppAutoscalingSpec `json:"autoscaling,omitempty"`
 	// The internal port on which this service's run command will listen. Default: 8080 If there is not an environment variable with the name `PORT`, one will be automatically added with its value set to the value of this field.
-	HTTPPort int64 `json:"http_port,omitempty"`
+	HTTPPort int64           `json:"http_port,omitempty"`
+	Protocol ServingProtocol `json:"protocol,omitempty"`
 	// (Deprecated) A list of HTTP routes that should be routed to this component.
 	Routes      []*AppRouteSpec            `json:"routes,omitempty"`
 	HealthCheck *AppServiceSpecHealthCheck `json:"health_check,omitempty"`
@@ -559,19 +571,21 @@ type AppSpec struct {
 	// A list of environment variables made available to all components in the app.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// A list of alerts which apply to the app.
-	Alerts   []*AppAlertSpec `json:"alerts,omitempty"`
-	Ingress  *AppIngressSpec `json:"ingress,omitempty"`
-	Egress   *AppEgressSpec  `json:"egress,omitempty"`
-	Features []string        `json:"features,omitempty"`
+	Alerts      []*AppAlertSpec     `json:"alerts,omitempty"`
+	Ingress     *AppIngressSpec     `json:"ingress,omitempty"`
+	Egress      *AppEgressSpec      `json:"egress,omitempty"`
+	Features    []string            `json:"features,omitempty"`
+	Maintenance *AppMaintenanceSpec `json:"maintenance,omitempty"`
 }
 
 // AppStaticSiteSpec struct for AppStaticSiteSpec
 type AppStaticSiteSpec struct {
 	// The name. Must be unique across all components within the same app.
-	Name   string            `json:"name"`
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Name      string               `json:"name"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// The path to the Dockerfile relative to the root of the repo. If set, it will be used to build this component. Otherwise, App Platform will attempt to build it using buildpacks.
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
 	// An optional build command to run while building this component from source.
@@ -607,11 +621,12 @@ type AppVariableDefinition struct {
 // AppWorkerSpec struct for AppWorkerSpec
 type AppWorkerSpec struct {
 	// The name. Must be unique across all components within the same app.
-	Name   string            `json:"name"`
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	Image  *ImageSourceSpec  `json:"image,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Name      string               `json:"name"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	Image     *ImageSourceSpec     `json:"image,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// The path to the Dockerfile relative to the root of the repo. If set, it will be used to build this component. Otherwise, App Platform will attempt to build it using buildpacks.
 	DockerfilePath string `json:"dockerfile_path,omitempty"`
 	// An optional build command to run while building this component from source.
@@ -639,6 +654,13 @@ type AppWorkerSpec struct {
 type AppWorkerSpecTermination struct {
 	// The number of seconds to wait between sending a TERM signal to a container and issuing a KILL which causes immediate shutdown. Default: 120, Minimum 1, Maximum 600.
 	GracePeriodSeconds int32 `json:"grace_period_seconds,omitempty"`
+}
+
+// BitbucketSourceSpec struct for BitbucketSourceSpec
+type BitbucketSourceSpec struct {
+	Repo         string `json:"repo,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	DeployOnPush bool   `json:"deploy_on_push,omitempty"`
 }
 
 // Buildpack struct for Buildpack
@@ -692,12 +714,13 @@ type DeploymentCauseDetailsDOCRPush struct {
 
 // DeploymentCauseDetailsGitPush struct for DeploymentCauseDetailsGitPush
 type DeploymentCauseDetailsGitPush struct {
-	GitHub        *GitHubSourceSpec `json:"github,omitempty"`
-	GitLab        *GitLabSourceSpec `json:"gitlab,omitempty"`
-	Username      string            `json:"username,omitempty"`
-	CommitAuthor  string            `json:"commit_author,omitempty"`
-	CommitSHA     string            `json:"commit_sha,omitempty"`
-	CommitMessage string            `json:"commit_message,omitempty"`
+	GitHub        *GitHubSourceSpec    `json:"github,omitempty"`
+	GitLab        *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket     *BitbucketSourceSpec `json:"bitbucket,omitempty"`
+	Username      string               `json:"username,omitempty"`
+	CommitAuthor  string               `json:"commit_author,omitempty"`
+	CommitSHA     string               `json:"commit_sha,omitempty"`
+	CommitMessage string               `json:"commit_message,omitempty"`
 }
 
 // AppCORSPolicy struct for AppCORSPolicy
@@ -901,9 +924,10 @@ type DeploymentWorker struct {
 
 // DetectRequest struct for DetectRequest
 type DetectRequest struct {
-	Git    *GitSourceSpec    `json:"git,omitempty"`
-	GitHub *GitHubSourceSpec `json:"github,omitempty"`
-	GitLab *GitLabSourceSpec `json:"gitlab,omitempty"`
+	Git       *GitSourceSpec       `json:"git,omitempty"`
+	GitHub    *GitHubSourceSpec    `json:"github,omitempty"`
+	GitLab    *GitLabSourceSpec    `json:"gitlab,omitempty"`
+	Bitbucket *BitbucketSourceSpec `json:"bitbucket,omitempty"`
 	// An optional commit hash to use instead of the branch specified in the source spec.
 	CommitSHA string `json:"commit_sha,omitempty"`
 	// An optional path to the working directory for the detection process.
@@ -917,6 +941,8 @@ type DetectResponse struct {
 	TemplateFound bool                       `json:"template_found,omitempty"`
 	TemplateValid bool                       `json:"template_valid,omitempty"`
 	TemplateError string                     `json:"template_error,omitempty"`
+	// Whether or not the underlying detection is still pending. If true, the request can be retried as-is until this field is false and the response contains the detection result.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // DetectResponseComponent struct for DetectResponseComponent
@@ -991,6 +1017,7 @@ const (
 	DeploymentCauseDetailsDigitalOceanUserActionName_RollbackApp           DeploymentCauseDetailsDigitalOceanUserActionName = "ROLLBACK_APP"
 	DeploymentCauseDetailsDigitalOceanUserActionName_RevertAppRollback     DeploymentCauseDetailsDigitalOceanUserActionName = "REVERT_APP_ROLLBACK"
 	DeploymentCauseDetailsDigitalOceanUserActionName_UpgradeBuildpack      DeploymentCauseDetailsDigitalOceanUserActionName = "UPGRADE_BUILDPACK"
+	DeploymentCauseDetailsDigitalOceanUserActionName_Restart               DeploymentCauseDetailsDigitalOceanUserActionName = "RESTART"
 )
 
 // AppDomain struct for AppDomain
@@ -1251,6 +1278,15 @@ type ResetDatabasePasswordRequest struct {
 type ResetDatabasePasswordResponse struct {
 	Deployment *Deployment `json:"deployment,omitempty"`
 }
+
+// ServingProtocol  - HTTP: The app is serving the HTTP protocol. Default.  - HTTP2: The app is serving the HTTP/2 protocol. Currently, this needs to be implemented in the service by serving HTTP/2 with prior knowledge.
+type ServingProtocol string
+
+// List of ServingProtocol
+const (
+	SERVINGPROTOCOL_HTTP  ServingProtocol = "HTTP"
+	SERVINGPROTOCOL_HTTP2 ServingProtocol = "HTTP2"
+)
 
 // AppStringMatch struct for AppStringMatch
 type AppStringMatch struct {

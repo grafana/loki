@@ -86,10 +86,11 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Metadata field extraction
-	DiscoverGenericFields FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
-	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
-	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
-	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverServiceName      []string            `yaml:"discover_service_name" json:"discover_service_name"`
+	DiscoverLogLevels        bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields           []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	LogLevelFromJSONMaxDepth int                 `yaml:"log_level_from_json_max_depth" json:"log_level_from_json_max_depth"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -186,7 +187,7 @@ type Limits struct {
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
-	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enable on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple stream are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
+	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enabled on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple streams are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
@@ -204,9 +205,7 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	BloomGatewayShardSize        int           `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size" category:"experimental"`
-	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
-	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
+	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 
 	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
@@ -228,8 +227,12 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
+	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
+	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4"`
+	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -298,6 +301,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
 	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
+	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -402,9 +406,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
-	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "Experimental. The shard size defines how many bloom gateways should be used by a tenant for querying.")
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
-	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
@@ -445,6 +447,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
+	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
+	l.PolicyEnforcedLabels = make(map[string][]string)
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
@@ -508,6 +512,12 @@ func (l *Limits) Validate() error {
 			}
 			// populate matchers during validation
 			l.StreamRetention[i].Matchers = matchers
+		}
+	}
+
+	if l.PolicyStreamMapping != nil {
+		if err := l.PolicyStreamMapping.Validate(); err != nil {
+			return err
 		}
 	}
 
@@ -1018,6 +1028,10 @@ func (o *Overrides) LogLevelFields(userID string) []string {
 	return o.getOverridesForUser(userID).LogLevelFields
 }
 
+func (o *Overrides) LogLevelFromJSONMaxDepth(userID string) int {
+	return o.getOverridesForUser(userID).LogLevelFromJSONMaxDepth
+}
+
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
@@ -1029,14 +1043,6 @@ func (o *Overrides) VolumeMaxSeries(userID string) int {
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
-}
-
-func (o *Overrides) BloomGatewayShardSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomGatewayShardSize
-}
-
-func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
-	return o.getOverridesForUser(userID).BloomGatewayCacheKeyInterval
 }
 
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
@@ -1109,6 +1115,30 @@ func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
 
 func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
+}
+
+func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time.Time {
+	limits := o.getOverridesForUser(userID)
+	if limits == nil || limits.BlockIngestionPolicyUntil == nil {
+		return time.Time{} // Zero time means no blocking
+	}
+
+	if blockUntil, ok := limits.BlockIngestionPolicyUntil[policy]; ok {
+		return time.Time(blockUntil)
+	}
+	return time.Time{} // Zero time means no blocking
+}
+
+func (o *Overrides) EnforcedLabels(userID string) []string {
+	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+func (o *Overrides) PolicyEnforcedLabels(userID string, policy string) []string {
+	return o.getOverridesForUser(userID).PolicyEnforcedLabels[policy]
+}
+
+func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
+	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
 func (o *Overrides) ShardAggregations(userID string) []string {

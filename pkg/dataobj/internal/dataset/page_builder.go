@@ -44,7 +44,12 @@ type pageBuilder struct {
 	presenceEnc *bitmapEncoder
 	valuesEnc   valueEncoder
 
-	rows int // Number of rows appended to the builder.
+	rows   int // Number of rows appended to the builder.
+	values int // Number of non-NULL values appended to the builder.
+
+	// minValue and maxValue track the minimum and maximum values appended to the
+	// page. These are used to compute statistics for the page if requested.
+	minValue, maxValue Value
 }
 
 // newPageBuilder creates a new pageBuilder that stores a sequence of [Value]s.
@@ -55,7 +60,7 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 		presenceBuffer = bytes.NewBuffer(nil)
 		valuesBuffer   = bytes.NewBuffer(make([]byte, 0, opts.PageSizeHint))
 
-		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression)
+		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression, opts.CompressionOptions)
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
@@ -90,9 +95,14 @@ func (b *pageBuilder) Append(value Value) bool {
 	//
 	// We use a rough estimate which will tend to overshoot the page size, making
 	// sure we rarely go over.
-	if sz := b.estimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
+	if sz := b.EstimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
 		return false
 	}
+
+	// Update statistics. We only do this for non-NULL values,
+	// otherwise NULL would always be the min for columns that contain a single
+	// NULL.
+	b.accumulateStatistics(value)
 
 	// The following calls won't fail; they only return errors when the
 	// underlying writers fail, which ours cannot.
@@ -104,6 +114,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	}
 
 	b.rows++
+	b.values++
 	return true
 }
 
@@ -115,7 +126,7 @@ func (b *pageBuilder) AppendNull() bool {
 	//
 	// Here we assume appending a NULL costs one byte, but in reality most NULLs
 	// have no cost depending on the state of our bitmap encoder.
-	if sz := b.estimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
+	if sz := b.EstimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
 		return false
 	}
 
@@ -127,6 +138,27 @@ func (b *pageBuilder) AppendNull() bool {
 
 	b.rows++
 	return true
+}
+
+func (b *pageBuilder) accumulateStatistics(value Value) {
+	// As a small optimization, we only update min/max values if we're intending
+	// on populating them in statistics. This avoids unnecessary comparisons for very
+	// large values.
+	if b.opts.Statistics.StoreRangeStats {
+		b.updateMinMax(value)
+	}
+}
+
+func (b *pageBuilder) updateMinMax(value Value) {
+	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
+	// This allows us to only avoid comparing against NULL values, which would lead to
+	// NULL always being the min.
+	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+		b.minValue = value
+	}
+	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+		b.maxValue = value
+	}
 }
 
 func valueSize(v Value) int {
@@ -148,9 +180,9 @@ func valueSize(v Value) int {
 	return 0
 }
 
-// estimatedSize returns the estimated uncompressed size of the builder in
+// EstimatedSize returns the estimated uncompressed size of the builder in
 // bytes.
-func (b *pageBuilder) estimatedSize() int {
+func (b *pageBuilder) EstimatedSize() int {
 	// This estimate doesn't account for any values in encoders which haven't
 	// been flushed yet. However, encoder buffers are usually small enough that
 	// we wouldn't massively overshoot our estimate.
@@ -172,12 +204,18 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 		return nil, fmt.Errorf("no data to flush")
 	}
 
-	// Before we can build the page we need to finish flushing our encoders and writers.
+	// Before we can build the page we need to finish flushing our encoders and
+	// writers.
+	//
+	// We must call [compressWriter.Close] to ensure that Zstd writers write a
+	// proper EOF marker, otherwise synchronous decoding can't be used.
+	// compressWriters can continue to reset and reused after closing, so this is
+	// safe.
 	if err := b.presenceEnc.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing presence encoder: %w", err)
 	} else if err := b.valuesEnc.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing values encoder: %w", err)
-	} else if err := b.valuesWriter.Flush(); err != nil {
+	} else if err := b.valuesWriter.Close(); err != nil {
 		return nil, fmt.Errorf("flushing values writer: %w", err)
 	}
 
@@ -209,17 +247,10 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,
 			RowCount:         b.rows,
+			ValuesCount:      b.values,
 
 			Encoding: b.opts.Encoding,
-
-			// TODO(rfratto): At the moment we don't compute stats because they're
-			// not going to be valuable in every scenario: the min/max values for log
-			// lines is less useful compared to the min/max values for timestamps.
-			//
-			// In the future, we may wish to add more options to pageBuilder to tell
-			// it to compute a subset of stats to avoid needing a second iteration
-			// over the page to compute them.
-			Stats: nil,
+			Stats:    b.buildStats(),
 		},
 
 		Data: finalData.Bytes(),
@@ -227,6 +258,30 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 
 	b.Reset() // Reset state before returning.
 	return &page, nil
+}
+
+func (b *pageBuilder) buildStats() *datasetmd.Statistics {
+	var stats datasetmd.Statistics
+	if b.opts.Statistics.StoreRangeStats {
+		b.buildRangeStats(&stats)
+		return &stats
+	}
+	return nil
+}
+
+func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
+
+	minValueBytes, err := b.minValue.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))
+	}
+	maxValueBytes, err := b.maxValue.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal max value: %s", err))
+	}
+
+	dst.MinValue = minValueBytes
+	dst.MaxValue = maxValueBytes
 }
 
 // Reset resets the pageBuilder to a fresh state, allowing it to be reused.
@@ -237,4 +292,7 @@ func (b *pageBuilder) Reset() {
 	b.presenceBuffer.Reset()
 	b.valuesEnc.Reset(b.valuesWriter)
 	b.rows = 0
+	b.values = 0
+	b.minValue = Value{}
+	b.maxValue = Value{}
 }

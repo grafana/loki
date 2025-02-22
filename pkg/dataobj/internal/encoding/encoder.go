@@ -12,6 +12,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
+// TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
+// memory as [bytesBufferPool] is filled with buffers with increasing capacity:
+// each encoding pass has a different number of elements, shuffling which
+// elements of the hierarchy get which pooled buffers.
+//
+// This means that elements that require more bytes will grow the capacity of
+// the buffer and put the buffer back into the pool. Even if further encoding
+// passes don't need that many bytes, the buffer is kept alive with its larger
+// footprint. Given enough time, all buffers in the pool will have a large
+// capacity.
+//
+// The bufpool package provides a solution to this (bucketing pools by
+// capacity), but using bufpool properly requires knowing how many bytes are
+// needed.
+//
+// Encoder can eventually be moved to the bufpool package by calculating a
+// rolling maximum of encoding size used per element across usages of an
+// Encoder instance. This would then allow larger buffers to be eventually
+// reclaimed regardless of how often encoding is done.
+
 // Encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 //
@@ -44,7 +64,7 @@ func NewEncoder(w streamio.Writer) *Encoder {
 	}
 }
 
-// OpenStreams opens a [StreamsEncoder]. OpenSterams fails if there is another
+// OpenStreams opens a [StreamsEncoder]. OpenStreams fails if there is another
 // open section.
 func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	if enc.curSection != nil {
@@ -61,6 +81,25 @@ func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	}
 
 	return newStreamsEncoder(
+		enc,
+		enc.startOffset+enc.data.Len(),
+	), nil
+}
+
+// OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
+// section.
+func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
+	if enc.curSection != nil {
+		return nil, ErrElementExist
+	}
+
+	enc.curSection = &filemd.SectionInfo{
+		Type:           filemd.SECTION_TYPE_LOGS,
+		MetadataOffset: math.MaxUint32,
+		MetadataSize:   math.MaxUint32,
+	}
+
+	return newLogsEncoder(
 		enc,
 		enc.startOffset+enc.data.Len(),
 	), nil
@@ -128,6 +167,14 @@ func (enc *Encoder) Flush() error {
 	return nil
 }
 
+func (enc *Encoder) Reset(w streamio.Writer) {
+	enc.data.Reset()
+	enc.sections = nil
+	enc.curSection = nil
+	enc.w = w
+	enc.startOffset = len(magic)
+}
+
 func (enc *Encoder) append(data, metadata []byte) error {
 	if enc.curSection == nil {
 		return errElementNoExist
@@ -139,10 +186,11 @@ func (enc *Encoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curSection.MetadataOffset = uint32(enc.startOffset + enc.data.Len() + len(data))
-	enc.curSection.MetadataSize = uint32(len(metadata))
+	enc.curSection.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curSection.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
+	enc.data.Grow(len(data) + len(metadata))
 	_, _ = enc.data.Write(data)
 	_, _ = enc.data.Write(metadata)
 

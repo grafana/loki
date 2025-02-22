@@ -22,7 +22,22 @@ func Test_Walkable(t *testing.T) {
 		{
 			desc: "bin op query",
 			expr: `(sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])))`,
-			want: 16,
+			want: 17,
+		},
+		{
+			desc: "single variant query",
+			expr: `variants(count_over_time({job="foo"}[5m])) of ({job="foo"}[5m])`,
+			want: 6,
+		},
+		{
+			desc: "single range aggregation variant query",
+			expr: `variants(sum by (job) (count_over_time({job="foo"}[5m]))) of ({job="foo"}[5m])`,
+			want: 7,
+		},
+		{
+			desc: "multiple variants query",
+			expr: `variants(count_over_time({job="foo"}[5m]), bytes_over_time({job="foo"}[5m])) of ({job="foo"}[5m])`,
+			want: 9,
 		},
 	}
 	for _, test := range tests {
@@ -80,7 +95,7 @@ func Test_AppendMatchers(t *testing.T) {
 				case *MatchersExpr:
 					me.AppendMatchers(test.matchers)
 				default:
-					// Do nothing
+					// do nothing
 				}
 			})
 			require.Equal(t, test.want, expr.String())

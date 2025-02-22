@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package monitoring
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 
@@ -105,7 +106,12 @@ func (c *QueryClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
 
-// QueryTimeSeries queries time series using Monitoring Query Language.
+// QueryTimeSeries queries time series by using Monitoring Query Language (MQL). We recommend
+// using PromQL instead of MQL. For more information about the status of MQL,
+// see the MQL deprecation
+// notice (at https://cloud.google.com/stackdriver/docs/deprecations/mql).
+//
+// Deprecated: QueryTimeSeries may be removed in a future version.
 func (c *QueryClient) QueryTimeSeries(ctx context.Context, req *monitoringpb.QueryTimeSeriesRequest, opts ...gax.CallOption) *TimeSeriesDataIterator {
 	return c.internalClient.QueryTimeSeries(ctx, req, opts...)
 }
@@ -125,6 +131,8 @@ type queryGRPCClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogHeaders []string
+
+	logger *slog.Logger
 }
 
 // NewQueryClient creates a new query service client based on gRPC.
@@ -153,6 +161,7 @@ func NewQueryClient(ctx context.Context, opts ...option.ClientOption) (*QueryCli
 		connPool:    connPool,
 		queryClient: monitoringpb.NewQueryServiceClient(connPool),
 		CallOptions: &client.CallOptions,
+		logger:      internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -206,7 +215,7 @@ func (c *queryGRPCClient) QueryTimeSeries(ctx context.Context, req *monitoringpb
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.queryClient.QueryTimeSeries(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.queryClient.QueryTimeSeries, req, settings.GRPC, c.logger, "QueryTimeSeries")
 			return err
 		}, opts...)
 		if err != nil {

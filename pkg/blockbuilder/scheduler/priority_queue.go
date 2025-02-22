@@ -58,6 +58,14 @@ func (pq *PriorityQueue[K, V]) Pop() (V, bool) {
 	return it.value, true
 }
 
+func (pq *PriorityQueue[K, V]) Peek() (V, bool) {
+	if pq.Len() == 0 {
+		var zero V
+		return zero, false
+	}
+	return pq.h.heap[0].value, true
+}
+
 // Lookup returns the item with the given key if it exists.
 func (pq *PriorityQueue[K, V]) Lookup(k K) (V, bool) {
 	if it, ok := pq.m[k]; ok {

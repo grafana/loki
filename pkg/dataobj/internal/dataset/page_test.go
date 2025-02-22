@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"io"
 	"math/rand"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
-func Test_pageBuilder_WriteRead(t *testing.T) {
+func Benchmark_pageBuilder_WriteRead(b *testing.B) {
 	in := []string{
 		"hello, world!",
 		"",
@@ -30,6 +31,54 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
+	builder, err := newPageBuilder(opts)
+	require.NoError(b, err)
+
+	for _, s := range in {
+		require.True(b, builder.Append(StringValue(s)))
+	}
+
+	page, err := builder.Flush()
+	require.NoError(b, err)
+	require.Equal(b, len(in), page.Info.RowCount)
+	require.Equal(b, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+		if err != nil {
+			b.Fatal()
+		}
+
+		if _, err := io.Copy(io.Discard, values); err != nil {
+			b.Fatal(err)
+		} else if err := values.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func Test_pageBuilder_WriteRead(t *testing.T) {
+	in := []string{
+		"hello, world!",
+		"",
+		"this is a test of the emergency broadcast system",
+		"this is only a test",
+		"if this were a real emergency, you would be instructed to panic",
+		"but it's not, so don't",
+		"",
+		"this concludes the test",
+		"thank you for your cooperation",
+		"goodbye",
+	}
+
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Value:        datasetmd.VALUE_TYPE_STRING,
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
 	b, err := newPageBuilder(opts)
 	require.NoError(t, err)
 
@@ -39,6 +88,8 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	page, err := b.Flush()
 	require.NoError(t, err)
+	require.Equal(t, len(in), page.Info.RowCount)
+	require.Equal(t, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
 
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)

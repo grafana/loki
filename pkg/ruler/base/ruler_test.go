@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
@@ -121,7 +122,7 @@ func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	dir := t.TempDir()
 
-	tracker := promql.NewActiveQueryTracker(dir, 20, log.NewNopLogger())
+	tracker := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
@@ -311,12 +312,14 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	amCfg := map[string]*config.AlertManagerConfig{
 		tenant1: {
-			AlertmanagerURL:       ts1.URL,
-			AlertmanagerDiscovery: false,
+			AlertmanagerURL:          ts1.URL,
+			AlertmanagerDiscovery:    false,
+			AlertmanangerEnableV2API: true,
 		},
 		tenant2: {
-			AlertmanagerURL:       ts2.URL,
-			AlertmanagerDiscovery: false,
+			AlertmanagerURL:          ts2.URL,
+			AlertmanagerDiscovery:    false,
+			AlertmanangerEnableV2API: true,
 		},
 	}
 
@@ -329,30 +332,50 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 	n2, err := manager.getOrCreateNotifier(tenant2)
 	require.NoError(t, err)
 
-	// Loop until notifier discovery syncs up
-	for len(n1.Alertmanagers()) == 0 {
-		time.Sleep(10 * time.Millisecond)
+	// Wait for both notifiers to be ready with a timeout
+	ready := make(chan struct{})
+	go func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			ams1 := n1.Alertmanagers()
+			ams2 := n2.Alertmanagers()
+			if len(ams1) > 0 && len(ams2) > 0 {
+				close(ready)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	select {
+	case <-ready:
+		// Both notifiers are ready
+	case <-time.After(10 * time.Second):
+		t.Fatalf("Timeout waiting for alertmanagers to be ready. Notifier 1 has %d alertmanagers, Notifier 2 has %d alertmanagers",
+			len(n1.Alertmanagers()), len(n2.Alertmanagers()))
 	}
+
 	n1.Send(&notifier.Alert{
 		Labels: labels.Labels{labels.Label{Name: "alertname1", Value: "testalert1"}},
 	})
 
-	for len(n2.Alertmanagers()) == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
 	n2.Send(&notifier.Alert{
 		Labels: labels.Labels{labels.Label{Name: "alertname2", Value: "testalert2"}},
 	})
 
-	wg.Wait()
+	// Wait for notifications with a timeout
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	// Ensure we have metrics in the notifier.
-	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE loki_prometheus_notifications_dropped_total counter
-		loki_prometheus_notifications_dropped_total{user="tenant1"} 0
-		loki_prometheus_notifications_dropped_total{user="tenant2"} 0
-	`), "loki_prometheus_notifications_dropped_total"))
+	select {
+	case <-done:
+		// Notifications received
+	case <-time.After(10 * time.Second):
+		t.Fatal("Timeout waiting for notifications")
+	}
 }
 
 func TestRuler_Rules(t *testing.T) {

@@ -3,7 +3,14 @@
 [![Docs](https://godoc.org/github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric?status.svg)](https://pkg.go.dev/github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric)
 [![Apache License][license-image]][license-url]
 
-OpenTelemetry Google Cloud Monitoring Exporter allow the user to send collected metrics to Google Cloud.
+OpenTelemetry Google Cloud Monitoring Exporter allows the user to send collected metrics to Google Cloud.
+
+To get started with instrumentation in Google Cloud, see [Generate traces and metrics with
+Go](https://cloud.google.com/stackdriver/docs/instrumentation/setup/go).
+
+To learn more about instrumentation and observability, including opinionated recommendations
+for Google Cloud Observability, visit [Instrumentation and
+observability](https://cloud.google.com/stackdriver/docs/instrumentation/overview).
 
 [Google Cloud Monitoring](https://cloud.google.com/monitoring) provides visibility into the performance, uptime, and overall health of cloud-powered applications. It collects metrics, events, and metadata from Google Cloud, Amazon Web Services, hosted uptime probes, application instrumentation, and a variety of common application components including Cassandra, Nginx, Apache Web Server, Elasticsearch, and many others. Operations ingests that data and generates insights via dashboards, charts, and alerts. Cloud Monitoring alerting helps you collaborate by integrating with Slack, PagerDuty, and more.
 

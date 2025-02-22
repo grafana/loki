@@ -154,3 +154,7 @@ func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float6
 
 	return factor
 }
+
+func RetentionHours(retention time.Duration) string {
+	return strconv.FormatInt(int64(math.Floor(retention.Hours())), 10)
+}
