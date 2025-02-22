@@ -138,23 +138,25 @@ func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint
 			defer sp.LogKV("event", "finished updating rates", "streams", streamCnt)
 		}
 	}
-	s.rateLock.Lock()
-	defer s.rateLock.Unlock()
+	func() {
+		s.rateLock.Lock()
+		defer s.rateLock.Unlock()
 
-	for tenantID, tenant := range updated {
-		if _, ok := s.rates[tenantID]; !ok {
-			s.rates[tenantID] = map[uint64]expiringRate{}
-		}
-
-		for stream, rate := range tenant {
-			if oldRate, ok := s.rates[tenantID][stream]; ok {
-				rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
-				rate.pushes = weightedMovingAverageF(rate.pushes, oldRate.pushes)
+		for tenantID, tenant := range updated {
+			if _, ok := s.rates[tenantID]; !ok {
+				s.rates[tenantID] = map[uint64]expiringRate{}
 			}
-			s.rates[tenantID][stream] = rate
-			streamCnt++
+
+			for stream, rate := range tenant {
+				if oldRate, ok := s.rates[tenantID][stream]; ok {
+					rate.rate = weightedMovingAverage(rate.rate, oldRate.rate)
+					rate.pushes = weightedMovingAverageF(rate.pushes, oldRate.pushes)
+				}
+				s.rates[tenantID][stream] = rate
+				streamCnt++
+			}
 		}
-	}
+	}()
 
 	return s.cleanupExpired(updated)
 }
@@ -171,27 +173,38 @@ func weightedMovingAverageF(next, last float64) float64 {
 func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
 	var rs rateStats
 
-	for tID, tenant := range s.rates {
-		rs.totalStreams += int64(len(tenant))
-		for stream, rate := range tenant {
-			if time.Since(rate.createdAt) > s.rateKeepAlive {
-				rs.expiredCount++
-				delete(s.rates[tID], stream)
-				if len(s.rates[tID]) == 0 {
-					delete(s.rates, tID)
+	func() {
+		s.rateLock.Lock()
+		defer s.rateLock.Unlock()
+
+		for tID, tenant := range s.rates {
+			rs.totalStreams += int64(len(tenant))
+			for stream, rate := range tenant {
+				if time.Since(rate.createdAt) > s.rateKeepAlive {
+					rs.expiredCount++
+					delete(s.rates[tID], stream)
+					if len(s.rates[tID]) == 0 {
+						delete(s.rates, tID)
+					}
+					continue
 				}
-				continue
+
+				if !s.wasUpdated(tID, stream, updated) {
+					rate.rate = weightedMovingAverage(0, rate.rate)
+					rate.pushes = weightedMovingAverageF(0, rate.pushes)
+					s.rates[tID][stream] = rate
+				}
+
+				rs.maxRate = max(rs.maxRate, rate.rate)
+				rs.maxShards = max(rs.maxShards, rate.shards)
 			}
+		}
+	}()
 
-			if !s.wasUpdated(tID, stream, updated) {
-				rate.rate = weightedMovingAverage(0, rate.rate)
-				rate.pushes = weightedMovingAverageF(0, rate.pushes)
-				s.rates[tID][stream] = rate
-			}
-
-			rs.maxRate = max(rs.maxRate, rate.rate)
-			rs.maxShards = max(rs.maxShards, rate.shards)
-
+	s.rateLock.RLock()
+	defer s.rateLock.RUnlock()
+	for _, tenant := range s.rates {
+		for _, rate := range tenant {
 			s.metrics.streamShardCount.Observe(float64(rate.shards))
 			s.metrics.streamRate.Observe(float64(rate.rate))
 		}
