@@ -51,10 +51,10 @@ type ingesterClient struct {
 }
 
 type expiringRate struct {
-	createdAt time.Time
-	rate      int64
-	shards    int64
-	pushes    float64
+	deadline time.Time
+	rate     int64
+	shards   int64
+	pushes   float64
 }
 
 type rateStore struct {
@@ -176,11 +176,12 @@ func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) r
 	func() {
 		s.rateLock.Lock()
 		defer s.rateLock.Unlock()
+		now := time.Now()
 
 		for tID, tenant := range s.rates {
 			rs.totalStreams += int64(len(tenant))
 			for stream, rate := range tenant {
-				if time.Since(rate.createdAt) > s.rateKeepAlive {
+				if now.After(rate.deadline) { // we passed the deadline, expire rate.
 					rs.expiredCount++
 					delete(s.rates[tID], stream)
 					if len(s.rates[tID]) == 0 {
@@ -249,7 +250,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 		}
 	}
 	rates := map[string]map[uint64]expiringRate{}
-	now := time.Now()
+	currentDeadline := time.Now().Add(s.rateKeepAlive)
 
 	for tID, tenant := range streamRates {
 		if _, ok := rates[tID]; !ok {
@@ -261,7 +262,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 			rate.rate += streamRate.Rate
 			rate.pushes = math.Max(float64(streamRate.Pushes), rate.pushes)
 			rate.shards++
-			rate.createdAt = now
+			rate.deadline = currentDeadline
 
 			rates[tID][streamRate.StreamHashNoShard] = rate
 		}

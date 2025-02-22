@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/stretchr/testify/require"
 
@@ -24,7 +25,7 @@ import (
 
 func TestRateStore(t *testing.T) {
 	t.Run("it reports rates and pushes per second from all of the ingesters", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -67,7 +68,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("it reports the highest rate from replicas", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -98,7 +99,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("it aggregates rates but gets the max number of pushes over shards", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -123,7 +124,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("it does nothing if no one has enabled sharding", func(t *testing.T) {
-		tc := setup(false)
+		tc := setup(false, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -141,7 +142,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("it clears the rate after an interval", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -169,7 +170,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("it adjusts the rate and pushes according to a weighted average", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -207,7 +208,7 @@ func TestRateStore(t *testing.T) {
 	})
 
 	t.Run("the push rate can be less that 1", func(t *testing.T) {
-		tc := setup(true)
+		tc := setup(true, nil)
 		tc.ring.replicationSet = ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
 				{Addr: "ingester0"},
@@ -235,16 +236,19 @@ func TestRateStore(t *testing.T) {
 var benchErr error
 
 func BenchmarkRateStore(b *testing.B) {
-	tc := setup(true)
+	reg := prometheus.NewRegistry() // use a real registry to benchmark with real metrics usage.
+	tc := setup(true, reg)
 	tc.ring.replicationSet = ring.ReplicationSet{
 		Instances: []ring.InstanceDesc{
 			{Addr: "ingester0"},
 		},
 	}
 
-	rates := make([]*logproto.StreamRate, 200000)
-	for i := 0; i < 200000; i++ {
-		rates[i] = &logproto.StreamRate{Tenant: fmt.Sprintf("tenant %d", i%2), StreamHash: uint64(i % 3), StreamHashNoShard: uint64(i % 4), Rate: rand.Int63()}
+	rates := make([]*logproto.StreamRate, 2000*100)
+	for i := 0; i < 2000; i++ {
+		for j := 0; j < 100; j++ {
+			rates[i*100+j] = &logproto.StreamRate{Tenant: fmt.Sprintf("tenant %d", i%2), StreamHash: uint64(j % 3), StreamHashNoShard: uint64(j % 4), Rate: rand.Int63()}
+		}
 	}
 
 	tc.clientPool.clients = map[string]client.PoolClient{
@@ -253,6 +257,59 @@ func BenchmarkRateStore(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
+		benchErr = tc.rateStore.updateAllRates(context.Background())
+	}
+}
+
+func BenchmarkRateStoreWithHistory(b *testing.B) {
+	reg := prometheus.NewRegistry() // use a real registry to benchmark with real metrics usage.
+	tc := setup(true, reg)
+	tc.ring.replicationSet = ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Addr: "ingester0"},
+		},
+	}
+
+	// Prepare rates that will be used throughout the test
+	baseRates := make([]*logproto.StreamRate, 200000)
+	for i := 0; i < 200000; i++ {
+		baseRates[i] = &logproto.StreamRate{
+			Tenant:            fmt.Sprintf("tenant %d", i%2),
+			StreamHash:        uint64(i % 3),
+			StreamHashNoShard: uint64(i % 4),
+			Rate:              rand.Int63(),
+		}
+	}
+
+	// Warmup phase - simulate accumulated history
+	warmupClient := newRateClient(baseRates)
+	tc.clientPool.clients = map[string]client.PoolClient{
+		"ingester0": warmupClient,
+	}
+
+	// Do several updates to build up history
+	for i := 0; i < 10; i++ {
+		_ = tc.rateStore.updateAllRates(context.Background())
+		time.Sleep(time.Millisecond) // Simulate time passing
+	}
+
+	// Benchmark phase
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		// Modify some rates to simulate changes
+		modifiedRates := make([]*logproto.StreamRate, len(baseRates))
+		copy(modifiedRates, baseRates)
+
+		// Update ~10% of rates
+		for i := 0; i < len(modifiedRates)/10; i++ {
+			idx := rand.Intn(len(modifiedRates))
+			modifiedRates[idx].Rate = rand.Int63()
+		}
+
+		tc.clientPool.clients = map[string]client.PoolClient{
+			"ingester0": newRateClient(modifiedRates),
+		}
+
 		benchErr = tc.rateStore.updateAllRates(context.Background())
 	}
 }
@@ -360,7 +417,7 @@ type testContext struct {
 	rateStore  *rateStore
 }
 
-func setup(shardingEnabled bool) *testContext {
+func setup(shardingEnabled bool, registerer prometheus.Registerer) *testContext {
 	ring := newFakeRing()
 	cp := newFakeClientPool()
 	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
@@ -368,6 +425,6 @@ func setup(shardingEnabled bool) *testContext {
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: shardingEnabled}, nil),
+		rateStore:  NewRateStore(cfg, ring, cp, &fakeOverrides{enabled: shardingEnabled}, registerer),
 	}
 }
