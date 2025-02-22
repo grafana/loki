@@ -4,6 +4,7 @@ package dataset
 
 import (
 	"context"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
@@ -79,4 +80,19 @@ func (d memDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[Page
 
 		return nil
 	})
+}
+
+// A Row in a Dataset is a set of values across multiple columns with the same
+// row number.
+type Row struct {
+	Index  int     // Index of the row in the dataset.
+	Values []Value // Values for the row, one per [Column].
+}
+
+// Clone returns a deep copy of r.
+func (r Row) Clone() Row {
+	return Row{
+		Index:  r.Index,
+		Values: slices.Clone(r.Values),
+	}
 }
