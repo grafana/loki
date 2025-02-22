@@ -393,7 +393,7 @@ func newRoundTripper(
 }
 
 // Helper function to create and log query execution details
-func logQueryExecution(logger log.Logger, ctx context.Context, values ...interface{}) {
+func logQueryExecution(ctx context.Context, logger log.Logger, values ...interface{}) {
 	logValues := append([]interface{}{"msg", "executing query"}, values...)
 
 	// Extract and append tags from context
@@ -409,7 +409,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	switch op := req.(type) {
 	case *LokiRequest:
 		queryHash := util.HashedQuery(op.Query)
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "range",
 			"query", op.Query,
 			"start", op.StartTs.Format(time.RFC3339Nano),
@@ -483,14 +483,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.next.Do(ctx, req)
 		}
 	case *LokiSeriesRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "series",
 			"match", logql.PrintMatches(op.Match),
 			"length", op.EndTs.Sub(op.StartTs),
 		)
 		return r.series.Do(ctx, req)
 	case *LabelRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "labels",
 			"label", op.Name,
 			"length", op.LabelRequest.End.Sub(*op.LabelRequest.Start),
@@ -499,7 +499,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:
 		queryHash := util.HashedQuery(op.Query)
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "instant",
 			"query", op.Query,
 			"query_hash", queryHash,
@@ -511,14 +511,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.next.Do(ctx, req)
 		}
 	case *logproto.IndexStatsRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "stats",
 			"query", op.Matchers,
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
 	case *logproto.VolumeRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "volume_range",
 			"query", op.Matchers,
 			"length", op.Through.Sub(op.From),
@@ -528,7 +528,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		)
 		return r.seriesVolume.Do(ctx, req)
 	case *DetectedFieldsRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "detected_fields",
 			"end", op.End,
 			"field_limit", op.Limit,
@@ -540,7 +540,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		)
 		return r.detectedFields.Do(ctx, req)
 	case *DetectedLabelsRequest:
-		logQueryExecution(logger, ctx,
+		logQueryExecution(ctx, logger,
 			"type", "detected_label",
 			"end", op.End,
 			"length", op.End.Sub(op.Start),
