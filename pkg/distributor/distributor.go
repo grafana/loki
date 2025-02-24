@@ -101,7 +101,7 @@ type Config struct {
 	KafkaConfig     kafka.Config `yaml:"-"`
 
 	// Enables latency in the distributor write path.
-	SimulatedLatencyEnabled bool `yaml:"simulated_latency_enabled" doc:"hidden"`
+	SimulatedLatencyEnabled  bool          `yaml:"simulated_latency_enabled" doc:"hidden"`
 	SimulatedLatencyDuration time.Duration `yaml:"simulated_latency_duration" doc:"hidden"`
 
 	// TODO: cleanup config
