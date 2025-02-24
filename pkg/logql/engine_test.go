@@ -2331,7 +2331,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 			time.Unix(60, 0),
 			logproto.BACKWARD,
 			0,
-		[][]logproto.Series{
+			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
@@ -3060,7 +3060,7 @@ func (m *mockEvaluatorFactory) NewVariantsStepEvaluator(ctx context.Context, exp
 	if m.VariantsEvaluatorFunc != nil {
 		return m.VariantsEvaluatorFunc(ctx, expr, p)
 	}
-	return nil, errors.New("unimplemented mock VariantEvaluatorFactory") 
+	return nil, errors.New("unimplemented mock VariantEvaluatorFactory")
 }
 
 func getLocalQuerier(size int64) Querier {
