@@ -471,7 +471,7 @@ func (d *Distributor) waitSimulatedLatency(ctx context.Context, start time.Time)
 		// All requests must wait at least the simulated latency. However,
 		// we want to avoid adding additional latency on top of slow requests
 		// that already took longer then the simulated latency.
-		wait := d.cfg.SimulatedLatencyDuration - time.Now().Sub(start)
+		wait := d.cfg.SimulatedLatencyDuration - time.Since(start)
 		if wait > 0 {
 			select {
 			case <-time.After(wait):
