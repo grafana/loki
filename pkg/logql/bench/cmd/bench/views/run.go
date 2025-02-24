@@ -576,6 +576,16 @@ func (m *RunView) stopTraceProfile() tea.Cmd {
 	}
 }
 
+// StopAllProfiling stops all active profiling tools
+func (m *RunView) StopAllProfiling() tea.Cmd {
+	return func() tea.Msg {
+		_ = m.stopCPUProfile()()
+		_ = m.stopMemProfile()()
+		_ = m.stopTraceProfile()()
+		return nil
+	}
+}
+
 func (m *RunView) updateViewportDimensions() {
 	headerHeight := lipgloss.Height(m.headerView())
 	height := m.height - m.verticalMarginHeight

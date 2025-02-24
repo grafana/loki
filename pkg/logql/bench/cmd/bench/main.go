@@ -49,6 +49,8 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.currentView == views.ListID && m.listView.FilterState() != list.Filtering {
+				// Stop all profiling tools before quitting
+				m.runView.StopAllProfiling()()
 				return m, tea.Quit
 			} else {
 				m.currentView = views.ListID
