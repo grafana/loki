@@ -50,7 +50,7 @@ func iterMemPage(p *MemPage, valueType datasetmd.ValueType, compressionType data
 				iB++
 			}
 
-			if bufB[iB].Uint64() == 0 {
+			if bufB[iB].Uint64() == 0 { //nolint:revive
 				// If the presence bitmap says our row has no value, we need to yield a
 				// nil value, so do nothing.
 			} else if bufB[iB].Uint64() == 1 {
