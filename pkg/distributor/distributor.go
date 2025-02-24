@@ -101,8 +101,8 @@ type Config struct {
 	KafkaConfig     kafka.Config `yaml:"-"`
 
 	// Enables latency in the distributor write path.
-	SimulatedLatencyEnabled bool `yaml:"simulated_latency_enabled"`
-	SimulatedLatencyDuration time.Duration `yaml:"simulated_latency_duration"`
+	SimulatedLatencyEnabled bool `yaml:"simulated_latency_enabled" doc:"hidden"`
+	SimulatedLatencyDuration time.Duration `yaml:"simulated_latency_duration" doc:"hidden"`
 
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
@@ -466,25 +466,26 @@ func (p *pushTracker) doneWithResult(err error) {
 	}
 }
 
+func (d *Distributor) waitSimulatedLatency(ctx context.Context, start time.Time) {
+	if d.cfg.SimulatedLatencyEnabled {
+		// All requests must wait at least the simulated latency. However,
+		// we want to avoid adding additional latency on top of slow requests
+		// that already took longer then the simulated latency.
+		wait := d.cfg.SimulatedLatencyDuration - time.Now().Sub(start)
+		if wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return // The client canceled the request.
+			}
+		}
+	}
+}
+
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	start := time.Now()
-	defer func() {
-		if d.cfg.SimulatedLatencyEnabled {
-			// All requests must wait at least the simulated latency. However,
-			// we want to avoid adding additional latency on top of slow requests
-			// that already took longer then the simulated latency.
-			wait := d.cfg.SimulatedLatencyDuration - time.Now().Sub(start)
-			if wait > 0 {
-				select {
-				case <-time.After(wait):
-				case <-ctx.Done():
-					return // The client canceled the request.
-				}
-			}
-		}
-	}()
+	defer d.waitSimulatedLatency(ctx, time.Now())
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
