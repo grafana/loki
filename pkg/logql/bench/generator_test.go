@@ -15,10 +15,7 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 	cfg := GeneratorConfig{
 		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		TimeSpread: 24 * time.Hour,
-		DenseIntervals: []struct {
-			Start    time.Time
-			Duration time.Duration
-		}{
+		DenseIntervals: []DenseInterval{
 			{
 				Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 				Duration: time.Hour,
@@ -115,7 +112,7 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 					meta1 := entry1.StructuredMetadata[l]
 					meta2 := entry2.StructuredMetadata[l]
 					require.Equal(t, meta1.Name, meta2.Name, "Metadata name should match for batch %d stream %d entry %d metadata %d", i, j, k, l)
-					require.Equal(t, meta1.Value, meta2.Value, "Metadata value should match for batch %d stream %d entry %d metadata %d", i, j, k, l)
+					require.Equal(t, meta1.Value, meta2.Value, "Metadata value should match for batch %d stream %d entry %d metadata %d values names %s and %s", i, j, k, l, meta1.Name, meta2.Name)
 				}
 			}
 		}
@@ -130,10 +127,7 @@ func TestQueryDeterminism(t *testing.T) {
 	cfg := GeneratorConfig{
 		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		TimeSpread: 24 * time.Hour,
-		DenseIntervals: []struct {
-			Start    time.Time
-			Duration time.Duration
-		}{
+		DenseIntervals: []DenseInterval{
 			{
 				Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 				Duration: time.Hour,
