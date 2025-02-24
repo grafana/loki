@@ -96,7 +96,7 @@ func (dec *plainDecoder) EncodingType() datasetmd.EncodingType {
 }
 
 // Decode decodes a string.
-func (dec *plainDecoder) Decode() (Value, error) {
+func (dec *plainDecoder) Decode(s []Value) (int, error) {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
 		return StringValue(""), err

@@ -93,7 +93,7 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 }
 
 // Decode decodes the next value.
-func (dec *deltaDecoder) Decode() (Value, error) {
+func (dec *deltaDecoder) Decode(s []Value) (int, error) {
 	delta, err := streamio.ReadVarint(dec.r)
 	if err != nil {
 		return Int64Value(dec.prev), err

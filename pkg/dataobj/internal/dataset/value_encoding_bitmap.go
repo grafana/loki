@@ -501,7 +501,7 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 }
 
 // Decode reads the next uint64 value from the stream.
-func (dec *bitmapDecoder) Decode() (Value, error) {
+func (dec *bitmapDecoder) Decode(s []Value) (int, error) {
 	// See comment inside [bitmapDecoder] for the state machine details.
 
 NextState:
