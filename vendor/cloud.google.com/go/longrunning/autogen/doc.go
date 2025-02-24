@@ -17,12 +17,17 @@
 // Package longrunning is an auto-generated package for the
 // Long Running Operations API.
 //
-//	NOTE: This package is in alpha. It is not stable, and is likely to change.
-//
 // # General documentation
 //
-// For information about setting deadlines, reusing contexts, and more
-// please visit https://pkg.go.dev/cloud.google.com/go.
+// For information that is relevant for all client libraries please reference
+// https://pkg.go.dev/cloud.google.com/go#pkg-overview. Some information on this
+// page includes:
+//
+//   - [Authentication and Authorization]
+//   - [Timeouts and Cancellation]
+//   - [Testing against Client Libraries]
+//   - [Debugging Client Libraries]
+//   - [Inspecting errors]
 //
 // # Example usage
 //
@@ -84,20 +89,18 @@
 // Individual methods on the client use the ctx given to them.
 //
 // To close the open connection, use the Close() method.
+//
+// [Authentication and Authorization]: https://pkg.go.dev/cloud.google.com/go#hdr-Authentication_and_Authorization
+// [Timeouts and Cancellation]: https://pkg.go.dev/cloud.google.com/go#hdr-Timeouts_and_Cancellation
+// [Testing against Client Libraries]: https://pkg.go.dev/cloud.google.com/go#hdr-Testing
+// [Debugging Client Libraries]: https://pkg.go.dev/cloud.google.com/go#hdr-Debugging
+// [Inspecting errors]: https://pkg.go.dev/cloud.google.com/go#hdr-Inspecting_errors
 package longrunning // import "cloud.google.com/go/longrunning/autogen"
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"unicode"
 
 	"google.golang.org/api/option"
-	"google.golang.org/grpc/metadata"
 )
 
 // For more information on implementing a client constructor hook, see
@@ -114,86 +117,9 @@ func getVersionClient() string {
 	return versionClient
 }
 
-func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
-	out, _ := metadata.FromOutgoingContext(ctx)
-	out = out.Copy()
-	for _, md := range mds {
-		for k, v := range md {
-			out[k] = append(out[k], v...)
-		}
-	}
-	return metadata.NewOutgoingContext(ctx, out)
-}
-
-func checkDisableDeadlines() (bool, error) {
-	raw, ok := os.LookupEnv("GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE")
-	if !ok {
-		return false, nil
-	}
-
-	b, err := strconv.ParseBool(raw)
-	return b, err
-}
-
 // DefaultAuthScopes reports the default set of authentication scopes to use with this package.
 func DefaultAuthScopes() []string {
 	return []string{
 		"",
 	}
-}
-
-// versionGo returns the Go runtime version. The returned string
-// has no whitespace, suitable for reporting in header.
-func versionGo() string {
-	const develPrefix = "devel +"
-
-	s := runtime.Version()
-	if strings.HasPrefix(s, develPrefix) {
-		s = s[len(develPrefix):]
-		if p := strings.IndexFunc(s, unicode.IsSpace); p >= 0 {
-			s = s[:p]
-		}
-		return s
-	}
-
-	notSemverRune := func(r rune) bool {
-		return !strings.ContainsRune("0123456789.", r)
-	}
-
-	if strings.HasPrefix(s, "go1") {
-		s = s[2:]
-		var prerelease string
-		if p := strings.IndexFunc(s, notSemverRune); p >= 0 {
-			s, prerelease = s[:p], s[p:]
-		}
-		if strings.HasSuffix(s, ".") {
-			s += "0"
-		} else if strings.Count(s, ".") < 2 {
-			s += ".0"
-		}
-		if prerelease != "" {
-			s += "-" + prerelease
-		}
-		return s
-	}
-	return "UNKNOWN"
-}
-
-// maybeUnknownEnum wraps the given proto-JSON parsing error if it is the result
-// of receiving an unknown enum value.
-func maybeUnknownEnum(err error) error {
-	if strings.Contains(err.Error(), "invalid value for enum type") {
-		err = fmt.Errorf("received an unknown enum value; a later version of the library may support it: %w", err)
-	}
-	return err
-}
-
-// buildHeaders extracts metadata from the outgoing context, joins it with any other
-// given metadata, and converts them into a http.Header.
-func buildHeaders(ctx context.Context, mds ...metadata.MD) http.Header {
-	if cmd, ok := metadata.FromOutgoingContext(ctx); ok {
-		mds = append(mds, cmd)
-	}
-	md := metadata.Join(mds...)
-	return http.Header(md)
 }

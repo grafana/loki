@@ -24,6 +24,7 @@ package weightedtarget
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/weightedtarget/weightedaggregator"
@@ -54,7 +55,13 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	b.logger = prefixLogger(b)
 	b.stateAggregator = weightedaggregator.New(cc, b.logger, NewRandomWRR)
 	b.stateAggregator.Start()
-	b.bg = balancergroup.New(cc, bOpts, b.stateAggregator, b.logger)
+	b.bg = balancergroup.New(balancergroup.Options{
+		CC:                      cc,
+		BuildOpts:               bOpts,
+		StateAggregator:         b.stateAggregator,
+		Logger:                  b.logger,
+		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
+	})
 	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
@@ -163,7 +170,7 @@ func (b *weightedTargetBalancer) ResolverError(err error) {
 }
 
 func (b *weightedTargetBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	b.bg.UpdateSubConnState(sc, state)
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *weightedTargetBalancer) Close() {
