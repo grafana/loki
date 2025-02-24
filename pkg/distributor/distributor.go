@@ -100,6 +100,10 @@ type Config struct {
 	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
 	KafkaConfig     kafka.Config `yaml:"-"`
 
+	// Enables latency in the distributor write path.
+	SimulatedLatencyEnabled bool `yaml:"simulated_latency_enabled"`
+	SimulatedLatencyDuration time.Duration `yaml:"simulated_latency_duration"`
+
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
 }
@@ -114,6 +118,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+	fs.BoolVar(&cfg.SimulatedLatencyEnabled, "distributor.simulated-latency-enabled", false, "Enables simulating latency in the distributor write path.")
+	fs.DurationVar(&cfg.SimulatedLatencyDuration, "distributor.simulated-latency-duration", 500*time.Millisecond, "The amount of latency to add to each push request.")
 }
 
 func (cfg *Config) Validate() error {
@@ -463,6 +469,23 @@ func (p *pushTracker) doneWithResult(err error) {
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	start := time.Now()
+	defer func() {
+		if d.cfg.SimulatedLatencyEnabled {
+			// All requests must wait at least the simulated latency. However,
+			// we want to avoid adding additional latency on top of slow requests
+			// that already took longer then the simulated latency.
+			wait := d.cfg.SimulatedLatencyDuration - time.Now().Sub(start)
+			if wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return // The client canceled the request.
+				}
+			}
+		}
+	}()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
