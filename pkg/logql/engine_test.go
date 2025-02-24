@@ -51,6 +51,8 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 		{query: `rate({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
 		{query: `sum(rate({app="foo"} [1h]))`, expErr: "[1h] > [10m]"},
 		{query: `sum_over_time({app="foo"} |= "foo" | json | unwrap bar [1h])`, expErr: "[1h] > [10m]"},
+		{query: `variants(rate({app="foo"}[5m])) of ({app="foo"}[5m])`, expErr: ""},
+		{query: `variants(rate({app="foo"}[1h])) of ({app="foo"}[1h])`, expErr: "[1h] > [10m]"},
 	} {
 		for _, downstream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
@@ -70,42 +72,6 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 					require.ErrorContains(t, err, tc.expErr)
 				} else {
 					require.NoError(t, err)
-				}
-			})
-		}
-	}
-}
-
-func TestEngine_variants_checkIntervalLimit(t *testing.T) {
-	q := &query{}
-	for _, tc := range []struct {
-		query  string
-		expErr string
-	}{
-		{query: `variants(rate({app="foo"}[5m])) of ({app="foo"}[5m])`, expErr: ""},
-		{query: `variants(rate({app="foo"}[1h])) of ({app="foo"}[1h])`, expErr: "[1h] > [10m]"},
-	} {
-		for _, downstream := range []bool{true, false} {
-			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
-				e := syntax.MustParseExpr(tc.query).(syntax.VariantsExpr)
-				for _, variant := range e.Variants() {
-					expr := variant
-					if downstream {
-						// Simulate downstream expression
-						expr = &ConcatSampleExpr{
-							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard:      nil,
-								SampleExpr: variant,
-							},
-							next: nil,
-						}
-					}
-					err := q.checkIntervalLimit(expr, 10*time.Minute)
-					if tc.expErr != "" {
-						require.ErrorContains(t, err, tc.expErr)
-					} else {
-						require.NoError(t, err)
-					}
 				}
 			})
 		}
@@ -2365,7 +2331,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 			time.Unix(60, 0),
 			logproto.BACKWARD,
 			0,
-			[][]logproto.Series{
+		[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
