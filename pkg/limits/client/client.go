@@ -72,8 +72,8 @@ type Client struct {
 	io.Closer
 }
 
-// New returns a new Client for the specified ingest-limits.
-func New(cfg Config, addr string) (*Client, error) {
+// NewClient returns a new Client for the specified ingest-limits.
+func NewClient(cfg Config, addr string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
@@ -148,6 +148,6 @@ func NewPool(
 // NewPoolFactory returns a new factory for ingest-limits clients.
 func NewPoolFactory(cfg Config) ring_client.PoolFactory {
 	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return New(cfg, addr)
+		return NewClient(cfg, addr)
 	})
 }
