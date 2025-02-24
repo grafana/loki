@@ -69,19 +69,6 @@ func (c *querierClientMock) QuerySample(ctx context.Context, in *logproto.Sample
 	return res.(logproto.Querier_QuerySampleClient), args.Error(1)
 }
 
-func (c *querierClientMock) QueryVariants(
-	ctx context.Context,
-	in *logproto.VariantsQueryRequest,
-	opts ...grpc.CallOption,
-) (logproto.Querier_QueryVariantsClient, error) {
-	args := c.Called(ctx, in, opts)
-	res := args.Get(0)
-	if res == nil {
-		return (logproto.Querier_QueryVariantsClient)(nil), args.Error(1)
-	}
-	return res.(logproto.Querier_QueryVariantsClient), args.Error(1)
-}
-
 func (c *querierClientMock) Label(ctx context.Context, in *logproto.LabelRequest, opts ...grpc.CallOption) (*logproto.LabelResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)
@@ -272,49 +259,6 @@ func (c *querySampleClientMock) RecvMsg(_ interface{}) error {
 }
 
 func (c *querySampleClientMock) Context() context.Context {
-	return context.Background()
-}
-
-// queryVariantsClientMock is a mockable version of Querier_QueryVariantsClient
-type queryVariantsClientMock struct {
-	util.ExtendedMock
-	logproto.Querier_QueryVariantsClient
-}
-
-func newQueryVariantsClientMock() *queryVariantsClientMock {
-	return &queryVariantsClientMock{}
-}
-
-func (c *queryVariantsClientMock) Recv() (*logproto.VariantsQueryResponse, error) {
-	args := c.Called()
-	res := args.Get(0)
-	if res == nil {
-		return (*logproto.VariantsQueryResponse)(nil), args.Error(1)
-	}
-	return res.(*logproto.VariantsQueryResponse), args.Error(1)
-}
-
-func (c *queryVariantsClientMock) Header() (grpc_metadata.MD, error) {
-	return nil, nil
-}
-
-func (c *queryVariantsClientMock) Trailer() grpc_metadata.MD {
-	return nil
-}
-
-func (c *queryVariantsClientMock) CloseSend() error {
-	return nil
-}
-
-func (c *queryVariantsClientMock) SendMsg(_ interface{}) error {
-	return nil
-}
-
-func (c *queryVariantsClientMock) RecvMsg(_ interface{}) error {
-	return nil
-}
-
-func (c *queryVariantsClientMock) Context() context.Context {
 	return context.Background()
 }
 
@@ -749,11 +693,6 @@ func (q *querierMock) SelectLogs(ctx context.Context, params logql.SelectLogPara
 }
 
 func (q *querierMock) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	args := q.Called(ctx, params)
-	return args.Get(0).(func() iter.SampleIterator)(), args.Error(1)
-}
-
-func (q *querierMock) SelectVariants(ctx context.Context, params logql.SelectVariantsParams) (iter.SampleIterator, error) {
 	args := q.Called(ctx, params)
 	return args.Get(0).(func() iter.SampleIterator)(), args.Error(1)
 }

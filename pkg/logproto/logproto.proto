@@ -35,8 +35,6 @@ service Querier {
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
 
   rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
-
-  rpc QueryVariants(VariantsQueryRequest) returns (stream VariantsQueryResponse) {}
 }
 
 message LabelToValuesResponse {
@@ -504,35 +502,4 @@ message DetectedLabel {
   string label = 1;
   uint64 cardinality = 2;
   bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
-}
-
-message VariantsQueryRequest {
-  string query = 1; // mark as reserved once we've fully migrated to plan.
-  string logRange = 2;
-  repeated string variants = 3;
-  uint32 limit = 4; // for log lines
-  google.protobuf.Timestamp start = 5 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp end = 6 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  Direction direction = 7; // for log lines
-  repeated string shards = 8 [(gogoproto.jsontag) = "shards,omitempty"];
-  repeated Delete deletes = 9;
-  Plan plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
-  // If populated, these represent the chunk references that the querier should
-  // use to fetch the data, plus any other chunks reported by ingesters.
-  ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
-}
-
-message VariantsQueryResponse {
-  repeated Series series = 1 [
-    (gogoproto.customtype) = "Series",
-    (gogoproto.nullable) = true
-  ];
-  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
-  repeated string warnings = 3;
 }

@@ -49,11 +49,6 @@ type HeadBlock interface {
 		maxt int64,
 		extractor ...log.StreamSampleExtractor,
 	) iter.SampleIterator
-	MultiExtractorSampleIterator(
-		ctx context.Context,
-		mint, maxt int64,
-		extractors []log.StreamSampleExtractor,
-	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
 

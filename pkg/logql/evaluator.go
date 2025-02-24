@@ -1369,22 +1369,16 @@ func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.MultiVariantExpr:
 		logRange := e.LogRange()
-		variants := make([]string, 0, len(e.Variants()))
-		for _, variant := range e.Variants() {
-			variants = append(variants, variant.String())
-		}
 
 		// We don't have the benefit of sending the vector expression to the source for reducing labels
 		// Since multiple samples are allowed, and they may not share the same labels to reduce by
-		it, err := ev.querier.SelectVariants(ctx, SelectVariantsParams{
-			&logproto.VariantsQueryRequest{
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
 				// extend startTs backwards by step
 				Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
 				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
 				End:      q.End().Add(-logRange.Offset).Add(time.Nanosecond),
-				Query:    expr.String(),
-				LogRange: logRange.String(),
-				Variants: variants,
+				Selector: expr.String(),
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
 					AST: expr,

@@ -2368,14 +2368,12 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2398,14 +2396,12 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2428,14 +2424,12 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2460,14 +2454,12 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2541,14 +2533,12 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(120, 0),
@@ -2575,14 +2565,12 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2609,14 +2597,12 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -2651,14 +2637,12 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
 				},
 			},
-			[]SelectVariantsParams{
+			[]SelectSampleParams{
 				{
-					&logproto.VariantsQueryRequest{
-						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						LogRange: `{app="foo"}[1m]`,
-						Variants: []string{
-							`bytes_over_time({app="foo"}[1m])`,
-							`count_over_time({app="foo"}[1m])`,
+					&logproto.SampleQueryRequest{
+						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
 						End:   time.Unix(60, 0),
@@ -3159,53 +3143,50 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if seriesIn, ok := data.([][]logproto.Series); ok {
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
-				p.Plan = &plan.QueryPlan{
-					AST: syntax.MustParseExpr(p.Selector),
-				}
-				series[paramsID(p)] = seriesIn[i]
-			}
-		}
+				expr, ok3 := syntax.MustParseExpr(p.Selector).(syntax.VariantsExpr)
+				if ok3 && p.Plan == nil {
+					p.Plan = &plan.QueryPlan{
+						AST: expr,
+					}
 
-		if paramsIn, ok2 := params.([]SelectVariantsParams); ok2 {
-			for i, p := range paramsIn {
-				expr, ok := syntax.MustParseExpr(p.Query).(syntax.VariantsExpr)
-				if !ok {
-					return nil
-				}
+					curSeries := seriesIn[i]
+					variants := expr.Variants()
+					newSeries := make([]logproto.Series, len(curSeries)*len(variants))
 
-				p.Plan = &plan.QueryPlan{
-					AST: expr,
-				}
+					for vi := range variants {
+						for si, s := range curSeries {
+							lbls, err := promql_parser.ParseMetric(s.Labels)
+							if err != nil {
+								return nil
+							}
 
-				curSeries := seriesIn[i]
-				variants := expr.Variants()
-				newSeries := make([]logproto.Series, len(curSeries)*len(variants))
+							// Add variant label
+							lbls = append(
+								lbls,
+								labels.Label{Name: "__variant__", Value: fmt.Sprintf("%d", vi)},
+							)
 
-				for vi := range variants {
-					for si, s := range curSeries {
-						lbls, err := promql_parser.ParseMetric(s.Labels)
-						if err != nil {
-							return nil
-						}
-
-						// Add variant label
-						lbls = append(
-							lbls,
-							labels.Label{Name: "__variant__", Value: fmt.Sprintf("%d", vi)},
-						)
-
-						// Copy series with new labels
-						idx := vi*len(curSeries) + si
-						newSeries[idx] = logproto.Series{
-							Labels:  lbls.String(),
-							Samples: s.Samples,
+							// Copy series with new labels
+							idx := vi*len(curSeries) + si
+							newSeries[idx] = logproto.Series{
+								Labels:  lbls.String(),
+								Samples: s.Samples,
+							}
 						}
 					}
+					series[paramsID(p)] = newSeries
+				} else {
+					for i, p := range paramsIn {
+						p.Plan = &plan.QueryPlan{
+							AST: syntax.MustParseExpr(p.Selector),
+						}
+						series[paramsID(p)] = seriesIn[i]
+					}
 				}
-				series[paramsID(p)] = newSeries
 			}
 		}
 	}
+
 	return &querierRecorder{
 		streams: streams,
 		series:  series,

@@ -248,11 +248,7 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
 
-<<<<<<< HEAD
 				extractors := []log.StreamSampleExtractor{countExtractor, bytesExtractor}
-=======
-				extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
->>>>>>> 87548ca5d5 (chore: reduce duplication in code paths)
 				sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 				idx = 0
 
@@ -1429,7 +1425,6 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-<<<<<<< HEAD
 						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
 						for _, extractor := range ex {
 							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
@@ -1442,9 +1437,6 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 								time.Now(),
 								streamExtractors...),
 						)
-=======
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
->>>>>>> 87548ca5d5 (chore: reduce duplication in code paths)
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
