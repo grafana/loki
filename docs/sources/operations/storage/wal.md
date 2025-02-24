@@ -17,18 +17,17 @@ This section will use Kubernetes as a reference deployment paradigm in the examp
 
 The Write Ahead Log in Loki takes a few particular tradeoffs compared to other WALs you may be familiar with. The WAL aims to add additional durability guarantees, but _not at the expense of availability_. Particularly, there are two scenarios where the WAL sacrifices these guarantees.
 
-1) Corruption/Deletion of the WAL prior to replaying it
+1. Corruption/Deletion of the WAL prior to replaying it
 
-In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of its data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
+    In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of its data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
 
-You can use the Prometheus metric `loki_ingester_wal_corruptions_total` to track and alert when this happens.
+    You can use the Prometheus metric `loki_ingester_wal_corruptions_total` to track and alert when this happens.
 
-1) No space left on disk
+1. No space left on disk
 
-In the event the underlying WAL disk is full, Loki will not fail incoming writes, but neither will it log them to the WAL. In this case, the persistence guarantees across process restarts will not hold.
+    In the event the underlying WAL disk is full, Loki will not fail incoming writes, but neither will it log them to the WAL. In this case, the persistence guarantees across process restarts will not hold.
 
-You can use the Prometheus metric `loki_ingester_wal_disk_full_failures_total` to track and alert when this happens.
-
+    You can use the Prometheus metric `loki_ingester_wal_disk_full_failures_total` to track and alert when this happens.
 
 ### Backpressure
 
@@ -36,11 +35,18 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ### Metrics
 
+The following metrics are available for monitoring the WAL:
+
+* `loki_ingester_wal_corruptions_total`: Total number of WAL corruptions encountered
+* `loki_ingester_wal_disk_full_failures_total`: Total number of disk full failures
+* `loki_ingester_wal_records_logged`: Counter for WAL records logged
+* `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
+
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
 
-2. Following flags needs to be set
+1. Following flags needs to be set
     * `--ingester.wal-enabled` to `true` which enables writing to WAL during ingestion.
     * `--ingester.wal-dir` to the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
     * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
@@ -48,9 +54,7 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ## Changes in lifecycle when WAL is enabled
 
-
 Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL. If you need to ensure that data is always flushed to the chunk store when your pod shuts down, you can set the `--ingester.flush-on-shutdown` flag to `true`.
-
 
 ## Disk space requirements
 
@@ -60,7 +64,7 @@ Based on tests in real world:
 * Checkpoint period was 5mins.
 * disk utilization on a WAL-only disk was steady at ~10-15GB.
 
-You should not target 100% disk utilisation.
+You should not target 100% disk utilization.
 
 ## Migrating from stateless deployments
 
@@ -69,17 +73,17 @@ The ingester _Deployment without WAL_ and _StatefulSet with WAL_ should be scale
 Let's take an example of 4 ingesters. The migration would look something like this:
 
 1. Bring up one stateful ingester `ingester-0` and wait until it's ready (accepting read and write requests).
-2. Scale down the old ingester deployment to 3 and wait until the leaving ingester flushes all the data to chunk store.
-3. Once that ingester has disappeared from `kc get pods ...`, add another stateful ingester and wait until it's ready. Now you have `ingester-0` and `ingester-1`.
-4. Repeat step 2 to reduce remove another ingester from old deployment.
-5. Repeat step 3 to add another stateful ingester. Now you have `ingester-0 ingester-1 ingester-2`.
-6. Repeat step 4 and 5, and now you will finally have `ingester-0 ingester-1 ingester-2 ingester-3`.
+1. Scale down the old ingester deployment to 3 and wait until the leaving ingester flushes all the data to chunk store.
+1. Once that ingester has disappeared from `kc get pods ...`, add another stateful ingester and wait until it's ready. Now you have `ingester-0` and `ingester-1`.
+1. Repeat step 2 to reduce remove another ingester from old deployment.
+1. Repeat step 3 to add another stateful ingester. Now you have `ingester-0 ingester-1 ingester-2`.
+1. Repeat step 4 and 5, and now you will finally have `ingester-0 ingester-1 ingester-2 ingester-3`.
 
 ## How to scale up/down
 
 ### Scale up
 
-Scaling up is same as what you would do without WAL or statefulsets. Nothing to change here.
+Scaling up is same as what you would do without WAL or StatefulSets. Nothing to change here.
 
 ### Scale down
 
@@ -93,12 +97,11 @@ After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters
 
 Also you can set the `--ingester.flush-on-shutdown` flag to `true`. This enables chunks to be flushed to long-term storage when the ingester is shut down.
 
-
 ## Additional notes
 
 ### Kubernetes hacking
 
-Statefulsets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
+StatefulSets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes StatefulSets.
 
 In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`.
 This will leave the Pods alive but delete the StatefulSet.
@@ -108,11 +111,11 @@ Then you may recreate the (updated) StatefulSet and one-by-one start deleting th
 
 1. **StatefulSets for Ordered Scaling Down**: The Loki ingesters should be scaled down one by one, which is efficiently handled by Kubernetes StatefulSets. This ensures an ordered and reliable scaling process, as described in the [Deployment and Scaling Guarantees](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#deployment-and-scaling-guarantees) documentation.
 
-2. **Using PreStop Lifecycle Hook**: During the Pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
+1. **Using PreStop Lifecycle Hook**: During the Pod scaling down process, the PreStop [lifecycle hook](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/) triggers the `/flush_shutdown` endpoint on the ingester. This action flushes the chunks and removes the ingester from the ring, allowing it to register as unready and become eligible for deletion.
 
-3. **Using terminationGracePeriodSeconds**: Provides time for the ingester to flush its data before being deleted, if flushing data takes more than 30 minutes, you may need to increase it.
+1. **Using terminationGracePeriodSeconds**: Provides time for the ingester to flush its data before being deleted, if flushing data takes more than 30 minutes, you may need to increase it.
 
-4. **Cleaning Persistent Volumes**: Persistent volumes are automatically cleaned up by leveraging the [enableStatefulSetAutoDeletePVC](https://kubernetes.io/blog/2021/12/16/kubernetes-1-23-statefulset-pvc-auto-deletion/) feature in Kubernetes.
+1. **Cleaning Persistent Volumes**: Persistent volumes are automatically cleaned up by leveraging the [enableStatefulSetAutoDeletePVC](https://kubernetes.io/blog/2021/12/16/kubernetes-1-23-statefulset-pvc-auto-deletion/) feature in Kubernetes.
 
 By following the above steps, you can ensure a smooth scaling down process for the Loki ingesters while maintaining data integrity and minimizing potential disruptions.
 
@@ -120,4 +123,4 @@ By following the above steps, you can ensure a smooth scaling down process for t
 
 * When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
 * 2 ingesters should not be working with the same volume/directory for the WAL.
-* A Rollout should bring down an ingester completely and then start the new ingester, not the other way around.
+* A rollout should bring down an ingester completely and then start the new ingester, not the other way around.

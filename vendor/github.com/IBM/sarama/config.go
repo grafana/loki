@@ -269,6 +269,13 @@ type Config struct {
 			// more sophisticated backoff strategies. This takes precedence over
 			// `Backoff` if set.
 			BackoffFunc func(retries, maxRetries int) time.Duration
+			// The maximum length of the bridging buffer between `input` and `retries` channels
+			// in AsyncProducer#retryHandler.
+			// The limit is to prevent this buffer from overflowing or causing OOM.
+			// Defaults to 0 for unlimited.
+			// Any value between 0 and 4096 is pushed to 4096.
+			// A zero or negative value indicates unlimited.
+			MaxBufferLength int
 		}
 
 		// Interceptors to be called when the producer dispatcher reads the

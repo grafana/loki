@@ -12,7 +12,7 @@ types and methods. Afero has an exceptionally clean interface and simple design
 without needless constructors or initialization methods.
 
 Afero is also a library providing a base set of interoperable backend
-filesystems that make it easy to work with afero while retaining all the power
+filesystems that make it easy to work with, while retaining all the power
 and benefit of the os and ioutil packages.
 
 Afero provides significant improvements over using the os package alone, most

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.14.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.14.0...auth/v0.14.1) (2025-01-24)
+
+
+### Documentation
+
+* **auth:** Add warning about externally-provided credentials ([#11462](https://github.com/googleapis/google-cloud-go/issues/11462)) ([49fb6ff](https://github.com/googleapis/google-cloud-go/commit/49fb6ff4d754895f82c9c4d502fc7547d3b5a941))
+
+## [0.14.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.13.0...auth/v0.14.0) (2025-01-08)
+
+
+### Features
+
+* **auth:** Add universe domain support to idtoken ([#11059](https://github.com/googleapis/google-cloud-go/issues/11059)) ([72add7e](https://github.com/googleapis/google-cloud-go/commit/72add7e9f8f455af695e8ef79212a4bd3122fb3a))
+
+
+### Bug Fixes
+
+* **auth/oauth2adapt:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+* **auth:** Fix copy of delegates in impersonate.NewIDTokenCredentials ([#11386](https://github.com/googleapis/google-cloud-go/issues/11386)) ([ff7ef8e](https://github.com/googleapis/google-cloud-go/commit/ff7ef8e7ade7171bce3e4f30ff10a2e9f6c27ca0)), refs [#11379](https://github.com/googleapis/google-cloud-go/issues/11379)
+* **auth:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
 ## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.1...auth/v0.13.0) (2024-12-13)
 
 

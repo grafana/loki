@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -72,6 +73,12 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errNotReady
 		}
 
+		// Extract rule details
+		ruleName := detail.Name
+		ruleType := detail.Kind
+
+		// Add rule details to context
+		ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
 		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
@@ -158,7 +165,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 			Context:                  user.InjectOrgID(ctx, userID),
 			ExternalURL:              cfg.ExternalURL.URL,
 			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
-			Logger:                   logger,
+			Logger:                   util_log.SlogFromGoKit(logger),
 			Registerer:               reg,
 			OutageTolerance:          cfg.OutageTolerance,
 			ForGracePeriod:           cfg.ForGracePeriod,
@@ -356,4 +363,26 @@ type noopRuleDependencyController struct{}
 // AnalyseRules is a noop for Loki since there is no dependency relation between rules.
 func (*noopRuleDependencyController) AnalyseRules([]rules.Rule) {
 	// Do nothing
+}
+
+// Define context keys to avoid collisions
+type contextKey string
+
+const (
+	ruleNameKey contextKey = "rule_name"
+	ruleTypeKey contextKey = "rule_type"
+)
+
+// AddRuleDetailsToContext adds rule details to the context
+func AddRuleDetailsToContext(ctx context.Context, ruleName string, ruleType string) context.Context {
+	ctx = context.WithValue(ctx, ruleNameKey, ruleName)
+	ctx = context.WithValue(ctx, ruleTypeKey, ruleType)
+	return ctx
+}
+
+// GetRuleDetailsFromContext retrieves rule details from the context
+func GetRuleDetailsFromContext(ctx context.Context) (string, string) {
+	ruleName, _ := ctx.Value(ruleNameKey).(string)
+	ruleType, _ := ctx.Value(ruleTypeKey).(string)
+	return ruleName, ruleType
 }

@@ -82,6 +82,9 @@ type stream struct {
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 
 	configs *runtime.TenantConfigs
+
+	retentionHours string
+	policy         string
 }
 
 type chunkDesc struct {
@@ -112,6 +115,7 @@ func newStream(
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
 	configs *runtime.TenantConfigs,
+	retentionHours string,
 ) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -132,7 +136,8 @@ func newStream(
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
 
-		configs: configs,
+		configs:        configs,
+		retentionHours: retentionHours,
 	}
 }
 
@@ -477,15 +482,15 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 		if s.unorderedWrites {
 			name = validation.TooFarBehind
 		}
-		validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
-		validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
+		validation.DiscardedSamples.WithLabelValues(name, s.tenant, s.retentionHours, s.policy).Add(float64(outOfOrderSamples))
+		validation.DiscardedBytes.WithLabelValues(name, s.tenant, s.retentionHours, s.policy).Add(float64(outOfOrderBytes))
 		if usageTracker != nil {
 			usageTracker.DiscardedBytesAdd(ctx, s.tenant, name, s.labels, float64(outOfOrderBytes))
 		}
 	}
 	if rateLimitedSamples > 0 {
-		validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
-		validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedBytes))
+		validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant, s.retentionHours, s.policy).Add(float64(rateLimitedSamples))
+		validation.DiscardedBytes.WithLabelValues(validation.StreamRateLimit, s.tenant, s.retentionHours, s.policy).Add(float64(rateLimitedBytes))
 		if usageTracker != nil {
 			usageTracker.DiscardedBytesAdd(ctx, s.tenant, validation.StreamRateLimit, s.labels, float64(rateLimitedBytes))
 		}
@@ -606,7 +611,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 }
 
 // Returns an SampleIterator.
-func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractor log.StreamSampleExtractor) (iter.SampleIterator, error) {
+func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, from, through time.Time, extractors ...log.StreamSampleExtractor) (iter.SampleIterator, error) {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	iterators := make([]iter.SampleIterator, 0, len(s.chunks))
@@ -627,7 +632,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 		}
 		lastMax = maxt
 
-		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, extractors...); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}

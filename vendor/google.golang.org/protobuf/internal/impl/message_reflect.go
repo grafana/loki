@@ -72,8 +72,6 @@ func (mi *MessageInfo) makeKnownFieldsFunc(si structInfo) {
 			fi = fieldInfoForMap(fd, fs, mi.Exporter)
 		case fd.IsList():
 			fi = fieldInfoForList(fd, fs, mi.Exporter)
-		case fd.IsWeak():
-			fi = fieldInfoForWeakMessage(fd, si.weakOffset)
 		case fd.Message() != nil:
 			fi = fieldInfoForMessage(fd, fs, mi.Exporter)
 		default:
@@ -85,9 +83,7 @@ func (mi *MessageInfo) makeKnownFieldsFunc(si structInfo) {
 	mi.oneofs = map[protoreflect.Name]*oneofInfo{}
 	for i := 0; i < md.Oneofs().Len(); i++ {
 		od := md.Oneofs().Get(i)
-		if !od.IsSynthetic() {
-			mi.oneofs[od.Name()] = makeOneofInfo(od, si, mi.Exporter)
-		}
+		mi.oneofs[od.Name()] = makeOneofInfo(od, si, mi.Exporter)
 	}
 
 	mi.denseFields = make([]*fieldInfo, fds.Len()*2)
@@ -221,9 +217,6 @@ func (mi *MessageInfo) makeFieldTypes(si structInfo) {
 			}
 		case fd.Message() != nil:
 			ft = fs.Type
-			if fd.IsWeak() {
-				ft = nil
-			}
 			isMessage = true
 		}
 		if isMessage && ft != nil && ft.Kind() != reflect.Ptr {

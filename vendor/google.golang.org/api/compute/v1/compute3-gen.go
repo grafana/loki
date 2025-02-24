@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright 2025 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -3187,9 +3187,9 @@ type RegionCommitmentsUpdateCall struct {
 
 // Update: Updates the specified commitment with the data included in the
 // request. Update is performed only on selected fields included as part of
-// update-mask. Only the following fields can be modified: auto_renew.
+// update-mask. Only the following fields can be updated: auto_renew and plan.
 //
-// - commitment: Name of the commitment for which auto renew is being updated.
+// - commitment: Name of the commitment that you want to update.
 // - project: Project ID for this request.
 // - region: Name of the region for this request.
 func (r *RegionCommitmentsService) Update(project string, region string, commitment string, commitment2 *Commitment) *RegionCommitmentsUpdateCall {

@@ -1,0 +1,135 @@
+---
+name: Helm Loki Diff CI
+on:
+  pull_request:
+    paths:
+      - "production/helm/loki/**"
+
+# These permissions are needed to assume roles from Github's OIDC.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  helm-diff:
+    name: ${{ matrix.scenario.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        scenario:
+          - name: Single Binary Scenario
+            values_file: default-single-binary-values.yaml
+            use_k3d: true
+          - name: Default Values Scenario
+            values_file: default-values.yaml
+            use_k3d: true
+          - name: Ingress Values Scenario
+            values_file: ingress-values.yaml
+            use_k3d: true
+          - name: Legacy Monitoring Values Scenario
+            values_file: legacy-monitoring-values.yaml
+            use_k3d: true
+          - name: Simple Scalable AWS Kube IRSA Values Scenario
+            values_file: simple-scalable-aws-kube-irsa-values.yaml
+            use_k3d: false
+          - name: Simple Thanos Values Scenario
+            values_file: simple-thanos-values.yaml
+            use_k3d: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add required Helm repositories
+        run: |
+          helm repo add minio https://charts.min.io/
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add grafana-operator https://grafana.github.io/helm-charts
+          helm repo update
+
+      - name: Setup K3D
+        if: ${{ matrix.scenario.use_k3d }}
+        uses: ./.github/actions/setup-k3d
+
+      - name: Setup Helm plugins
+        if: ${{ matrix.scenario.use_k3d }}
+        run: |
+          helm plugin install https://github.com/databus23/helm-diff
+
+      - name: Build helm dependencies
+        run: |
+          helm dependency build production/helm/loki
+
+      # Conditional steps based on whether K3D is used
+      - name: Run diff with K3D
+        if: ${{ matrix.scenario.use_k3d }}
+        env:
+          HELM_DIFF_USE_UPGRADE_DRY_RUN: true
+        run: |
+          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }}
+          helm diff upgrade loki-release -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} production/helm/loki | tee helm_diff_output.txt
+
+      - name: Run diff without K3D
+        if: ${{ !matrix.scenario.use_k3d }}
+        run: |
+          helm template loki-release grafana/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} > release-manifest.yaml
+          helm template loki-release production/helm/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} > current-manifest.yaml
+          diff current-manifest.yaml release-manifest.yaml > helm_diff_output.txt || true
+
+      - name: Convert Helm Diff Output to Markdown
+        id: convert_diff
+        run: |
+          cat helm_diff_output.txt >> formatted_diff_output.md
+
+      - name: Upload diff output as artifact
+        uses: actions/upload-artifact@v4
+        id: upload_diff
+        with:
+          name: ${{ matrix.scenario.name }}-diff-output
+          path: formatted_diff_output.md
+          retention-days: 2
+
+  summary-diff-outputs:
+    name: Summary Diffs
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.fork == false
+    needs: [helm-diff]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+
+      - name: Combine diff outputs
+        run: |
+          echo "## Helm Diff Output - Summary" > formatted_diff_output.md
+
+          for scenario in */formatted_diff_output.md; do
+            scenario_name=$(dirname "$scenario")
+
+            echo "<details>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+            echo "<summary>${scenario_name}</summary>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+            echo '```diff' >> formatted_diff_output.md
+            cat "$scenario" >> formatted_diff_output.md
+            echo '```' >> formatted_diff_output.md
+            echo "</details>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+          done
+
+      - name: Post diff as PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: "Helm Diff Output - Summary"
+          skip_unchanged: true
+          hide_and_recreate: true
+          append: true
+          hide_classify: "OUTDATED"
+          path: formatted_diff_output.md

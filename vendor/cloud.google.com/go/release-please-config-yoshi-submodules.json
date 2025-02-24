@@ -12,6 +12,12 @@
         "advisorynotifications": {
             "component": "advisorynotifications"
         },
+        "ai": {
+            "component": "ai"
+        },
+        "aiplatform": {
+            "component": "aiplatform"
+        },
         "alloydb": {
             "component": "alloydb"
         },
@@ -252,6 +258,9 @@
         "memcache": {
             "component": "memcache"
         },
+        "memorystore": {
+            "component": "memorystore"
+        },
         "metastore": {
             "component": "metastore"
         },
@@ -282,6 +291,9 @@
         "optimization": {
             "component": "optimization"
         },
+        "oracledatabase": {
+            "component": "oracledatabase"
+        },
         "orchestration": {
             "component": "orchestration"
         },
@@ -296,6 +308,9 @@
         },
         "parallelstore": {
             "component": "parallelstore"
+        },
+        "parametermanager": {
+            "component": "parametermanager"
         },
         "phishingprotection": {
             "component": "phishingprotection"

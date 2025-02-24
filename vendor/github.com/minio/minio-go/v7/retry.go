@@ -112,6 +112,7 @@ func isS3CodeRetryable(s3Code string) (ok bool) {
 
 // List of HTTP status codes which are retryable.
 var retryableHTTPStatusCodes = map[int]struct{}{
+	http.StatusRequestTimeout:      {},
 	429:                            {}, // http.StatusTooManyRequests is not part of the Go 1.5 library, yet
 	499:                            {}, // client closed request, retry. A non-standard status code introduced by nginx.
 	http.StatusInternalServerError: {},

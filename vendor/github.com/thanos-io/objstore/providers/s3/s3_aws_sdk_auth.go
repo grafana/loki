@@ -26,8 +26,7 @@ func NewAWSSDKAuth(region string) *credentials.Credentials {
 	})
 }
 
-// Retrieve retrieves the keys from the environment.
-func (a *AWSSDKAuth) Retrieve() (credentials.Value, error) {
+func (a *AWSSDKAuth) RetrieveWithCredContext(cc *credentials.CredContext) (credentials.Value, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), awsconfig.WithRegion(a.Region))
 	if err != nil {
 		return credentials.Value{}, errors.Wrap(err, "load AWS SDK config")
@@ -46,6 +45,11 @@ func (a *AWSSDKAuth) Retrieve() (credentials.Value, error) {
 		SessionToken:    creds.SessionToken,
 		SignerType:      credentials.SignatureV4,
 	}, nil
+}
+
+// Retrieve retrieves the keys from the environment.
+func (a *AWSSDKAuth) Retrieve() (credentials.Value, error) {
+	return a.RetrieveWithCredContext(nil)
 }
 
 // IsExpired returns if the credentials have been retrieved.

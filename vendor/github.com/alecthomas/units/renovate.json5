@@ -8,4 +8,8 @@
     "group:allNonMajor",
     "schedule:earlyMondays", // Run once a week.
   ],
+  postUpdateOptions: [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ]
 }
