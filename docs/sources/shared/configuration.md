@@ -2189,6 +2189,14 @@ otlp_config:
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
 
+# Enables simulating latency in the distributor write path.
+# CLI flag: -distributor.simulated-latency-enabled
+[simulated_latency_enabled: <boolean> | default = false]
+
+# The amount of latency to add to each push request.
+# CLI flag: -distributor.simulated-latency-duration
+[simulated_latency_duration: <duration> | default = 500ms]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
