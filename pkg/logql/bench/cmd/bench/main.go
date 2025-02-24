@@ -30,6 +30,7 @@ func initialModel() mainModel {
 			Count:        1,
 			TraceEnabled: false,
 			Selected:     []string{},
+			StorageType:  "both", // Default to running both storage types
 		}),
 	}
 }

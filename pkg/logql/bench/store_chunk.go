@@ -50,6 +50,7 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 		return nil, fmt.Errorf("failed to create index directory %s: %w", indexDir, err)
 	}
 	storeConfig := storage.Config{
+		MaxChunkBatchSize: 50,
 		TSDBShipperConfig: indexshipper.Config{
 			ActiveIndexDirectory: indexDir,
 			Mode:                 indexshipper.ModeReadWrite,

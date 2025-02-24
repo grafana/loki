@@ -79,6 +79,7 @@ type RunConfig struct {
 	Count        int
 	TraceEnabled bool
 	Selected     []string
+	StorageType  string // Storage type to use: "dataobj", "chunk", or "both"
 }
 
 // ViewportConfig holds the configuration for the viewport

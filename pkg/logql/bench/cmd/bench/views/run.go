@@ -49,6 +49,11 @@ func NewRunView(config RunConfig) *RunView {
 	sp.Spinner = spinner.MiniDot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	// Set default storage type if not specified
+	if config.StorageType == "" {
+		config.StorageType = "both"
+	}
+
 	return &RunView{
 		RunConfig:      config,
 		Running:        false,
@@ -129,6 +134,19 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		case "t":
 			m.RunConfig.TraceEnabled = !m.RunConfig.TraceEnabled
+			return m, nil
+		case "s":
+			// Cycle through storage types: dataobj -> chunk -> both
+			switch m.RunConfig.StorageType {
+			case "dataobj":
+				m.RunConfig.StorageType = "chunk"
+			case "chunk":
+				m.RunConfig.StorageType = "both"
+			case "both":
+				m.RunConfig.StorageType = "dataobj"
+			default:
+				m.RunConfig.StorageType = "both"
+			}
 			return m, nil
 		case "enter", "r":
 			if !m.Running {
@@ -308,9 +326,10 @@ func (m *RunView) headerView() string {
 		status = "Idle"
 	}
 	config := ConfigStyle.Render(fmt.Sprintf(
-		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Status: %s • CPU: %s:%d • MEM: %s:%d • TRACE: %s:%d",
+		"Count: %d (+/- to adjust) • Trace: %v ('t' to toggle) • Storage: %s ('s' to change) • Status: %s • CPU: %s:%d • MEM: %s:%d • TRACE: %s:%d",
 		m.RunConfig.Count,
 		m.RunConfig.TraceEnabled,
+		m.storageTypeDisplay(),
 		status,
 		m.profileStatus(m.cpuProfileOn), m.cpuProfilePort,
 		m.profileStatus(m.memProfileOn), m.memProfilePort,
@@ -348,6 +367,19 @@ func (m *RunView) headerView() string {
 	)
 }
 
+func (m *RunView) storageTypeDisplay() string {
+	switch m.RunConfig.StorageType {
+	case "dataobj":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("DataObj")
+	case "chunk":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("Chunk")
+	case "both":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Render("Both")
+	default:
+		return m.RunConfig.StorageType
+	}
+}
+
 func (m *RunView) footerView() string {
 	separator := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
@@ -356,6 +388,7 @@ func (m *RunView) footerView() string {
 	controls := []string{
 		"↑/↓: scroll",
 		"ENTER/r: restart",
+		"s: storage",
 		"p: cpu",
 		"m: mem",
 		"x: trace",
@@ -390,13 +423,28 @@ func (m *RunView) startBenchmark() tea.Cmd {
 		// Build the benchmark command
 		args := []string{
 			"test", "-v",
-			"-test.run=^$", // Skip tests
-			"-test.bench=" + buildTestRegex(m.RunConfig.Selected), // Run only selected benchmarks
-			"-test.benchmem",            // Show memory stats
-			"-test.cpuprofile=cpu.prof", // CPU profiling
-			"-test.memprofile=mem.prof", // Memory profiling
+			"-test.run=^$",   // Skip tests
+			"-test.benchmem", // Show memory stats
 			fmt.Sprintf("-count=%d", m.RunConfig.Count),
 		}
+
+		// Add storage type filter if not running both
+		if m.RunConfig.StorageType != "both" {
+			benchRegex := buildTestRegex(m.RunConfig.Selected, m.RunConfig.StorageType)
+			args = append(args, "-test.bench="+benchRegex)
+			log.Printf("Using storage type %s with regex: %s", m.RunConfig.StorageType, benchRegex)
+		} else {
+			// When running both, we need to match any storage type
+			benchRegex := buildTestRegex(m.RunConfig.Selected, "")
+			args = append(args, "-test.bench="+benchRegex)
+			log.Printf("Using both storage types with regex: %s", benchRegex)
+		}
+
+		// Add profiling flags
+		args = append(args,
+			"-test.cpuprofile=cpu.prof", // CPU profiling
+			"-test.memprofile=mem.prof", // Memory profiling
+		)
 
 		if m.RunConfig.TraceEnabled {
 			args = append(args, "-test.trace=trace.out")
@@ -473,11 +521,28 @@ func (m *RunView) startBenchmark() tea.Cmd {
 	}
 }
 
-func buildTestRegex(tests []string) string {
+func buildTestRegex(tests []string, storageType string) string {
+	if len(tests) == 0 {
+		// If no tests are selected, match all tests
+		if storageType == "" {
+			// Match any storage type
+			return "^BenchmarkLogQL/.+/.*$"
+		}
+		// Match specific storage type
+		return fmt.Sprintf("^BenchmarkLogQL/%s/.*$", storageType)
+	}
+
 	formatted := []string{}
 	for _, t := range tests {
 		// Escape special regex characters in the benchmark name
-		escaped := strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/%s", t), "{", "\\{")
+		var escaped string
+		if storageType == "" {
+			// When no storage type is specified, match any storage type
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/.+/%s", t), "{", "\\{")
+		} else {
+			// When a storage type is specified, match only that storage type
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/%s/%s", storageType, t), "{", "\\{")
+		}
 		escaped = strings.ReplaceAll(escaped, "}", "\\}")
 		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
 		escaped = strings.ReplaceAll(escaped, "[", "\\[")

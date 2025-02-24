@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -22,17 +23,13 @@ const testTenant = "test-tenant"
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
-// setupBenchmark sets up the benchmark environment and returns the necessary components
-func setupBenchmark(tb testing.TB) (*logql.Engine, *GeneratorConfig) {
+// setupBenchmarkWithStore sets up the benchmark environment with the specified store type
+// and returns the necessary components
+func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.Engine, *GeneratorConfig) {
 	tb.Helper()
 	entries, err := os.ReadDir(DefaultDataDir)
 	if err != nil || len(entries) == 0 {
 		tb.Fatal("Data directory is empty or does not exist. Please run 'go generate ./...' first to generate test data")
-	}
-
-	store, err := NewDataObjStore(DefaultDataDir, testTenant)
-	if err != nil {
-		tb.Fatal(err)
 	}
 
 	// Load and validate the generator config
@@ -41,9 +38,28 @@ func setupBenchmark(tb testing.TB) (*logql.Engine, *GeneratorConfig) {
 		tb.Fatal(err)
 	}
 
-	querier, err := store.Querier()
-	if err != nil {
-		tb.Fatal(err)
+	var querier logql.Querier
+	switch storeType {
+	case "dataobj":
+		store, err := NewDataObjStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		querier, err = store.Querier()
+		if err != nil {
+			tb.Fatal(err)
+		}
+	case "chunk":
+		store, err := NewChunkStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		querier, err = store.Querier()
+		if err != nil {
+			tb.Fatal(err)
+		}
+	default:
+		tb.Fatalf("Unknown store type: %s", storeType)
 	}
 
 	engine := logql.NewEngine(logql.EngineOpts{}, querier, logql.NoLimits,
@@ -55,7 +71,7 @@ func setupBenchmark(tb testing.TB) (*logql.Engine, *GeneratorConfig) {
 func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
 	t.Skip("Too slow for now.")
-	engine, config := setupBenchmark(t)
+	engine, config := setupBenchmarkWithStore(t, "dataobj")
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	// Generate test cases
@@ -107,40 +123,43 @@ func TestLogQLQueries(t *testing.T) {
 }
 
 func BenchmarkLogQL(b *testing.B) {
-	engine, config := setupBenchmark(b)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
+	// Run benchmarks for both storage types
+	for _, storeType := range []string{"dataobj", "chunk"} {
+		engine, config := setupBenchmarkWithStore(b, storeType)
+		ctx := user.InjectOrgID(context.Background(), testTenant)
 
-	// Generate test cases using the loaded config
-	cases := config.GenerateTestCases()
+		// Generate test cases using the loaded config
+		cases := config.GenerateTestCases()
 
-	for _, c := range cases {
-		b.Run(c.Name(), func(b *testing.B) {
-			params, err := logql.NewLiteralParams(
-				c.Query,
-				c.Start,
-				c.End,
-				c.Step,
-				0,
-				c.Direction,
-				1000,
-				nil,
-				nil,
-			)
-			require.NoError(b, err)
-
-			q := engine.Query(params)
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, err := q.Exec(ctx)
+		for _, c := range cases {
+			b.Run(fmt.Sprintf("%s/%s", storeType, c.Name()), func(b *testing.B) {
+				params, err := logql.NewLiteralParams(
+					c.Query,
+					c.Start,
+					c.End,
+					c.Step,
+					0,
+					c.Direction,
+					1000,
+					nil,
+					nil,
+				)
 				require.NoError(b, err)
-			}
-		})
+
+				q := engine.Query(params)
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					_, err := q.Exec(ctx)
+					require.NoError(b, err)
+				}
+			})
+		}
 	}
 }
 
 func TestPrintBenchmarkQueries(t *testing.T) {
-	_, config := setupBenchmark(t)
+	_, config := setupBenchmarkWithStore(t, "dataobj")
 	cases := config.GenerateTestCases()
 
 	t.Log("Benchmark Queries:")
@@ -165,18 +184,4 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Log queries: %d (will run in both directions)", logQueries)
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
-}
-
-func TestChunkStore(t *testing.T) {
-	chunkStore, err := NewChunkStore(DefaultDataDir, testTenant)
-	require.NoError(t, err)
-
-	// Create builder with default options and the store
-	builder := NewBuilder(DefaultDataDir, DefaultOpt(), chunkStore)
-
-	// Generate the data
-	ctx := context.Background()
-	if err := builder.Generate(ctx, 2147483648); err != nil {
-		t.Fatalf("Failed to generate dataset: %v\n", err)
-	}
 }
