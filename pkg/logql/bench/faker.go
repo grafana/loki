@@ -3,6 +3,7 @@ package bench
 import (
 	"fmt"
 	"math/rand"
+	"time"
 )
 
 // Data for generating log entries
@@ -48,9 +49,110 @@ var (
 		"Deadlock detected",
 		"Unique constraint violation",
 		"Foreign key constraint violation",
-		"Query timeout",
-		"Table does not exist",
 	}
+
+	// New data for additional generators
+	orgIDs = []string{"tenant1", "tenant2", "tenant3", "tenant4", "tenant5", "acme", "globex", "initech", "umbrella"}
+
+	grpcMethods = []string{
+		"/cortex.Ingester/Push",
+		"/cortex.Querier/Query",
+		"/cortex.Ruler/Rules",
+		"/cortex.Distributor/Push",
+		"/cortex.Compactor/Compact",
+	}
+
+	tempoComponents = []string{
+		"distributor",
+		"ingester",
+		"querier",
+		"compactor",
+		"frontend",
+	}
+
+	tempoMessages = []string{
+		"received traces",
+		"querying traces",
+		"compacting blocks",
+		"flushing traces to storage",
+		"handling request",
+	}
+
+	k8sComponents = []string{
+		"kubelet",
+		"kube-scheduler",
+		"kube-controller-manager",
+		"kube-apiserver",
+		"etcd",
+	}
+
+	k8sLogPrefixes = []string{
+		"I0612",
+		"W0612",
+		"E0612",
+		"F0612",
+	}
+
+	k8sMessages = []string{
+		"Started container",
+		"Pulling image",
+		"Created pod",
+		"Scheduled pod",
+		"Node status updated",
+		"Volume mounted",
+		"Service endpoint updated",
+	}
+
+	prometheusComponents = []string{
+		"tsdb",
+		"scrape",
+		"rules",
+		"remote",
+		"web",
+	}
+
+	prometheusSubcomponents = []string{
+		"manager",
+		"head",
+		"wal",
+		"api",
+		"discovery",
+	}
+
+	prometheusMessages = []string{
+		"Compacting blocks",
+		"Scraping target",
+		"Evaluating rules",
+		"Remote write",
+		"Handling request",
+		"WAL replay complete",
+	}
+
+	grafanaLoggers = []string{
+		"http.server",
+		"alerting",
+		"auth",
+		"datasources",
+		"rendering",
+	}
+
+	grafanaComponents = []string{
+		"server",
+		"api",
+		"sqlstore",
+		"plugins",
+		"auth",
+	}
+
+	grafanaMessages = []string{
+		"Request completed",
+		"User logged in",
+		"Dashboard saved",
+		"Alert rule evaluated",
+		"Data source health check",
+		"Plugin loaded",
+	}
+
 	cacheErrors = []string{
 		"Connection refused",
 		"Key not found",
@@ -142,6 +244,11 @@ func (f *Faker) Status() int {
 	return httpStatus[f.rnd.Intn(len(httpStatus))]
 }
 
+// Duration returns a random duration
+func (f *Faker) Duration() time.Duration {
+	return time.Duration(f.rnd.Intn(1000)+1) * time.Millisecond // 1-1000ms
+}
+
 // UserAgent returns a random user agent string
 func (f *Faker) UserAgent() string {
 	return userAgents[f.rnd.Intn(len(userAgents))]
@@ -149,8 +256,7 @@ func (f *Faker) UserAgent() string {
 
 // IP returns a random IP address
 func (f *Faker) IP() string {
-	return fmt.Sprintf("%d.%d.%d.%d",
-		f.rnd.Intn(256), f.rnd.Intn(256), f.rnd.Intn(256), f.rnd.Intn(256))
+	return fmt.Sprintf("%d.%d.%d.%d", f.rnd.Intn(256), f.rnd.Intn(256), f.rnd.Intn(256), f.rnd.Intn(256))
 }
 
 // TraceID returns a random trace ID
@@ -177,14 +283,9 @@ func (f *Faker) Table() string {
 	return dbTables[f.rnd.Intn(len(dbTables))]
 }
 
-// Duration returns a random duration in milliseconds
-func (f *Faker) Duration() int {
-	return f.rnd.Intn(1000)
-}
-
 // RowsAffected returns a random number of rows affected
 func (f *Faker) RowsAffected() int {
-	return f.rnd.Intn(1000)
+	return f.rnd.Intn(100) + 1 // 1-100 rows
 }
 
 // CacheOp returns a random cache operation
@@ -194,33 +295,32 @@ func (f *Faker) CacheOp() string {
 
 // CacheKey returns a random cache key
 func (f *Faker) CacheKey() string {
-	return fmt.Sprintf("key-%d", f.rnd.Intn(1000))
+	return fmt.Sprintf("key:%d", f.rnd.Intn(1000))
 }
 
-// CacheSize returns a random cache size
+// CacheSize returns a random cache size in bytes
 func (f *Faker) CacheSize() int {
-	return f.rnd.Intn(10000)
+	return f.rnd.Intn(10000) + 1 // 1-10000 bytes
 }
 
 // CacheTTL returns a random cache TTL in seconds
 func (f *Faker) CacheTTL() int {
-	return f.rnd.Intn(3600)
+	return f.rnd.Intn(3600) + 60 // 60-3660 seconds
 }
 
-// AuthAction returns a random auth action
+// AuthAction returns a random authentication action
 func (f *Faker) AuthAction() string {
 	return authActions[f.rnd.Intn(len(authActions))]
 }
 
 // User returns a random username
 func (f *Faker) User() string {
-	return fmt.Sprintf("user-%d", f.rnd.Intn(1000))
+	return fmt.Sprintf("user%d", f.rnd.Intn(1000))
 }
 
-// AuthSuccess returns a random authentication success boolean
-// with a bias toward successful auth (90%)
+// AuthSuccess returns a random authentication success status
 func (f *Faker) AuthSuccess() bool {
-	return f.rnd.Float32() > 0.1
+	return f.rnd.Float32() < 0.8 // 80% success rate
 }
 
 // Error returns a random general error message
@@ -305,4 +405,520 @@ func (f *Faker) SyslogPriority(isError bool) int {
 // PID returns a random process ID
 func (f *Faker) PID() int {
 	return f.rnd.Intn(10000)
+}
+
+// New methods for additional generators
+
+// OrgID returns a random organization ID
+func (f *Faker) OrgID() string {
+	return orgIDs[f.rnd.Intn(len(orgIDs))]
+}
+
+// GRPCMethod returns a random gRPC method
+func (f *Faker) GRPCMethod() string {
+	return grpcMethods[f.rnd.Intn(len(grpcMethods))]
+}
+
+// ErrorMessage returns a random error message
+func (f *Faker) ErrorMessage() string {
+	return errorMessages[f.rnd.Intn(len(errorMessages))]
+}
+
+// TempoComponent returns a random Tempo component
+func (f *Faker) TempoComponent() string {
+	return tempoComponents[f.rnd.Intn(len(tempoComponents))]
+}
+
+// TempoMessage returns a random Tempo message
+func (f *Faker) TempoMessage() string {
+	return tempoMessages[f.rnd.Intn(len(tempoMessages))]
+}
+
+// K8sComponent returns a random Kubernetes component
+func (f *Faker) K8sComponent() string {
+	return k8sComponents[f.rnd.Intn(len(k8sComponents))]
+}
+
+// K8sLogPrefix returns a random Kubernetes log prefix
+func (f *Faker) K8sLogPrefix() string {
+	return k8sLogPrefixes[f.rnd.Intn(len(k8sLogPrefixes))]
+}
+
+// K8sMessage returns a random Kubernetes message
+func (f *Faker) K8sMessage() string {
+	return k8sMessages[f.rnd.Intn(len(k8sMessages))]
+}
+
+// PrometheusComponent returns a random Prometheus component
+func (f *Faker) PrometheusComponent() string {
+	return prometheusComponents[f.rnd.Intn(len(prometheusComponents))]
+}
+
+// PrometheusSubcomponent returns a random Prometheus subcomponent
+func (f *Faker) PrometheusSubcomponent() string {
+	return prometheusSubcomponents[f.rnd.Intn(len(prometheusSubcomponents))]
+}
+
+// PrometheusMessage returns a random Prometheus message
+func (f *Faker) PrometheusMessage() string {
+	return prometheusMessages[f.rnd.Intn(len(prometheusMessages))]
+}
+
+// GrafanaLogger returns a random Grafana logger
+func (f *Faker) GrafanaLogger() string {
+	return grafanaLoggers[f.rnd.Intn(len(grafanaLoggers))]
+}
+
+// GrafanaComponent returns a random Grafana component
+func (f *Faker) GrafanaComponent() string {
+	return grafanaComponents[f.rnd.Intn(len(grafanaComponents))]
+}
+
+// GrafanaMessage returns a random Grafana message
+func (f *Faker) GrafanaMessage() string {
+	return grafanaMessages[f.rnd.Intn(len(grafanaMessages))]
+}
+
+// LogGenerator is a function that generates a log line
+type LogGenerator func(level string, timestamp time.Time, faker *Faker) string
+
+// Application represents a type of application that generates logs
+type Application struct {
+	Name         string
+	LogGenerator LogGenerator
+	OTELResource map[string]string // OTEL resource attributes
+}
+
+// Register standard application types with known log patterns
+var defaultApplications = []Application{
+	{
+		Name: "web-server",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration":%d,"user_agent":"%s","client_ip":"%s"`,
+				level, ts.Format(time.RFC3339), f.Method(), f.Path(), f.Status(), f.Duration().Milliseconds(), f.UserAgent(), f.IP(),
+			)
+
+			// Sometimes add request ID
+			if f.rnd.Float32() < 0.7 {
+				baseJSON += fmt.Sprintf(`,"request_id":"%s"`, f.TraceID())
+			}
+
+			// Sometimes add user info
+			if f.rnd.Float32() < 0.4 {
+				baseJSON += fmt.Sprintf(`,"user":"%s"`, f.User())
+			}
+
+			// Sometimes add error info for non-200 status codes
+			if f.Status() >= 400 {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.ErrorMessage())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":           "web-server",
+			"service_version":        "1.0.0",
+			"service_namespace":      "default",
+			"telemetry_sdk_name":     "opentelemetry",
+			"telemetry_sdk_language": "go",
+			"deployment_environment": "production",
+		},
+	},
+	{
+		Name: "database",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration":%d,"rows_affected":%d`,
+				level, ts.Format(time.RFC3339), f.QueryType(), f.Table(), f.Duration().Milliseconds(), f.RowsAffected(),
+			)
+
+			// Sometimes add query ID
+			if f.rnd.Float32() < 0.6 {
+				baseJSON += fmt.Sprintf(`,"query_id":"%s"`, f.TraceID())
+			}
+
+			// Sometimes add user info
+			if f.rnd.Float32() < 0.3 {
+				baseJSON += fmt.Sprintf(`,"user":"%s"`, f.User())
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.ErrorMessage())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":    "mysql",
+			"service_version": "8.0.28",
+			"db_system":       "mysql",
+			"db_version":      "8.0.28",
+			"db_instance":     "primary",
+			"db_cluster":      "production",
+		},
+	},
+	{
+		Name: "cache",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","msg":"Cache operation","operation":"%s","key":"%s","size":%d,"ttl":%d`,
+				level, ts.Format(time.RFC3339), f.CacheOp(), f.CacheKey(), f.CacheSize(), f.CacheTTL(),
+			)
+
+			// Sometimes add request ID
+			if f.rnd.Float32() < 0.5 {
+				baseJSON += fmt.Sprintf(`,"request_id":"%s"`, f.TraceID())
+			}
+
+			// Sometimes add latency
+			if f.rnd.Float32() < 0.7 {
+				baseJSON += fmt.Sprintf(`,"latency":"%s"`, f.Duration())
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.CacheError())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":     "redis",
+			"service_version":  "6.2.6",
+			"redis_cluster":    "false",
+			"redis_db":         "0",
+			"redis_max_memory": "17179869184",
+		},
+	},
+	{
+		Name: "auth-service",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","msg":"Authentication request","action":"%s","user":"%s","success":%t,"duration":"%s"`,
+				level, ts.Format(time.RFC3339), f.AuthAction(), f.User(), f.AuthSuccess(), f.Duration(),
+			)
+
+			// Sometimes add user info
+			if f.rnd.Float32() < 0.8 {
+				baseJSON += fmt.Sprintf(`,"user_details":"%s"`, f.User())
+			}
+
+			// Sometimes add client IP
+			if f.rnd.Float32() < 0.7 {
+				baseJSON += fmt.Sprintf(`,"client_ip":"%s"`, f.IP())
+			}
+
+			// Sometimes add request ID
+			if f.rnd.Float32() < 0.6 {
+				baseJSON += fmt.Sprintf(`,"request_id":"%s"`, f.TraceID())
+			}
+
+			// Add error for error level logs or failed auth
+			if level == errorLevel || !f.AuthSuccess() {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.AuthError())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":    "auth-service",
+			"service_version": "1.5.2",
+			"auth_provider":   "oauth2",
+			"auth_methods":    "password,token,sso",
+		},
+	},
+	{
+		Name: "kafka",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","msg":"Kafka event","topic":"%s","partition":%d,"offset":%d,"event":"%s"`,
+				level, ts.Format(time.RFC3339), f.KafkaTopic(), f.KafkaPartition(), f.KafkaOffset(), f.KafkaEvent(),
+			)
+
+			// Sometimes add message size
+			if f.rnd.Float32() < 0.7 {
+				baseJSON += fmt.Sprintf(`,"size":%d`, f.rnd.Intn(10000))
+			}
+
+			// Sometimes add latency
+			if f.rnd.Float32() < 0.6 {
+				baseJSON += fmt.Sprintf(`,"latency":"%s"`, f.Duration())
+			}
+
+			// Sometimes add client info
+			if f.rnd.Float32() < 0.5 {
+				baseJSON += fmt.Sprintf(`,"client":"%s"`, f.Hostname())
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.KafkaError())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":    "kafka",
+			"service_version": "3.4.0",
+			"broker_id":       "${BROKER_ID}",
+			"cluster_id":      "kafka-prod-01",
+			"num_partitions":  "24",
+		},
+	},
+	{
+		Name: "nginx",
+		LogGenerator: func(_ string, ts time.Time, f *Faker) string {
+			return fmt.Sprintf(
+				`%s - %s [%s] "%s %s HTTP/1.1" %d %d "%s" "%s"`,
+				f.IP(), f.User(), ts.Format("02/Jan/2006:15:04:05 -0700"),
+				f.Method(), f.NginxPath(), f.Status(), f.rnd.Intn(10000),
+				f.Referer(), f.UserAgent(),
+			)
+		},
+		OTELResource: map[string]string{
+			"service_name":    "nginx",
+			"service_version": "1.22.1",
+			"hostname":        "${HOSTNAME}",
+		},
+	},
+	{
+		Name: "syslog",
+		LogGenerator: func(_ string, _ time.Time, f *Faker) string {
+			return fmt.Sprintf(
+				`<%d>%s %s[%d]: %s`,
+				f.SyslogPriority(false), f.Hostname(), "systemd", f.PID(),
+				"Starting service...",
+			)
+		},
+		OTELResource: map[string]string{
+			"service_name": "system",
+			"hostname":     "${HOSTNAME}",
+			"os_type":      "linux",
+			"os_version":   "Ubuntu 22.04",
+		},
+	},
+	// New applications with logfmt and other formats
+	{
+		Name: "mimir",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// Logfmt format for Mimir
+			baseLogfmt := fmt.Sprintf(
+				`level=%s ts=%s caller=grpc_logging.go:%d msg="gRPC request" method=%s`,
+				level, ts.Format(time.RFC3339Nano), 50+f.rnd.Intn(100), f.GRPCMethod(),
+			)
+
+			// Sometimes add tenant ID
+			if f.rnd.Float32() < 0.7 {
+				baseLogfmt += fmt.Sprintf(` tenant=%s`, f.OrgID())
+			}
+
+			// Sometimes add duration
+			if f.rnd.Float32() < 0.8 {
+				baseLogfmt += fmt.Sprintf(` duration=%s`, f.Duration())
+			}
+
+			// Sometimes add trace info
+			if f.rnd.Float32() < 0.4 {
+				baseLogfmt += fmt.Sprintf(` trace_id=%s span_id=%s`, f.TraceID(), f.SpanID())
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseLogfmt += fmt.Sprintf(` error="failed to %s: %s"`, f.GRPCMethod(), f.ErrorMessage())
+			}
+
+			return baseLogfmt
+		},
+		OTELResource: map[string]string{
+			"service_name":    "mimir",
+			"service_version": "2.8.0",
+			"hostname":        "${HOSTNAME}",
+			"cluster":         "prod-metrics",
+		},
+	},
+	{
+		Name: "loki",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// Logfmt format for Loki
+			baseLogfmt := fmt.Sprintf(
+				`level=%s ts=%s caller=ingester.go:%d msg="ingester request" component=ingester`,
+				level, ts.Format(time.RFC3339Nano), 100+f.rnd.Intn(900),
+			)
+
+			// Sometimes add tenant ID
+			if f.rnd.Float32() < 0.7 {
+				baseLogfmt += fmt.Sprintf(` org_id=%s`, f.OrgID())
+			}
+
+			// Sometimes add duration
+			if f.rnd.Float32() < 0.6 {
+				baseLogfmt += fmt.Sprintf(` duration=%s`, f.Duration())
+			}
+
+			// Sometimes add trace info
+			if f.rnd.Float32() < 0.4 {
+				baseLogfmt += fmt.Sprintf(` trace_id=%s span_id=%s`, f.TraceID(), f.SpanID())
+			}
+
+			// Add metrics for some logs
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseLogfmt += fmt.Sprintf(` error="failed to process request: %s"`, f.ErrorMessage())
+			}
+
+			return baseLogfmt
+		},
+		OTELResource: map[string]string{
+			"service_name":    "loki",
+			"service_version": "2.9.0",
+			"hostname":        "${HOSTNAME}",
+			"cluster":         "prod-logs",
+		},
+	},
+	{
+		Name: "tempo",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// Logfmt format for Tempo
+			baseLogfmt := fmt.Sprintf(
+				`level=%s ts=%s caller=distributor.go:%d msg="distributor request" component=distributor`,
+				level, ts.Format(time.RFC3339Nano), 100+f.rnd.Intn(900),
+			)
+
+			// Sometimes add tenant ID
+			if f.rnd.Float32() < 0.7 {
+				baseLogfmt += fmt.Sprintf(` org_id=%s`, f.OrgID())
+			}
+
+			// Sometimes add duration
+			if f.rnd.Float32() < 0.6 {
+				baseLogfmt += fmt.Sprintf(` duration=%s`, f.Duration())
+			}
+
+			// Sometimes add trace info
+			if f.rnd.Float32() < 0.8 {
+				baseLogfmt += fmt.Sprintf(` trace_id=%s span_id=%s`, f.TraceID(), f.SpanID())
+			}
+
+			// Add metrics for some logs
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` spans=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseLogfmt += fmt.Sprintf(` error="failed to process trace: %s"`, f.ErrorMessage())
+			}
+
+			return baseLogfmt
+		},
+		OTELResource: map[string]string{
+			"service_name":    "tempo",
+			"service_version": "2.1.0",
+			"hostname":        "${HOSTNAME}",
+			"cluster":         "prod-traces",
+		},
+	},
+	{
+		Name: "kubernetes",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// Kubernetes log format (mix of structured and unstructured)
+			component := f.K8sComponent()
+			return fmt.Sprintf(
+				`%s %s [%s] %s: %s`,
+				ts.Format("2006-01-02T15:04:05.000000Z"), level, component,
+				f.K8sLogPrefix(), f.K8sMessage(),
+			)
+		},
+		OTELResource: map[string]string{
+			"service_name":    "kubernetes",
+			"service_version": "1.26.3",
+			"hostname":        "${HOSTNAME}",
+			"node_name":       "${HOSTNAME}",
+			"cluster":         "prod-k8s",
+		},
+	},
+	{
+		Name: "prometheus",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// JSON format with variations
+			baseJSON := fmt.Sprintf(
+				`{"level":"%s","ts":"%s","caller":"%s:%d","component":"%s","msg":"%s"`,
+				level, ts.Format(time.RFC3339Nano), f.PrometheusComponent(), 100+f.rnd.Intn(900),
+				f.PrometheusSubcomponent(), f.PrometheusMessage(),
+			)
+
+			// Sometimes add duration
+			if f.rnd.Float32() < 0.7 {
+				baseJSON += fmt.Sprintf(`,"duration":"%s"`, f.Duration())
+			}
+
+			// Sometimes add metrics
+			if f.rnd.Float32() < 0.5 {
+				baseJSON += fmt.Sprintf(`,"samples":%d,"series":%d`,
+					f.rnd.Intn(100000), f.rnd.Intn(10000))
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseJSON += fmt.Sprintf(`,"error":"%s"`, f.ErrorMessage())
+			}
+
+			return baseJSON + "}"
+		},
+		OTELResource: map[string]string{
+			"service_name":    "prometheus",
+			"service_version": "2.43.0",
+			"hostname":        "${HOSTNAME}",
+			"cluster":         "prod-monitoring",
+		},
+	},
+	{
+		Name: "grafana",
+		LogGenerator: func(level string, ts time.Time, f *Faker) string {
+			// Logfmt format for Grafana
+			baseLogfmt := fmt.Sprintf(
+				`level=%s ts=%s logger=%s caller=%s:%d msg="%s"`,
+				level, ts.Format(time.RFC3339Nano), f.GrafanaLogger(), f.GrafanaComponent(), 100+f.rnd.Intn(900),
+				f.GrafanaMessage(),
+			)
+
+			// Add user and org info
+			baseLogfmt += fmt.Sprintf(` userId=%d orgId=%s`, f.rnd.Intn(1000), f.OrgID())
+
+			// Sometimes add duration
+			if f.rnd.Float32() < 0.7 {
+				baseLogfmt += fmt.Sprintf(` duration=%s`, f.Duration())
+			}
+
+			// Sometimes add request info
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` method=%s path="%s" status=%d`,
+					f.Method(), f.Path(), f.Status())
+			}
+
+			// Add error for error level logs
+			if level == errorLevel {
+				baseLogfmt += fmt.Sprintf(` error="%s"`, f.ErrorMessage())
+			}
+
+			return baseLogfmt
+		},
+		OTELResource: map[string]string{
+			"service_name":    "grafana",
+			"service_version": "10.0.3",
+			"hostname":        "${HOSTNAME}",
+			"cluster":         "prod-dashboards",
+		},
+	},
 }

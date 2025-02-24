@@ -64,10 +64,13 @@ func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 	randomMatcher := func(name string, values []string) labelMatcher {
 		return labelMatcher{name: name, value: values[rnd.Intn(len(values))]}
 	}
-
+	components := []string{}
+	for _, app := range defaultApplications {
+		components = append(components, app.Name)
+	}
 	combinations := [][]labelMatcher{
 		// Single label matchers
-		{randomMatcher("component", c.LabelConfig.Components)},
+		{randomMatcher("service_name", components)},
 		{randomMatcher("region", c.LabelConfig.Regions)},
 
 		// Two label combinations
@@ -78,7 +81,7 @@ func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 
 		// Three label combinations
 		{
-			randomMatcher("component", c.LabelConfig.Components),
+			randomMatcher("service_name", components),
 			randomMatcher("env", c.LabelConfig.EnvTypes),
 			randomMatcher("region", c.LabelConfig.Regions),
 		},

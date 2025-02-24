@@ -18,6 +18,7 @@ import (
 const (
 	DefaultDataDir = "./data"
 	configFileName = "generator.json"
+	errorLevel     = "error" // Constant for the error level string
 )
 
 // Batch represents a collection of log streams
@@ -48,7 +49,6 @@ type LabelConfig struct {
 	Pods        int      // 1000-10000 pods
 	Containers  int      // 1-5 containers per pod
 	LogLevels   []string // Log levels to use
-	Components  []string // Application components
 	EnvTypes    []string // Environment types
 	Regions     []string // Regions
 	Datacenters []string // Datacenters
@@ -62,7 +62,6 @@ var defaultLabelConfig = LabelConfig{
 	Pods:        5000,
 	Containers:  3,
 	LogLevels:   []string{"debug", "info", "warn", "error"},
-	Components:  []string{"api", "db", "cache", "queue", "worker", "scheduler", "proxy"},
 	EnvTypes:    []string{"prod", "staging", "dev"},
 	Regions:     []string{"us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"},
 	Datacenters: []string{"dc1", "dc2", "dc3"},
@@ -212,22 +211,10 @@ func NewGenerator(opt Opt) *Generator {
 
 	// Initialize available applications
 	for _, app := range defaultApplications {
-		appCopy := app // Create a copy to avoid pointer issues
-		g.apps[app.Name] = appCopy
+		g.apps[app.Name] = app
 	}
 
 	return g
-}
-
-// LogGenerator is a function that generates a log line
-type LogGenerator func(level string, timestamp time.Time, faker *Faker) string
-
-// Application represents a type of application that generates logs
-type Application struct {
-	Name         string
-	Component    string
-	LogGenerator LogGenerator
-	OTELResource map[string]string // OTEL resource attributes
 }
 
 // generateStreamMetadata pre-generates metadata for all streams
@@ -265,13 +252,10 @@ func (g *Generator) generateStreamMetadata() {
 		region := g.config.LabelConfig.Regions[g.rnd.Intn(len(g.config.LabelConfig.Regions))]
 		dc := g.config.LabelConfig.Datacenters[g.rnd.Intn(len(g.config.LabelConfig.Datacenters))]
 
-		// Use the application's component for consistency
-		component := app.Component
-
 		// Build Loki label string
 		labels := fmt.Sprintf(
-			`{cluster="%s", namespace="%s", service_name="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", component="%s"}`,
-			cluster, namespace, service, pod, container, env, region, dc, component,
+			`{cluster="%s", namespace="%s", service="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", service_name="%s"}`,
+			cluster, namespace, service, pod, container, env, region, dc, app.Name,
 		)
 
 		g.streamsMeta[i] = StreamMetadata{
@@ -463,133 +447,6 @@ type OTELAttributes struct {
 type OTELTraceContext struct {
 	TraceID string
 	SpanID  string
-}
-
-// Register standard application types with known log patterns
-var defaultApplications = []Application{
-	{
-		Name:      "web-server",
-		Component: "api",
-		LogGenerator: func(level string, ts time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration":%d,"user_agent":"%s","client_ip":"%s"}`,
-				level, ts.Format(time.RFC3339), f.Method(), f.Path(), f.Status(), f.Duration(), f.UserAgent(), f.IP(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":           "web-server",
-			"service_version":        "1.0.0",
-			"service_namespace":      "default",
-			"telemetry_sdk_name":     "opentelemetry",
-			"telemetry_sdk_language": "go",
-			"deployment_environment": "production",
-		},
-	},
-	{
-		Name:      "database",
-		Component: "db",
-		LogGenerator: func(level string, ts time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration":%d,"rows_affected":%d}`,
-				level, ts.Format(time.RFC3339), f.QueryType(), f.Table(), f.Duration(), f.RowsAffected(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":    "mysql",
-			"service_version": "8.0.28",
-			"db_system":       "mysql",
-			"db_version":      "8.0.28",
-			"db_instance":     "primary",
-			"db_cluster":      "production",
-		},
-	},
-	{
-		Name:      "cache",
-		Component: "cache",
-		LogGenerator: func(level string, ts time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Cache operation","operation":"%s","key":"%s","size":%d,"ttl":%d}`,
-				level, ts.Format(time.RFC3339), f.CacheOp(), f.CacheKey(), f.CacheSize(), f.CacheTTL(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":     "redis",
-			"service_version":  "6.2.6",
-			"redis_cluster":    "false",
-			"redis_db":         "0",
-			"redis_max_memory": "17179869184",
-		},
-	},
-	{
-		Name:      "auth-service",
-		Component: "auth",
-		LogGenerator: func(level string, ts time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Auth event","action":"%s","user":"%s","success":%t,"source_ip":"%s"}`,
-				level, ts.Format(time.RFC3339), f.AuthAction(), f.User(), f.AuthSuccess(), f.IP(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":           "auth-service",
-			"service_version":        "1.0.0",
-			"service_namespace":      "default",
-			"telemetry_sdk_name":     "opentelemetry",
-			"telemetry_sdk_language": "go",
-			"deployment_environment": "production",
-		},
-	},
-	{
-		Name:      "kafka",
-		Component: "queue",
-		LogGenerator: func(level string, ts time.Time, f *Faker) string {
-			hostname := f.Hostname()
-			brokerID := fmt.Sprintf("%d", f.rnd.Intn(10))
-			return fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Kafka event","broker":"%s","broker_id":"%s","topic":"%s","event":"%s","partition":%d,"offset":%d}`,
-				level, ts.Format(time.RFC3339), hostname, brokerID, f.KafkaTopic(), f.KafkaEvent(), f.KafkaPartition(), f.KafkaOffset(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":    "kafka",
-			"service_version": "3.2.0",
-			"broker_id":       "${BROKER_ID}",
-			"hostname":        "${HOSTNAME}",
-		},
-	},
-	{
-		Name:      "nginx",
-		Component: "proxy",
-		LogGenerator: func(_ string, ts time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`%s - %s [%s] "%s %s HTTP/1.1" %d %d "%s" "%s"`,
-				f.IP(), f.User(), ts.Format("02/Jan/2006:15:04:05 -0700"),
-				f.Method(), f.NginxPath(), f.Status(), f.rnd.Intn(10000),
-				f.Referer(), f.UserAgent(),
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name":    "nginx",
-			"service_version": "1.22.1",
-			"hostname":        "${HOSTNAME}",
-		},
-	},
-	{
-		Name:      "syslog",
-		Component: "system",
-		LogGenerator: func(_ string, _ time.Time, f *Faker) string {
-			return fmt.Sprintf(
-				`<%d>%s %s[%d]: %s`,
-				f.SyslogPriority(false), f.Hostname(), "systemd", f.PID(),
-				"Starting service...",
-			)
-		},
-		OTELResource: map[string]string{
-			"service_name": "system",
-			"hostname":     "${HOSTNAME}",
-			"os_type":      "linux",
-			"os_version":   "Ubuntu 22.04",
-		},
-	},
 }
 
 // SaveConfig saves the generator configuration to a file in the data directory
