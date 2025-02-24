@@ -3048,7 +3048,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 }
 
 type mockEvaluatorFactory struct {
-	sampleEvalFunc SampleEvaluatorFunc
+	sampleEvalFunc  SampleEvaluatorFunc
 	variantEvalFunc VariantsEvaluatorFunc
 }
 
@@ -3063,7 +3063,7 @@ func (m *mockEvaluatorFactory) NewVariantsStepEvaluator(ctx context.Context, exp
 	if m.variantEvalFunc != nil {
 		return m.variantEvalFunc(ctx, expr, p)
 	}
-	return nil, errors.New("unimplemented mock VariantEvaluatorFactory") 
+	return nil, errors.New("unimplemented mock VariantEvaluatorFactory")
 }
 
 func (m *mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
@@ -3124,9 +3124,11 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
 				expr, ok3 := syntax.MustParseExpr(p.Selector).(syntax.VariantsExpr)
-				if ok3 && p.Plan == nil {
-					p.Plan = &plan.QueryPlan{
-						AST: expr,
+				if ok3 {
+					if p.Plan == nil {
+						p.Plan = &plan.QueryPlan{
+							AST: expr,
+						}
 					}
 
 					curSeries := seriesIn[i]
@@ -3157,8 +3159,10 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 					series[paramsID(p)] = newSeries
 				} else {
 					for i, p := range paramsIn {
-						p.Plan = &plan.QueryPlan{
-							AST: syntax.MustParseExpr(p.Selector),
+						if p.Plan == nil {
+							p.Plan = &plan.QueryPlan{
+								AST: syntax.MustParseExpr(p.Selector),
+							}
 						}
 						series[paramsID(p)] = seriesIn[i]
 					}

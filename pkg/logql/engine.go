@@ -328,6 +328,14 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := q.params.GetExpression().(type) {
+	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
+	case syntax.VariantsExpr:
+		if !q.multiVariant {
+			return nil, logqlmodel.ErrVariantsDisabled
+		}
+
+		value, err := q.evalVariants(ctx, e)
+		return value, err
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -346,13 +354,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
-	case syntax.VariantsExpr:
-		if !q.multiVariant {
-			return nil, logqlmodel.ErrVariantsDisabled
-		}
-
-		value, err := q.evalVariants(ctx, e)
-		return value, err
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
