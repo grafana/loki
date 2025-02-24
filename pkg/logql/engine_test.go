@@ -3049,11 +3049,18 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 type mockEvaluatorFactory struct {
 	SampleEvaluatorFactory
-	VariantEvaluatorFactory
+	VariantsEvaluatorFunc
 }
 
-func (*mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
+func (m *mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
 	return nil, errors.New("unimplemented mock EntryEvaluatorFactory")
+}
+
+func (m *mockEvaluatorFactory) NewVariantsStepEvaluator(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error) {
+	if m.VariantsEvaluatorFunc != nil {
+		return m.VariantsEvaluatorFunc(ctx, expr, p)
+	}
+	return nil, errors.New("unimplemented mock VariantEvaluatorFactory") 
 }
 
 func getLocalQuerier(size int64) Querier {
