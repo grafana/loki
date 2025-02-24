@@ -1,7 +1,7 @@
 .PHONY: generate bench list run run-debug stream
 
 # Default size for data generation (1GB)
-SIZE ?= 1073741824
+SIZE ?= 2147483648
 TENANT ?= test-tenant
 
 generate:

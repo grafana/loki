@@ -11,7 +11,7 @@ import (
 
 func main() {
 	var (
-		size     = flag.Int64("size", 1073741824, "Size in bytes to generate")
+		size     = flag.Int64("size", 2147483648, "Size in bytes to generate")
 		dir      = flag.String("dir", "data", "Output directory")
 		tenantID = flag.String("tenant", "test-tenant", "Tenant ID")
 	)
@@ -23,15 +23,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create the store
-	store, err := bench.NewDataObjStore(*dir, *tenantID)
+	// Create stores
+	chunkStore, err := bench.NewChunkStore(*dir, *tenantID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create store: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create chunk store: %v\n", err)
+		os.Exit(1)
+	}
+	dataObjStore, err := bench.NewDataObjStore(*dir, *tenantID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create builder with default options and the store
-	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), store)
+	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), chunkStore, dataObjStore)
 
 	// Generate the data
 	ctx := context.Background()

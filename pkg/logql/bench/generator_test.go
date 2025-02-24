@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TestGenerateDatasetDeterminism tests the determinism of the dataset generator
@@ -35,7 +33,6 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 
 	// Generate two sets of streams with the same configuration
 	numStreams := 100
-	var streams1, streams2 []logproto.Stream
 
 	g1 := NewGenerator(Opt{
 		startTime:      cfg.StartTime,
@@ -55,45 +52,71 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 		seed:           1,
 	})
 
-	// Collect streams from first generator
+	// Compare only the first 10 batches
+	numBatchesToCompare := 10
+
+	// Collect batches from both generators
+	var batches1, batches2 []*Batch
+
+	// Collect batches from first generator
+	batchCount1 := 0
 	for batch := range g1.Batches() {
-		streams1 = append(streams1, batch.Streams...)
+		batches1 = append(batches1, batch)
+		batchCount1++
+		if batchCount1 >= numBatchesToCompare {
+			break
+		}
 	}
 
-	// Collect streams from second generator
+	// Collect batches from second generator
+	batchCount2 := 0
 	for batch := range g2.Batches() {
-		streams2 = append(streams2, batch.Streams...)
+		batches2 = append(batches2, batch)
+		batchCount2++
+		if batchCount2 >= numBatchesToCompare {
+			break
+		}
 	}
 
-	// Compare number of streams
-	require.Equal(t, len(streams1), len(streams2), "Number of streams should match")
+	// Compare number of batches
+	require.Equal(t, numBatchesToCompare, len(batches1), "Number of batches from first generator should match expected count")
+	require.Equal(t, numBatchesToCompare, len(batches2), "Number of batches from second generator should match expected count")
 
-	// Compare each stream
-	for i := range streams1 {
-		stream1 := streams1[i]
-		stream2 := streams2[i]
+	// Compare each batch
+	for i := 0; i < numBatchesToCompare; i++ {
+		batch1 := batches1[i]
+		batch2 := batches2[i]
 
-		// Compare labels
-		require.Equal(t, stream1.Labels, stream2.Labels, "Labels should match for stream %d", i)
+		// Compare number of streams in each batch
+		require.Equal(t, len(batch1.Streams), len(batch2.Streams), "Number of streams should match for batch %d", i)
 
-		// Compare number of entries
-		require.Equal(t, len(stream1.Entries), len(stream2.Entries), "Number of entries should match for stream %d", i)
+		// Compare each stream in the batch
+		for j := range batch1.Streams {
+			stream1 := batch1.Streams[j]
+			stream2 := batch2.Streams[j]
 
-		// Compare each entry
-		for j := range stream1.Entries {
-			entry1 := stream1.Entries[j]
-			entry2 := stream2.Entries[j]
+			// Compare labels
+			require.Equal(t, stream1.Labels, stream2.Labels, "Labels should match for batch %d stream %d", i, j)
 
-			require.Equal(t, entry1.Timestamp, entry2.Timestamp, "Timestamp should match for stream %d entry %d", i, j)
-			require.Equal(t, entry1.Line, entry2.Line, "Line should match for stream %d entry %d", i, j)
-			require.Equal(t, len(entry1.StructuredMetadata), len(entry2.StructuredMetadata), "StructuredMetadata length should match for stream %d entry %d", i, j)
+			// Compare number of entries
+			require.Equal(t, len(stream1.Entries), len(stream2.Entries), "Number of entries should match for batch %d stream %d", i, j)
 
-			// Compare structured metadata
-			for k := range entry1.StructuredMetadata {
-				meta1 := entry1.StructuredMetadata[k]
-				meta2 := entry2.StructuredMetadata[k]
-				require.Equal(t, meta1.Name, meta2.Name, "Metadata name should match for stream %d entry %d metadata %d", i, j, k)
-				require.Equal(t, meta1.Value, meta2.Value, "Metadata value should match for stream %d entry %d metadata %d", i, j, k)
+			// Compare each entry
+			for k := range stream1.Entries {
+				entry1 := stream1.Entries[k]
+				entry2 := stream2.Entries[k]
+
+				require.Equal(t, entry1.Timestamp, entry2.Timestamp, "Timestamp should match for batch %d stream %d entry %d", i, j, k)
+				require.Equal(t, entry1.Line, entry2.Line, "Line should match for batch %d stream %d entry %d", i, j, k)
+				require.Equal(t, len(entry1.StructuredMetadata), len(entry2.StructuredMetadata), "StructuredMetadata length should match for batch %d stream %d entry %d", i, j, k)
+
+				// Compare structured metadata
+				for l := range entry1.StructuredMetadata {
+					meta1 := entry1.StructuredMetadata[l]
+					meta2 := entry2.StructuredMetadata[l]
+					require.Equal(t, meta1.Name, meta2.Name, "Metadata name should match for batch %d stream %d entry %d metadata %d", i, j, k, l)
+					require.Equal(t, meta1.Value, meta2.Value, "Metadata value should match for batch %d stream %d entry %d metadata %d", i, j, k, l)
+				}
 			}
 		}
 	}

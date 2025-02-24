@@ -20,7 +20,7 @@ import (
 
 const testTenant = "test-tenant"
 
-//go:generate go run ./cmd/generate/main.go -size 1073741824 -dir ./data -tenant test-tenant
+//go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
 // setupBenchmark sets up the benchmark environment and returns the necessary components
 func setupBenchmark(tb testing.TB) (*logql.Engine, *GeneratorConfig) {
@@ -165,4 +165,18 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Log queries: %d (will run in both directions)", logQueries)
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
+}
+
+func TestChunkStore(t *testing.T) {
+	chunkStore, err := NewChunkStore(DefaultDataDir, testTenant)
+	require.NoError(t, err)
+
+	// Create builder with default options and the store
+	builder := NewBuilder(DefaultDataDir, DefaultOpt(), chunkStore)
+
+	// Generate the data
+	ctx := context.Background()
+	if err := builder.Generate(ctx, 2147483648); err != nil {
+		t.Fatalf("Failed to generate dataset: %v\n", err)
+	}
 }

@@ -138,8 +138,8 @@ var defaultGeneratorConfig = GeneratorConfig{
 	StartTime:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	TimeSpread:  24 * time.Hour,
 	LabelConfig: defaultLabelConfig,
-	NumStreams:  1000, // Default to 1000 streams per batch
-	Seed:        1,    // Default to seed 1 for reproducibility
+	NumStreams:  250, // Default to 250 streams per batch
+	Seed:        1,   // Default to seed 1 for reproducibility
 	DenseIntervals: []struct {
 		Start    time.Time
 		Duration time.Duration
@@ -160,10 +160,19 @@ func (c *GeneratorConfig) NewRand() *rand.Rand {
 	return rand.New(rand.NewSource(c.Seed))
 }
 
+// StreamMetadata holds the consistent properties of a stream
+type StreamMetadata struct {
+	Labels string
+	Format LogFormat
+	App    *Application
+}
+
 // Generator represents a log generator with configuration
 type Generator struct {
 	config GeneratorConfig
 	rnd    *rand.Rand
+	// Pre-generated stream metadata that will be used across batches
+	streamsMeta []StreamMetadata
 }
 
 // Opt represents configuration options for the generator
@@ -245,7 +254,7 @@ func DefaultOpt() Opt {
 
 // NewGenerator creates a new generator with the given options
 func NewGenerator(opt Opt) *Generator {
-	return &Generator{
+	g := &Generator{
 		config: GeneratorConfig{
 			StartTime:      opt.startTime,
 			TimeSpread:     opt.timeSpread,
@@ -254,54 +263,82 @@ func NewGenerator(opt Opt) *Generator {
 			NumStreams:     opt.numStreams,
 			Seed:           opt.seed,
 		},
-		rnd: rand.New(rand.NewSource(opt.seed)), // Use configured source
+		rnd: rand.New(rand.NewSource(opt.seed)),
+	}
+
+	return g
+}
+
+// generateStreamMetadata pre-generates metadata for all streams
+func (g *Generator) generateStreamMetadata() {
+	numStreams := g.config.NumStreams
+	if numStreams == 0 {
+		numStreams = defaultGeneratorConfig.NumStreams
+	}
+
+	g.streamsMeta = make([]StreamMetadata, numStreams)
+
+	// For each stream, generate consistent metadata
+	for i := 0; i < numStreams; i++ {
+		// Pick a random application for this stream
+		app := defaultApplications[g.rnd.Intn(len(defaultApplications))]
+
+		// Generate consistent labels for this stream
+		cluster := fmt.Sprintf("cluster-%d", g.rnd.Intn(g.config.LabelConfig.Clusters))
+		namespace := fmt.Sprintf("namespace-%d", g.rnd.Intn(g.config.LabelConfig.Namespaces))
+		service := fmt.Sprintf("service-%d", g.rnd.Intn(g.config.LabelConfig.Services))
+		pod := fmt.Sprintf("pod-%d", g.rnd.Intn(g.config.LabelConfig.Pods))
+		container := fmt.Sprintf("container-%d", g.rnd.Intn(g.config.LabelConfig.Containers))
+		env := g.config.LabelConfig.EnvTypes[g.rnd.Intn(len(g.config.LabelConfig.EnvTypes))]
+		region := g.config.LabelConfig.Regions[g.rnd.Intn(len(g.config.LabelConfig.Regions))]
+		dc := g.config.LabelConfig.Datacenters[g.rnd.Intn(len(g.config.LabelConfig.Datacenters))]
+		component := app.Component // Use the application's component for consistency
+
+		labels := fmt.Sprintf(
+			`{cluster="%s", namespace="%s", service_name="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", component="%s"}`,
+			cluster, namespace, service, pod, container, env, region, dc, component,
+		)
+
+		// Use the application's preferred format if available, otherwise random
+		var format LogFormat
+		for _, pattern := range app.LogPatterns {
+			if pattern.Format != "" {
+				format = pattern.Format
+				break
+			}
+		}
+		if format == "" {
+			format = g.config.LabelConfig.LogFormats[g.rnd.Intn(len(g.config.LabelConfig.LogFormats))]
+		}
+
+		g.streamsMeta[i] = StreamMetadata{
+			Labels: labels,
+			Format: format,
+			App:    &app,
+		}
 	}
 }
 
 // Generate returns an iterator of batches with the configured number of streams
 func (g *Generator) Batches() iter.Seq[*Batch] {
+	// Pre-generate stream metadata once
+	g.generateStreamMetadata()
+
 	return func(yield func(*Batch) bool) {
-		// Pre-generate all possible label combinations
-		var streams []logproto.Stream
-		numStreams := g.config.NumStreams
-		if numStreams == 0 {
-			numStreams = defaultGeneratorConfig.NumStreams
-		}
-
-		for i := 0; i < numStreams; i++ {
-			cluster := fmt.Sprintf("cluster-%d", g.rnd.Intn(g.config.LabelConfig.Clusters))
-			namespace := fmt.Sprintf("namespace-%d", g.rnd.Intn(g.config.LabelConfig.Namespaces))
-			service := fmt.Sprintf("service-%d", g.rnd.Intn(g.config.LabelConfig.Services))
-			pod := fmt.Sprintf("pod-%d", g.rnd.Intn(g.config.LabelConfig.Pods))
-			container := fmt.Sprintf("container-%d", g.rnd.Intn(g.config.LabelConfig.Containers))
-			env := g.config.LabelConfig.EnvTypes[g.rnd.Intn(len(g.config.LabelConfig.EnvTypes))]
-			region := g.config.LabelConfig.Regions[g.rnd.Intn(len(g.config.LabelConfig.Regions))]
-			dc := g.config.LabelConfig.Datacenters[g.rnd.Intn(len(g.config.LabelConfig.Datacenters))]
-			component := g.config.LabelConfig.Components[g.rnd.Intn(len(g.config.LabelConfig.Components))]
-
-			labels := fmt.Sprintf(
-				`{cluster="%s", namespace="%s", service_name="%s", pod="%s", container="%s", env="%s", region="%s", datacenter="%s", component="%s"}`,
-				cluster, namespace, service, pod, container, env, region, dc, component,
-			)
-
-			format := g.config.LabelConfig.LogFormats[g.rnd.Intn(len(g.config.LabelConfig.LogFormats))]
-			level := g.config.LabelConfig.LogLevels[g.rnd.Intn(len(g.config.LabelConfig.LogLevels))]
-			entries := g.generateEntries(format, level)
-
-			streams = append(streams, logproto.Stream{
-				Labels:  labels,
-				Entries: entries,
-			})
-		}
-
-		// Send streams in batches
-		batchSize := 100 // TODO: Make this configurable if needed
-		for i := 0; i < len(streams); i += batchSize {
-			end := i + batchSize
-			if end > len(streams) {
-				end = len(streams)
+		for {
+			// Generate streams for this batch using the same metadata but new entries
+			streams := make([]logproto.Stream, len(g.streamsMeta))
+			for j := range streams {
+				meta := g.streamsMeta[j]
+				// Level is now randomly generated per entry in generateEntries
+				entries := g.generateEntries(meta.Format)
+				streams[j] = logproto.Stream{
+					Labels:  meta.Labels,
+					Entries: entries,
+				}
 			}
-			if !yield(&Batch{Streams: streams[i:end]}) {
+
+			if !yield(&Batch{Streams: streams}) {
 				return
 			}
 		}
@@ -332,12 +369,13 @@ func (g *Generator) GenerateDataset(targetSize int64, outputFile string) error {
 }
 
 // generateEntries is now a method of Generator
-func (g *Generator) generateEntries(format LogFormat, level string) []logproto.Entry {
-	return generateEntriesWithConfig(format, level, g.rnd, g.config)
+func (g *Generator) generateEntries(format LogFormat) []logproto.Entry {
+	// Level is now randomly generated per entry
+	return generateEntriesWithConfig(format, g.rnd, g.config)
 }
 
 // generateEntriesWithConfig creates log entries with OTEL attributes and deterministic timestamps
-func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, cfg GeneratorConfig) []logproto.Entry {
+func generateEntriesWithConfig(format LogFormat, rnd *rand.Rand, cfg GeneratorConfig) []logproto.Entry {
 	// Calculate base number of entries based on time spread
 	baseEntries := 10 + rnd.Intn(90) // 10-100 entries per stream
 	entries := make([]logproto.Entry, 0, baseEntries)
@@ -389,6 +427,9 @@ func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, c
 			jitter := time.Duration(rnd.Int63n(int64(spreadInterval)))
 			entryTs := ts.Add(jitter)
 
+			// Generate a random level for each entry
+			level := cfg.LabelConfig.LogLevels[rnd.Intn(len(cfg.LabelConfig.LogLevels))]
+
 			// Generate trace context for this entry (about 30% of entries)
 			var traceCtx *OTELTraceContext
 			if rnd.Float32() < 0.3 {
@@ -399,7 +440,7 @@ func generateEntriesWithConfig(format LogFormat, level string, rnd *rand.Rand, c
 			}
 
 			// Generate the log line
-			line := generateLogLine(format, level, rnd)
+			line := generateLogLine(format, level, entryTs, rnd)
 
 			// Create metadata in a deterministic order
 			var metadata []logproto.LabelAdapter
@@ -468,7 +509,7 @@ func generateEntries(format LogFormat, level string, rnd *rand.Rand) []logproto.
 
 	for i := 0; i < numEntries; i++ {
 		ts := now.Add(time.Duration(i) * time.Second)
-		line := generateLogLine(format, level, rnd)
+		line := generateLogLine(format, level, ts, rnd)
 
 		// Add OTEL structured metadata
 		metadata := []logproto.LabelAdapter{
@@ -804,7 +845,7 @@ var (
 )
 
 // generateLogLine creates a log line using application-specific patterns
-func generateLogLine(format LogFormat, level string, rnd *rand.Rand) string {
+func generateLogLine(format LogFormat, level string, timestamp time.Time, rnd *rand.Rand) string {
 	// Select a random application
 	app := defaultApplications[rnd.Intn(len(defaultApplications))]
 
@@ -827,11 +868,14 @@ func generateLogLine(format LogFormat, level string, rnd *rand.Rand) string {
 		}
 	}
 
+	// Format the timestamp
+	formattedTime := timestamp.Format(time.RFC3339)
+
 	// If no matching patterns found, use default format
 	if len(validPatterns) == 0 {
 		return fmt.Sprintf(`{"level":"%s","ts":"%s","msg":"Default log message","app":"%s"}`,
 			level,
-			time.Now().Format(time.RFC3339),
+			formattedTime,
 			app.Name,
 		)
 	}
@@ -841,7 +885,7 @@ func generateLogLine(format LogFormat, level string, rnd *rand.Rand) string {
 
 	// Generate arguments for the pattern
 	args := make([]interface{}, 0, len(pattern.Args)+2)
-	args = append(args, level, time.Now().Format(time.RFC3339))
+	args = append(args, level, formattedTime)
 	for _, argGen := range pattern.Args {
 		args = append(args, argGen(rnd))
 	}
