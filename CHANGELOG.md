@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/grafana/loki/compare/v3.4.0...v3.5.0) (2025-02-24)
+
+
+### Features
+
+* add a config option for custom GCS endpoints (backport k239) ([#16420](https://github.com/grafana/loki/issues/16420)) ([b84f3e4](https://github.com/grafana/loki/commit/b84f3e4544d084b92200a90cb3e28f26f9db85f4))
+
 ## [3.4.0](https://github.com/grafana/loki/compare/v3.3.0...v3.4.0) (2025-02-12)
 
 
