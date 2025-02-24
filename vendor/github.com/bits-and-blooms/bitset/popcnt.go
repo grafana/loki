@@ -1,5 +1,3 @@
-// +build go1.9
-
 package bitset
 
 import "math/bits"
@@ -14,6 +12,10 @@ func popcntSlice(s []uint64) uint64 {
 
 func popcntMaskSlice(s, m []uint64) uint64 {
 	var cnt int
+	// this explicit check eliminates a bounds check in the loop
+	if len(m) < len(s) {
+		panic("mask slice is too short")
+	}
 	for i := range s {
 		cnt += bits.OnesCount64(s[i] &^ m[i])
 	}
@@ -22,6 +24,10 @@ func popcntMaskSlice(s, m []uint64) uint64 {
 
 func popcntAndSlice(s, m []uint64) uint64 {
 	var cnt int
+	// this explicit check eliminates a bounds check in the loop
+	if len(m) < len(s) {
+		panic("mask slice is too short")
+	}
 	for i := range s {
 		cnt += bits.OnesCount64(s[i] & m[i])
 	}
@@ -30,6 +36,10 @@ func popcntAndSlice(s, m []uint64) uint64 {
 
 func popcntOrSlice(s, m []uint64) uint64 {
 	var cnt int
+	// this explicit check eliminates a bounds check in the loop
+	if len(m) < len(s) {
+		panic("mask slice is too short")
+	}
 	for i := range s {
 		cnt += bits.OnesCount64(s[i] | m[i])
 	}
@@ -38,6 +48,10 @@ func popcntOrSlice(s, m []uint64) uint64 {
 
 func popcntXorSlice(s, m []uint64) uint64 {
 	var cnt int
+	// this explicit check eliminates a bounds check in the loop
+	if len(m) < len(s) {
+		panic("mask slice is too short")
+	}
 	for i := range s {
 		cnt += bits.OnesCount64(s[i] ^ m[i])
 	}

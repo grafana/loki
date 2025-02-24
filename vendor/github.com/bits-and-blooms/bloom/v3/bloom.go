@@ -22,29 +22,41 @@ a non-cryptographic hashing function.
 This implementation accepts keys for setting as testing as []byte. Thus, to
 add a string item, "Love":
 
-    uint n = 1000
-    filter := bloom.New(20*n, 5) // load of 20, 5 keys
-    filter.Add([]byte("Love"))
+	uint n = 1000
+	filter := bloom.New(20*n, 5) // load of 20, 5 keys
+	filter.Add([]byte("Love"))
 
 Similarly, to test if "Love" is in bloom:
 
-    if filter.Test([]byte("Love"))
+	if filter.Test([]byte("Love"))
 
 For numeric data, I recommend that you look into the binary/encoding library. But,
 for example, to add a uint32 to the filter:
 
-    i := uint32(100)
-    n1 := make([]byte,4)
-    binary.BigEndian.PutUint32(n1,i)
-    f.Add(n1)
+	i := uint32(100)
+	n1 := make([]byte,4)
+	binary.BigEndian.PutUint32(n1,i)
+	f.Add(n1)
 
-Finally, there is a method to estimate the false positive rate of a particular
-Bloom filter for a set of size _n_:
+Finally, there is a method to estimate the false positive rate of a
+Bloom filter with _m_ bits and _k_ hashing functions for a set of size _n_:
 
-    if filter.EstimateFalsePositiveRate(1000) > 0.001
+	if bloom.EstimateFalsePositiveRate(20*n, 5, n) > 0.001 ...
 
-Given the particular hashing scheme, it's best to be empirical about this. Note
-that estimating the FP rate will clear the Bloom filter.
+You can use it to validate the computed m, k parameters:
+
+	m, k := bloom.EstimateParameters(n, fp)
+	ActualfpRate := bloom.EstimateFalsePositiveRate(m, k, n)
+
+or
+
+	f := bloom.NewWithEstimates(n, fp)
+	ActualfpRate := bloom.EstimateFalsePositiveRate(f.m, f.k, n)
+
+You would expect ActualfpRate to be close to the desired fp in these cases.
+
+The EstimateFalsePositiveRate function creates a temporary Bloom filter. It is
+also relatively expensive and only meant for validation.
 */
 package bloom
 
@@ -56,8 +68,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/spaolacci/murmur3"
-	"github.com/willf/bitset"
+	"github.com/bits-and-blooms/bitset"
 )
 
 // A BloomFilter is a representation of a set of _n_ items, where the main
@@ -86,20 +97,22 @@ func New(m uint, k uint) *BloomFilter {
 // functions. The data slice is not going to be reset.
 func From(data []uint64, k uint) *BloomFilter {
 	m := uint(len(data) * 64)
+	return FromWithM(data, m, k)
+}
+
+// FromWithM creates a new Bloom filter with _m_ length, _k_ hashing functions.
+// The data slice is not going to be reset.
+func FromWithM(data []uint64, m, k uint) *BloomFilter {
 	return &BloomFilter{m, k, bitset.From(data)}
 }
 
 // baseHashes returns the four hash values of data that are used to create k
 // hashes
 func baseHashes(data []byte) [4]uint64 {
-	a1 := []byte{1} // to grab another bit of data
-	hasher := murmur3.New128()
-	hasher.Write(data) // #nosec
-	v1, v2 := hasher.Sum128()
-	hasher.Write(a1) // #nosec
-	v3, v4 := hasher.Sum128()
+	var d digest128 // murmur hashing
+	hash1, hash2, hash3, hash4 := d.sum256(data)
 	return [4]uint64{
-		v1, v2, v3, v4,
+		hash1, hash2, hash3, hash4,
 	}
 }
 
@@ -138,6 +151,11 @@ func (f *BloomFilter) Cap() uint {
 // K returns the number of hash functions used in the BloomFilter
 func (f *BloomFilter) K() uint {
 	return f.k
+}
+
+// BitSet returns the underlying bitset for this filter.
+func (f *BloomFilter) BitSet() *bitset.BitSet {
+	return f.b
 }
 
 // Add data to the Bloom Filter. Returns the filter (allows chaining)
@@ -207,7 +225,9 @@ func (f *BloomFilter) TestLocations(locs []uint64) bool {
 	return true
 }
 
-// TestAndAdd is the equivalent to calling Test(data) then Add(data).
+// TestAndAdd is equivalent to calling Test(data) then Add(data).
+// The filter is written to unconditionnally: even if the element is present,
+// the corresponding bits are still set. See also TestOrAdd.
 // Returns the result of Test.
 func (f *BloomFilter) TestAndAdd(data []byte) bool {
 	present := true
@@ -223,9 +243,34 @@ func (f *BloomFilter) TestAndAdd(data []byte) bool {
 }
 
 // TestAndAddString is the equivalent to calling Test(string) then Add(string).
+// The filter is written to unconditionnally: even if the string is present,
+// the corresponding bits are still set. See also TestOrAdd.
 // Returns the result of Test.
 func (f *BloomFilter) TestAndAddString(data string) bool {
 	return f.TestAndAdd([]byte(data))
+}
+
+// TestOrAdd is equivalent to calling Test(data) then if not present Add(data).
+// If the element is already in the filter, then the filter is unchanged.
+// Returns the result of Test.
+func (f *BloomFilter) TestOrAdd(data []byte) bool {
+	present := true
+	h := baseHashes(data)
+	for i := uint(0); i < f.k; i++ {
+		l := f.location(h, i)
+		if !f.b.Test(l) {
+			present = false
+			f.b.Set(l)
+		}
+	}
+	return present
+}
+
+// TestOrAddString is the equivalent to calling Test(string) then if not present Add(string).
+// If the string is already in the filter, then the filter is unchanged.
+// Returns the result of Test.
+func (f *BloomFilter) TestOrAddString(data string) bool {
+	return f.TestOrAdd([]byte(data))
 }
 
 // ClearAll clears all the data in a Bloom filter, removing all keys
@@ -234,14 +279,19 @@ func (f *BloomFilter) ClearAll() *BloomFilter {
 	return f
 }
 
-// EstimateFalsePositiveRate returns, for a BloomFilter with a estimate of m bits
-// and k hash functions, what the false positive rate will be
-// while storing n entries; runs 100,000 tests. This is an empirical
-// test using integers as keys. As a side-effect, it clears the BloomFilter.
-func (f *BloomFilter) EstimateFalsePositiveRate(n uint) (fpRate float64) {
+// EstimateFalsePositiveRate returns, for a BloomFilter of m bits
+// and k hash functions, an estimation of the false positive rate when
+//
+//	storing n entries. This is an empirical, relatively slow
+//
+// test using integers as keys.
+// This function is useful to validate the implementation.
+func EstimateFalsePositiveRate(m, k, n uint) (fpRate float64) {
 	rounds := uint32(100000)
-	f.ClearAll()
+	// We construct a new filter.
+	f := New(m, k)
 	n1 := make([]byte, 4)
+	// We populate the filter with n values.
 	for i := uint32(0); i < uint32(n); i++ {
 		binary.BigEndian.PutUint32(n1, i)
 		f.Add(n1)
@@ -251,13 +301,21 @@ func (f *BloomFilter) EstimateFalsePositiveRate(n uint) (fpRate float64) {
 	for i := uint32(0); i < rounds; i++ {
 		binary.BigEndian.PutUint32(n1, i+uint32(n)+1)
 		if f.Test(n1) {
-			//fmt.Printf("%v failed.\n", i+uint32(n)+1)
 			fp++
 		}
 	}
 	fpRate = float64(fp) / (float64(rounds))
-	f.ClearAll()
 	return
+}
+
+// Approximating the number of items
+// https://en.wikipedia.org/wiki/Bloom_filter#Approximating_the_number_of_items_in_a_Bloom_filter
+func (f *BloomFilter) ApproximatedSize() uint32 {
+	x := float64(f.b.Count())
+	m := float64(f.Cap())
+	k := float64(f.K())
+	size := -1 * m / k * math.Log(1-x/m) / math.Log(math.E)
+	return uint32(math.Floor(size + 0.5)) // round
 }
 
 // bloomFilterJSON is an unexported type for marshaling/unmarshaling BloomFilter struct.
@@ -268,7 +326,7 @@ type bloomFilterJSON struct {
 }
 
 // MarshalJSON implements json.Marshaler interface.
-func (f *BloomFilter) MarshalJSON() ([]byte, error) {
+func (f BloomFilter) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bloomFilterJSON{f.m, f.k, f.b})
 }
 
@@ -287,6 +345,13 @@ func (f *BloomFilter) UnmarshalJSON(data []byte) error {
 
 // WriteTo writes a binary representation of the BloomFilter to an i/o stream.
 // It returns the number of bytes written.
+//
+// Performance: if this function is used to write to a disk or network
+// connection, it might be beneficial to wrap the stream in a bufio.Writer.
+// E.g.,
+//
+//	      f, err := os.Create("myfile")
+//		       w := bufio.NewWriter(f)
 func (f *BloomFilter) WriteTo(stream io.Writer) (int64, error) {
 	err := binary.Write(stream, binary.BigEndian, uint64(f.m))
 	if err != nil {
@@ -303,6 +368,13 @@ func (f *BloomFilter) WriteTo(stream io.Writer) (int64, error) {
 // ReadFrom reads a binary representation of the BloomFilter (such as might
 // have been written by WriteTo()) from an i/o stream. It returns the number
 // of bytes read.
+//
+// Performance: if this function is used to read from a disk or network
+// connection, it might be beneficial to wrap the stream in a bufio.Reader.
+// E.g.,
+//
+//	f, err := os.Open("myfile")
+//	r := bufio.NewReader(f)
 func (f *BloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	var m, k uint64
 	err := binary.Read(stream, binary.BigEndian, &m)
@@ -337,6 +409,25 @@ func (f *BloomFilter) GobEncode() ([]byte, error) {
 
 // GobDecode implements gob.GobDecoder interface.
 func (f *BloomFilter) GobDecode(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	_, err := f.ReadFrom(buf)
+
+	return err
+}
+
+// MarshalBinary implements binary.BinaryMarshaler interface.
+func (f *BloomFilter) MarshalBinary() ([]byte, error) {
+	var buf bytes.Buffer
+	_, err := f.WriteTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// UnmarshalBinary implements binary.BinaryUnmarshaler interface.
+func (f *BloomFilter) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	_, err := f.ReadFrom(buf)
 
