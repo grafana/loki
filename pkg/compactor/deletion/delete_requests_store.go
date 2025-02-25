@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type DeleteRequestsStoreDBType string

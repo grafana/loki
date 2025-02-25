@@ -2,17 +2,17 @@ package deletion
 
 import (
 	"context"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
 )
 
 func TestDeleteRequestsDBSQLite(t *testing.T) {
