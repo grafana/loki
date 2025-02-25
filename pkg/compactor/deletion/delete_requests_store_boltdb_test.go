@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
-func TestDeleteRequestsStore(t *testing.T) {
+func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	tc := setup(t)
 	defer tc.store.Stop()
 
@@ -140,7 +140,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NotEqual(t, updateGenNumber2, deleteGenNumber2)
 }
 
-func TestBatchCreateGet(t *testing.T) {
+func TestBatchCreateGetBoltDB(t *testing.T) {
 	t.Run("it adds the requests with different sequence numbers but the same request id, status, and creation time", func(t *testing.T) {
 		tc := setup(t)
 		defer tc.store.Stop()
@@ -286,7 +286,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				Directory: objectStorePath,
 			})
 			require.NoError(t, err)
-			ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+			ds, err := NewDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 			require.NoError(t, err)
 
 			for _, addReqDetails := range tc.reqsToAdd {
@@ -344,7 +344,7 @@ func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequ
 type testContext struct {
 	user1Requests []DeleteRequest
 	user2Requests []DeleteRequest
-	store         *deleteRequestsStore
+	store         *deleteRequestsStoreBoltDB
 }
 
 func setup(t *testing.T) *testContext {
@@ -380,10 +380,10 @@ func setup(t *testing.T) *testContext {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	ds, err := NewDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
-	store := ds.(*deleteRequestsStore)
+	store := ds.(*deleteRequestsStoreBoltDB)
 	store.now = func() model.Time { return model.Time(38) }
 	tc.store = store
 

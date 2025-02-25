@@ -361,7 +361,7 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 
 func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-	store, err := deletion.NewDeleteStore(deletionWorkDir, storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix))
+	store, err := deletion.NewDeleteRequestsStoreBoltDB(deletionWorkDir, storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix))
 	if err != nil {
 		return err
 	}

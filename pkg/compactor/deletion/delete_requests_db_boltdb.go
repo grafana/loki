@@ -33,10 +33,7 @@ type deleteRequestsTable struct {
 	wg                sync.WaitGroup
 }
 
-const (
-	deleteRequestsIndexFileName  = DeleteRequestsTableName + ".gz"
-	deleteRequestsSQLiteFileName = DeleteRequestsTableName + ".sqlite.gz"
-)
+const deleteRequestsDBBoltDBFileName = DeleteRequestsTableName + ".gz"
 
 func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
@@ -72,8 +69,8 @@ func (t *deleteRequestsTable) init() error {
 	_, err := os.Stat(t.dbPath)
 	if err != nil {
 		err = storage.DownloadFileFromStorage(t.dbPath, true,
-			true, storage.LoggerWithFilename(util_log.Logger, deleteRequestsIndexFileName), func() (io.ReadCloser, error) {
-				return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName)
+			true, storage.LoggerWithFilename(util_log.Logger, deleteRequestsDBBoltDBFileName), func() (io.ReadCloser, error) {
+				return t.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBBoltDBFileName)
 			})
 		if err != nil && !t.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
@@ -153,7 +150,7 @@ func (t *deleteRequestsTable) uploadFile() error {
 		return err
 	}
 
-	if err := t.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsIndexFileName, f); err != nil {
+	if err := t.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBBoltDBFileName, f); err != nil {
 		return err
 	}
 

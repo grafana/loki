@@ -1144,7 +1144,7 @@ func setupManager(t *testing.T) *DeleteRequestsManager {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	ds, err := NewDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
 	return NewDeleteRequestsManager(ds, time.Hour, 1, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
