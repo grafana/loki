@@ -1452,7 +1452,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 				return nil, err
 			}
 
-			variantEvaluators[idx] = variantEvaluator
+			variantEvaluators = append(variantEvaluators, variantEvaluator)
 			idx++
 		}
 	}
