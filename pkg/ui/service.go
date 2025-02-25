@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/ckit/peer"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -37,9 +38,10 @@ type Service struct {
 
 	cfg    Config
 	logger log.Logger
+	reg    prometheus.Registerer
 }
 
-func NewService(cfg Config, router *mux.Router, logger log.Logger) (*Service, error) {
+func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	addr, err := ring.GetInstanceAddr(cfg.AdvertiseAddr, cfg.InfNames, util_log.Logger, cfg.EnableIPv6)
 	if err != nil {
 		return nil, err
@@ -56,19 +58,24 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger) (*Service, er
 	}
 	advertiseAddr := fmt.Sprintf("%s:%d", cfg.AdvertiseAddr, cfg.AdvertisePort)
 	node, err := ckit.NewNode(httpClient, ckit.Config{
-		Name: cfg.NodeName,
-		// TODO(cyriltovena): ckit debug logs are too verbose
-		Log:           level.NewFilter(logger, level.AllowInfo()),
+		Name:          cfg.NodeName,
+		Log:           logger,
 		AdvertiseAddr: advertiseAddr,
 		Label:         cfg.ClusterName,
 	})
 	if err != nil {
 		return nil, err
 	}
+	if reg != nil {
+		if err := reg.Register(node.Metrics()); err != nil {
+			return nil, err
+		}
+	}
 
 	svc := &Service{
 		cfg:       cfg,
 		logger:    logger,
+		reg:       reg,
 		node:      node,
 		router:    router,
 		client:    httpClient,
@@ -102,6 +109,10 @@ func (s *Service) run(ctx context.Context) error {
 			level.Error(s.logger).Log("msg", "failed to bootstrap a fresh cluster with no peers", "err", err)
 		}
 	}
+	newPeers := make(map[string]struct{})
+	for _, p := range peers {
+		newPeers[p] = struct{}{}
+	}
 
 	var wg sync.WaitGroup
 	if s.cfg.RejoinInterval > 0 {
@@ -116,15 +127,17 @@ func (s *Service) run(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					peers, err := s.getBootstrapPeers()
+					peers, err := s.discoverNewPeers(newPeers)
 					if err != nil {
 						level.Warn(s.logger).Log("msg", "failed to get peers to join; will try again", "err", err)
 						continue
 					}
-					level.Info(s.logger).Log("msg", "rejoining cluster", "peers_count", len(peers))
-					if err := s.node.Start(peers); err != nil {
-						level.Warn(s.logger).Log("msg", "failed to connect to peers; will try again", "err", err)
-						continue
+					if len(peers) > 0 {
+						level.Info(s.logger).Log("msg", "rejoining cluster", "peers_count", len(newPeers))
+						if err := s.node.Start(peers); err != nil {
+							level.Warn(s.logger).Log("msg", "failed to connect to peers; will try again", "err", err)
+							continue
+						}
 					}
 				}
 			}
@@ -141,6 +154,9 @@ func (s *Service) stop(_ error) error {
 	defer cancel()
 	if err := s.node.ChangeState(ctx, peer.StateTerminating); err != nil {
 		level.Error(s.logger).Log("msg", "failed to change state to terminating", "err", err)
+	}
+	if s.reg != nil {
+		s.reg.Unregister(s.node.Metrics())
 	}
 	return s.node.Stop()
 }

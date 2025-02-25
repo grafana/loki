@@ -1954,7 +1954,7 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 
 func (t *Loki) initUI() (services.Service, error) {
 	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
-	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"))
+	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

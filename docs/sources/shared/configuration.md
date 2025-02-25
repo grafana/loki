@@ -124,7 +124,7 @@ ui:
 
   # How frequently to rejoin the cluster to address split brain issues.
   # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 15s]
+  [rejoin_interval: <duration> | default = 1m]
 
   # Number of initial peers to join from the discovered set.
   # CLI flag: -ui.cluster-max-join-peers
