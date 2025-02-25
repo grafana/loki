@@ -3650,9 +3650,10 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
-# Block ingestion for policy until the configured date. The time should be in
-# RFC3339 format. The policy is based on the policy_stream_mapping
-# configuration.
+# Block ingestion for policy until the configured date. The policy '*' is the
+# global policy, which is applied to all streams and can be overridden by other
+# policies. The time should be in RFC3339 format. The policy is based on the
+# policy_stream_mapping configuration.
 [block_ingestion_policy_until: <map of string to Time>]
 
 # Block ingestion until the configured date. The time should be in RFC3339
@@ -3672,7 +3673,8 @@ otlp_config:
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
-# Map of policies to enforced labels. Example:
+# Map of policies to enforced labels. The policy '*' is the global policy, which
+# is applied to all streams and can be extended by other policies. Example:
 #  policy_enforced_labels: 
 #   policy1: 
 #     - label1 
@@ -3680,6 +3682,8 @@ otlp_config:
 #   policy2: 
 #     - label3 
 #     - label4
+#   '*':
+#     - label5
 [policy_enforced_labels: <map of string to list of strings>]
 
 # Map of policies to stream selectors with a priority. Experimental.  Example:

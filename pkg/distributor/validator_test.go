@@ -238,6 +238,164 @@ func TestValidator_ValidateLabels(t *testing.T) {
 	}
 }
 
+func TestShouldBlockIngestion(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		policy    string
+		time      time.Time
+		overrides validation.TenantLimits
+
+		expectBlock      bool
+		expectStatusCode int
+		expectReason     string
+	}{
+		{
+			name: "no block configured",
+			time: testTime,
+			overrides: fakeLimits{
+				&validation.Limits{},
+			},
+		},
+		{
+			name:   "all configured tenant blocked priority",
+			time:   testTime,
+			policy: "policy1",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionUntil: flagext.Time(testTime.Add(time.Hour)),
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock:      true,
+			expectStatusCode: 1234,
+			expectReason:     validation.BlockedIngestion,
+		},
+		{
+			name:   "all configured named policy priority",
+			time:   testTime,
+			policy: "policy1",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionUntil: flagext.Time(testTime.Add(-time.Hour)), // Not active anymore
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock:      true,
+			expectStatusCode: 1234,
+			expectReason:     validation.BlockedIngestionPolicy,
+		},
+		{
+			name:   "all configured global policy priority",
+			time:   testTime,
+			policy: "policy1",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionUntil: flagext.Time(testTime.Add(-time.Hour)), // Not active anymore
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock:      true,
+			expectStatusCode: 1234,
+			expectReason:     validation.BlockedIngestionPolicy,
+		},
+		{
+			name:   "named policy overrides global policy",
+			time:   testTime,
+			policy: "policy1",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(-time.Hour)), // Not blocked overriding block from global quota
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock: false,
+		},
+		{
+			name:   "no policy maps to global policy",
+			time:   testTime,
+			policy: "",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock:      true,
+			expectStatusCode: 1234,
+			expectReason:     validation.BlockedIngestionPolicy,
+		},
+		{
+			name:   "unknown policy maps to global policy",
+			time:   testTime,
+			policy: "notExists",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(2 * time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock:      true,
+			expectStatusCode: 1234,
+			expectReason:     validation.BlockedIngestionPolicy,
+		},
+		{
+			name:   "no global policy",
+			time:   testTime,
+			policy: "notExists",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						"policy1": flagext.Time(testTime.Add(2 * time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := &validation.Limits{}
+			flagext.DefaultValues(l)
+
+			o, err := validation.NewOverrides(*l, tc.overrides)
+			assert.NoError(t, err)
+			v, err := NewValidator(o, nil)
+			assert.NoError(t, err)
+
+			block, statusCode, reason, err := v.ShouldBlockIngestion(v.getValidationContextForTime(testTime, "fake"), testTime, tc.policy)
+			assert.Equal(t, tc.expectBlock, block)
+			if tc.expectBlock {
+				assert.Equal(t, tc.expectStatusCode, statusCode)
+				assert.Equal(t, tc.expectReason, reason)
+				assert.Error(t, err)
+				t.Logf("block: %v, statusCode: %d, reason: %s, err: %v", block, statusCode, reason, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+
+}
+
 func mustParseLabels(s string) labels.Labels {
 	ls, err := syntax.ParseLabels(s)
 	if err != nil {
