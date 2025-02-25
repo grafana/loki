@@ -392,14 +392,24 @@ func newRoundTripper(
 	}
 }
 
+// Helper function to create and log query execution details
+func logQueryExecution(ctx context.Context, logger log.Logger, values ...interface{}) {
+	logValues := append([]interface{}{"msg", "executing query"}, values...)
+
+	// Extract and append tags from context
+	tags := httpreq.ExtractQueryTagsFromContext(ctx)
+	tagValues := httpreq.TagsToKeyValues(tags)
+	logValues = append(logValues, tagValues...)
+	level.Info(logger).Log(logValues...)
+}
+
 func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, error) {
 	logger := logutil.WithContext(ctx, r.logger)
 
 	switch op := req.(type) {
 	case *LokiRequest:
 		queryHash := util.HashedQuery(op.Query)
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "range",
 			"query", op.Query,
 			"start", op.StartTs.Format(time.RFC3339Nano),
@@ -416,6 +426,31 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		}
 
 		switch e := op.Plan.AST.(type) {
+		case syntax.VariantsExpr:
+			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+
+			matchers := e.Matchers()
+
+			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+
+			for _, v := range e.Variants() {
+				groups, err := v.MatcherGroups()
+				if err != nil {
+					level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+				}
+
+				for _, g := range groups {
+					if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
+						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+					}
+				}
+			}
+
+			return r.variants.Do(ctx, req)
 		case syntax.SampleExpr:
 			// The error will be handled later.
 			groups, err := e.MatcherGroups()
@@ -444,46 +479,31 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)
-		case syntax.VariantsExpr:
-			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-			}
-
-			matchers := e.Matchers()
-
-			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-			}
-
-			for _, v := range e.Variants() {
-				groups, err := v.MatcherGroups()
-				if err != nil {
-					level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
-				}
-
-				for _, g := range groups {
-					if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-				}
-			}
-
-			return r.variants.Do(ctx, req)
 		default:
 			return r.next.Do(ctx, req)
 		}
 	case *LokiSeriesRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(op.Match), "length", op.EndTs.Sub(op.StartTs))
-
+		logQueryExecution(ctx, logger,
+			"type", "series",
+			"match", logql.PrintMatches(op.Match),
+			"length", op.EndTs.Sub(op.StartTs),
+		)
 		return r.series.Do(ctx, req)
 	case *LabelRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.LabelRequest.End.Sub(*op.LabelRequest.Start), "query", op.Query)
-
+		logQueryExecution(ctx, logger,
+			"type", "labels",
+			"label", op.Name,
+			"length", op.LabelRequest.End.Sub(*op.LabelRequest.Start),
+			"query", op.Query,
+		)
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:
 		queryHash := util.HashedQuery(op.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
-
+		logQueryExecution(ctx, logger,
+			"type", "instant",
+			"query", op.Query,
+			"query_hash", queryHash,
+		)
 		switch op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.Do(ctx, req)
@@ -491,12 +511,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.next.Do(ctx, req)
 		}
 	case *logproto.IndexStatsRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", op.Matchers, "length", op.Through.Sub(op.From))
-
+		logQueryExecution(ctx, logger,
+			"type", "stats",
+			"query", op.Matchers,
+			"length", op.Through.Sub(op.From),
+		)
 		return r.indexStats.Do(ctx, req)
 	case *logproto.VolumeRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "volume_range",
 			"query", op.Matchers,
 			"length", op.Through.Sub(op.From),
@@ -504,11 +526,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"limit", op.Limit,
 			"aggregate_by", op.AggregateBy,
 		)
-
 		return r.seriesVolume.Do(ctx, req)
 	case *DetectedFieldsRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "detected_fields",
 			"end", op.End,
 			"field_limit", op.Limit,
@@ -518,11 +538,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 			"step", op.Step,
 		)
-
 		return r.detectedFields.Do(ctx, req)
 	case *DetectedLabelsRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "detected_label",
 			"end", op.End,
 			"length", op.End.Sub(op.Start),

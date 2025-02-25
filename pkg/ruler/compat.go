@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -164,7 +165,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 			Context:                  user.InjectOrgID(ctx, userID),
 			ExternalURL:              cfg.ExternalURL.URL,
 			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
-			Logger:                   logger,
+			Logger:                   util_log.SlogFromGoKit(logger),
 			Registerer:               reg,
 			OutageTolerance:          cfg.OutageTolerance,
 			ForGracePeriod:           cfg.ForGracePeriod,

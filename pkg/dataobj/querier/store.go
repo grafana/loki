@@ -489,12 +489,12 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 				sp.LogKV("msg", "starting selectSamples in section", "index", i)
 				defer sp.LogKV("msg", "selectSamples section done", "index", i)
 			}
-			// extractor is not thread safe, so we need to create a new one for each object
-			extractor, err := expr.Extractor()
+			// extractors is not thread safe, so we need to create a new one for each object
+			extractors, err := expr.Extractors()
 			if err != nil {
 				return err
 			}
-			iter, err := newSampleIterator(ctx, s.streams, extractor, reader)
+			iter, err := newSampleIterator(ctx, s.streams, extractors, reader)
 			if err != nil {
 				return err
 			}

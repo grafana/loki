@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -150,11 +151,31 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	// EnableMutiVariantQueries enables support for running multiple query variants over the same underlying data.
+	// For example, running both a rate() and count_over_time() query over the same range selector.
+	EnableMutiVariantQueries bool `yaml:"enable_multi_variant_queries"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
-	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+".engine.max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.DurationVar(
+		&opts.MaxLookBackPeriod,
+		prefix+".engine.max-lookback-period",
+		30*time.Second,
+		"The maximum amount of time to look back for log lines. Used only for instant log queries.",
+	)
+	f.IntVar(
+		&opts.MaxCountMinSketchHeapSize,
+		prefix+".engine.max-count-min-sketch-heap-size",
+		10_000,
+		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
+	)
+	f.BoolVar(
+		&opts.EnableMutiVariantQueries,
+		prefix+".engine.enable-multi-variant-queries",
+		false,
+		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
+	)
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -196,6 +217,7 @@ func (ng *Engine) Query(params Params) Query {
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
+		multiVariant: ng.opts.EnableMutiVariantQueries,
 	}
 }
 
@@ -212,6 +234,7 @@ type query struct {
 	evaluator    EvaluatorFactory
 	record       bool
 	logExecQuery bool
+	multiVariant bool
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -253,7 +276,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 			"query_hash", queryHash,
 		}
 		tags := httpreq.ExtractQueryTagsFromContext(ctx)
-		tagValues := tagsToKeyValues(tags)
+		tagValues := httpreq.TagsToKeyValues(tags)
 		if GetRangeType(q.params) == InstantType {
 			logValues = append(logValues, "type", "instant")
 		} else {
@@ -324,7 +347,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	case syntax.VariantsExpr:
-		return nil, logqlmodel.ErrVariantsDisabled
+		if !q.multiVariant {
+			return nil, logqlmodel.ErrVariantsDisabled
+		}
+
+		return nil, errors.New("variants not yet implemented")
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}

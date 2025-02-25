@@ -1,3 +1,4 @@
+import { absolutePath } from "@/util";
 import { useState, useEffect } from "react";
 
 interface NodeMetrics {
@@ -48,7 +49,11 @@ export function useNodeDetails(
     setIsLoading(true);
     setError(null);
 
-    fetch(`/ui/api/v1/proxy/${nodeName}/ui/api/v1/cluster/nodes/self/details`)
+    fetch(
+      absolutePath(
+        `/api/v1/proxy/${nodeName}/ui/api/v1/cluster/nodes/self/details`
+      )
+    )
       .then((response) => {
         if (!response.ok) {
           throw new Error(

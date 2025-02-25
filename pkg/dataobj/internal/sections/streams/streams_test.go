@@ -17,18 +17,19 @@ func Test(t *testing.T) {
 	type ent struct {
 		Labels labels.Labels
 		Time   time.Time
+		Size   int64
 	}
 
 	tt := []ent{
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0).UTC()},
-		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0).UTC()},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0).UTC()},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC()},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0).UTC(), 10},
+		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0).UTC(), 20},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0).UTC(), 15},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC(), 5},
 	}
 
 	tracker := streams.New(nil, 1024)
 	for _, tc := range tt {
-		tracker.Record(tc.Labels, tc.Time)
+		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
 
 	buf, err := buildObject(tracker)
@@ -36,18 +37,20 @@ func Test(t *testing.T) {
 
 	expect := []streams.Stream{
 		{
-			ID:           1,
-			Labels:       labels.FromStrings("cluster", "test", "app", "foo"),
-			MinTimestamp: time.Unix(9, 0).UTC(),
-			MaxTimestamp: time.Unix(15, 0).UTC(),
-			Rows:         3,
+			ID:               1,
+			Labels:           labels.FromStrings("cluster", "test", "app", "foo"),
+			MinTimestamp:     time.Unix(9, 0).UTC(),
+			MaxTimestamp:     time.Unix(15, 0).UTC(),
+			Rows:             3,
+			UncompressedSize: 30,
 		},
 		{
-			ID:           2,
-			Labels:       labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"),
-			MinTimestamp: time.Unix(100, 0).UTC(),
-			MaxTimestamp: time.Unix(100, 0).UTC(),
-			Rows:         1,
+			ID:               2,
+			Labels:           labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"),
+			MinTimestamp:     time.Unix(100, 0).UTC(),
+			MaxTimestamp:     time.Unix(100, 0).UTC(),
+			Rows:             1,
+			UncompressedSize: 20,
 		},
 	}
 
