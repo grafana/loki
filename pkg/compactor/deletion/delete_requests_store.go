@@ -33,7 +33,7 @@ type DeleteRequestsStore interface {
 	Stop()
 }
 
-func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
 	store, err := newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
@@ -66,6 +66,15 @@ func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 		}
 	}
 
+	if backupDeleteRequestStoreDBType != "" && deleteRequestsStoreDBType != backupDeleteRequestStoreDBType {
+		backupStore, err := newDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient)
+		if err != nil {
+			return nil, err
+		}
+
+		store = newDeleteRequestsStoreTee(store, backupStore)
+	}
+
 	return store, nil
 }
 
@@ -78,4 +87,86 @@ func newDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	default:
 		return nil, fmt.Errorf("unexpected delete requests store DB type %s. Supported types: (%s, %s)", DeleteRequestsStoreDBType, DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite)
 	}
+}
+
+type deleteRequestsStoreTee struct {
+	primaryStore, backupStore DeleteRequestsStore
+}
+
+func newDeleteRequestsStoreTee(primaryStore, backupStore DeleteRequestsStore) DeleteRequestsStore {
+	return deleteRequestsStoreTee{
+		primaryStore: primaryStore,
+		backupStore:  backupStore,
+	}
+}
+
+func (d deleteRequestsStoreTee) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	reqID, err := d.primaryStore.AddDeleteRequest(ctx, userID, query, startTime, endTime, shardByInterval)
+	if err != nil {
+		return "", err
+	}
+
+	// Use request ID from primary store to have request with same ID in backup store.
+	if err := d.backupStore.addDeleteRequestWithID(ctx, reqID, userID, query, startTime, endTime, shardByInterval); err != nil {
+		return "", err
+	}
+
+	return reqID, nil
+}
+
+func (d deleteRequestsStoreTee) addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error {
+	if err := d.primaryStore.addDeleteRequestWithID(ctx, requestID, userID, query, startTime, endTime, shardByInterval); err != nil {
+		return err
+	}
+
+	return d.backupStore.addDeleteRequestWithID(ctx, requestID, userID, query, startTime, endTime, shardByInterval)
+}
+
+func (d deleteRequestsStoreTee) GetAllRequests(ctx context.Context) ([]DeleteRequest, error) {
+	return d.primaryStore.GetAllRequests(ctx)
+}
+
+func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID)
+}
+
+func (d deleteRequestsStoreTee) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
+	if err := d.primaryStore.RemoveDeleteRequest(ctx, userID, requestID); err != nil {
+		return err
+	}
+
+	return d.backupStore.RemoveDeleteRequest(ctx, userID, requestID)
+}
+
+func (d deleteRequestsStoreTee) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+	return d.primaryStore.GetDeleteRequest(ctx, userID, requestID)
+}
+
+func (d deleteRequestsStoreTee) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+	return d.primaryStore.GetCacheGenerationNumber(ctx, userID)
+}
+
+func (d deleteRequestsStoreTee) MergeShardedRequests(ctx context.Context) error {
+	if err := d.primaryStore.MergeShardedRequests(ctx); err != nil {
+		return err
+	}
+
+	return d.backupStore.MergeShardedRequests(ctx)
+}
+
+func (d deleteRequestsStoreTee) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
+	if err := d.primaryStore.MarkShardAsProcessed(ctx, req); err != nil {
+		return err
+	}
+
+	return d.backupStore.MarkShardAsProcessed(ctx, req)
+}
+
+func (d deleteRequestsStoreTee) GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error) {
+	return d.primaryStore.GetUnprocessedShards(ctx)
+}
+
+func (d deleteRequestsStoreTee) Stop() {
+	d.primaryStore.Stop()
+	d.backupStore.Stop()
 }
