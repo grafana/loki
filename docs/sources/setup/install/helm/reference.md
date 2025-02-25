@@ -6826,7 +6826,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.36-alpine"
+"1.6.37-alpine"
 </pre>
 </td>
 		</tr>
