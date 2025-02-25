@@ -275,7 +275,7 @@ func TestShouldBlockIngestion(t *testing.T) {
 			expectReason:     validation.BlockedIngestion,
 		},
 		{
-			name:   "all configured named policy priority",
+			name:   "named policy priority",
 			time:   testTime,
 			policy: "policy1",
 			overrides: fakeLimits{
@@ -293,12 +293,26 @@ func TestShouldBlockIngestion(t *testing.T) {
 			expectReason:     validation.BlockedIngestionPolicy,
 		},
 		{
-			name:   "all configured global policy priority",
+			name:   "global policy ignored",
 			time:   testTime,
 			policy: "policy1",
 			overrides: fakeLimits{
 				&validation.Limits{
 					BlockIngestionUntil: flagext.Time(testTime.Add(-time.Hour)), // Not active anymore
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)), // Won't apply since we have a named policy
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock: false,
+		},
+		{
+			name:   "global policy matched",
+			time:   testTime,
+			policy: "", // matches global policy
+			overrides: fakeLimits{
+				&validation.Limits{
 					BlockIngestionPolicyUntil: map[string]flagext.Time{
 						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
 					},
@@ -308,6 +322,21 @@ func TestShouldBlockIngestion(t *testing.T) {
 			expectBlock:      true,
 			expectStatusCode: 1234,
 			expectReason:     validation.BlockedIngestionPolicy,
+		},
+		{
+			name:   "unknown policy not blocked by global policy",
+			time:   testTime,
+			policy: "notExists",
+			overrides: fakeLimits{
+				&validation.Limits{
+					BlockIngestionPolicyUntil: map[string]flagext.Time{
+						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(2 * time.Hour)),
+					},
+					BlockIngestionStatusCode: 1234,
+				},
+			},
+			expectBlock: false,
 		},
 		{
 			name:   "named policy overrides global policy",
@@ -325,40 +354,7 @@ func TestShouldBlockIngestion(t *testing.T) {
 			expectBlock: false,
 		},
 		{
-			name:   "no policy maps to global policy",
-			time:   testTime,
-			policy: "",
-			overrides: fakeLimits{
-				&validation.Limits{
-					BlockIngestionPolicyUntil: map[string]flagext.Time{
-						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
-					},
-					BlockIngestionStatusCode: 1234,
-				},
-			},
-			expectBlock:      true,
-			expectStatusCode: 1234,
-			expectReason:     validation.BlockedIngestionPolicy,
-		},
-		{
-			name:   "unknown policy maps to global policy",
-			time:   testTime,
-			policy: "notExists",
-			overrides: fakeLimits{
-				&validation.Limits{
-					BlockIngestionPolicyUntil: map[string]flagext.Time{
-						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
-						"policy1":               flagext.Time(testTime.Add(2 * time.Hour)),
-					},
-					BlockIngestionStatusCode: 1234,
-				},
-			},
-			expectBlock:      true,
-			expectStatusCode: 1234,
-			expectReason:     validation.BlockedIngestionPolicy,
-		},
-		{
-			name:   "no global policy",
+			name:   "no matching policy",
 			time:   testTime,
 			policy: "notExists",
 			overrides: fakeLimits{

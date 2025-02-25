@@ -227,7 +227,7 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
 	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
 	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
@@ -1118,7 +1118,8 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 }
 
 // BlockIngestionPolicyUntil returns the time until the ingestion policy is blocked for a given user.
-// Order of priority is: global policy block > Per-tenant block
+// Order of priority is: named policy block > global policy block. The global policy block is enforced
+// only if the policy is empty.
 func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time.Time {
 	limits := o.getOverridesForUser(userID)
 
@@ -1126,8 +1127,11 @@ func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time
 		return time.Time(forPolicy)
 	}
 
-	if forPolicy, ok := limits.BlockIngestionPolicyUntil[GlobalPolicy]; ok {
-		return time.Time(forPolicy)
+	// We enforce the global policy on streams not matching any policy
+	if policy == "" {
+		if forPolicy, ok := limits.BlockIngestionPolicyUntil[GlobalPolicy]; ok {
+			return time.Time(forPolicy)
+		}
 	}
 
 	return time.Time{} // Zero time means no blocking
