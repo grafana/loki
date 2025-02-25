@@ -11,6 +11,54 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
+func Benchmark_page_Decode(b *testing.B) {
+	in := []string{
+		"hello, world!",
+		"",
+		"this is a test of the emergency broadcast system",
+		"this is only a test",
+		"if this were a real emergency, you would be instructed to panic",
+		"but it's not, so don't",
+		"",
+		"this concludes the test",
+		"thank you for your cooperation",
+		"goodbye",
+	}
+
+	opts := BuilderOptions{
+		PageSizeHint: 1 << 30, // 1GiB
+		Value:        datasetmd.VALUE_TYPE_STRING,
+		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+	builder, err := newPageBuilder(opts)
+	require.NoError(b, err)
+
+	for i := range 1_000_000 {
+		s := in[i%len(in)]
+		require.True(b, builder.Append(StringValue(s)))
+	}
+
+	page, err := builder.Flush()
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+		if err != nil {
+			b.Fatal()
+		}
+		if _, err := io.Copy(io.Discard, values); err != nil {
+			b.Fatal(err)
+		} else if err := values.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+}
+
 func Benchmark_pageBuilder_WriteRead(b *testing.B) {
 	in := []string{
 		"hello, world!",
