@@ -385,7 +385,7 @@ func (dl *readerDownloader) iterP2Pages(ctx context.Context, primary bool) resul
 	//
 	// However, if we're in the secondary phase, then there are no P2 pages.
 	if !primary {
-		return result.Iter(func(yield func(*readerPage) bool) error {
+		return result.Iter(func(_ func(*readerPage) bool) error {
 			return nil
 		})
 	}

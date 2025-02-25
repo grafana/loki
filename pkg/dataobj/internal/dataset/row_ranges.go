@@ -173,7 +173,7 @@ func intersectRanges(dst rowRanges, a, b rowRanges) rowRanges {
 	//
 	// Since both ranges are sorted, we can walk through them in parallel,
 	// checking for overlaps between the current ranges. Whenever we find an
-	// overlap, we overwrite rr with the overlaping range. This gives us a
+	// overlap, we overwrite rr with the overlapping range. This gives us a
 	// complexity of O(n+m), which is O(len(ranges)+len(other)).
 
 	for i, j := 0, 0; i < len(a) && j < len(b); {

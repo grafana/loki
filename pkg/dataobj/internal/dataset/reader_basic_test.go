@@ -200,7 +200,7 @@ func Test_partitionRows(t *testing.T) {
 			for part := range partitionRows(rows) {
 				var actualRows []int
 				for _, row := range part {
-					actualRows = append(actualRows, int(row.Index))
+					actualRows = append(actualRows, row.Index)
 				}
 				actual = append(actual, actualRows)
 			}
