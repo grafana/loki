@@ -159,8 +159,7 @@ func BenchmarkLogQL(b *testing.B) {
 }
 
 func TestPrintBenchmarkQueries(t *testing.T) {
-	_, config := setupBenchmarkWithStore(t, "dataobj")
-	cases := config.GenerateTestCases()
+	cases := defaultGeneratorConfig.GenerateTestCases()
 
 	t.Log("Benchmark Queries:")
 	t.Log("================")
