@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 func TestLimits(t *testing.T) {
@@ -676,9 +675,9 @@ func Test_MaxQuerySize(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1))})
+			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQueryStatsHits, 1))})
 
-			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1))})
+			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQuerierStatsHits, 1))})
 
 			_, promHandler := promqlResult(matrix)
 

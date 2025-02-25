@@ -31,7 +31,7 @@ type Stream struct {
 	Labels           labels.Labels // Stream labels.
 	MinTimestamp     time.Time     // Minimum timestamp in the stream.
 	MaxTimestamp     time.Time     // Maximum timestamp in the stream.
-	UncompressedSize int64         // Uncompressed size of the log lines and stuctured metadata values in the stream.
+	UncompressedSize int64         // Uncompressed size of the log lines and structured metadata values in the stream.
 	Rows             int           // Number of rows in the stream.
 }
 

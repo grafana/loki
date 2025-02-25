@@ -40,9 +40,10 @@ type valueDecoder interface {
 	// EncodingType returns the encoding type used by the valueDecoder.
 	EncodingType() datasetmd.EncodingType
 
-	// Decode decodes an individual [Value]. Decode returns an error if decoding
-	// fails.
-	Decode() (Value, error)
+	// Decode decodes up to len(s) values, storing the results into s. The
+	// number of decoded values is returned, followed by an error (if any).
+	// At the end of the stream, Decode returns 0, [io.EOF].
+	Decode(s []Value) (int, error)
 
 	// Reset discards any state and resets the valueDecoder to read from r. This
 	// permits reusing a valueDecoder rather than allocating a new one.

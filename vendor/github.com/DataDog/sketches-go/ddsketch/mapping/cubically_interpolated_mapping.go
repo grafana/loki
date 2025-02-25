@@ -131,6 +131,12 @@ func (m *CubicallyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
+func (m *CubicallyInterpolatedMapping) EncodeProto(builder *sketchpb.IndexMappingBuilder) {
+	builder.SetGamma(m.gamma)
+	builder.SetIndexOffset(m.indexOffset)
+	builder.SetInterpolation(uint64(sketchpb.IndexMapping_CUBIC))
+}
+
 func (m *CubicallyInterpolatedMapping) Encode(b *[]byte) {
 	enc.EncodeFlag(b, enc.FlagIndexMappingBaseCubic)
 	enc.EncodeFloat64LE(b, m.gamma)
