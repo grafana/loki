@@ -16,6 +16,8 @@ const (
 	DeleteRequestsStoreDBTypeSQLite DeleteRequestsStoreDBType = "sqlite"
 )
 
+var SupportedDeleteRequestsStoreDBTypes = []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite}
+
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
 	addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error
