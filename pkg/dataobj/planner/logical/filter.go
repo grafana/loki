@@ -37,16 +37,21 @@ func (f *Filter) Schema() schema.Schema {
 	return f.input.Schema()
 }
 
-// Type implements the ast interface
-func (f *Filter) Type() nodeType {
-	return nodeTypeFilter
+// Type implements the Plan interface
+func (f *Filter) Type() PlanType {
+	return PlanTypeFilter
 }
 
-// ASTChildren implements the ast interface
-func (f *Filter) ASTChildren() []ast {
+// Children implements the Plan interface
+func (f *Filter) Children() []Plan {
 	// Convert the Plan interface to ast interface
 	// This assumes the input Plan also implements ast
-	return []ast{f.input.(ast)}
+	return []Plan{f.input}
+}
+
+// Child implements the filterNode interface
+func (f *Filter) Child() Plan {
+	return f.input
 }
 
 // FilterExpr implements the filterNode interface

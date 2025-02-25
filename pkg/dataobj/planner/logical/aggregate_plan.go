@@ -54,14 +54,14 @@ func (a *Aggregate) Schema() schema.Schema {
 }
 
 // Type implements the ast interface
-func (a *Aggregate) Type() nodeType {
-	return nodeTypeAggregate
+func (a *Aggregate) Type() PlanType {
+	return PlanTypeAggregate
 }
 
-// ASTChildren implements the ast interface
-func (a *Aggregate) ASTChildren() []ast {
+// Children implements the ast interface
+func (a *Aggregate) Children() []Plan {
 	// Convert the Plan interface to ast interface
-	return []ast{a.input.(ast)}
+	return []Plan{a.input}
 }
 
 // GroupExprs implements the aggregateNode interface
@@ -72,4 +72,9 @@ func (a *Aggregate) GroupExprs() []Expr {
 // AggregateExprs implements the aggregateNode interface
 func (a *Aggregate) AggregateExprs() []AggregateExpr {
 	return a.aggExprs
+}
+
+// Child implements the aggregateNode interface
+func (a *Aggregate) Child() Plan {
+	return a.input
 }

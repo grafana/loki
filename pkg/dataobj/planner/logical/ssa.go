@@ -10,11 +10,11 @@ type SSANode struct {
 	// ID is the unique identifier for this node in the SSA form
 	ID string
 	// NodeType specifies the type of operation this node represents
-	NodeType nodeType
+	NodeType PlanType
 	// Refs contains references to other SSA nodes that this node depends on
 	Refs []string
-	// Original contains a reference to the original AST node
-	Original ast
+	// Original contains a reference to the original Plan node
+	Original Plan
 }
 
 // SSAForm represents a full query plan in SSA form
@@ -26,13 +26,13 @@ type SSAForm struct {
 	RootRef string
 }
 
-// Find all nodes in the AST using post-order traversal
+// Find all nodes in the Plan using post-order traversal
 // This ensures that all dependencies appear before their dependents
-func postOrder(node ast) []ast {
-	var result []ast
+func postOrder(node Plan) []Plan {
+	var result []Plan
 
 	// Process children first
-	for _, child := range node.ASTChildren() {
+	for _, child := range node.Children() {
 		result = append(result, postOrder(child)...)
 	}
 
@@ -44,19 +44,19 @@ func postOrder(node ast) []ast {
 // ConvertToSSA converts a Plan to SSA form using post-order traversal
 // that ensures all dependencies of a node appear earlier in the resulting list
 func ConvertToSSA(plan Plan) (*SSAForm, error) {
-	// First convert Plan to AST
-	root, ok := plan.(ast)
+	// First convert Plan to Plan
+	root, ok := plan.(Plan)
 	if !ok {
-		return nil, fmt.Errorf("plan of type %T does not implement ast interface", plan)
+		return nil, fmt.Errorf("plan of type %T does not implement Plan interface", plan)
 	}
 
 	var nodes []SSANode
-	idMap := make(map[ast]string)
+	idMap := make(map[Plan]string)
 
 	// Get all nodes in post-order
 	orderedNodes := postOrder(root)
 
-	// Create SSA nodes for each AST node
+	// Create SSA nodes for each Plan node
 	for i, node := range orderedNodes {
 		id := fmt.Sprintf("%%%d", i+1)
 		idMap[node] = id
@@ -74,7 +74,7 @@ func ConvertToSSA(plan Plan) (*SSAForm, error) {
 	// Add references to dependencies
 	for i, node := range nodes {
 		var refs []string
-		for _, child := range node.Original.ASTChildren() {
+		for _, child := range node.Original.Children() {
 			refs = append(refs, idMap[child])
 		}
 		nodes[i].Refs = refs
@@ -92,7 +92,7 @@ func (s *SSAForm) String() string {
 
 	for _, node := range s.Nodes {
 		// Format the node line
-		sb.WriteString(fmt.Sprintf("%s = %s", node.ID, NodeTypeName(node.NodeType)))
+		sb.WriteString(fmt.Sprintf("%s = %s", node.ID, node.NodeType.String()))
 
 		// Add references
 		if len(node.Refs) > 0 {

@@ -56,17 +56,17 @@ func TestConvertToSSA(t *testing.T) {
 	}
 
 	// Verify the order: table -> filter -> projection -> aggregate
-	if ssa.Nodes[0].NodeType != nodeTypeTable {
-		t.Errorf("First node should be Table, got %s", NodeTypeName(ssa.Nodes[0].NodeType))
+	if ssa.Nodes[0].NodeType != PlanTypeTable {
+		t.Errorf("First node should be Table, got %v", ssa.Nodes[0].NodeType)
 	}
-	if ssa.Nodes[1].NodeType != nodeTypeFilter {
-		t.Errorf("Second node should be Filter, got %s", NodeTypeName(ssa.Nodes[1].NodeType))
+	if ssa.Nodes[1].NodeType != PlanTypeFilter {
+		t.Errorf("Second node should be Filter, got %v", ssa.Nodes[1].NodeType)
 	}
-	if ssa.Nodes[2].NodeType != nodeTypeProjection {
-		t.Errorf("Third node should be Projection, got %s", NodeTypeName(ssa.Nodes[2].NodeType))
+	if ssa.Nodes[2].NodeType != PlanTypeProjection {
+		t.Errorf("Third node should be Projection, got %v", ssa.Nodes[2].NodeType)
 	}
-	if ssa.Nodes[3].NodeType != nodeTypeAggregate {
-		t.Errorf("Fourth node should be Aggregate, got %s", NodeTypeName(ssa.Nodes[3].NodeType))
+	if ssa.Nodes[3].NodeType != PlanTypeAggregate {
+		t.Errorf("Fourth node should be Aggregate, got %v", ssa.Nodes[3].NodeType)
 	}
 
 	// Verify the references

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -30,19 +29,22 @@ func LitStr(v string) LiteralString {
 func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: l.str,
-		Type: datasetmd.VALUE_TYPE_STRING,
+		Type: l.ValueType(),
 	}
 }
 
-// Format implements format.Format
-func (l LiteralString) Format(f format.Formatter) {
-	f.WriteNode(format.Node{
-		Singletons: []string{"LiteralString"},
-		Tuples: []format.ContentTuple{{
-			Key:   "value",
-			Value: format.SingleContent(l.str),
-		}},
-	})
+// Literal returns the string representation of the literal value
+func (l LiteralString) Literal() string {
+	return l.str
+}
+
+// Type implements the Expr interface
+func (l LiteralString) Type() ExprType {
+	return ExprTypeLiteral
+}
+
+func (l LiteralString) ValueType() datasetmd.ValueType {
+	return datasetmd.VALUE_TYPE_STRING
 }
 
 // LiteralI64 represents a 64-bit integer constant in the query plan
@@ -60,17 +62,20 @@ func LitI64(v int64) LiteralI64 {
 func (l LiteralI64) ToField(_ Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: fmt.Sprint(l.n),
-		Type: datasetmd.VALUE_TYPE_INT64,
+		Type: l.ValueType(),
 	}
 }
 
-// Format implements format.Format
-func (l LiteralI64) Format(f format.Formatter) {
-	f.WriteNode(format.Node{
-		Singletons: []string{"LiteralI64"},
-		Tuples: []format.ContentTuple{{
-			Key:   "value",
-			Value: format.SingleContent(fmt.Sprint(l.n)),
-		}},
-	})
+// Literal returns the string representation of the literal value
+func (l LiteralI64) Literal() string {
+	return fmt.Sprint(l.n)
+}
+
+// Type implements the Expr interface
+func (l LiteralI64) Type() ExprType {
+	return ExprTypeLiteral
+}
+
+func (l LiteralI64) ValueType() datasetmd.ValueType {
+	return datasetmd.VALUE_TYPE_INT64
 }
