@@ -877,6 +877,12 @@ http {
     {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
 
+    {{- if .Values.loki.ui.gateway.enabled }}
+    location ^~ /ui {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
+    {{- end }}
+
     # Distributor
     location = /api/prom/push {
       proxy_pass       {{ $distributorUrl }}$request_uri;
