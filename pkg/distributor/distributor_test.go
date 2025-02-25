@@ -475,7 +475,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test")
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}")
 	require.EqualError(t, err, expectedErr.Error())
 
 	// Verify metrics for discarded samples due to missing enforced labels
@@ -1676,6 +1676,13 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    http.StatusOK,
 			expectError:        false,
 			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "blocked with status code 260",
+			blockUntil:         time.Now().Add(1 * time.Hour),
+			blockStatusCode:    260,
+			expectError:        true,
+			expectedStatusCode: 260,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -79,6 +79,10 @@ type Client interface {
 	Do(context.Context, *http.Request) (*http.Response, []byte, error)
 }
 
+type CloseIdler interface {
+	CloseIdleConnections()
+}
+
 // NewClient returns a new Client.
 //
 // It is safe to use the returned Client from multiple goroutines.
@@ -116,6 +120,10 @@ func (c *httpClient) URL(ep string, args map[string]string) *url.URL {
 	u.Path = p
 
 	return &u
+}
+
+func (c *httpClient) CloseIdleConnections() {
+	c.client.CloseIdleConnections()
 }
 
 func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {

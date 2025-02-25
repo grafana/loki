@@ -37,6 +37,18 @@ type ColumnWithPages struct {
 	MetadataSize     uint64     `json:"metadata_size"`
 	ValuesCount      uint64     `json:"values_count"`
 	Pages            []PageInfo `json:"pages"`
+	Statistics       Statistics `json:"statistics"`
+}
+
+type Statistics struct {
+	CardinalityCount uint64 `json:"cardinality_count"`
+}
+
+func NewStatsFrom(md *datasetmd.Statistics) (res Statistics) {
+	if md != nil {
+		res.CardinalityCount = md.CardinalityCount
+	}
+	return
 }
 
 type PageInfo struct {
@@ -213,6 +225,7 @@ func inspectLogsSection(ctx context.Context, reader encoding.Decoder, section *f
 				MetadataSize:     col.Info.MetadataSize,
 				ValuesCount:      col.Info.ValuesCount,
 				Pages:            pageInfos,
+				Statistics:       NewStatsFrom(col.Info.Statistics),
 			}
 			return nil
 		})
