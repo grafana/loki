@@ -584,7 +584,13 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetA
 	s.mtxAssingedPartitions.RLock()
 	defer s.mtxAssingedPartitions.RUnlock()
 
-	return &logproto.GetAssignedPartitionsResponse{AssignedPartitions: s.assingedPartitions}, nil
+	// Make a copy of the assigned partitions map to avoid potential concurrent access issues
+	partitions := make(map[int32]int64, len(s.assingedPartitions))
+	for k, v := range s.assingedPartitions {
+		partitions[k] = v
+	}
+
+	return &logproto.GetAssignedPartitionsResponse{AssignedPartitions: partitions}, nil
 }
 
 // GetStreamUsage implements the logproto.IngestLimitsServer interface.
