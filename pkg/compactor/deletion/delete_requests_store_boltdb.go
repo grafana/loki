@@ -37,28 +37,11 @@ const (
 	cacheGenNum          indexType = "3"
 
 	tempFileSuffix          = ".temp"
+	tempGZFileSuffix        = ".temp.gz"
 	DeleteRequestsTableName = "delete_requests"
 )
 
 var ErrDeleteRequestNotFound = errors.New("could not find matching delete requests")
-
-type DeleteRequestsStore interface {
-	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
-	GetAllRequests(ctx context.Context) ([]DeleteRequest, error)
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
-	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
-	GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error)
-	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
-	MergeShardedRequests(ctx context.Context) error
-
-	// ToDo(Sandeep): To keep changeset smaller, below 2 methods treat a single shard as individual request. This can be refactored later in a separate PR.
-	MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error
-	GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error)
-	GetAllShards(ctx context.Context) ([]DeleteRequest, error)
-
-	Stop()
-	Name() string
-}
 
 // deleteRequestsStoreBoltDB provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStoreBoltDB struct {
@@ -66,8 +49,8 @@ type deleteRequestsStoreBoltDB struct {
 	now         func() model.Time
 }
 
-// NewDeleteRequestsStoreBoltDB creates a store for managing delete requests.
-func NewDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+// newDeleteRequestsStoreBoltDB creates a store for managing delete requests.
+func newDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient storage.Client, nowFunc func() model.Time) (*deleteRequestsStoreBoltDB, error) {
 	indexClient, err := newDeleteRequestsTable(workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
@@ -75,7 +58,7 @@ func NewDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient st
 
 	return &deleteRequestsStoreBoltDB{
 		indexClient: indexClient,
-		now:         model.Now,
+		now:         nowFunc,
 	}, nil
 }
 
@@ -86,32 +69,40 @@ func (ds *deleteRequestsStoreBoltDB) Stop() {
 // AddDeleteRequest creates entries for new delete requests. All passed delete requests will be associated to
 // each other by request id
 func (ds *deleteRequestsStoreBoltDB) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
-	reqs := buildRequests(shardByInterval, query, userID, startTime, endTime)
-	if len(reqs) == 0 {
-		return "", fmt.Errorf("zero delete requests created")
-	}
-	createdAt := ds.now()
-	writeBatch := ds.indexClient.NewWriteBatch()
-	requestID, err := ds.generateID(ctx, reqs[0])
+	// Generate unique request ID
+	requestID := generateUniqueID(userID, query)
+
+	// Use common implementation
+	err := ds.addDeleteRequestWithID(ctx, requestID, userID, query, startTime, endTime, shardByInterval)
 	if err != nil {
 		return "", err
 	}
 
+	return requestID, nil
+}
+
+func (ds *deleteRequestsStoreBoltDB) addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error {
+	reqs := buildRequests(shardByInterval, query, userID, startTime, endTime)
+	if len(reqs) == 0 {
+		return fmt.Errorf("zero delete requests created")
+	}
+
+	createdAt := ds.now()
+	writeBatch := ds.indexClient.NewWriteBatch()
+
 	for i, req := range reqs {
+		// Use provided requestID
 		newReq, err := newRequest(req, requestID, createdAt, i)
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		ds.writeDeleteRequest(newReq, writeBatch)
 	}
+
 	ds.updateCacheGen(reqs[0].UserID, writeBatch)
 
-	if err := ds.indexClient.BatchWrite(ctx, writeBatch); err != nil {
-		return "", err
-	}
-
-	return requestID, nil
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
 func (ds *deleteRequestsStoreBoltDB) mergeShardedRequests(ctx context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
@@ -405,10 +396,6 @@ func (ds *deleteRequestsStoreBoltDB) removeRequest(req DeleteRequest, writeBatch
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
 	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue))
-}
-
-func (ds *deleteRequestsStoreBoltDB) Name() string {
-	return "delete_requests_store"
 }
 
 // MergeShardedRequests merges the sharded requests back to a single request when we are done with processing all the shards

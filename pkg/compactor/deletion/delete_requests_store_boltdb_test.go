@@ -286,7 +286,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				Directory: objectStorePath,
 			})
 			require.NoError(t, err)
-			ds, err := NewDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+			ds, err := newDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""), model.Now)
 			require.NoError(t, err)
 
 			for _, addReqDetails := range tc.reqsToAdd {
@@ -380,7 +380,7 @@ func setup(t *testing.T) *testContext {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	ds, err := NewDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	ds, err := NewDeleteRequestsStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
 	store := ds.(*deleteRequestsStoreBoltDB)
