@@ -42,13 +42,6 @@ func (f *Filter) Type() PlanType {
 	return PlanTypeFilter
 }
 
-// Children implements the Plan interface
-func (f *Filter) Children() []Plan {
-	// Convert the Plan interface to ast interface
-	// This assumes the input Plan also implements ast
-	return []Plan{f.input}
-}
-
 // Child implements the filterNode interface
 func (f *Filter) Child() Plan {
 	return f.input

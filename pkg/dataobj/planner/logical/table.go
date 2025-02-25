@@ -37,11 +37,6 @@ func (s *MakeTable) Type() PlanType {
 	return PlanTypeTable
 }
 
-// Children implements the Plan interface
-func (s *MakeTable) Children() []Plan {
-	return nil
-}
-
 // TableSchema implements the tableNode interface
 func (s *MakeTable) TableSchema() schema.Schema {
 	return s.schema

@@ -46,12 +46,6 @@ func (p *Projection) Type() PlanType {
 	return PlanTypeProjection
 }
 
-// Children implements the ast interface
-func (p *Projection) Children() []Plan {
-	// Convert the Plan interface to ast interface
-	return []Plan{p.input}
-}
-
 // Child implements the projectionNode interface
 func (p *Projection) Child() Plan {
 	return p.input
