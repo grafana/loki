@@ -316,7 +316,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 			}
 			level.Debug(rep.logger).Log("msg", "reporting cluster stats", "date", time.Now())
 			if err := rep.reportUsage(ctx, next); err != nil {
-				level.Info(rep.logger).Log("msg", "failed to report usage", "err", err)
+				level.Debug(rep.logger).Log("msg", "failed to report usage", "err", err)
 				continue
 			}
 			rep.lastReport = next
@@ -340,12 +340,10 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	var errs multierror.MultiError
 	for backoff.Ongoing() {
 		if err := sendReport(ctx, rep.cluster, interval, rep.conf.UsageStatsURL, rep.httpClient); err != nil {
-			level.Info(rep.logger).Log("msg", "failed to send usage report", "retries", backoff.NumRetries(), "err", err)
 			errs.Add(err)
 			backoff.Wait()
 			continue
 		}
-		level.Debug(rep.logger).Log("msg", "usage report sent with success")
 		return nil
 	}
 	return errs.Err()
