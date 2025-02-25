@@ -214,10 +214,13 @@ func readDataset(br *Reader, batchSize int) ([]Row, error) {
 	)
 
 	for {
+		// Clear the batch for each read, to ensure that any memory in Row and
+		// Value doesn't get reused. See comment in implmentation of
+		// [readBasicReader] for more information.
+		clear(batch)
+
 		n, err := br.Read(context.Background(), batch)
-		for _, row := range batch[:n] {
-			all = append(all, row.Clone())
-		}
+		all = append(all, batch[:n]...)
 		if errors.Is(err, io.EOF) {
 			return all, nil
 		} else if err != nil {

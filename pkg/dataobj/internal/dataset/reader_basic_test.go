@@ -96,6 +96,10 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 	)
 
 	for {
+		// Clear the batch before reading the next set of values. See
+		// implementation of readBasicReader for more details.
+		clear(batch)
+
 		n, err := br.ReadColumns(context.Background(), subset, batch)
 		for _, row := range batch[:n] {
 			// Verify that the row has space for all columns
@@ -114,7 +118,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 			}
 			require.Equal(t, testPerson.birthYear, row.Values[3].Int64(), "birth_year mismatch")
 
-			all = append(all, row.Clone())
+			all = append(all, row)
 		}
 		if errors.Is(err, io.EOF) {
 			break
@@ -313,10 +317,17 @@ func readBasicReader(br *basicReader, batchSize int) ([]Row, error) {
 	)
 
 	for {
+		// Clear the batch for each read; this is required to ensure that any
+		// memory inside Row and Value doesn't get reused.
+		//
+		// This requires any Row/Value provided by br.Read is owned by the caller
+		// and is not retained by the reader; if a test fails and appears to have
+		// memory reuse, it's likely because code in basicReader changed and broke
+		// ownership semantics.
+		clear(batch)
+
 		n, err := br.Read(context.Background(), batch)
-		for _, row := range batch[:n] {
-			all = append(all, row.Clone())
-		}
+		all = append(all, batch[:n]...)
 		if errors.Is(err, io.EOF) {
 			return all, nil
 		} else if err != nil {

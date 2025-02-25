@@ -156,6 +156,15 @@ func readPage(pr *pageReader, batchSize int) ([]Value, error) {
 	)
 
 	for {
+		// Clear the batch for each read; this is required to ensure that any
+		// memory inside of Value doesn't get reused.
+		//
+		// This requires any Value provided by pr.Read is owned by the caller and
+		// is not retained by the reader; if a test fails and appears to have
+		// memory reuse, it's likely because code in pageReader changed and broke
+		// ownership semantics.
+		clear(batch)
+
 		n, err := pr.Read(context.Background(), batch)
 		if n > 0 {
 			all = append(all, batch[:n]...)
