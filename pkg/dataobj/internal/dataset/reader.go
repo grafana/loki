@@ -118,8 +118,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	readSize := min(len(s), int(currentRange.End-row+1))
 
 	readRange := rowRange{
-		Start: uint64(row),
-		End:   uint64(row + uint64(readSize) - 1),
+		Start: row,
+		End:   row + uint64(readSize) - 1,
 	}
 	r.dl.SetReadRange(readRange)
 
