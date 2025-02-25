@@ -32,7 +32,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewScan(ds, nil)
+	scan := NewScan(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 	proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
 
@@ -47,7 +47,7 @@ Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
     ├── BooleanCmpExpr op=(>) name=age_gt_21
     │   ├── Column #age
     │   └── LiteralI64 value=21
-    └── Scan data_source=users`
+    └── Scan name=users`
 
 	require.Equal(t, expected, "\n"+f.Format())
 }
@@ -66,7 +66,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewScan(ds, nil),
+		NewScan(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Project(
@@ -100,7 +100,7 @@ Aggregate groupings=(region) aggregates=(total_sales)
         ├── BooleanCmpExpr op=(==) name=year_2020
         │   ├── Column #year
         │   └── LiteralI64 value=2020
-        └── Scan data_source=orders`
+        └── Scan name=orders`
 
 	require.Equal(t, expected, "\n"+f.Format())
 }
