@@ -133,7 +133,7 @@ require (
 	github.com/parquet-go/parquet-go v0.24.0
 	github.com/prometheus/alertmanager v0.28.0
 	github.com/prometheus/common/sigv4 v0.1.0
-	github.com/prometheus/sigv4 v0.1.1
+	github.com/prometheus/sigv4 v0.1.2
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.25.1
