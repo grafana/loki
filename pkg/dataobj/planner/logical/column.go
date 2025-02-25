@@ -3,7 +3,6 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -32,9 +31,10 @@ func (c ColumnExpr) ToField(p Plan) schema.ColumnSchema {
 	panic(fmt.Sprintf("column %s not found", c.name))
 }
 
-// Format implements format.Format
-func (c ColumnExpr) Format(f format.Formatter) {
-	f.WriteNode(format.Node{
-		Singletons: []string{"Column", fmt.Sprintf("#%s", c.name)},
-	})
+func (c ColumnExpr) Type() ExprType {
+	return ExprTypeColumn
+}
+
+func (c ColumnExpr) ColumnName() string {
+	return c.name
 }

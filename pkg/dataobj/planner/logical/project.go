@@ -41,15 +41,20 @@ func (p *Projection) Schema() schema.Schema {
 	return schema.FromColumns(columns)
 }
 
-// Type implements the ast interface
-func (p *Projection) Type() nodeType {
-	return nodeTypeProjection
+// Type implements the Plan interface
+func (p *Projection) Type() PlanType {
+	return PlanTypeProjection
 }
 
-// ASTChildren implements the ast interface
-func (p *Projection) ASTChildren() []ast {
+// Children implements the ast interface
+func (p *Projection) Children() []Plan {
 	// Convert the Plan interface to ast interface
-	return []ast{p.input.(ast)}
+	return []Plan{p.input}
+}
+
+// Child implements the projectionNode interface
+func (p *Projection) Child() Plan {
+	return p.input
 }
 
 // ProjectExprs implements the projectionNode interface

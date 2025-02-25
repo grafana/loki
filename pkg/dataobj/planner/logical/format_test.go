@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -17,72 +18,69 @@ func (t *testDataSource) Schema() schema.Schema { return t.schema }
 func (t *testDataSource) Name() string          { return t.name }
 
 func TestFormatSimpleQuery(t *testing.T) {
-	// // Build a simple query plan:
-	// // SELECT id, name FROM users WHERE age > 21
-	// ds := &testDataSource{
-	// 	name: "users",
-	// 	schema: schema.Schema{
-	// 		Columns: []schema.ColumnSchema{
-	// 			{Name: "id", Type: datasetmd.VALUE_TYPE_UINT64},
-	// 			{Name: "name", Type: datasetmd.VALUE_TYPE_STRING},
-	// 			{Name: "age", Type: datasetmd.VALUE_TYPE_UINT64},
-	// 		},
-	// 	},
-	// }
+	// Build a simple query plan:
+	// SELECT id, name FROM users WHERE age > 21
+	ds := &testDataSource{
+		name: "users",
+		schema: schema.Schema{
+			Columns: []schema.ColumnSchema{
+				{Name: "id", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "name", Type: datasetmd.VALUE_TYPE_STRING},
+				{Name: "age", Type: datasetmd.VALUE_TYPE_UINT64},
+			},
+		},
+	}
 
-	// scan := NewScan(ds.Name(), ds.Schema())
-	// filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-	// proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
+	scan := NewScan(ds.Name(), ds.Schema())
+	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
 
-	// f := format.NewTreeFormatter()
-	// proj.Format(f)
+	f := newTreeFormatter()
 
 	expected := `
 Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
 ├── Column #id
 ├── Column #name
 └── Filter expr=age_gt_21
-    ├── BooleanCmpExpr op=(>) name=age_gt_21
+    ├── BinaryOp op=(>) name=age_gt_21
     │   ├── Column #age
-    │   └── LiteralI64 value=21
-    └── Scan name=users`
+    │   └── Literal value=21 type=VALUE_TYPE_INT64
+    └── MakeTable name=users`
 
-	// require.Equal(t, expected, "\n"+f.Format())
-	require.Equal(t, expected, expected) // TODO: fix this
+	require.Equal(t, expected, "\n"+f.Format(proj))
 }
 
 func TestFormatDataFrameQuery(t *testing.T) {
-	// // Calculate the sum of sales per region for the year 2020
-	// ds := &testDataSource{
-	// 	name: "orders",
-	// 	schema: schema.Schema{
-	// 		Columns: []schema.ColumnSchema{
-	// 			{Name: "region", Type: datasetmd.VALUE_TYPE_STRING},
-	// 			{Name: "sales", Type: datasetmd.VALUE_TYPE_UINT64},
-	// 			{Name: "year", Type: datasetmd.VALUE_TYPE_UINT64},
-	// 		},
-	// 	},
-	// }
+	// Calculate the sum of sales per region for the year 2020
+	ds := &testDataSource{
+		name: "orders",
+		schema: schema.Schema{
+			Columns: []schema.ColumnSchema{
+				{Name: "region", Type: datasetmd.VALUE_TYPE_STRING},
+				{Name: "sales", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "year", Type: datasetmd.VALUE_TYPE_UINT64},
+			},
+		},
+	}
 
-	// df := NewDataFrame(
-	// 	NewScan(ds.Name(), ds.Schema()),
-	// ).Filter(
-	// 	Eq("year_2020", Col("year"), LitI64(2020)),
-	// ).Project(
-	// 	[]Expr{
-	// 		Col("region"),
-	// 		Col("sales"),
-	// 		Col("year"),
-	// 	},
-	// ).Aggregate(
-	// 	[]Expr{Col("region")},
-	// 	[]AggregateExpr{
-	// 		Sum("total_sales", Col("sales")),
-	// 	},
-	// )
+	df := NewDataFrame(
+		NewScan(ds.Name(), ds.Schema()),
+	).Filter(
+		Eq("year_2020", Col("year"), LitI64(2020)),
+	).Project(
+		[]Expr{
+			Col("region"),
+			Col("sales"),
+			Col("year"),
+		},
+	).Aggregate(
+		[]Expr{Col("region")},
+		[]AggregateExpr{
+			Sum("total_sales", Col("sales")),
+		},
+	)
 
-	// f := format.NewTreeFormatter()
-	// df.LogicalPlan().Format(f)
+	f := newTreeFormatter()
 
 	expected := `
 Aggregate groupings=(region) aggregates=(total_sales)
@@ -96,11 +94,10 @@ Aggregate groupings=(region) aggregates=(total_sales)
     ├── Column #sales
     ├── Column #year
     └── Filter expr=year_2020
-        ├── BooleanCmpExpr op=(==) name=year_2020
+        ├── BinaryOp op=(==) name=year_2020
         │   ├── Column #year
-        │   └── LiteralI64 value=2020
-        └── Scan name=orders`
+        │   └── Literal value=2020 type=VALUE_TYPE_INT64
+        └── MakeTable name=orders`
 
-	// require.Equal(t, expected, "\n"+f.Format())
-	require.Equal(t, expected, expected) // TODO: fix this
+	require.Equal(t, expected, "\n"+f.Format(df.LogicalPlan()))
 }

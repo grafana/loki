@@ -32,13 +32,13 @@ func (s *MakeTable) Schema() schema.Schema {
 	return s.schema
 }
 
-// Type implements the ast interface
-func (s *MakeTable) Type() nodeType {
-	return nodeTypeTable
+// Type implements the Plan interface
+func (s *MakeTable) Type() PlanType {
+	return PlanTypeTable
 }
 
-// ASTChildren implements the ast interface
-func (s *MakeTable) ASTChildren() []ast {
+// Children implements the Plan interface
+func (s *MakeTable) Children() []Plan {
 	return nil
 }
 

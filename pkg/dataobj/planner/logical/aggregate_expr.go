@@ -62,6 +62,23 @@ func newAggregateExprConstructor(op AggregateOp) func(name string, expr Expr) Ag
 	}
 }
 
+// Type implements the Expr interface
+func (a AggregateExpr) Type() ExprType {
+	return ExprTypeAggregate
+}
+
+func (a AggregateExpr) Name() string {
+	return a.name
+}
+
+func (a AggregateExpr) Op() AggregateOp {
+	return a.op
+}
+
+func (a AggregateExpr) Expr() Expr {
+	return a.expr
+}
+
 // ToField converts the aggregation expression to a column schema
 func (a AggregateExpr) ToField(p Plan) schema.ColumnSchema {
 	// Get the input field schema

@@ -2,7 +2,6 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -100,87 +99,104 @@ var (
 	Xor = newBinarySetExprConstructor(BinaryOpXor)
 )
 
-// BinaryMathExpr represents a mathematical operation between two expressions
-type BinaryMathExpr struct {
+// baseBinOpImpl is an embeddable implementation of shared functionality for binary operations
+type baseBinOpImpl struct {
 	name string
-	op   BinaryOpMath
 	l    Expr
 	r    Expr
+}
+
+func (b baseBinOpImpl) ToField(p Plan) schema.ColumnSchema {
+	return schema.ColumnSchema{
+		Name: b.name,
+		Type: b.l.ToField(p).Type,
+	}
+}
+
+func (b baseBinOpImpl) Type() ExprType {
+	return ExprTypeBinaryOp
+}
+
+func (b baseBinOpImpl) Name() string {
+	return b.name
+}
+
+func (b baseBinOpImpl) Left() Expr {
+	return b.l
+}
+
+func (b baseBinOpImpl) Right() Expr {
+	return b.r
+}
+
+// BinaryMathExpr represents a mathematical operation between two expressions
+type BinaryMathExpr struct {
+	baseBinOpImpl
+	op BinaryOpMath
+}
+
+func (b BinaryMathExpr) Op() string {
+	return string(b.op)
 }
 
 // newBinaryMathExprConstructor creates a constructor function for binary mathematical expressions
 func newBinaryMathExprConstructor(op BinaryOpMath) func(name string, l Expr, r Expr) BinaryMathExpr {
 	return func(name string, l Expr, r Expr) BinaryMathExpr {
 		return BinaryMathExpr{
-			name: name,
-			op:   op,
-			l:    l,
-			r:    r,
+			baseBinOpImpl: baseBinOpImpl{
+				name: name,
+				l:    l,
+				r:    r,
+			},
+			op: op,
 		}
-	}
-}
-
-// ToField converts the binary math expression to a column schema
-func (b BinaryMathExpr) ToField(p Plan) schema.ColumnSchema {
-	return schema.ColumnSchema{
-		Name: b.name,
-		Type: b.l.ToField(p).Type,
 	}
 }
 
 // BooleanCmpExpr represents a comparison operation between two expressions
 type BooleanCmpExpr struct {
-	name string
-	op   BinaryOpCmp
-	l    Expr
-	r    Expr
+	baseBinOpImpl
+	op BinaryOpCmp
+}
+
+func (b BooleanCmpExpr) Op() string {
+	return string(b.op)
 }
 
 // newBinaryCompareExprConstructor creates a constructor function for binary comparison expressions
 func newBinaryCompareExprConstructor(op BinaryOpCmp) func(name string, l Expr, r Expr) BooleanCmpExpr {
 	return func(name string, l Expr, r Expr) BooleanCmpExpr {
 		return BooleanCmpExpr{
-			name: name,
-			op:   op,
-			l:    l,
-			r:    r,
+			baseBinOpImpl: baseBinOpImpl{
+				name: name,
+				l:    l,
+				r:    r,
+			},
+			op: op,
 		}
-	}
-}
-
-// ToField converts the boolean comparison expression to a column schema
-func (b BooleanCmpExpr) ToField(_ Plan) schema.ColumnSchema {
-	return schema.ColumnSchema{
-		Name: b.name,
-		// TODO: bool type
-		Type: datasetmd.VALUE_TYPE_UINT64,
 	}
 }
 
 // BooleanSetExpr represents a set operation between two boolean expressions
 type BooleanSetExpr struct {
-	name string
-	op   BinaryOpSet
-	l    Expr
-	r    Expr
+	baseBinOpImpl
+	op BinaryOpSet
+}
+
+func (b BooleanSetExpr) Op() string {
+	return string(b.op)
 }
 
 // newBinarySetExprConstructor creates a constructor function for binary set expressions
 func newBinarySetExprConstructor(op BinaryOpSet) func(name string, l Expr, r Expr) BooleanSetExpr {
 	return func(name string, l Expr, r Expr) BooleanSetExpr {
 		return BooleanSetExpr{
-			name: name,
-			op:   op,
-			l:    l,
-			r:    r,
+			baseBinOpImpl: baseBinOpImpl{
+				name: name,
+				l:    l,
+				r:    r,
+			},
+			op: op,
 		}
-	}
-}
-
-// ToField converts the boolean set expression to a column schema
-func (b BooleanSetExpr) ToField(p Plan) schema.ColumnSchema {
-	return schema.ColumnSchema{
-		Name: b.name,
-		Type: b.l.ToField(p).Type,
 	}
 }
