@@ -2,13 +2,13 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Projection implements Plan
+// Compile-time check to ensure Projection implements Plan and projectionNode
 var (
-	_ Plan = &Projection{}
+	_ Plan           = &Projection{}
+	_ projectionNode = &Projection{}
 )
 
 // Projection represents a plan node that projects expressions from its input
@@ -41,30 +41,18 @@ func (p *Projection) Schema() schema.Schema {
 	return schema.FromColumns(columns)
 }
 
-// Children returns the child plan nodes
-func (p *Projection) Children() []Plan {
-	return []Plan{p.input}
+// Type implements the ast interface
+func (p *Projection) Type() nodeType {
+	return nodeTypeProjection
 }
 
-// Format implements format.Format
-func (p *Projection) Format(fm format.Formatter) {
-	var tuples []format.ContentTuple
-	for _, expr := range p.exprs {
-		field := expr.ToField(p.input)
-		tuples = append(tuples, format.ContentTuple{
-			Key:   field.Name,
-			Value: format.SingleContent(field.Type.String()),
-		})
-	}
+// ASTChildren implements the ast interface
+func (p *Projection) ASTChildren() []ast {
+	// Convert the Plan interface to ast interface
+	return []ast{p.input.(ast)}
+}
 
-	n := format.Node{
-		Singletons: []string{"Projection"},
-		Tuples:     tuples,
-	}
-
-	nextFM := fm.WriteNode(n)
-	for _, expr := range p.exprs {
-		expr.Format(nextFM)
-	}
-	p.input.Format(nextFM)
+// ProjectExprs implements the projectionNode interface
+func (p *Projection) ProjectExprs() []Expr {
+	return p.exprs
 }

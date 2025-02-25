@@ -2,10 +2,7 @@
 package logical
 
 import (
-	"fmt"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -131,11 +128,6 @@ func (b BinaryMathExpr) ToField(p Plan) schema.ColumnSchema {
 	}
 }
 
-// Format implements format.Format
-func (b BinaryMathExpr) Format(fm format.Formatter) {
-	formatBinaryOp(fm, "BinaryMathExpr", string(b.op), b.name, b.l, b.r)
-}
-
 // BooleanCmpExpr represents a comparison operation between two expressions
 type BooleanCmpExpr struct {
 	name string
@@ -165,11 +157,6 @@ func (b BooleanCmpExpr) ToField(_ Plan) schema.ColumnSchema {
 	}
 }
 
-// Format implements format.Format
-func (b BooleanCmpExpr) Format(fm format.Formatter) {
-	formatBinaryOp(fm, "BooleanCmpExpr", string(b.op), b.name, b.l, b.r)
-}
-
 // BooleanSetExpr represents a set operation between two boolean expressions
 type BooleanSetExpr struct {
 	name string
@@ -196,28 +183,4 @@ func (b BooleanSetExpr) ToField(p Plan) schema.ColumnSchema {
 		Name: b.name,
 		Type: b.l.ToField(p).Type,
 	}
-}
-
-// Format implements format.Format
-func (b BooleanSetExpr) Format(fm format.Formatter) {
-	formatBinaryOp(fm, "BooleanSetExpr", string(b.op), b.name, b.l, b.r)
-}
-
-// formatBinaryOp is a helper function to format binary operations
-func formatBinaryOp(fm format.Formatter, exprType string, op string, name string, l, r Expr) {
-	wrapped := fmt.Sprintf("(%s)", op) // for clarity
-	n := format.Node{
-		Singletons: []string{exprType},
-		Tuples: []format.ContentTuple{{
-			Key:   "op",
-			Value: format.SingleContent(wrapped),
-		}, {
-			Key:   "name",
-			Value: format.SingleContent(name),
-		}},
-	}
-
-	nextFM := fm.WriteNode(n)
-	l.Format(nextFM)
-	r.Format(nextFM)
 }

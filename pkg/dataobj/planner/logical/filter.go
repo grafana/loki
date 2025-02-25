@@ -2,13 +2,13 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Filter implements Plan
+// Compile-time check to ensure Filter implements Plan and filterNode
 var (
-	_ Plan = &Filter{}
+	_ Plan       = &Filter{}
+	_ filterNode = &Filter{}
 )
 
 // Filter represents a plan node that filters rows based on a boolean expression.
@@ -37,22 +37,19 @@ func (f *Filter) Schema() schema.Schema {
 	return f.input.Schema()
 }
 
-// Children returns the child plan nodes
-func (f *Filter) Children() []Plan {
-	return []Plan{f.input}
+// Type implements the ast interface
+func (f *Filter) Type() nodeType {
+	return nodeTypeFilter
 }
 
-// Format implements format.Format
-func (f *Filter) Format(fm format.Formatter) {
-	n := format.Node{
-		Singletons: []string{"Filter"},
-		Tuples: []format.ContentTuple{{
-			Key:   "expr",
-			Value: format.SingleContent(f.expr.ToField(f.input).Name),
-		}},
-	}
+// ASTChildren implements the ast interface
+func (f *Filter) ASTChildren() []ast {
+	// Convert the Plan interface to ast interface
+	// This assumes the input Plan also implements ast
+	return []ast{f.input.(ast)}
+}
 
-	nextFM := fm.WriteNode(n)
-	f.expr.Format(nextFM)
-	f.input.Format(nextFM)
+// FilterExpr implements the filterNode interface
+func (f *Filter) FilterExpr() Expr {
+	return f.expr
 }
