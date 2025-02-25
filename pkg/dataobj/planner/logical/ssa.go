@@ -271,7 +271,7 @@ func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
 	case ExprTypeColumn:
 		return b.processColumnExpr(expr.(columnExpr), parent)
 	case ExprTypeLiteral:
-		return b.processLiteralExpr(expr.(literalExpr), parent)
+		return b.processLiteralExpr(expr.(literalExpr))
 	case ExprTypeBinaryOp:
 		return b.processBinaryOpExpr(expr.(binaryOpExpr), parent)
 	case ExprTypeAggregate:
@@ -303,7 +303,7 @@ func (b *ssaBuilder) processColumnExpr(expr columnExpr, parent Plan) (int, error
 
 // processLiteralExpr processes a literal expression
 // It creates a Literal node with the value and type
-func (b *ssaBuilder) processLiteralExpr(expr literalExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processLiteralExpr(expr literalExpr) (int, error) {
 	// Create a node for the literal
 	id := b.getID()
 	node := SSANode{
