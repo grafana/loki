@@ -112,13 +112,13 @@ func TestIdleFlush(t *testing.T) {
 		{
 			name:          "should not flush before idle timeout",
 			idleTimeout:   1 * time.Second,
-			sleepDuration: 500 * time.Millisecond,
+			sleepDuration: 100 * time.Millisecond,
 			expectFlush:   false,
 			initBuilder:   true,
 		},
 		{
 			name:          "should flush after idle timeout",
-			idleTimeout:   500 * time.Millisecond,
+			idleTimeout:   100 * time.Millisecond,
 			sleepDuration: 1 * time.Second,
 			expectFlush:   true,
 			initBuilder:   true,
@@ -126,14 +126,14 @@ func TestIdleFlush(t *testing.T) {
 		{
 			name:          "should not flush if builder is nil",
 			idleTimeout:   100 * time.Millisecond,
-			sleepDuration: 200 * time.Millisecond,
+			sleepDuration: 100 * time.Millisecond,
 			expectFlush:   false,
 			initBuilder:   false,
 		},
 		{
 			name:          "should not flush if last modified is less than idle timeout",
 			idleTimeout:   1 * time.Second,
-			sleepDuration: 500 * time.Millisecond,
+			sleepDuration: 100 * time.Millisecond,
 			expectFlush:   false,
 			initBuilder:   true,
 		},
@@ -171,6 +171,9 @@ func TestIdleFlush(t *testing.T) {
 				defer p.stop()
 			}
 
+			// Record initial flush time
+			initialFlushTime := p.lastFlush
+
 			stream := logproto.Stream{
 				Labels: `{cluster="test",app="foo"}`,
 				Entries: []push.Entry{{
@@ -187,9 +190,6 @@ func TestIdleFlush(t *testing.T) {
 				Value: streamBytes,
 				Key:   []byte("test-tenant"),
 			}
-
-			// Record initial flush time
-			initialFlushTime := p.lastFlush
 
 			// Wait for specified duration
 			time.Sleep(tc.sleepDuration)

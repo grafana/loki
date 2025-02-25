@@ -263,9 +263,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
 		}
-
-		p.lastModified = time.Now()
 	}
+
+	p.lastModified = time.Now()
 }
 
 func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
@@ -298,7 +298,7 @@ func (p *partitionProcessor) idleFlush() {
 		return
 	}
 
-	if time.Since(p.lastFlush) < p.idleFlushTimeout || time.Since(p.lastModified) < p.idleFlushTimeout {
+	if time.Since(p.lastModified) < p.idleFlushTimeout {
 		return // Avoid checking too frequently
 	}
 
