@@ -140,6 +140,7 @@ func TestIdleFlush(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// Setup test dependencies
 			bucket := newMockBucket()
 			bufPool := &sync.Pool{
@@ -209,6 +210,7 @@ func TestIdleFlush(t *testing.T) {
 // TestIdleFlushWithActiveProcessing tests the idle flush behavior
 // while the processor is actively processing records.
 func TestIdleFlushWithActiveProcessing(t *testing.T) {
+	t.Parallel()
 	// Setup test dependencies
 	bucket := newMockBucket()
 	bufPool := &sync.Pool{
@@ -269,6 +271,7 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 // TestIdleFlushWithEmptyData tests the idle flush behavior
 // when no data has been processed.
 func TestIdleFlushWithEmptyData(t *testing.T) {
+	t.Parallel()
 	// Setup test dependencies
 	bucket := newMockBucket()
 	bufPool := &sync.Pool{
