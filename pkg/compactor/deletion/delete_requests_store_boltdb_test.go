@@ -294,7 +294,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			reqs, err := ds.GetAllShards(context.Background())
+			reqs, err := ds.getAllShards(context.Background())
 			require.NoError(t, err)
 
 			for _, req := range reqs {
@@ -380,7 +380,7 @@ func setup(t *testing.T) *testContext {
 		Directory: objectStorePath,
 	})
 	require.NoError(t, err)
-	ds, err := NewDeleteRequestsStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	ds, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, storage.NewIndexStorageClient(objectClient, ""))
 	require.NoError(t, err)
 
 	store := ds.(*deleteRequestsStoreBoltDB)

@@ -183,8 +183,8 @@ func (ds *deleteRequestsStoreBoltDB) GetUnprocessedShards(ctx context.Context) (
 	})
 }
 
-// GetAllShards returns all the shards as individual delete requests.
-func (ds *deleteRequestsStoreBoltDB) GetAllShards(ctx context.Context) ([]DeleteRequest, error) {
+// getAllShards returns all the shards as individual delete requests.
+func (ds *deleteRequestsStoreBoltDB) getAllShards(ctx context.Context) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName: DeleteRequestsTableName,
 		HashValue: string(deleteRequestID),
@@ -193,7 +193,7 @@ func (ds *deleteRequestsStoreBoltDB) GetAllShards(ctx context.Context) ([]Delete
 
 // GetAllRequests returns all the delete requests.
 func (ds *deleteRequestsStoreBoltDB) GetAllRequests(ctx context.Context) ([]DeleteRequest, error) {
-	deleteGroups, err := ds.GetAllShards(ctx)
+	deleteGroups, err := ds.getAllShards(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (ds *deleteRequestsStoreBoltDB) removeRequest(req DeleteRequest, writeBatch
 
 // MergeShardedRequests merges the sharded requests back to a single request when we are done with processing all the shards
 func (ds *deleteRequestsStoreBoltDB) MergeShardedRequests(ctx context.Context) error {
-	deleteGroups, err := ds.GetAllShards(context.Background())
+	deleteGroups, err := ds.getAllShards(context.Background())
 	if err != nil {
 		return err
 	}

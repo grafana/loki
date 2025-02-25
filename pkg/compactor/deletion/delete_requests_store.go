@@ -2,14 +2,19 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	
 	"github.com/prometheus/common/model"
 )
 
 type DeleteRequestsStoreDBType string
+
+const (
+	DeleteRequestsStoreDBTypeBoltDB DeleteRequestsStoreDBType = "boltdb"
+	DeleteRequestsStoreDBTypeSQLite DeleteRequestsStoreDBType = "sqlite"
+)
 
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
@@ -28,6 +33,22 @@ type DeleteRequestsStore interface {
 	Stop()
 }
 
-func NewDeleteRequestsStore(workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
-	return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, model.Now)
+func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+	store, err := newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
+}
+
+func newDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+	switch DeleteRequestsStoreDBType {
+	case DeleteRequestsStoreDBTypeBoltDB:
+		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, model.Now)
+	case DeleteRequestsStoreDBTypeSQLite:
+		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient, model.Now)
+	default:
+		return nil, fmt.Errorf("unexpected delete requests store DB type %s. Supported types: (%s, %s)", DeleteRequestsStoreDBType, DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite)
+	}
 }
