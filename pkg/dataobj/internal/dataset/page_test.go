@@ -26,7 +26,7 @@ func Benchmark_page_Decode(b *testing.B) {
 	}
 
 	opts := BuilderOptions{
-		PageSizeHint: 1 << 30,
+		PageSizeHint: 1 << 30, // 1GiB
 		Value:        datasetmd.VALUE_TYPE_STRING,
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
@@ -34,7 +34,7 @@ func Benchmark_page_Decode(b *testing.B) {
 	builder, err := newPageBuilder(opts)
 	require.NoError(b, err)
 
-	for i := range b.N {
+	for i := range 1_000_000 {
 		s := in[i%len(in)]
 		require.True(b, builder.Append(StringValue(s)))
 	}
@@ -45,15 +45,16 @@ func Benchmark_page_Decode(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
-	if err != nil {
-		b.Fatal()
-	}
-
-	if _, err := io.Copy(io.Discard, values); err != nil {
-		b.Fatal(err)
-	} else if err := values.Close(); err != nil {
-		b.Fatal(err)
+	for range b.N {
+		_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+		if err != nil {
+			b.Fatal()
+		}
+		if _, err := io.Copy(io.Discard, values); err != nil {
+			b.Fatal(err)
+		} else if err := values.Close(); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 }
