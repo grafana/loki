@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
@@ -22,6 +23,9 @@ type pageReader struct {
 	closer      io.Closer
 	presenceDec *bitmapDecoder
 	valuesDec   valueDecoder
+
+	presenceBuf []Value
+	valuesBuf   []Value
 
 	pageRow int64
 	nextRow int64
@@ -56,13 +60,13 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 	// reading garbage values into v.
 	for pr.pageRow < pr.nextRow {
 		maxCount := min(len(v), int(pr.nextRow-pr.pageRow))
-		_, err := pr.read(ctx, v[:maxCount])
+		_, err := pr.read(v[:maxCount])
 		if err != nil {
 			return n, err
 		}
 	}
 
-	n, err = pr.read(ctx, v)
+	n, err = pr.read(v)
 	pr.nextRow += int64(n)
 	return n, err
 }
@@ -71,43 +75,94 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 // considering the current row offset.
 //
 // read advances pr.pageRow but not pr.nextRow.
-func (pr *pageReader) read(ctx context.Context, v []Value) (n int, err error) {
-	// TODO(rfratto):
+func (pr *pageReader) read(v []Value) (n int, err error) {
+	pr.presenceBuf = slices.Grow(pr.presenceBuf, len(v))
+	pr.presenceBuf = pr.presenceBuf[:len(v)]
+
+	// We want to allow decoders to reuse memory of [Value]s in v while allowing
+	// the caller to retain ownership over that memory; to do this safely, we
+	// copy memory from v into pr.valuesBuf for our decoders to use.
 	//
-	// * Allow batching reads from the presence and value decoders.
-	// * Allow reusing any allocated memory in v[i] if relevant (such as byte
-	//   slices).
-	for range len(v) {
-		if ctx.Err() != nil {
-			return n, ctx.Err()
-		}
+	// If we didn't do this, then memory backing [Value]s are owned by both
+	// pageReader and the caller, which can lead to memory reuse bugs.
+	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
-		var value Value
-
-		present, err := pr.presenceDec.Decode()
-		if errors.Is(err, io.EOF) {
-			return n, io.EOF
-		} else if err != nil {
-			return n, fmt.Errorf("decoding presence: %w", err)
-		} else if present.Type() != datasetmd.VALUE_TYPE_UINT64 {
-			return n, fmt.Errorf("unexpected presence type: %s", present.Type())
-		}
-
-		// value is currently nil. If the presence bitmap says our row has a
-		// value, we decode it into value.
-		if present.Uint64() == 1 {
-			value, err = pr.valuesDec.Decode()
-			if err != nil {
-				return n, fmt.Errorf("decoding expected value: %w", err)
-			}
-		}
-
-		v[n] = value
-		n++
-		pr.pageRow++
+	// First read presence values for the next len(v) rows.
+	count, err := pr.presenceDec.Decode(pr.presenceBuf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, err
+	} else if count == 0 && errors.Is(err, io.EOF) {
+		return n, io.EOF
+	} else if count == 0 {
+		return 0, nil
 	}
 
+	// The number of values in pr.presenceBuf[:count] which are set to 1
+	// determines how many values we need to read from the inner page.
+	var presentCount int
+	for _, p := range pr.presenceBuf[:count] {
+		if p.Type() != datasetmd.VALUE_TYPE_UINT64 {
+			return n, fmt.Errorf("unexpected presence type: %s", p.Type())
+		}
+		if p.Uint64() == 1 {
+			presentCount++
+		}
+	}
+
+	// Now fill up to prescentCount values of concrete values.
+	var valuesCount int
+	if presentCount > 0 {
+		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
+		if err != nil {
+			return n, err
+		} else if valuesCount != presentCount {
+			return n, fmt.Errorf("unexpected number of values: %d", valuesCount)
+		}
+	}
+
+	// Finally, copy over count values into v, setting NULL where appropriate and
+	// copying from pr.valuesBuf where appropriate.
+	var valuesIndex int
+	for i, p := range pr.presenceBuf[:count] {
+		// Type checking on presence values was already done above; we can call
+		// [Value.Uint64] here safely.
+		switch p.Uint64() {
+		case 1:
+			if valuesIndex >= valuesCount {
+				return n, fmt.Errorf("unexpected end of values")
+			}
+			v[i] = pr.valuesBuf[valuesIndex]
+			valuesIndex++
+		default:
+			v[i] = Value{}
+		}
+	}
+
+	n += count
+	pr.pageRow += int64(count)
 	return n, nil
+}
+
+// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
+// values are appended to dst, with the remainder of the slice set to NULL.
+//
+// The resulting slice is len(src).
+func reuseValuesBuffer(dst []Value, src []Value) []Value {
+	dst = slices.Grow(dst, len(src))
+	dst = dst[:0]
+
+	for _, val := range src {
+		if val.IsNil() {
+			continue
+		}
+		dst = append(dst, val)
+	}
+
+	filledLength := len(dst)
+
+	dst = dst[:len(src)]
+	clear(dst[filledLength:])
+	return dst
 }
 
 func (pr *pageReader) init(ctx context.Context) error {

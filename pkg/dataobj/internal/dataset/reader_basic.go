@@ -136,9 +136,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	if cap(pr.buf) < len(s) {
-		pr.buf = slices.Grow(pr.buf, len(s))
-	}
+	pr.buf = slices.Grow(pr.buf, len(s))
 	pr.buf = pr.buf[:len(s)]
 
 	startRow := int64(s[0].Index)
@@ -167,6 +165,15 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 			if !ok {
 				return n, fmt.Errorf("column %v is not owned by basicReader", column)
 			}
+
+			// We want to allow readers to reuse memory of [Value]s in s while
+			// allowing the caller to retain ownership over that memory; to do this
+			// safely, we copy memory from s into pr.buf (for the given column index)
+			// for our decoders to use.
+			//
+			// If we didn't do this, then memory backing [Value]s are owned by both
+			// basicReader and the caller, which can lead to memory reuse bugs.
+			pr.buf = reuseRowsBuffer(pr.buf, s[n:], columnIndex)
 
 			r := pr.readers[columnIndex]
 			_, err := r.Seek(startRow, io.SeekStart)
@@ -226,6 +233,33 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 	}
 
 	return n, nil
+}
+
+// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
+// values are appended to dst, with the remainder of the slice set to NULL.
+//
+// The resulting slice is len(src).
+func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
+	dst = slices.Grow(dst, len(src))
+	dst = dst[:0]
+
+	for _, row := range src {
+		if columnIndex >= len(row.Values) {
+			continue
+		}
+
+		value := row.Values[columnIndex]
+		if value.IsNil() {
+			continue
+		}
+		dst = append(dst, value)
+	}
+
+	filledLength := len(dst)
+
+	dst = dst[:len(src)]
+	clear(dst[filledLength:])
+	return dst
 }
 
 // Seek sets the row offset for the next Read call, interpreted according to

@@ -555,6 +555,20 @@ func (s *BufferedPaginatedStore) ToProto() *sketchpb.Store {
 	}
 }
 
+func (s *BufferedPaginatedStore) EncodeProto(builder *sketchpb.StoreBuilder) {
+	if s.IsEmpty() {
+		return
+	}
+
+	s.ForEach(func(index int, count float64) (stop bool) {
+		builder.AddBinCounts(func(w *sketchpb.Store_BinCountsEntryBuilder) {
+			w.SetKey(int32(index))
+			w.SetValue(count)
+		})
+		return false
+	})
+}
+
 func (s *BufferedPaginatedStore) Reweight(w float64) error {
 	if w <= 0 {
 		return errors.New("can't reweight by a negative factor")
