@@ -113,6 +113,12 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error)
 			}
 			stream.Rows = int(columnValue.Int64())
 
+		case streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			stream.UncompressedSize = columnValue.Int64()
+
 		case streamsmd.COLUMN_TYPE_LABEL:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
 				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)

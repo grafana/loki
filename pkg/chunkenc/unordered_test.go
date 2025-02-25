@@ -545,7 +545,12 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					iterator := tc.c.SampleIterator(
+						context.Background(),
+						time.Unix(0, 0),
+						time.Unix(0, math.MaxInt64),
+						countExtractor,
+					)
 					for iterator.Next() {
 						_ = iterator.At()
 					}
@@ -581,7 +586,12 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
-	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	smpl := c.SampleIterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(0, math.MaxInt64),
+		countExtractor,
+	)
 	for smpl.Next() {
 		next := smpl.At().Timestamp
 		require.GreaterOrEqual(t, next, i)
@@ -722,17 +732,17 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
-	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-	if err != nil {
-		panic(err)
-	}
+	countEx, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	bytesEx, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
+	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
 		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
 		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
 		"ordered":                            &headBlock{},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s SampleIterator", name), func(t *testing.T) {
 			dup, err := b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}})
 			require.False(t, dup)
 			require.NoError(t, err)
@@ -742,7 +752,35 @@ func Test_HeadIteratorHash(t *testing.T) {
 				require.Equal(t, lbs.Hash(), eit.StreamHash())
 			}
 
-			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs))
+			sit := b.SampleIterator(context.TODO(), 0, 2, countEx.ForStream(lbs))
+			for sit.Next() {
+				require.Equal(t, lbs.Hash(), sit.StreamHash())
+			}
+		})
+
+		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
+			dup, err := b.Append(1, "bar", labels.Labels{{Name: "bar", Value: "foo"}})
+			require.False(t, dup)
+			require.NoError(t, err)
+			eit := b.Iterator(
+				context.Background(),
+				logproto.BACKWARD,
+				0,
+				2,
+				log.NewNoopPipeline().ForStream(lbs),
+			)
+
+			for eit.Next() {
+				require.Equal(t, lbs.Hash(), eit.StreamHash())
+			}
+
+			sit := b.SampleIterator(
+				context.TODO(),
+				0,
+				2,
+				countEx.ForStream(lbs),
+				bytesEx.ForStream(lbs),
+			)
 			for sit.Next() {
 				require.Equal(t, lbs.Hash(), sit.StreamHash())
 			}

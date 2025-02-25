@@ -132,11 +132,15 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 		return nil, errors.New(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
-	}
-	err := extractedLabels.Validate()
-	if err != nil {
-		return nil, err
+		labelName := model.LabelName(prefix + extraLabelsSplit[i])
+		if !labelName.IsValidLegacy() {
+			return nil, fmt.Errorf("invalid name %q", labelName)
+		}
+		labelValue := model.LabelValue(extraLabelsSplit[i+1])
+		if !labelValue.IsValid() {
+			return nil, fmt.Errorf("invalid value %q", labelValue)
+		}
+		extractedLabels[labelName] = labelValue
 	}
 	fmt.Println("extra labels:", extractedLabels)
 	return extractedLabels, nil
@@ -149,7 +153,7 @@ func getDropLabels() ([]model.LabelName, error) {
 		dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
 		for _, dropLabelRaw := range dropLabelsRawSplit {
 			dropLabel := model.LabelName(dropLabelRaw)
-			if !dropLabel.IsValid() {
+			if !dropLabel.IsValidLegacy() {
 				return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
 			}
 			result = append(result, dropLabel)

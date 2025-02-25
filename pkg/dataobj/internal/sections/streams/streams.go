@@ -28,10 +28,11 @@ type Stream struct {
 	// object.
 	ID int64
 
-	Labels       labels.Labels // Stream labels.
-	MinTimestamp time.Time     // Minimum timestamp in the stream.
-	MaxTimestamp time.Time     // Maximum timestamp in the stream.
-	Rows         int           // Number of rows in the stream.
+	Labels           labels.Labels // Stream labels.
+	MinTimestamp     time.Time     // Minimum timestamp in the stream.
+	MaxTimestamp     time.Time     // Maximum timestamp in the stream.
+	UncompressedSize int64         // Uncompressed size of the log lines and structured metadata values in the stream.
+	Rows             int           // Number of rows in the stream.
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
@@ -40,6 +41,7 @@ func (s *Stream) Reset() {
 	s.Labels = nil
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
+	s.UncompressedSize = 0
 	s.Rows = 0
 }
 
@@ -90,9 +92,10 @@ func (s *Streams) TimeRange() (time.Time, time.Time) {
 // Record a stream record within the Streams section. The provided timestamp is
 // used to track the minimum and maximum timestamp of a stream. The number of
 // calls to Record is used to track the number of rows for a stream.
+// The recordSize is used to track the uncompressed size of the stream.
 //
 // The stream ID of the recorded stream is returned.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
+func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, recordSize int64) int64 {
 	ts = ts.UTC()
 	s.observeRecord(ts)
 
@@ -104,6 +107,8 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
 		stream.MaxTimestamp = ts
 	}
 	stream.Rows++
+	stream.UncompressedSize += recordSize
+
 	return stream.ID
 }
 
@@ -238,6 +243,10 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
+	uncompressedSizeBuilder, err := numberColumnBuilder(s.pageSize)
+	if err != nil {
+		return fmt.Errorf("creating uncompressed size column: %w", err)
+	}
 
 	var (
 		labelBuilders      []*dataset.ColumnBuilder
@@ -275,6 +284,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
+		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(stream.UncompressedSize))
 
 		for _, label := range stream.Labels {
 			builder, err := getLabelColumn(label.Name)
@@ -304,6 +314,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
 		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
 		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
+		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}

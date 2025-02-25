@@ -847,6 +847,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.sha-prefix-size
       [shaprefixsize: <int> | default = 2]
 
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
@@ -2413,6 +2418,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # about how to configure authentication.
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
+
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
 
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
@@ -4046,6 +4055,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Enable experimental support for running multiple query variants over the
+  # same underlying data. For example, running both a rate() and
+  # count_over_time() query over the same range selector.
+  # CLI flag: -querier.engine.enable-multi-variant-queries
+  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
