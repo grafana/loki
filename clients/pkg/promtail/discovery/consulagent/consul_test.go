@@ -15,13 +15,14 @@ package consulagent
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -364,7 +365,7 @@ func newServer(t *testing.T) (*httptest.Server, *SDConfig) {
 }
 
 func newDiscovery(t *testing.T, config *SDConfig) *Discovery {
-	logger := log.NewNopLogger()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	metrics := NewTestMetrics(t, config, prometheus.NewRegistry())
 	d, err := NewDiscovery(config, logger, metrics)
 	require.NoError(t, err)

@@ -9,6 +9,8 @@ weight:
 
 # timestamp
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `timestamp` stage is an action stage that can change the timestamp of a log
 line before it is sent to Loki. When a `timestamp` stage is not present, the
 timestamp of a log line defaults to the time when the log entry is scraped.

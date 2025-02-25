@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.14.0...auth/v0.14.1) (2025-01-24)
+
+
+### Documentation
+
+* **auth:** Add warning about externally-provided credentials ([#11462](https://github.com/googleapis/google-cloud-go/issues/11462)) ([49fb6ff](https://github.com/googleapis/google-cloud-go/commit/49fb6ff4d754895f82c9c4d502fc7547d3b5a941))
+
 ## [0.14.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.13.0...auth/v0.14.0) (2025-01-08)
 
 

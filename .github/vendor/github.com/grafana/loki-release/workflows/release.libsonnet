@@ -182,6 +182,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         + step.with({
           imageDir: 'images',
           imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
         }),
       ]
     ),
@@ -219,6 +220,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           imagePrefix: '${{ env.IMAGE_PREFIX }}',
           isPlugin: true,
           buildDir: 'release/%s' % path,
+          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
         }),
       ]
     ),

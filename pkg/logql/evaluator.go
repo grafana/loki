@@ -235,22 +235,23 @@ func ParamOverridesFromShard(base Params, shard *ShardWithChunkRefs) (result Par
 
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
-	var sortable bool
-	expr, ok := q.GetExpression().(syntax.SampleExpr)
-	if !ok {
-		return false, errors.New("only sample expression supported")
+	switch expr := q.GetExpression().(type) {
+	case syntax.VariantsExpr:
+		return false, nil
+	case syntax.SampleExpr:
+		var sortable bool
+		expr.Walk(func(e syntax.Expr) {
+			if rangeExpr, ok := e.(*syntax.VectorAggregationExpr); ok {
+				if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
+					sortable = true
+					return
+				}
+			}
+		})
+		return sortable, nil
+	default:
+		return false, errors.New("only sample and variants expressions supported")
 	}
-	expr.Walk(func(e syntax.Expr) {
-		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
-		if !ok {
-			return
-		}
-		if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
-			sortable = true
-			return
-		}
-	})
-	return sortable, nil
 }
 
 // EvaluatorFactory is an interface for iterating over data at different nodes in the AST

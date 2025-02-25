@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -41,6 +42,7 @@ type Limits interface {
 	StreamRetention(userID string) []validation.StreamRetention
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
+	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
@@ -129,6 +131,11 @@ func NewTenantsRetention(l Limits) *TenantsRetention {
 	return &TenantsRetention{
 		limits: l,
 	}
+}
+
+func (tr *TenantsRetention) RetentionHoursFor(userID string, lbs labels.Labels) string {
+	period := tr.RetentionPeriodFor(userID, lbs)
+	return util.RetentionHours(period)
 }
 
 func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {

@@ -47,7 +47,7 @@ type HeadBlock interface {
 		ctx context.Context,
 		mint,
 		maxt int64,
-		extractor log.StreamSampleExtractor,
+		extractor ...log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
@@ -305,15 +305,14 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	})
 }
 
-// nolint:unused
 func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
 	maxt int64,
-	extractor log.StreamSampleExtractor,
+	extractor ...log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
+	setQueryReferencedStructuredMetadata := false
 	var structuredMetadata labels.Labels
 	_ = hb.forEntries(
 		ctx,
@@ -322,35 +321,43 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
-			value, parsedLabels, ok := extractor.ProcessString(ts, line, structuredMetadata...)
-			if !ok {
-				return nil
+
+			for _, extractor := range extractor {
+				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				if !ok {
+					return nil
+				}
+				var (
+					found bool
+					s     *logproto.Series
+				)
+
+				lblStr := lbls.String()
+				s, found = series[lblStr]
+				if !found {
+					baseHash := extractor.BaseLabels().Hash()
+					s = &logproto.Series{
+						Labels:     lblStr,
+						Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+						StreamHash: baseHash,
+					}
+					series[lblStr] = s
+				}
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: ts,
+					Value:     value,
+					Hash:      xxhash.Sum64(unsafeGetBytes(line)),
+				})
+				if extractor.ReferencedStructuredMetadata() {
+					setQueryReferencedStructuredMetadata = true
+				}
 			}
 			statsCtx.AddPostFilterLines(1)
-			var (
-				found bool
-				s     *logproto.Series
-			)
-			lbs := parsedLabels.String()
-			s, found = series[lbs]
-			if !found {
-				s = &logproto.Series{
-					Labels:     lbs,
-					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-					StreamHash: baseHash,
-				}
-				series[lbs] = s
-			}
-			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: ts,
-				Value:     value,
-				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
-			})
 			return nil
 		},
 	)
 
-	if extractor.ReferencedStructuredMetadata() {
+	if setQueryReferencedStructuredMetadata {
 		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
 	}
 

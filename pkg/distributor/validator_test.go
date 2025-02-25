@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -130,8 +131,9 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
+			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -224,12 +226,13 @@ func TestValidator_ValidateLabels(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			l := &validation.Limits{}
 			flagext.DefaultValues(l)
+			retentionHours := util.RetentionHours(time.Duration(l.RetentionPeriod))
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})
+			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "")
 			assert.Equal(t, tt.expected, err)
 		})
 	}

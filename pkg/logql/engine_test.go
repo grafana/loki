@@ -38,6 +38,44 @@ var (
 	ErrMockMultiple = util.MultiError{ErrMock, ErrMock}
 )
 
+func TestEngine_checkIntervalLimit(t *testing.T) {
+	q := &query{}
+	for _, tc := range []struct {
+		query  string
+		expErr string
+	}{
+		{query: `rate({app="foo"} [1m])`, expErr: ""},
+		{query: `rate({app="foo"} [10m])`, expErr: ""},
+		{query: `max(rate({app="foo"} [5m])) - max(rate({app="bar"} [10m]))`, expErr: ""},
+		{query: `rate({app="foo"} [5m]) - rate({app="bar"} [15m])`, expErr: "[15m] > [10m]"},
+		{query: `rate({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
+		{query: `sum(rate({app="foo"} [1h]))`, expErr: "[1h] > [10m]"},
+		{query: `sum_over_time({app="foo"} |= "foo" | json | unwrap bar [1h])`, expErr: "[1h] > [10m]"},
+	} {
+		for _, downstream := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
+				expr := syntax.MustParseExpr(tc.query).(syntax.SampleExpr)
+				if downstream {
+					// Simulate downstream expression
+					expr = &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard:      nil,
+							SampleExpr: expr,
+						},
+						next: nil,
+					}
+				}
+				err := q.checkIntervalLimit(expr, 10*time.Minute)
+				if tc.expErr != "" {
+					require.ErrorContains(t, err, tc.expErr)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	}
+}
+
 func TestEngine_LogsRateUnwrap(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -2313,7 +2351,10 @@ func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.Entr
 	return iter.NoopEntryIterator, nil
 }
 
-func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
+func (metaQuerier) SelectSamples(
+	ctx context.Context,
+	_ SelectSampleParams,
+) (iter.SampleIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
@@ -2627,9 +2668,13 @@ func TestHashingStability(t *testing.T) {
 func TestUnexpectedEmptyResults(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	mock := &mockEvaluatorFactory{SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
-		return EmptyEvaluator[SampleVector]{value: nil}, nil
-	})}
+	mock := &mockEvaluatorFactory{
+		SampleEvaluatorFunc(
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+				return EmptyEvaluator[SampleVector]{value: nil}, nil
+			},
+		),
+	}
 
 	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
 	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 0, nil, nil)
@@ -2730,7 +2775,10 @@ func (q *querierRecorder) SelectLogs(_ context.Context, p SelectLogParams) (iter
 	return iter.NewStreamsIterator(streams, p.Direction), nil
 }
 
-func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (q *querierRecorder) SelectSamples(
+	_ context.Context,
+	p SelectSampleParams,
+) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
 			return iter.NewMultiSeriesIterator(s), nil

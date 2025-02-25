@@ -1,5 +1,21 @@
 # Changes
 
+## [1.35.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.34.0...bigtable/v1.35.0) (2025-01-22)
+
+
+### Features
+
+* **bigtable:** Hot backups ([#11215](https://github.com/googleapis/google-cloud-go/issues/11215)) ([238ac1c](https://github.com/googleapis/google-cloud-go/commit/238ac1c37978b7ccdd72af453416308c511dd493))
+
+
+### Bug Fixes
+
+* **bigtable:** Allow nil condition in conditional mutation ([#11457](https://github.com/googleapis/google-cloud-go/issues/11457)) ([d83bc05](https://github.com/googleapis/google-cloud-go/commit/d83bc05219223027cfaa3fba127c2f03eb554c53))
+* **bigtable:** Do not retry conditional mutate ([#11437](https://github.com/googleapis/google-cloud-go/issues/11437)) ([ce8c9b1](https://github.com/googleapis/google-cloud-go/commit/ce8c9b1e5523646175b9650265928386143259fd))
+* **bigtable:** Mutate groups even after first error ([#11434](https://github.com/googleapis/google-cloud-go/issues/11434)) ([6ffe32b](https://github.com/googleapis/google-cloud-go/commit/6ffe32b76e7228d99e12eeba60a5e719f2d3e5e3))
+* **bigtable:** Retry correct mutations ([#11388](https://github.com/googleapis/google-cloud-go/issues/11388)) ([ca2c4e3](https://github.com/googleapis/google-cloud-go/commit/ca2c4e334f07e7f8f0e276db922122d47262dabf))
+* **bigtable:** Track number of readrows to set rowsLimit in subsequent requests ([#10213](https://github.com/googleapis/google-cloud-go/issues/10213)) ([abb615e](https://github.com/googleapis/google-cloud-go/commit/abb615e240e612540b24b03d95835058045275fc))
+
 ## [1.34.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.33.0...bigtable/v1.34.0) (2025-01-02)
 
 

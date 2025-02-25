@@ -33,7 +33,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 				continue
 			}
 
-			for result := range iterSection(ctx, logsDec, section) {
+			for result := range IterSection(ctx, logsDec, section) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -44,7 +44,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	})
 }
 
-func iterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.SectionInfo) result.Seq[Record] {
+func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.SectionInfo) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.

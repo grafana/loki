@@ -9,6 +9,8 @@ weight:
 
 # drop
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `drop` stage is a filtering stage that lets you drop logs based on several options.
 
 It's important to note that if you provide multiple options they will be treated like an AND clause,

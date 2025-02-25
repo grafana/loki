@@ -9,6 +9,8 @@ weight:  500
 
 # Promtail and Log Rotation
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 ## Why does log rotation matter?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.

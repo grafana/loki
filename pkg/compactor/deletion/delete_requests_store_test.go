@@ -21,23 +21,31 @@ func TestDeleteRequestsStore(t *testing.T) {
 
 	// add requests for both the users to the store
 	for i := 0; i < len(tc.user1Requests); i++ {
-		resp, err := tc.store.AddDeleteRequestGroup(
+		resp, err := tc.store.AddDeleteRequest(
 			context.Background(),
-			[]DeleteRequest{tc.user1Requests[i]},
+			tc.user1Requests[i].UserID,
+			tc.user1Requests[i].Query,
+			tc.user1Requests[i].StartTime,
+			tc.user1Requests[i].EndTime,
+			0,
 		)
 		require.NoError(t, err)
-		tc.user1Requests[i] = resp[0]
+		tc.user1Requests[i].RequestID = resp
 
-		resp, err = tc.store.AddDeleteRequestGroup(
+		resp, err = tc.store.AddDeleteRequest(
 			context.Background(),
-			[]DeleteRequest{tc.user2Requests[i]},
+			tc.user2Requests[i].UserID,
+			tc.user2Requests[i].Query,
+			tc.user2Requests[i].StartTime,
+			tc.user2Requests[i].EndTime,
+			0,
 		)
 		require.NoError(t, err)
-		tc.user2Requests[i] = resp[0]
+		tc.user2Requests[i].RequestID = resp
 	}
 
 	// get all requests with StatusReceived and see if they have expected values
-	deleteRequests, err := tc.store.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := tc.store.GetUnprocessedShards(context.Background())
 	require.NoError(t, err)
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
@@ -60,14 +68,13 @@ func TestDeleteRequestsStore(t *testing.T) {
 
 	// get individual delete requests by id and see if they have expected values
 	for _, expectedRequest := range append(user1Requests, user2Requests...) {
-		actualRequest, err := tc.store.GetDeleteRequestGroup(context.Background(), expectedRequest.UserID, expectedRequest.RequestID)
+		actualRequest, err := tc.store.GetDeleteRequest(context.Background(), expectedRequest.UserID, expectedRequest.RequestID)
 		require.NoError(t, err)
-		require.Len(t, actualRequest, 1)
-		require.Equal(t, expectedRequest, actualRequest[0])
+		require.Equal(t, expectedRequest, actualRequest)
 	}
 
 	// try a non-existent request and see if it throws ErrDeleteRequestNotFound
-	_, err = tc.store.GetDeleteRequestGroup(context.Background(), "user3", "na")
+	_, err = tc.store.GetDeleteRequest(context.Background(), "user3", "na")
 	require.ErrorIs(t, err, ErrDeleteRequestNotFound)
 
 	// update some of the delete requests for both the users to processed
@@ -81,7 +88,7 @@ func TestDeleteRequestsStore(t *testing.T) {
 			request = tc.user2Requests[i]
 		}
 
-		require.NoError(t, tc.store.UpdateStatus(context.Background(), request, StatusProcessed))
+		require.NoError(t, tc.store.MarkShardAsProcessed(context.Background(), request))
 	}
 
 	// see if requests in the store have right values
@@ -93,13 +100,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
+	// caches should not be invalidated when we mark delete request as processed
 	updateGenNumber, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
 	require.NoError(t, err)
-	require.NotEqual(t, createGenNumber, updateGenNumber)
+	require.Equal(t, createGenNumber, updateGenNumber)
 
 	updateGenNumber2, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
 	require.NoError(t, err)
-	require.NotEqual(t, createGenNumber2, updateGenNumber2)
+	require.Equal(t, createGenNumber2, updateGenNumber2)
 
 	// delete the requests from the store updated previously
 	var remainingRequests []DeleteRequest
@@ -115,11 +123,11 @@ func TestDeleteRequestsStore(t *testing.T) {
 			remainingRequests = append(remainingRequests, tc.user1Requests[i])
 		}
 
-		require.NoError(t, tc.store.RemoveDeleteRequests(context.Background(), []DeleteRequest{request}))
+		require.NoError(t, tc.store.RemoveDeleteRequest(context.Background(), request.UserID, request.RequestID))
 	}
 
 	// see if the store has the right remaining requests
-	deleteRequests, err = tc.store.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err = tc.store.GetUnprocessedShards(context.Background())
 	require.NoError(t, err)
 	compareRequests(t, remainingRequests, deleteRequests)
 
@@ -137,42 +145,37 @@ func TestBatchCreateGet(t *testing.T) {
 		tc := setup(t)
 		defer tc.store.Stop()
 
-		requests, err := tc.store.AddDeleteRequestGroup(context.Background(), tc.user1Requests)
+		reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
+		require.NoError(t, err)
+
+		requests, err := tc.store.getDeleteRequestGroup(context.Background(), user1, reqID)
 		require.NoError(t, err)
 
 		for i, req := range requests {
 			require.Equal(t, req.RequestID, requests[0].RequestID)
 			require.Equal(t, req.Status, requests[0].Status)
 			require.Equal(t, req.CreatedAt, requests[0].CreatedAt)
+			require.Equal(t, req.Query, requests[0].Query)
+			require.Equal(t, req.UserID, requests[0].UserID)
 
 			require.Equal(t, req.SequenceNum, int64(i))
 		}
-	})
-
-	t.Run("returns all the requests that share a request id", func(t *testing.T) {
-		tc := setup(t)
-		defer tc.store.Stop()
-
-		savedRequests, err := tc.store.AddDeleteRequestGroup(context.Background(), tc.user1Requests)
-		require.NoError(t, err)
-
-		results, err := tc.store.GetDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
-		require.NoError(t, err)
-
-		require.Equal(t, savedRequests, results)
 	})
 
 	t.Run("updates a single request with a new status", func(t *testing.T) {
 		tc := setup(t)
 		defer tc.store.Stop()
 
-		savedRequests, err := tc.store.AddDeleteRequestGroup(context.Background(), tc.user1Requests)
+		reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
 		require.NoError(t, err)
 
-		err = tc.store.UpdateStatus(context.Background(), savedRequests[1], StatusProcessed)
+		savedRequests, err := tc.store.getDeleteRequestGroup(context.Background(), user1, reqID)
 		require.NoError(t, err)
 
-		results, err := tc.store.GetDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
+		err = tc.store.MarkShardAsProcessed(context.Background(), savedRequests[1])
+		require.NoError(t, err)
+
+		results, err := tc.store.getDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
 		require.NoError(t, err)
 
 		require.Equal(t, StatusProcessed, results[1].Status)
@@ -182,16 +185,147 @@ func TestBatchCreateGet(t *testing.T) {
 		tc := setup(t)
 		defer tc.store.Stop()
 
-		savedRequests, err := tc.store.AddDeleteRequestGroup(context.Background(), tc.user1Requests)
+		reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
 		require.NoError(t, err)
 
-		err = tc.store.RemoveDeleteRequests(context.Background(), savedRequests)
+		err = tc.store.RemoveDeleteRequest(context.Background(), user1, reqID)
 		require.NoError(t, err)
 
-		results, err := tc.store.GetDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
+		results, err := tc.store.GetDeleteRequest(context.Background(), user1, reqID)
 		require.ErrorIs(t, err, ErrDeleteRequestNotFound)
 		require.Empty(t, results)
 	})
+}
+
+func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		reqsToAdd              []storeAddReqDetails
+		shouldMarkProcessed    func(DeleteRequest) bool
+		requestsShouldBeMerged bool
+	}{
+		{
+			name: "no requests in store",
+		},
+		{
+			name: "none of the requests are processed - should not merge",
+			reqsToAdd: []storeAddReqDetails{
+				{
+					userID:          user1,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+			},
+			shouldMarkProcessed: func(_ DeleteRequest) bool {
+				return false
+			},
+		},
+		{
+			name: "not all requests are processed - should not merge",
+			reqsToAdd: []storeAddReqDetails{
+				{
+					userID:          user1,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+			},
+			shouldMarkProcessed: func(request DeleteRequest) bool {
+				return request.SequenceNum%2 == 0
+			},
+		},
+		{
+			name: "all the requests are processed - should merge",
+			reqsToAdd: []storeAddReqDetails{
+				{
+					userID:          user1,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+			},
+			shouldMarkProcessed: func(_ DeleteRequest) bool {
+				return true
+			},
+			requestsShouldBeMerged: true,
+		},
+		{ // build requests for 2 different users and mark all requests as processed for just one of the two
+			name: "merging requests from one user should not touch another users requests",
+			reqsToAdd: []storeAddReqDetails{
+				{
+					userID:          user1,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+				{
+					userID:          user2,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+			},
+			shouldMarkProcessed: func(request DeleteRequest) bool {
+				return request.UserID == user2
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			workingDir := filepath.Join(tempDir, "working-dir")
+			objectStorePath := filepath.Join(tempDir, "object-store")
+
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{
+				Directory: objectStorePath,
+			})
+			require.NoError(t, err)
+			ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+			require.NoError(t, err)
+
+			for _, addReqDetails := range tc.reqsToAdd {
+				_, err := ds.AddDeleteRequest(context.Background(), addReqDetails.userID, addReqDetails.query, addReqDetails.startTime, addReqDetails.endTime, addReqDetails.shardByInterval)
+				require.NoError(t, err)
+			}
+
+			reqs, err := ds.GetAllShards(context.Background())
+			require.NoError(t, err)
+
+			for _, req := range reqs {
+				if !tc.shouldMarkProcessed(req) {
+					continue
+				}
+				require.NoError(t, ds.MarkShardAsProcessed(context.Background(), req))
+			}
+
+			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1)
+			require.NoError(t, err)
+
+			require.NoError(t, ds.MergeShardedRequests(context.Background()))
+			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1)
+			require.NoError(t, err)
+
+			if tc.requestsShouldBeMerged {
+				require.Len(t, inStoreReqsAfterMerging, 1)
+				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
+					UserID:    user1,
+					Query:     tc.reqsToAdd[0].query,
+					StartTime: tc.reqsToAdd[0].startTime,
+					EndTime:   tc.reqsToAdd[len(tc.reqsToAdd)-1].endTime,
+					Status:    StatusProcessed,
+				}))
+			} else {
+				require.Len(t, inStoreReqsAfterMerging, len(inStoreReqs))
+				require.Equal(t, inStoreReqs, inStoreReqsAfterMerging)
+			}
+		})
+	}
 }
 
 func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequest) {
@@ -203,7 +337,7 @@ func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequ
 		return actual[i].RequestID < actual[j].RequestID
 	})
 	for i, deleteRequest := range actual {
-		require.Equal(t, expected[i], deleteRequest)
+		require.True(t, requestsAreEqual(expected[i], deleteRequest))
 	}
 }
 
@@ -238,8 +372,6 @@ func setup(t *testing.T) *testContext {
 
 	// build the store
 	tempDir := t.TempDir()
-	//tempDir := os.TempDir()
-	fmt.Println(tempDir)
 
 	workingDir := filepath.Join(tempDir, "working-dir")
 	objectStorePath := filepath.Join(tempDir, "object-store")

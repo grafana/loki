@@ -29,6 +29,7 @@ dlv
 rootfs/
 dist
 !pkg/dataobj/explorer/dist
+!pkg/ui/frontend/dist
 *coverage.txt
 *test_results.txt
 .DS_Store
@@ -37,8 +38,8 @@ dist
 pkg/loki/wal
 tools/lambda-promtail/main
 tools/dev/kafka/data/
-pkg/dataobj/explorer/ui/node_modules/*
-pkg/dataobj/explorer/ui/.vite/*
+pkg/ui/frontend/node_modules/*
+pkg/ui/frontend/.vite/*
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login

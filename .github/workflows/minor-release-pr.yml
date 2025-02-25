@@ -16,7 +16,7 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
-      build_image: "grafana/loki-build-image:0.34.4"
+      build_image: "grafana/loki-build-image:0.34.5"
       golang_ci_lint_version: "v1.60.3"
       release_lib_ref: "main"
       skip_validation: false
@@ -144,7 +144,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.34.4"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.34.5"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -618,7 +618,7 @@ jobs:
   loki-docker-driver:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -649,9 +649,9 @@ jobs:
         mkdir -p images
         mkdir -p plugins
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
         if [[ "${platform}" == "linux/arm64" ]]; then
           echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
         else
@@ -666,11 +666,11 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=grafana/loki-build-image:0.34.4
+          BUILD_IMAGE=grafana/loki-build-image:0.34.5
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
@@ -689,14 +689,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
+        include:
         - arch: "linux/amd64"
           runs_on:
           - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on:
-          - "github-hosted-ubuntu-arm64-small"
-        - arch: "linux/arm"
           runs_on:
           - "github-hosted-ubuntu-arm64-small"
   promtail:

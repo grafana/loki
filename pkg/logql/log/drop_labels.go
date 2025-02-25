@@ -6,28 +6,28 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-type DropLabels struct {
-	dropLabels []DropLabel
-}
-
-type DropLabel struct {
+type NamedLabelMatcher struct {
 	Matcher *labels.Matcher
 	Name    string
 }
 
-func NewDropLabel(matcher *labels.Matcher, name string) DropLabel {
-	return DropLabel{
-		Matcher: matcher,
-		Name:    name,
+func NewNamedLabelMatcher(m *labels.Matcher, n string) NamedLabelMatcher {
+	return NamedLabelMatcher{
+		Matcher: m,
+		Name:    n,
 	}
 }
 
-func NewDropLabels(dl []DropLabel) *DropLabels {
-	return &DropLabels{dropLabels: dl}
+type DropLabels struct {
+	labels []NamedLabelMatcher
+}
+
+func NewDropLabels(labels []NamedLabelMatcher) *DropLabels {
+	return &DropLabels{labels: labels}
 }
 
 func (dl *DropLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
-	for _, dropLabel := range dl.dropLabels {
+	for _, dropLabel := range dl.labels {
 		if dropLabel.Matcher != nil {
 			dropLabelMatches(dropLabel.Matcher, lbls)
 			continue

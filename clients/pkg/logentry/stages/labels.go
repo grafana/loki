@@ -26,7 +26,7 @@ func validateLabelsConfig(c LabelsConfig) error {
 		return errors.New(ErrEmptyLabelStageConfig)
 	}
 	for labelName, labelSrc := range c {
-		if !model.LabelName(labelName).IsValid() {
+		if !model.LabelName(labelName).IsValidLegacy() {
 			return fmt.Errorf(ErrInvalidLabelName, labelName)
 		}
 		// If no label source was specified, use the key name

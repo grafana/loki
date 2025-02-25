@@ -7,12 +7,13 @@ import (
 	"log"
 
 	"github.com/dustin/go-humanize"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
-func Inspect(dataobj io.ReadSeeker) {
-	reader := encoding.ReadSeekerDecoder(dataobj)
+func Inspect(dataobj io.ReaderAt, size int64) {
+	reader := encoding.ReaderAtDecoder(dataobj, size)
 
 	sections, err := reader.Sections(context.Background())
 	if err != nil {

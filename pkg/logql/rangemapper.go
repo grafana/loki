@@ -208,7 +208,7 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 		switch concrete := e.(type) {
 		case *syntax.LogfmtParserExpr:
 			found = true
-		case *syntax.LabelParserExpr:
+		case *syntax.LineParserExpr:
 			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
 			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
 			if concrete.Op == syntax.OpParserTypeJSON {

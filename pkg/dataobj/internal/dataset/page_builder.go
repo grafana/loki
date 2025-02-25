@@ -46,6 +46,10 @@ type pageBuilder struct {
 
 	rows   int // Number of rows appended to the builder.
 	values int // Number of non-NULL values appended to the builder.
+
+	// minValue and maxValue track the minimum and maximum values appended to the
+	// page. These are used to compute statistics for the page if requested.
+	minValue, maxValue Value
 }
 
 // newPageBuilder creates a new pageBuilder that stores a sequence of [Value]s.
@@ -95,6 +99,11 @@ func (b *pageBuilder) Append(value Value) bool {
 		return false
 	}
 
+	// Update statistics. We only do this for non-NULL values,
+	// otherwise NULL would always be the min for columns that contain a single
+	// NULL.
+	b.accumulateStatistics(value)
+
 	// The following calls won't fail; they only return errors when the
 	// underlying writers fail, which ours cannot.
 	if err := b.presenceEnc.Encode(Uint64Value(1)); err != nil {
@@ -129,6 +138,27 @@ func (b *pageBuilder) AppendNull() bool {
 
 	b.rows++
 	return true
+}
+
+func (b *pageBuilder) accumulateStatistics(value Value) {
+	// As a small optimization, we only update min/max values if we're intending
+	// on populating them in statistics. This avoids unnecessary comparisons for very
+	// large values.
+	if b.opts.Statistics.StoreRangeStats {
+		b.updateMinMax(value)
+	}
+}
+
+func (b *pageBuilder) updateMinMax(value Value) {
+	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
+	// This allows us to only avoid comparing against NULL values, which would lead to
+	// NULL always being the min.
+	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+		b.minValue = value
+	}
+	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+		b.maxValue = value
+	}
 }
 
 func valueSize(v Value) int {
@@ -220,15 +250,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 			ValuesCount:      b.values,
 
 			Encoding: b.opts.Encoding,
-
-			// TODO(rfratto): At the moment we don't compute stats because they're
-			// not going to be valuable in every scenario: the min/max values for log
-			// lines is less useful compared to the min/max values for timestamps.
-			//
-			// In the future, we may wish to add more options to pageBuilder to tell
-			// it to compute a subset of stats to avoid needing a second iteration
-			// over the page to compute them.
-			Stats: nil,
+			Stats:    b.buildStats(),
 		},
 
 		Data: finalData.Bytes(),
@@ -236,6 +258,30 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 
 	b.Reset() // Reset state before returning.
 	return &page, nil
+}
+
+func (b *pageBuilder) buildStats() *datasetmd.Statistics {
+	var stats datasetmd.Statistics
+	if b.opts.Statistics.StoreRangeStats {
+		b.buildRangeStats(&stats)
+		return &stats
+	}
+	return nil
+}
+
+func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
+
+	minValueBytes, err := b.minValue.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))
+	}
+	maxValueBytes, err := b.maxValue.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal max value: %s", err))
+	}
+
+	dst.MinValue = minValueBytes
+	dst.MaxValue = maxValueBytes
 }
 
 // Reset resets the pageBuilder to a fresh state, allowing it to be reused.
@@ -247,4 +293,6 @@ func (b *pageBuilder) Reset() {
 	b.valuesEnc.Reset(b.valuesWriter)
 	b.rows = 0
 	b.values = 0
+	b.minValue = Value{}
+	b.maxValue = Value{}
 }

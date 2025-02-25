@@ -9,6 +9,8 @@ weight:
 
 # eventlogmessage
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `eventlogmessage` stage is a parsing stage that extracts data from the Message string that appears in the Windows Event Log.
 
 ## Schema

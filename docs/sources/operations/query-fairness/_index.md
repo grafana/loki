@@ -18,7 +18,7 @@ different users, because they all share the same resources for a tenant.
 In that case, as an operator, you would also want to ensure some sort of query
 fairness across these actors within the tenants. An actor could be a Grafana user,
 a CLI user, or an application accessing the API. To achieve that, Loki
-introduces hierarchical scheduler queues in version 2.9 based on
+introduced hierarchical scheduler queues in version 2.9 based on
 [LID 0003: Query fairness across users within tenants]({{< relref "../../community/lids/0003-QueryFairnessInScheduler.md" >}})
 and they are enabled by default.
 

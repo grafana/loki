@@ -56,6 +56,10 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 
 	go dm.loop()
 
+	if err := dm.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
+	}
+
 	return dm
 }
 
@@ -84,7 +88,7 @@ func (d *DeleteRequestsManager) Stop() {
 }
 
 func (d *DeleteRequestsManager) updateMetrics() error {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return err
 	}
@@ -199,7 +203,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 }
 
 func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +354,7 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 }
 
 func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
-	if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
+	if err := d.deleteRequestsStore.MarkShardAsProcessed(context.Background(), deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log(
 			"msg", "failed to mark delete request for user as processed",
 			"delete_request_id", deleteRequest.RequestID,
@@ -392,6 +396,10 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 			"user", req.UserID,
 		)
 		d.markRequestAsProcessed(req)
+	}
+
+	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 }
 

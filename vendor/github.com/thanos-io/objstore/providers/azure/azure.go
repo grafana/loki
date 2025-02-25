@@ -429,3 +429,7 @@ func NewTestBucket(t testing.TB, component string) (objstore.Bucket, func(), err
 func (b *Bucket) Close() error {
 	return nil
 }
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: Azure.GetAndReplace")
+}

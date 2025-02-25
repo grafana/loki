@@ -1,6 +1,6 @@
 ---
 # golangci.com configuration
-# https://github.com/golangci/golangci/wiki/Configuration
+# https://golangci-lint.run/usage/configuration/
 linters-settings:
   copyloopvar:
     check-alias: true
@@ -12,9 +12,8 @@ linters-settings:
     - blank
     - dot
   govet:
-    shadow: true
-  maligned:
-    suggest-new: true
+    enable:
+    - shadow
   misspell:
     locale: US
   revive:
@@ -43,8 +42,3 @@ linters:
 
 issues:
   exclude-use-default: false
-  exclude-rules:
-    # - text: "could be of size"
-    #   path: api/v1beta1/lokistack_types.go
-    #   linters:
-    #     - maligned

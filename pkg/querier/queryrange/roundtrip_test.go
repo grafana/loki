@@ -1005,6 +1005,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
+		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1273,11 +1274,14 @@ func Test_getOperation(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := getOperation(tc.path)
-			assert.Equal(t, tc.expectedOp, got)
-		})
+	for _, pathPrefix := range []string{"", "/proxy"} {
+		for _, tc := range cases {
+			name := tc.name + pathPrefix + tc.path
+			t.Run(name, func(t *testing.T) {
+				got := getOperation(pathPrefix + tc.path)
+				assert.Equal(t, tc.expectedOp, got)
+			})
+		}
 	}
 }
 
@@ -1461,7 +1465,7 @@ func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryRange(context.Context, string) time.Duration {
-	return time.Second
+	return time.Hour
 }
 
 func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {

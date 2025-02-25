@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
-	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -225,7 +224,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 		jobsCount++
 	}
 	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
-		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:util_math.Min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
+		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
 	})
 }
 

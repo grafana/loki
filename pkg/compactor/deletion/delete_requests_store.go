@@ -7,18 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type (
@@ -41,13 +43,19 @@ const (
 var ErrDeleteRequestNotFound = errors.New("could not find matching delete requests")
 
 type DeleteRequestsStore interface {
-	AddDeleteRequestGroup(ctx context.Context, req []DeleteRequest) ([]DeleteRequest, error)
-	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
+	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
+	GetAllRequests(ctx context.Context) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
-	UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error
-	GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error)
-	RemoveDeleteRequests(ctx context.Context, req []DeleteRequest) error
+	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
+	GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
+	MergeShardedRequests(ctx context.Context) error
+
+	// ToDo(Sandeep): To keep changeset smaller, below 2 methods treat a single shard as individual request. This can be refactored later in a separate PR.
+	MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error
+	GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error)
+	GetAllShards(ctx context.Context) ([]DeleteRequest, error)
+
 	Stop()
 	Name() string
 }
@@ -75,40 +83,51 @@ func (ds *deleteRequestsStore) Stop() {
 	ds.indexClient.Stop()
 }
 
-// AddDeleteRequestGroup creates entries for new delete requests. All passed delete requests will be associated to
+// AddDeleteRequest creates entries for new delete requests. All passed delete requests will be associated to
 // each other by request id
-func (ds *deleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	reqs := buildRequests(shardByInterval, query, userID, startTime, endTime)
 	if len(reqs) == 0 {
-		return nil, nil
+		return "", fmt.Errorf("zero delete requests created")
 	}
-
 	createdAt := ds.now()
 	writeBatch := ds.indexClient.NewWriteBatch()
 	requestID, err := ds.generateID(ctx, reqs[0])
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	var results []DeleteRequest
 	for i, req := range reqs {
 		newReq, err := newRequest(req, requestID, createdAt, i)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
-		results = append(results, newReq)
 		ds.writeDeleteRequest(newReq, writeBatch)
 	}
+	ds.updateCacheGen(reqs[0].UserID, writeBatch)
 
 	if err := ds.indexClient.BatchWrite(ctx, writeBatch); err != nil {
-		return nil, err
+		return "", err
 	}
 
-	return results, nil
+	return requestID, nil
 }
 
-func newRequest(req DeleteRequest, requestID []byte, createdAt model.Time, seqNumber int) (DeleteRequest, error) {
-	req.RequestID = string(requestID)
+func (ds *deleteRequestsStore) mergeShardedRequests(ctx context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
+	writeBatch := ds.indexClient.NewWriteBatch()
+
+	ds.writeDeleteRequest(requestToAdd, writeBatch)
+
+	for _, req := range requestsToRemove {
+		ds.removeRequest(req, writeBatch)
+	}
+
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
+}
+
+func newRequest(req DeleteRequest, requestID string, createdAt model.Time, seqNumber int) (DeleteRequest, error) {
+	req.RequestID = requestID
 	req.Status = StatusReceived
 	req.CreatedAt = createdAt
 	req.SequenceNum = int64(seqNumber)
@@ -124,14 +143,15 @@ func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch 
 	// Add an entry with userID, requestID, and sequence number as range key and status as value to make it easy
 	// to manage and lookup status. We don't want to set anything in hash key here since we would want to find
 	// delete requests by just status
-	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
+	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(req.Status))
 
 	// Add another entry with additional details like creation time, time range of delete request and the logQL requests in value
-	rangeValue := fmt.Sprintf("%x:%x:%x", int64(ds.now()), int64(req.StartTime), int64(req.EndTime))
+	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue), []byte(req.Query))
+}
 
-	// create a gen number for this result
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
+func (ds *deleteRequestsStore) updateCacheGen(userID string, writeBatch index.WriteBatch) {
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
 }
 
 // backwardCompatibleDeleteRequestHash generates the hash key for a delete request.
@@ -146,15 +166,15 @@ func backwardCompatibleDeleteRequestHash(userID, requestID string, sequenceNumbe
 	return fmt.Sprintf("%s:%s:%d", userID, requestID, sequenceNumber)
 }
 
-func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest) ([]byte, error) {
+func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest) (string, error) {
 	requestID := generateUniqueID(req.UserID, req.Query)
 
 	for {
-		if _, err := ds.GetDeleteRequestGroup(ctx, req.UserID, string(requestID)); err != nil {
-			if err == ErrDeleteRequestNotFound {
+		if _, err := ds.GetDeleteRequest(ctx, req.UserID, requestID); err != nil {
+			if errors.Is(err, ErrDeleteRequestNotFound) {
 				return requestID, nil
 			}
-			return nil, err
+			return "", err
 		}
 
 		// we have a collision here, lets recreate a new requestID and check for collision
@@ -163,41 +183,77 @@ func (ds *deleteRequestsStore) generateID(ctx context.Context, req DeleteRequest
 	}
 }
 
-// GetDeleteRequestsByStatus returns all delete requests for given status.
-func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+// GetUnprocessedShards returns all the unprocessed shards as individual delete requests.
+func (ds *deleteRequestsStore) GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, index.Query{
 		TableName:  DeleteRequestsTableName,
 		HashValue:  string(deleteRequestID),
-		ValueEqual: []byte(status),
+		ValueEqual: []byte(StatusReceived),
 	})
+}
+
+// GetAllShards returns all the shards as individual delete requests.
+func (ds *deleteRequestsStore) GetAllShards(ctx context.Context) ([]DeleteRequest, error) {
+	return ds.queryDeleteRequests(ctx, index.Query{
+		TableName: DeleteRequestsTableName,
+		HashValue: string(deleteRequestID),
+	})
+}
+
+// GetAllRequests returns all the delete requests.
+func (ds *deleteRequestsStore) GetAllRequests(ctx context.Context) ([]DeleteRequest, error) {
+	deleteGroups, err := ds.GetAllShards(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	deleteRequests := mergeDeletes(deleteGroups)
+	return deleteRequests, nil
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, index.Query{
+	deleteGroups, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
 		RangeValuePrefix: []byte(userID),
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	deleteRequests := mergeDeletes(deleteGroups)
+	return deleteRequests, nil
 }
 
-// UpdateStatus updates status of a delete request.
-func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+// MarkShardAsProcessed marks a delete request shard as processed.
+func (ds *deleteRequestsStore) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
 	userIDAndRequestID := backwardCompatibleDeleteRequestHash(req.UserID, req.RequestID, req.SequenceNum)
 
 	writeBatch := ds.indexClient.NewWriteBatch()
-	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
-
-	if newStatus == StatusProcessed {
-		// remove runtime filtering for deleted data
-		writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
-	}
+	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusProcessed))
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
-// GetDeleteRequestGroup returns delete requests with given requestID.
-func (ds *deleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
+// GetDeleteRequest finds and returns delete request with given ID.
+func (ds *deleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+	reqGroup, err := ds.getDeleteRequestGroup(ctx, userID, requestID)
+	if err != nil {
+		return DeleteRequest{}, err
+	}
+
+	startTime, endTime, status := mergeData(reqGroup)
+	deleteRequest := reqGroup[0]
+	deleteRequest.StartTime = startTime
+	deleteRequest.EndTime = endTime
+	deleteRequest.Status = status
+
+	return deleteRequest, nil
+}
+
+// getDeleteRequestGroup returns delete requests with given requestID.
+func (ds *deleteRequestsStore) getDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	userIDAndRequestID := fmt.Sprintf("%s:%s", userID, requestID)
 
 	deleteRequests, err := ds.queryDeleteRequests(ctx, index.Query{
@@ -233,7 +289,6 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 		}
 		return false
 	})
-
 	if err != nil {
 		return "", err
 	}
@@ -274,15 +329,14 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 
 func (ds *deleteRequestsStore) deleteRequestsWithDetails(ctx context.Context, partialDeleteRequests []DeleteRequest) ([]DeleteRequest, error) {
 	deleteRequests := make([]DeleteRequest, 0, len(partialDeleteRequests))
-	for _, group := range partitionByRequestID(partialDeleteRequests) {
-		for _, deleteRequest := range group {
-			requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
-			if err != nil {
-				return nil, err
-			}
-			deleteRequests = append(deleteRequests, requestWithDetails)
+	for _, deleteRequest := range partialDeleteRequests {
+		requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
+		if err != nil {
+			return nil, err
 		}
+		deleteRequests = append(deleteRequests, requestWithDetails)
 	}
+
 	return deleteRequests, nil
 }
 
@@ -319,20 +373,27 @@ func unmarshalDeleteRequestDetails(itr index.ReadBatchIterator, req DeleteReques
 		return DeleteRequest{}, nil
 	}
 
-	if err = requestWithDetails.SetQuery(string(itr.Value())); err != nil {
-		return DeleteRequest{}, err
-	}
+	requestWithDetails.Query = string(itr.Value())
 
 	return requestWithDetails, nil
 }
 
-// RemoveDeleteRequests the passed delete requests
-func (ds *deleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+// RemoveDeleteRequest removes the passed delete request
+func (ds *deleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID, requestID string) error {
+	reqs, err := ds.getDeleteRequestGroup(ctx, userID, requestID)
+	if err != nil {
+		return err
+	}
+
+	if len(reqs) == 0 {
+		return nil
+	}
 	writeBatch := ds.indexClient.NewWriteBatch()
 
 	for _, r := range reqs {
 		ds.removeRequest(r, writeBatch)
 	}
+	ds.updateCacheGen(reqs[0].UserID, writeBatch)
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -344,13 +405,72 @@ func (ds *deleteRequestsStore) removeRequest(req DeleteRequest, writeBatch index
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
 	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue))
-
-	// ensure caches are invalidated
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
 }
 
 func (ds *deleteRequestsStore) Name() string {
 	return "delete_requests_store"
+}
+
+// MergeShardedRequests merges the sharded requests back to a single request when we are done with processing all the shards
+func (ds *deleteRequestsStore) MergeShardedRequests(ctx context.Context) error {
+	deleteGroups, err := ds.GetAllShards(context.Background())
+	if err != nil {
+		return err
+	}
+
+	slices.SortFunc(deleteGroups, func(a, b DeleteRequest) int {
+		return strings.Compare(a.RequestID, b.RequestID)
+	})
+	deleteRequests := mergeDeletes(deleteGroups)
+	for _, req := range deleteRequests {
+		// do not consider requests which do not have an id. Request ID won't be set in some tests or there is a bug in our code for loading requests.
+		if req.RequestID == "" {
+			level.Error(util_log.Logger).Log("msg", "skipped considering request without an id for merging its shards",
+				"user_id", req.UserID,
+				"start_time", req.StartTime.Unix(),
+				"end_time", req.EndTime.Unix(),
+				"query", req.Query,
+			)
+			continue
+		}
+		// do not do anything if we are not done with processing all the shards or the number of shards is 1
+		if req.Status != StatusProcessed {
+			continue
+		}
+
+		var idxStart, idxEnd int
+		for i := range deleteGroups {
+			if req.RequestID == deleteGroups[i].RequestID {
+				idxStart = i
+				break
+			}
+		}
+
+		for i := len(deleteGroups) - 1; i > 0; i-- {
+			if req.RequestID == deleteGroups[i].RequestID {
+				idxEnd = i
+				break
+			}
+		}
+
+		// do not do anything if the number of shards is 1
+		if idxStart == idxEnd {
+			continue
+		}
+		reqShards := deleteGroups[idxStart : idxEnd+1]
+
+		level.Info(util_log.Logger).Log("msg", "merging sharded request",
+			"request_id", req.RequestID,
+			"num_shards", len(reqShards),
+			"start_time", req.StartTime.Unix(),
+			"end_time", req.EndTime.Unix(),
+		)
+		if err := ds.mergeShardedRequests(ctx, req, reqShards); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest) (DeleteRequest, error) {
@@ -381,7 +501,7 @@ func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest
 }
 
 // An id is useful in managing delete requests
-func generateUniqueID(orgID string, query string) []byte {
+func generateUniqueID(orgID string, query string) string {
 	uniqueID := fnv.New32()
 	_, _ = uniqueID.Write([]byte(orgID))
 
@@ -391,7 +511,7 @@ func generateUniqueID(orgID string, query string) []byte {
 
 	_, _ = uniqueID.Write([]byte(query))
 
-	return encodeUniqueID(uniqueID.Sum32())
+	return string(encodeUniqueID(uniqueID.Sum32()))
 }
 
 func encodeUniqueID(t uint32) []byte {

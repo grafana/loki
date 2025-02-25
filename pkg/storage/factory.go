@@ -295,8 +295,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool                         `yaml:"use_thanos_objstore" doc:"hidden"`
-	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store" doc:"hidden"`
+	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
+	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`

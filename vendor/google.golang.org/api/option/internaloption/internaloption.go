@@ -186,6 +186,33 @@ func (w enableJwtWithScope) Apply(o *internal.DialSettings) {
 	o.EnableJwtWithScope = bool(w)
 }
 
+// AllowHardBoundTokens returns a ClientOption that allows libraries to request a hard-bound token.
+// Obtaining hard-bound tokens requires the connection to be established using either Application
+// Layer Transport Security (ALTS) or mutual TLS (mTLS) with S2A. For more information on ALTS,
+// see: https://cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security
+//
+// The AllowHardBoundTokens option accepts the following values (or a combination thereof):
+//
+//   - "MTLS_S2A": Allows obtaining hard-bound tokens when the connection uses mutual TLS with S2A.
+//   - "ALTS":     Allows obtaining hard-bound tokens when the connection uses ALTS.
+//
+// For example, to allow obtaining hard-bound tokens with either MTLS_S2A or ALTS, you would
+// provide both values (e.g., {"MTLS_S2A","ALTS"}).  If no value is provided, hard-bound tokens
+// will not be requested.
+//
+// It should only be used internally by generated clients.
+// This is an EXPERIMENTAL API and may be changed or removed in the future.
+func AllowHardBoundTokens(protocol ...string) option.ClientOption {
+	return allowHardBoundTokens(protocol)
+}
+
+type allowHardBoundTokens []string
+
+func (a allowHardBoundTokens) Apply(o *internal.DialSettings) {
+	o.AllowHardBoundTokens = make([]string, len(a))
+	copy(o.AllowHardBoundTokens, a)
+}
+
 // WithCredentials returns a client option to specify credentials which will be used to authenticate API calls.
 // This credential takes precedence over all other credential options.
 func WithCredentials(creds *google.Credentials) option.ClientOption {

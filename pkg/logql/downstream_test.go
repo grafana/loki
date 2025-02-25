@@ -64,6 +64,7 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true, []string{ShardQuantileOverTime}},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s)`, true, []string{ShardQuantileOverTime}},
 		{
 			`
 			  (quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a) > 1)
@@ -75,8 +76,12 @@ func TestMappingEquivalence(t *testing.T) {
 		},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardLastOverTime}},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -190,6 +195,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	}{
 		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -241,8 +247,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
 				tc.query,
-				time.Unix(1, 0),
-				time.Unix(1, 0),
+				time.Unix(10, 0),
+				time.Unix(10, 0),
 				0,
 				0,
 				logproto.FORWARD,
@@ -294,7 +300,7 @@ func TestApproxTopkSketches(t *testing.T) {
 		shardedQuery  string
 		regularQuery  string
 		realtiveError float64
-		//cardinalityEstimate int
+		// cardinalityEstimate int
 	}{
 		// Note:our data generation results in less spread between topk things for 10k streams than for 100k streams
 		// if we have 1k streams, we can get much more accurate results for topk 10 than topk 100
@@ -304,7 +310,7 @@ func TestApproxTopkSketches(t *testing.T) {
 			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			realtiveError: 0.0012,
-			//cardinalityEstimate: 3,
+			// cardinalityEstimate: 3,
 		},
 		{
 			labelShards:   10,
@@ -832,7 +838,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -848,7 +854,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -864,7 +870,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},

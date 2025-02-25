@@ -9,6 +9,8 @@ weight:
 
 # json
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `json` stage is a parsing stage that reads the log line as JSON and accepts
 [JMESPath](http://jmespath.org/) expressions to extract data.
 

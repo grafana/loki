@@ -193,6 +193,28 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 	}, nil
 }
 
+func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	reader, err := b.Get(ctx, name)
+	if err != nil && !errors.Is(err, errNotFound) {
+		return err
+	}
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	new, err := f(reader)
+	if err != nil {
+		return err
+	}
+
+	newObj, err := io.ReadAll(new)
+	if err != nil {
+		return err
+	}
+
+	b.objects[name] = newObj
+	return nil
+}
+
 // Exists checks if the given directory exists in memory.
 func (b *InMemBucket) Exists(_ context.Context, name string) (bool, error) {
 	b.mtx.RLock()

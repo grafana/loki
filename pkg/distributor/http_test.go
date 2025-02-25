@@ -63,34 +63,74 @@ func TestDistributorRingHandler(t *testing.T) {
 }
 
 func TestRequestParserWrapping(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	limits.RejectOldSamples = false
-	distributors, _ := prepare(t, 1, 3, limits, nil)
+	t.Run("it calls the parser wrapper if there is one", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
 
-	var called bool
-	distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-		called = true
-		return requestParser
-	}
+		var called bool
+		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
+			called = true
+			return requestParser
+		}
 
-	ctx := user.InjectOrgID(context.Background(), "test-user")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-	require.NoError(t, err)
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
 
-	distributors[0].pushHandler(httptest.NewRecorder(), req, stubParser, push.HTTPError)
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError)
 
-	require.True(t, called)
+		// unprocessable code because there are no streams in the request.
+		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+		require.True(t, called)
+	})
+
+	t.Run("it returns 204 when the parser wrapper filteres all log lines", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		var called bool
+		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
+			called = true
+			return requestParser
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+
+		parser := newFakeParser()
+		parser.parseErr = push.ErrAllLogsFiltered
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError)
+
+		require.True(t, called)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	})
 }
 
-func stubParser(
+type fakeParser struct {
+	parseErr error
+}
+
+func newFakeParser() *fakeParser {
+	return &fakeParser{}
+}
+
+func (p *fakeParser) parseRequest(
 	_ string,
 	_ *http.Request,
 	_ push.TenantsRetention,
 	_ push.Limits,
 	_ push.UsageTracker,
+	_ push.PolicyResolver,
 	_ bool,
 	_ log.Logger,
 ) (*logproto.PushRequest, *push.Stats, error) {
-	return &logproto.PushRequest{}, &push.Stats{}, nil
+	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
 }

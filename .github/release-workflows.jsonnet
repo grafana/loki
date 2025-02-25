@@ -30,7 +30,7 @@ local imageJobs = {
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.image('promtail', 'clients/cmd/promtail', platform=platforms.all),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=platforms.amd),
-  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=platforms.all),
+  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
 };
 
 local weeklyImageJobs = {
@@ -39,6 +39,100 @@ local weeklyImageJobs = {
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail', platform=platforms.all),
 };
+
+local lambdaPromtailJob =
+  job.new()
+  + job.withNeeds(['check'])
+  + job.withEnv({
+    BUILD_TIMEOUT: imageBuildTimeoutMin,
+    GO_VERSION: goVersion,
+    IMAGE_PREFIX: 'public.ecr.aws/grafana',
+    RELEASE_LIB_REF: releaseLibRef,
+    RELEASE_REPO: 'grafana/loki',
+    REPO: 'loki',
+  })
+  + job.withOutputs({
+    image_digest_linux_amd64: '${{ steps.digest.outputs.digest_linux_amd64 }}',
+    image_digest_linux_arm64: '${{ steps.digest.outputs.digest_linux_arm64 }}',
+    image_name: '${{ steps.weekly-version.outputs.image_name }}',
+    image_tag: '${{ steps.weekly-version.outputs.image_version }}',
+  })
+  + job.withStrategy({
+    'fail-fast': true,
+    matrix: {
+      include: [
+        { arch: 'linux/amd64', runs_on: ['github-hosted-ubuntu-x64-small'] },
+        { arch: 'linux/arm64', runs_on: ['github-hosted-ubuntu-arm64-small'] },
+      ],
+    },
+  })
+  + { 'runs-on': '${{ matrix.runs_on }}' }
+  + job.withSteps([
+    step.new('pull release library code', 'actions/checkout@v4')
+    + step.with({
+      path: 'lib',
+      ref: '${{ env.RELEASE_LIB_REF }}',
+      repository: 'grafana/loki-release',
+    }),
+    step.new('pull code to release', 'actions/checkout@v4')
+    + step.with({
+      path: 'release',
+      repository: '${{ env.RELEASE_REPO }}',
+    }),
+    step.new('setup node', 'actions/setup-node@v4')
+    + step.with({
+      'node-version': '20',
+    }),
+    step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
+    step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0')
+    + { id: 'get-secrets' }
+    + step.with({
+      repo_secrets: |||
+        ECR_ACCESS_KEY=aws-credentials:access_key_id
+        ECR_SECRET_KEY=aws-credentials:secret_access_key
+      |||,
+    }),
+    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@v4')
+    + step.with({
+      'aws-access-key-id': '${{ env.ECR_ACCESS_KEY }}',
+      'aws-secret-access-key': '${{ env.ECR_SECRET_KEY }}',
+      'aws-region': 'us-east-1',
+    }),
+    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@v2')
+    + step.with({
+      'registry-type': 'public',
+    }),
+    step.new('Get weekly version')
+    + { id: 'weekly-version' }
+    + { 'working-directory': 'release' }
+    + step.withRun(|||
+      version=$(./tools/image-tag)
+      echo "image_version=$version" >> $GITHUB_OUTPUT
+      echo "image_name=${{ env.IMAGE_PREFIX }}/lambda-promtail" >> $GITHUB_OUTPUT
+      echo "image_full_name=${{ env.IMAGE_PREFIX }}/lambda-promtail:$version" >> $GITHUB_OUTPUT
+    |||),
+    step.new('Prepare tag name')
+    + { id: 'prepare-tag' }
+    + step.withRun(|||
+      arch=$(echo ${{ matrix.arch }} | cut -d'/' -f2)
+      echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
+    |||),
+    step.new('Build and push', 'docker/build-push-action@v6')
+    + { id: 'build-push' }
+    + { 'timeout-minutes': '${{ fromJSON(env.BUILD_TIMEOUT) }}' }
+    + step.with({
+      'build-args': |||
+        IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+        GO_VERSION=${{ env.GO_VERSION }}
+      |||,
+      context: 'release',
+      file: 'release/tools/lambda-promtail/Dockerfile',
+      outputs: 'type=image,push=true',
+      platform: '${{ matrix.arch }}',
+      provenance: false,
+      tags: '${{ steps.prepare-tag.outputs.IMAGE_TAG }}',
+    }),
+  ]);
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
@@ -150,6 +244,8 @@ local weeklyImageJobs = {
           GO_VERSION: goVersion,
         })
       for name in std.objectFields(weeklyImageJobs)
+    } + {
+      'lambda-promtail-image': lambdaPromtailJob,
     } + {
       ['%s-manifest' % name]:
         job.new()

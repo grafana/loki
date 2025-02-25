@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -21,8 +23,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	}
 
 	// Setup handler
-	middle := TenantMiddleware(fl, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-
+	middle := TenantMiddleware(fl).Wrap(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	// User that has deletion enabled
 	req := httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "1"))
@@ -80,4 +81,8 @@ func (f *fakeLimits) RetentionPeriod(userID string) time.Duration {
 
 func (f *fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
 	return f.getLimitForUser(userID).streamRetention
+}
+
+func (f *fakeLimits) RetentionHours(userID string, _ labels.Labels) string {
+	return util.RetentionHours(f.getLimitForUser(userID).retentionPeriod)
 }

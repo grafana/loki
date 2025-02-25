@@ -45,8 +45,7 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, _ *grpc.GetD
 		return nil, err
 	}
 
-	deletesPerRequest := partitionByRequestID(deleteGroups)
-	deleteRequests := mergeDeletes(deletesPerRequest)
+	deleteRequests := mergeDeletes(deleteGroups)
 
 	sort.Slice(deleteRequests, func(i, j int) bool {
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt

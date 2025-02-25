@@ -9,8 +9,6 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
-
-	utilsMath "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -148,9 +146,13 @@ func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float6
 	}
 
 	totalTime := maxTime - minTime
-	leadingTime := utilsMath.Max64(0, from-minTime)
-	trailingTime := utilsMath.Max64(0, maxTime-through)
+	leadingTime := max(0, from-minTime)
+	trailingTime := max(0, maxTime-through)
 	factor = float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
 
 	return factor
+}
+
+func RetentionHours(retention time.Duration) string {
+	return strconv.FormatInt(int64(math.Floor(retention.Hours())), 10)
 }
