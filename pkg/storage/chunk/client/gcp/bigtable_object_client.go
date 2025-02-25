@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 type bigtableObjectClient struct {
@@ -114,7 +113,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		)
 
 		for i := 0; i < len(keys); i += maxRowReads {
-			page := keys[i:math.Min(i+maxRowReads, len(keys))]
+			page := keys[i:min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
 				decodeContext := chunk.NewDecodeContext()
 
