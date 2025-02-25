@@ -28,11 +28,3 @@ type Expr interface {
 	// Format formats the expression as a string
 	Format(format.Formatter)
 }
-
-// DataSource represents a source of data that can be scanned
-type DataSource interface {
-	// Schema returns the schema of the data source
-	Schema() schema.Schema
-	// Name returns the name of the data source
-	Name() string
-}

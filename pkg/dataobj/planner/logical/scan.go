@@ -8,57 +8,42 @@ import (
 
 // Compile-time check to ensure Scan implements Plan
 var (
-	_ Plan = &Scan{}
+	_ Plan = &MakeTable{}
 )
 
-// Scan represents a plan node that scans input data from a DataSource
+// MakeTable represents a plan node that scans input data from a DataSource
 // It is the leaf node in our query tree
-type Scan struct {
-	// dataSource provides access to the data
-	dataSource DataSource
-	// projection specifies which columns to include, empty means all columns
-	projection []string
-	// schema is derived from dataSource and projection
+type MakeTable struct {
+	// name is the identifier for this table
+	name string
+	// schema is the schema of the table
 	schema schema.Schema
 }
 
 // NewScan creates a new Scan plan node
-func NewScan(dataSource DataSource, projection []string) *Scan {
-	s := &Scan{
-		dataSource: dataSource,
-		projection: projection,
+func NewScan(name string, schema schema.Schema) *MakeTable {
+	return &MakeTable{
+		name:   name,
+		schema: schema,
 	}
-	s.schema = s.deriveSchema()
-	return s
 }
 
-// Schema returns the schema of the data produced by this scan
-func (s *Scan) Schema() schema.Schema {
+func (s *MakeTable) Schema() schema.Schema {
 	return s.schema
 }
 
-// deriveSchema determines the output schema based on the projection
-func (s *Scan) deriveSchema() schema.Schema {
-	sourceSchema := s.dataSource.Schema()
-	if len(s.projection) == 0 {
-		return sourceSchema
-	}
-
-	return sourceSchema.Filter(s.projection)
-}
-
 // Children returns the child plan nodes (none for Scan)
-func (s *Scan) Children() []Plan {
+func (s *MakeTable) Children() []Plan {
 	return nil
 }
 
 // Format implements format.Format
-func (s *Scan) Format(fm format.Formatter) {
+func (s *MakeTable) Format(fm format.Formatter) {
 	n := format.Node{
 		Singletons: []string{"Scan"},
 		Tuples: []format.ContentTuple{{
-			Key:   "data_source",
-			Value: format.SingleContent(s.dataSource.Name()),
+			Key:   "name",
+			Value: format.SingleContent(s.name),
 		}},
 	}
 
