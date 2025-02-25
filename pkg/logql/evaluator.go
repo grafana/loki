@@ -1406,45 +1406,55 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 		iter: it,
 	}
 
-	variantEvaluators := make([]StepEvaluator, len(expr.Variants()))
-	for i, variant := range expr.Variants() {
-		// wraps the buffered iterator to only return samples for the current variant (determined by the index)
-		variantIterator := &bufferedVariantsIteratorWrapper{
-			bufferedVariantsIterator: bufferedIterator,
-			index:                    i,
-		}
-
-		var variantEvaluator StepEvaluator
-		var err error
-		switch e := variant.(type) {
-		case *syntax.VectorAggregationExpr:
-			if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok {
-				rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset)
-				if err != nil {
-					return nil, err
-				}
-
-				e.Grouping.Groups = append(e.Grouping.Groups, "__variant__")
-
-				sort.Strings(e.Grouping.Groups)
-				variantEvaluator = &VectorAggEvaluator{
-					nextEvaluator: rangeEvaluator,
-					expr:          e,
-					buf:           make([]byte, 0, 1024),
-					lb:            labels.NewBuilder(nil),
-				}
-			} else {
-				return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
-			}
-		case *syntax.RangeAggregationExpr:
-			variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset)
-		}
-
+	variantEvaluators := []StepEvaluator{}
+  // TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
+	idx := 0
+	for _, variant := range expr.Variants() {
+		extractors, err := variant.Extractors()
 		if err != nil {
 			return nil, err
 		}
 
-		variantEvaluators[i] = variantEvaluator
+		for range extractors {
+			// wraps the buffered iterator to only return samples for the current variant (determined by the index)
+			variantIterator := &bufferedVariantsIteratorWrapper{
+				bufferedVariantsIterator: bufferedIterator,
+				index:                    idx,
+			}
+
+			var variantEvaluator StepEvaluator
+			var err error
+			switch e := variant.(type) {
+			case *syntax.VectorAggregationExpr:
+				if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok {
+					rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset)
+					if err != nil {
+						return nil, err
+					}
+
+					e.Grouping.Groups = append(e.Grouping.Groups, "__variant__")
+
+					sort.Strings(e.Grouping.Groups)
+					variantEvaluator = &VectorAggEvaluator{
+						nextEvaluator: rangeEvaluator,
+						expr:          e,
+						buf:           make([]byte, 0, 1024),
+						lb:            labels.NewBuilder(nil),
+					}
+				} else {
+					return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
+				}
+			case *syntax.RangeAggregationExpr:
+				variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset)
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			variantEvaluators[idx] = variantEvaluator
+			idx++
+		}
 	}
 
 	return &VariantsEvaluator{
