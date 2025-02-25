@@ -460,6 +460,38 @@ func (ds *deleteRequestsStoreBoltDB) MergeShardedRequests(ctx context.Context) e
 	return nil
 }
 
+func (ds *deleteRequestsStoreBoltDB) getAllData(ctx context.Context) ([]DeleteRequest, []userCacheGen, error) {
+	shards, err := ds.getAllShards(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cacheGenNums := map[string]string{}
+	var userCacheGens []userCacheGen
+	for _, shard := range shards {
+		if _, ok := cacheGenNums[shard.UserID]; ok {
+			continue
+		}
+
+		cacheGen, err := ds.GetCacheGenerationNumber(ctx, shard.UserID)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if cacheGen == "" {
+			cacheGen = strconv.FormatInt(time.Now().UnixNano(), 10)
+		}
+
+		cacheGenNums[shard.UserID] = cacheGen
+		userCacheGens = append(userCacheGens, userCacheGen{
+			userID:   shard.UserID,
+			cacheGen: cacheGen,
+		})
+	}
+
+	return shards, userCacheGens, nil
+}
+
 func parseDeleteRequestTimestamps(rangeValue []byte, deleteRequest DeleteRequest) (DeleteRequest, error) {
 	hexParts := strings.Split(string(rangeValue), ":")
 	if len(hexParts) != 3 {

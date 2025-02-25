@@ -39,6 +39,33 @@ func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 		return nil, err
 	}
 
+	if deleteRequestsStoreDBType == DeleteRequestsStoreDBTypeSQLite {
+		deleteRequestsStoreSQLite := store.(*deleteRequestsStoreSQLite)
+		sqliteStoreIsEmpty, err := deleteRequestsStoreSQLite.isEmpty(context.Background())
+		if err != nil {
+			return nil, err
+		}
+
+		// copy data from boltdb to sqlite only if the sqlite store is empty
+		if sqliteStoreIsEmpty {
+			boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, model.Now)
+			if err != nil {
+				return nil, err
+			}
+
+			shards, cacheGen, err := boltdbStore.getAllData(context.Background())
+			if err != nil {
+				return nil, err
+			}
+			boltdbStore.Stop()
+
+			err = deleteRequestsStoreSQLite.copyData(context.Background(), shards, cacheGen)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return store, nil
 }
 

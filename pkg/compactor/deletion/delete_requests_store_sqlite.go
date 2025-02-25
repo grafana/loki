@@ -3,6 +3,8 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"zombiezen.com/go/sqlite"
@@ -110,6 +112,56 @@ func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient st
 
 func (ds *deleteRequestsStoreSQLite) Stop() {
 	ds.sqliteStore.Stop()
+}
+
+func (ds *deleteRequestsStoreSQLite) copyData(ctx context.Context, shards []DeleteRequest, userCacheGens []userCacheGen) error {
+	slices.SortFunc(shards, func(a, b DeleteRequest) int {
+		return strings.Compare(a.RequestID, b.RequestID)
+	})
+	mergedReqs := mergeDeletes(shards)
+
+	var sqlQueries []sqlQuery
+
+	for _, req := range mergedReqs {
+		var idxStart, idxEnd int
+		for i := range shards {
+			if req.RequestID == shards[i].RequestID {
+				idxStart = i
+				break
+			}
+		}
+
+		for i := len(shards) - 1; i > 0; i-- {
+			if req.RequestID == shards[i].RequestID {
+				idxEnd = i
+				break
+			}
+		}
+
+		sqlQueries = append(sqlQueries, ds.buildAddDeleteRequestQueries(req, shards[idxStart:idxEnd+1])...)
+	}
+
+	for _, shard := range shards {
+		if shard.Status != StatusProcessed {
+			continue
+		}
+
+		sqlQueries = append(sqlQueries, ds.buildMarkShardAsProcessedQueries(shard)...)
+	}
+
+	for _, userCacheGen := range userCacheGens {
+		sqlQueries = append(sqlQueries, sqlQuery{
+			query: sqlUpdateCacheGen,
+			execOpts: &sqlitex.ExecOptions{
+				Args: []any{
+					userCacheGen.userID,
+					userCacheGen.cacheGen,
+				},
+			},
+		})
+	}
+
+	return ds.sqliteStore.Exec(ctx, true, sqlQueries...)
 }
 
 func (ds *deleteRequestsStoreSQLite) buildAddDeleteRequestQueries(req DeleteRequest, shards []DeleteRequest) []sqlQuery {
