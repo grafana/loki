@@ -6,8 +6,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // columnReaderTestStrings contains enough strings to span multiple pages
