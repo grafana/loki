@@ -4,7 +4,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// DataFrame provides a fluent interface for building logical query plans
+// DataFrame provides an ergonomic interface for building logical query plans
 type DataFrame struct {
 	plan Plan
 }
@@ -43,4 +43,9 @@ func (df *DataFrame) Schema() schema.Schema {
 // LogicalPlan returns the underlying logical plan
 func (df *DataFrame) LogicalPlan() Plan {
 	return df.plan
+}
+
+// ToSSA converts the DataFrame to SSA form
+func (df *DataFrame) ToSSA() (*SSAForm, error) {
+	return ConvertToSSA(df.plan)
 }

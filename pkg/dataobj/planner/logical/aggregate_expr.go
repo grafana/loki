@@ -3,7 +3,6 @@ package logical
 
 import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
@@ -77,18 +76,4 @@ func (a AggregateExpr) ToField(p Plan) schema.ColumnSchema {
 func determineAggregationTypeFromFieldType(_ datasetmd.ValueType, _ AggregateOp) datasetmd.ValueType {
 	// TODO: implement
 	return datasetmd.VALUE_TYPE_INT64
-}
-
-// Format implements format.Format
-func (a AggregateExpr) Format(fm format.Formatter) {
-	n := format.Node{
-		Singletons: []string{"AggregateExpr"},
-		Tuples: []format.ContentTuple{{
-			Key:   "op",
-			Value: format.SingleContent(a.op),
-		}},
-	}
-
-	nextFM := fm.WriteNode(n)
-	a.expr.Format(nextFM)
 }

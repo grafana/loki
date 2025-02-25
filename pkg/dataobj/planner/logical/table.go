@@ -2,13 +2,13 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Scan implements Plan
+// Compile-time check to ensure MakeTable implements Plan and tableNode
 var (
-	_ Plan = &MakeTable{}
+	_ Plan      = &MakeTable{}
+	_ tableNode = &MakeTable{}
 )
 
 // MakeTable represents a plan node that scans input data from a DataSource
@@ -32,20 +32,22 @@ func (s *MakeTable) Schema() schema.Schema {
 	return s.schema
 }
 
-// Children returns the child plan nodes (none for Scan)
-func (s *MakeTable) Children() []Plan {
+// Type implements the ast interface
+func (s *MakeTable) Type() nodeType {
+	return nodeTypeTable
+}
+
+// ASTChildren implements the ast interface
+func (s *MakeTable) ASTChildren() []ast {
 	return nil
 }
 
-// Format implements format.Format
-func (s *MakeTable) Format(fm format.Formatter) {
-	n := format.Node{
-		Singletons: []string{"Scan"},
-		Tuples: []format.ContentTuple{{
-			Key:   "name",
-			Value: format.SingleContent(s.name),
-		}},
-	}
+// TableSchema implements the tableNode interface
+func (s *MakeTable) TableSchema() schema.Schema {
+	return s.schema
+}
 
-	fm.WriteNode(n)
+// TableName implements the tableNode interface
+func (s *MakeTable) TableName() string {
+	return s.name
 }

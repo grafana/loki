@@ -1,13 +1,13 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/logical/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Aggregate implements Plan
+// Compile-time check to ensure Aggregate implements Plan and aggregateNode
 var (
-	_ Plan = &Aggregate{}
+	_ Plan          = &Aggregate{}
+	_ aggregateNode = &Aggregate{}
 )
 
 // Aggregate represents a plan node that performs aggregation operations.
@@ -53,55 +53,23 @@ func (a *Aggregate) Schema() schema.Schema {
 	return schema.FromColumns(columns)
 }
 
-// Children returns the child plan nodes
-func (a *Aggregate) Children() []Plan {
-	return []Plan{a.input}
+// Type implements the ast interface
+func (a *Aggregate) Type() nodeType {
+	return nodeTypeAggregate
 }
 
-// Format implements format.Format
-func (a *Aggregate) Format(fm format.Formatter) {
-	// Collect grouping names
-	var groupNames []string
-	for _, expr := range a.groupExprs {
-		groupNames = append(groupNames, expr.ToField(a.input).Name)
-	}
+// ASTChildren implements the ast interface
+func (a *Aggregate) ASTChildren() []ast {
+	// Convert the Plan interface to ast interface
+	return []ast{a.input.(ast)}
+}
 
-	// Collect aggregate names
-	var aggNames []string
-	for _, expr := range a.aggExprs {
-		aggNames = append(aggNames, expr.ToField(a.input).Name)
-	}
+// GroupExprs implements the aggregateNode interface
+func (a *Aggregate) GroupExprs() []Expr {
+	return a.groupExprs
+}
 
-	n := format.Node{
-		Singletons: []string{"Aggregate"},
-		Tuples: []format.ContentTuple{
-			{
-				Key:   "groupings",
-				Value: format.ListContentFrom(groupNames...),
-			},
-			{
-				Key:   "aggregates",
-				Value: format.ListContentFrom(aggNames...),
-			},
-		},
-	}
-
-	nextFM := fm.WriteNode(n)
-
-	// Format grouping expressions
-	groupNode := format.Node{Singletons: []string{"GroupExprs"}}
-	groupFM := nextFM.WriteNode(groupNode)
-	for _, expr := range a.groupExprs {
-		expr.Format(groupFM)
-	}
-
-	// Format aggregate expressions
-	aggNode := format.Node{Singletons: []string{"AggregateExprs"}}
-	aggFM := nextFM.WriteNode(aggNode)
-	for _, expr := range a.aggExprs {
-		expr.Format(aggFM)
-	}
-
-	// Format input plan
-	a.input.Format(nextFM)
+// AggregateExprs implements the aggregateNode interface
+func (a *Aggregate) AggregateExprs() []AggregateExpr {
+	return a.aggExprs
 }
