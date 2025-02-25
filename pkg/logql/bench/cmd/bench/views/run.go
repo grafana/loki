@@ -15,6 +15,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Storage type constants
+const (
+	storageTypeDataObj = "dataobj"
+	storageTypeChunk   = "chunk"
+	storageTypeBoth    = "both"
+)
+
 // RunView represents the benchmark run view
 type RunView struct {
 	RunConfig         RunConfig
@@ -51,7 +58,7 @@ func NewRunView(config RunConfig) *RunView {
 
 	// Set default storage type if not specified
 	if config.StorageType == "" {
-		config.StorageType = "both"
+		config.StorageType = storageTypeBoth
 	}
 
 	return &RunView{
@@ -138,14 +145,14 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "s":
 			// Cycle through storage types: dataobj -> chunk -> both
 			switch m.RunConfig.StorageType {
-			case "dataobj":
-				m.RunConfig.StorageType = "chunk"
-			case "chunk":
-				m.RunConfig.StorageType = "both"
-			case "both":
-				m.RunConfig.StorageType = "dataobj"
+			case storageTypeDataObj:
+				m.RunConfig.StorageType = storageTypeChunk
+			case storageTypeChunk:
+				m.RunConfig.StorageType = storageTypeBoth
+			case storageTypeBoth:
+				m.RunConfig.StorageType = storageTypeDataObj
 			default:
-				m.RunConfig.StorageType = "both"
+				m.RunConfig.StorageType = storageTypeBoth
 			}
 			return m, nil
 		case "enter", "r":
@@ -369,11 +376,11 @@ func (m *RunView) headerView() string {
 
 func (m *RunView) storageTypeDisplay() string {
 	switch m.RunConfig.StorageType {
-	case "dataobj":
+	case storageTypeDataObj:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("DataObj")
-	case "chunk":
+	case storageTypeChunk:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("Chunk")
-	case "both":
+	case storageTypeBoth:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Render("Both")
 	default:
 		return m.RunConfig.StorageType
@@ -429,7 +436,7 @@ func (m *RunView) startBenchmark() tea.Cmd {
 		}
 
 		// Add storage type filter if not running both
-		if m.RunConfig.StorageType != "both" {
+		if m.RunConfig.StorageType != storageTypeBoth {
 			benchRegex := buildTestRegex(m.RunConfig.Selected, m.RunConfig.StorageType)
 			args = append(args, "-test.bench="+benchRegex)
 			log.Printf("Using storage type %s with regex: %s", m.RunConfig.StorageType, benchRegex)
