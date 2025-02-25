@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,7 +24,10 @@ import (
 
 var errConnAlreadyClosed = fmt.Errorf("sqlite: close: already closed")
 
-const deleteRequestsDBSQLiteFileName = DeleteRequestsTableName + ".sqlite.gz"
+const (
+	deleteRequestsDBSQLiteFileName   = DeleteRequestsTableName + ".sqlite"
+	deleteRequestsDBSQLiteFileNameGZ = deleteRequestsDBSQLiteFileName + ".gz"
+)
 
 type sqlQuery struct {
 	query    string
@@ -41,7 +46,7 @@ type sqliteDB struct {
 }
 
 func newSQLiteDB(workingDirectory string, indexStorageClient storage.Client) (*sqliteDB, error) {
-	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, fmt.Sprintf("%s.sqlite", DeleteRequestsTableName))
+	dbPath := filepath.Join(workingDirectory, fmt.Sprintf("%s.sqlite", DeleteRequestsTableName))
 	if err := util.EnsureDirectory(filepath.Dir(dbPath)); err != nil {
 		return nil, err
 	}
@@ -85,8 +90,8 @@ func (s *sqliteDB) init() error {
 	_, err := os.Stat(s.path)
 	if err != nil {
 		err = storage.DownloadFileFromStorage(s.path, true,
-			true, storage.LoggerWithFilename(util_log.Logger, deleteRequestsDBSQLiteFileName), func() (io.ReadCloser, error) {
-				return s.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileName)
+			true, storage.LoggerWithFilename(util_log.Logger, deleteRequestsDBSQLiteFileNameGZ), func() (io.ReadCloser, error) {
+				return s.indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileNameGZ)
 			})
 		if err != nil && !s.indexStorageClient.IsFileNotFoundErr(err) {
 			return err
@@ -240,10 +245,31 @@ func (s *sqliteDB) uploadFile() error {
 		return err
 	}
 
-	if err := s.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileName, compressedFile); err != nil {
+	if err := s.indexStorageClient.PutFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileNameGZ, compressedFile); err != nil {
 		return err
 	}
 
 	s.uploadedAt = uploadTime
+	return nil
+}
+
+// cleanupSQLiteDB removes the SQLite DB from local disk as well as object storage
+func cleanupSQLiteDB(workingDirectory string, indexStorageClient storage.Client) error {
+	if err := filepath.WalkDir(workingDirectory, func(path string, d fs.DirEntry, err error) error {
+		if !d.IsDir() && strings.HasPrefix(d.Name(), deleteRequestsDBSQLiteFileName) {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	err := indexStorageClient.DeleteFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileNameGZ)
+	if err != nil && !indexStorageClient.IsFileNotFoundErr(err) {
+		return err
+	}
+
 	return nil
 }

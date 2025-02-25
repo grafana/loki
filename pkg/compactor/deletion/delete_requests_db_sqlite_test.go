@@ -59,7 +59,7 @@ func TestDeleteRequestsDBSQLite(t *testing.T) {
 
 	// upload the file to the storage
 	require.NoError(t, sqliteDB.uploadFile())
-	storageFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+deleteRequestsDBSQLiteFileName)
+	storageFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+deleteRequestsDBSQLiteFileNameGZ)
 	require.FileExists(t, storageFilePath)
 
 	// validate records in the storage db

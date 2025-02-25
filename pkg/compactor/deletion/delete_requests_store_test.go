@@ -221,9 +221,7 @@ func TestCopyData(t *testing.T) {
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
 	// First create and populate a boltdb store
-	boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDir, indexStorageClient, func() model.Time {
-		return now
-	})
+	boltdbStore, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
 	require.NoError(t, err)
 
 	// Add some test data to boltdb
@@ -267,9 +265,7 @@ func TestCopyData(t *testing.T) {
 	require.NoError(t, err)
 	defer sqliteStore.Stop()
 
-	boltdbStore, err = newDeleteRequestsStoreBoltDB(workingDir, indexStorageClient, func() model.Time {
-		return now
-	})
+	boltdbStore, err = NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
 	require.NoError(t, err)
 	defer boltdbStore.Stop()
 
@@ -344,17 +340,11 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDir, indexStorageClient, func() model.Time {
+	deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, func() model.Time {
 		return now
 	})
 	require.NoError(t, err)
-
-	sqliteStore, err := newDeleteRequestsStoreSQLite(workingDir, indexStorageClient, func() model.Time {
-		return now
-	})
-	require.NoError(t, err)
-
-	storeTee := newDeleteRequestsStoreTee(sqliteStore, boltdbStore).(deleteRequestsStoreTee)
+	storeTee := deleteRequestsStore.(deleteRequestsStoreTee)
 
 	t.Run("add and get delete request", func(t *testing.T) {
 		reqID, err := storeTee.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-2*time.Hour), now, time.Hour)
@@ -424,7 +414,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 		storageBoltDBFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+deleteRequestsDBBoltDBFileName)
 		require.FileExists(t, storageBoltDBFilePath)
 
-		storageSQLiteFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+deleteRequestsDBSQLiteFileName)
+		storageSQLiteFilePath := filepath.Join(objectStorePath, DeleteRequestsTableName+"/"+deleteRequestsDBSQLiteFileNameGZ)
 		require.FileExists(t, storageSQLiteFilePath)
 
 		// remove working dir to delete the local dbs
@@ -433,17 +423,11 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 	})
 
 	t.Run("initializing stores should get dbs from storage", func(t *testing.T) {
-		boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDir, indexStorageClient, func() model.Time {
+		deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, func() model.Time {
 			return now
 		})
 		require.NoError(t, err)
-
-		sqliteStore, err := newDeleteRequestsStoreSQLite(workingDir, indexStorageClient, func() model.Time {
-			return now
-		})
-		require.NoError(t, err)
-
-		storeTee = newDeleteRequestsStoreTee(sqliteStore, boltdbStore).(deleteRequestsStoreTee)
+		storeTee = deleteRequestsStore.(deleteRequestsStoreTee)
 
 		reqsFromTee, err := storeTee.GetAllRequests(context.Background())
 		require.NoError(t, err)
@@ -457,6 +441,19 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 		reqsFromBackupStore, err := storeTee.backupStore.GetAllRequests(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, reqsFromTee, reqsFromBackupStore)
+	})
+
+	t.Run("rollback to boltdb should cleanup sqlite db", func(t *testing.T) {
+		storeTee.Stop()
+
+		_, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "", func() model.Time {
+			return now
+		})
+		require.NoError(t, err)
+
+		require.NoFileExists(t, filepath.Join(workingDir, deleteRequestsWorkingDirName, deleteRequestsDBSQLiteFileName))
+		_, err = indexStorageClient.GetFile(context.Background(), DeleteRequestsTableName, deleteRequestsDBSQLiteFileNameGZ)
+		require.True(t, indexStorageClient.IsFileNotFoundErr(err))
 	})
 }
 

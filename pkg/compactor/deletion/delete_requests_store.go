@@ -3,6 +3,7 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -15,6 +16,8 @@ type DeleteRequestsStoreDBType string
 const (
 	DeleteRequestsStoreDBTypeBoltDB DeleteRequestsStoreDBType = "boltdb"
 	DeleteRequestsStoreDBTypeSQLite DeleteRequestsStoreDBType = "sqlite"
+
+	deleteRequestsWorkingDirName = "delete_requests"
 )
 
 var SupportedDeleteRequestsStoreDBTypes = []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite}
@@ -37,7 +40,12 @@ type DeleteRequestsStore interface {
 }
 
 func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
-	store, err := newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient)
+	return newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, backupDeleteRequestStoreDBType, model.Now)
+}
+
+func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType, now func() model.Time) (DeleteRequestsStore, error) {
+	workingDirectory = filepath.Join(workingDirectory, deleteRequestsWorkingDirName)
+	store, err := createDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, now)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +59,7 @@ func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 
 		// copy data from boltdb to sqlite only if the sqlite store is empty
 		if sqliteStoreIsEmpty {
-			boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, model.Now)
+			boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, now)
 			if err != nil {
 				return nil, err
 			}
@@ -67,10 +75,17 @@ func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 				return nil, err
 			}
 		}
+	} else {
+		// we want to cleanup SQLite DB for the scenario when SQLite is rolled back to boltDB and back to SQLite again
+		// because we only copy the data from boltDB to SQLite when the db is empty.
+		// If the SQLite is left un-empty, we will skip copying data from boltDB next time we move to SQLite again.
+		if err := cleanupSQLiteDB(workingDirectory, indexStorageClient); err != nil {
+			return nil, err
+		}
 	}
 
 	if backupDeleteRequestStoreDBType != "" && deleteRequestsStoreDBType != backupDeleteRequestStoreDBType {
-		backupStore, err := newDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient)
+		backupStore, err := createDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient, now)
 		if err != nil {
 			return nil, err
 		}
@@ -81,12 +96,12 @@ func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	return store, nil
 }
 
-func newDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+func createDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, now func() model.Time) (DeleteRequestsStore, error) {
 	switch DeleteRequestsStoreDBType {
 	case DeleteRequestsStoreDBTypeBoltDB:
-		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, model.Now)
+		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, now)
 	case DeleteRequestsStoreDBTypeSQLite:
-		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient, model.Now)
+		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient, now)
 	default:
 		return nil, fmt.Errorf("unexpected delete requests store DB type %s. Supported types: (%s, %s)", DeleteRequestsStoreDBType, DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite)
 	}
