@@ -274,7 +274,7 @@ func (ds *deleteRequestsStoreSQLite) generateID(ctx context.Context, req DeleteR
 					requestID,
 					req.UserID,
 				},
-				ResultFunc: func(stmt *sqlite.Stmt) error {
+				ResultFunc: func(_ *sqlite.Stmt) error {
 					count++
 					return nil
 				},
