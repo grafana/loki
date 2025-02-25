@@ -58,12 +58,6 @@ func (a *Aggregate) Type() PlanType {
 	return PlanTypeAggregate
 }
 
-// Children implements the ast interface
-func (a *Aggregate) Children() []Plan {
-	// Convert the Plan interface to ast interface
-	return []Plan{a.input}
-}
-
 // GroupExprs implements the aggregateNode interface
 func (a *Aggregate) GroupExprs() []Expr {
 	return a.groupExprs

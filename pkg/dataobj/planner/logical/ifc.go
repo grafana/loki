@@ -69,7 +69,6 @@ type aggregateExpr interface {
 type Plan interface {
 	// Type returns the type of the plan node
 	Type() PlanType
-	Children() []Plan
 	// Schema returns the schema of the data produced by this plan node
 	Schema() schema.Schema
 }
