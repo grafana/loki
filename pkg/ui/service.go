@@ -20,8 +20,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
-
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
@@ -42,7 +40,7 @@ type Service struct {
 }
 
 func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
-	addr, err := ring.GetInstanceAddr(cfg.AdvertiseAddr, cfg.InfNames, util_log.Logger, cfg.EnableIPv6)
+	addr, err := ring.GetInstanceAddr(cfg.AdvertiseAddr, cfg.InfNames, logger, cfg.EnableIPv6)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +53,10 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 				return net.DialTimeout(network, addr, calcTimeout(ctx))
 			},
 		},
+	}
+
+	if !cfg.Debug {
+		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 	advertiseAddr := fmt.Sprintf("%s:%d", cfg.AdvertiseAddr, cfg.AdvertisePort)
 	node, err := ckit.NewNode(httpClient, ckit.Config{

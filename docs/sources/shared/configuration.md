@@ -124,7 +124,7 @@ ui:
 
   # How frequently to rejoin the cluster to address split brain issues.
   # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 1m]
+  [rejoin_interval: <duration> | default = 3m]
 
   # Number of initial peers to join from the discovered set.
   # CLI flag: -ui.cluster-max-join-peers
@@ -137,6 +137,10 @@ ui:
   # Enable using a IPv6 instance address.
   # CLI flag: -ui.enable-ipv6
   [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
 
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
