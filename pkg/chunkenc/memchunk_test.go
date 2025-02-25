@@ -1126,7 +1126,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-func BenchmarkHeadBlockMultiExtractorSampleIterator(b *testing.B) {
+func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 	for _, j := range []int{20000, 10000, 8000, 5000} {
 		for _, withStructuredMetadata := range []bool{false, true} {
 			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {

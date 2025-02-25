@@ -2598,7 +2598,7 @@ func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
 
 func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
 	extractors := make([]log.SampleExtractor, 0, len(m.variants))
-  // TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
+	// TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
 	idx := 0
 
 	for _, v := range m.variants {

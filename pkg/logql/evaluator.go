@@ -1407,7 +1407,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 	}
 
 	variantEvaluators := []StepEvaluator{}
-  // TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
+	// TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
 	idx := 0
 	for _, variant := range expr.Variants() {
 		extractors, err := variant.Extractors()
