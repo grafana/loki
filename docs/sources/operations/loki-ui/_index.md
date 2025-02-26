@@ -30,7 +30,9 @@ Where `<LOKI_HOST>` is the hostname or IP address of the Loki server and `<LOKI_
 
 ## Deployment
 
-Each Loki component now includes the UI service. Discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the Loki configuration file:
+Each Loki component now includes the UI service. When running Loki as a docker container, the UI service is enabled by default. No additional configuration is required. 
+
+For Loki helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the `loki` section of the `values.yaml` file:
 
 ```yaml
 loki:

@@ -195,18 +195,26 @@ func (in instance) For(
 	}()
 
 	var err error
-	for resp := range ch {
-		if err != nil {
-			continue
+	for {
+		select {
+		case <-ctx.Done():
+			// Return early if the context is canceled
+			return acc.Result(), ctx.Err()
+		case resp, ok := <-ch:
+			if !ok {
+				// Channel closed, we're done
+				return acc.Result(), err
+			}
+			if err != nil {
+				continue
+			}
+			if resp.Err != nil {
+				err = resp.Err
+				continue
+			}
+			err = acc.Accumulate(ctx, resp.Res, resp.I)
 		}
-		if resp.Err != nil {
-			err = resp.Err
-			continue
-		}
-		err = acc.Accumulate(ctx, resp.Res, resp.I)
 	}
-
-	return acc.Result(), err
 }
 
 // convert to matrix
