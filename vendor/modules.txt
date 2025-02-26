@@ -995,7 +995,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.3
 ## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/grafana/ckit v0.0.0-20250109002736-4ca45886e452
+# github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5
 ## explicit; go 1.20
 github.com/grafana/ckit
 github.com/grafana/ckit/internal/chash
@@ -1132,7 +1132,7 @@ github.com/hashicorp/golang-lru/simplelru
 github.com/hashicorp/golang-lru/v2
 github.com/hashicorp/golang-lru/v2/internal
 github.com/hashicorp/golang-lru/v2/simplelru
-# github.com/hashicorp/memberlist v0.5.2 => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
+# github.com/hashicorp/memberlist v0.5.3 => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 ## explicit; go 1.12
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.1
