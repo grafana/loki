@@ -41,7 +41,7 @@ type (
 )
 
 type hooksMixin struct {
-	hooksMu *sync.Mutex
+	hooksMu *sync.RWMutex
 
 	slice   []Hook
 	initial hooks
@@ -49,7 +49,7 @@ type hooksMixin struct {
 }
 
 func (hs *hooksMixin) initHooks(hooks hooks) {
-	hs.hooksMu = new(sync.Mutex)
+	hs.hooksMu = new(sync.RWMutex)
 	hs.initial = hooks
 	hs.chain()
 }
@@ -151,7 +151,7 @@ func (hs *hooksMixin) clone() hooksMixin {
 	clone := *hs
 	l := len(clone.slice)
 	clone.slice = clone.slice[:l:l]
-	clone.hooksMu = new(sync.Mutex)
+	clone.hooksMu = new(sync.RWMutex)
 	return clone
 }
 
@@ -176,9 +176,14 @@ func (hs *hooksMixin) withProcessPipelineHook(
 }
 
 func (hs *hooksMixin) dialHook(ctx context.Context, network, addr string) (net.Conn, error) {
-	hs.hooksMu.Lock()
-	defer hs.hooksMu.Unlock()
-	return hs.current.dial(ctx, network, addr)
+	// Access to hs.current is guarded by a read-only lock since it may be mutated by AddHook(...)
+	// while this dialer is concurrently accessed by the background connection pool population
+	// routine when MinIdleConns > 0.
+	hs.hooksMu.RLock()
+	current := hs.current
+	hs.hooksMu.RUnlock()
+
+	return current.dial(ctx, network, addr)
 }
 
 func (hs *hooksMixin) processHook(ctx context.Context, cmd Cmder) error {
