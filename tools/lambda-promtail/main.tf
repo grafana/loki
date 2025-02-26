@@ -7,6 +7,7 @@ data "aws_region" "current" {}
 resource "aws_iam_role" "this" {
   name               = var.name
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
+  tags               = var.tags
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -37,6 +38,7 @@ data "aws_iam_policy" "lambda_vpc_execution" {
   count = length(var.lambda_vpc_subnets) > 0 ? 1 : 0
 
   name = "AWSLambdaVPCAccessExecutionRole"
+  tags = var.tags
 }
 
 #-------------------------------------------------------------------------------
@@ -146,6 +148,7 @@ data "aws_iam_policy_document" "lambda_kinesis" {
 resource "aws_cloudwatch_log_group" "this" {
   name              = "/aws/lambda/${var.name}"
   retention_in_days = 14
+  tags              = var.tags
 }
 
 locals {
@@ -212,6 +215,8 @@ resource "aws_lambda_function" "this" {
       PRINT_LOG_LINE           = var.print_log_line
     }
   }
+
+  tags = var.tags
 
   depends_on = [
     aws_iam_role_policy.lambda_s3,
