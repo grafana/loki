@@ -997,6 +997,10 @@ ingest_limits:
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
+  # The number of partitions to use for the ingest limits topic.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
+
 ingest_limits_frontend:
   client_config:
     # Configures client gRPC connections to limits service.
