@@ -208,10 +208,10 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
 	s.mtxAssingedPartitions.RLock()
 	defer s.mtxAssingedPartitions.RUnlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
@@ -435,11 +435,10 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
 func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	s.mtxAssingedPartitions.RLock()
 	defer s.mtxAssingedPartitions.RUnlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 
 	// Initialize tenant map if it doesn't exist
 	if _, ok := s.metadata[tenant]; !ok {
