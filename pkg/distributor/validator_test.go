@@ -264,8 +264,8 @@ func TestShouldBlockIngestion(t *testing.T) {
 				&validation.Limits{
 					BlockIngestionUntil: flagext.Time(testTime.Add(time.Hour)),
 					BlockIngestionPolicyUntil: map[string]flagext.Time{
-						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
-						"policy1":               flagext.Time(testTime.Add(time.Hour)),
+						validation.GlobalPolicy: flagext.Time(testTime.Add(-2 * time.Hour)),
+						"policy1":               flagext.Time(testTime.Add(-time.Hour)),
 					},
 					BlockIngestionStatusCode: 1234,
 				},
@@ -280,9 +280,9 @@ func TestShouldBlockIngestion(t *testing.T) {
 			policy: "policy1",
 			overrides: fakeLimits{
 				&validation.Limits{
-					BlockIngestionUntil: flagext.Time(testTime.Add(-time.Hour)), // Not active anymore
+					BlockIngestionUntil: flagext.Time(testTime.Add(-2 * time.Hour)), // Not active anymore
 					BlockIngestionPolicyUntil: map[string]flagext.Time{
-						validation.GlobalPolicy: flagext.Time(testTime.Add(time.Hour)),
+						validation.GlobalPolicy: flagext.Time(testTime.Add(-time.Hour)),
 						"policy1":               flagext.Time(testTime.Add(time.Hour)),
 					},
 					BlockIngestionStatusCode: 1234,
