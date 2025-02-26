@@ -276,7 +276,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 			"query_hash", queryHash,
 		}
 		tags := httpreq.ExtractQueryTagsFromContext(ctx)
-		tagValues := tagsToKeyValues(tags)
+		tagValues := httpreq.TagsToKeyValues(tags)
 		if GetRangeType(q.params) == InstantType {
 			logValues = append(logValues, "type", "instant")
 		} else {

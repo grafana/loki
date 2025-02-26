@@ -47,7 +47,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	mathutil "github.com/grafana/loki/v3/pkg/util/math"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -1099,7 +1098,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	for limit != 0 && !isDone(ctx) {
 		fetchSize := uint32(queryBatchSize)
 		if limit > 0 {
-			fetchSize = mathutil.MinUint32(queryBatchSize, uint32(limit))
+			fetchSize = min(queryBatchSize, uint32(limit))
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {

@@ -148,7 +148,7 @@ func (cfg *Config) Validate() error {
 
 		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
 			// add some jitter to avoid running retention and compaction at same time
-			cfg.ApplyRetentionInterval += minDuration(10*time.Minute, cfg.ApplyRetentionInterval/2)
+			cfg.ApplyRetentionInterval += min(10*time.Minute, cfg.ApplyRetentionInterval/2)
 		}
 
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
@@ -903,12 +903,4 @@ func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
-}
-
-func minDuration(x time.Duration, y time.Duration) time.Duration {
-	if x < y {
-		return x
-	}
-
-	return y
 }
