@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tracing"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/dskit/tenant"
 )
@@ -33,6 +34,11 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 
 	traceID, sampled := tracing.ExtractSampledTraceID(ctx)
 	if sampled {
+		span := opentracing.SpanFromContext(ctx)
+		if span != nil {
+			span.SetTag("logged_trace_id", true)
+		}
+
 		return log.With(l, "traceID", traceID, "sampled", "true")
 	}
 	if traceID != "" {
