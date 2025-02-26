@@ -323,7 +323,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
 	}
-	return err
+	return nil
 }
 
 type dynamoDBRequest interface {
