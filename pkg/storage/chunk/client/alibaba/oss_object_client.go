@@ -157,7 +157,7 @@ func (s *OssObjectClient) GetObjectRange(ctx context.Context, objectKey string, 
 	if err != nil {
 		return nil, err
 	}
-	return resp.Response.Body, err
+	return resp.Response.Body, nil
 }
 
 // PutObject puts the specified bytes into the configured OSS bucket at the provided key
