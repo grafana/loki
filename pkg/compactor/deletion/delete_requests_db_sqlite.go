@@ -256,6 +256,9 @@ func (s *sqliteDB) uploadFile() error {
 // cleanupSQLiteDB removes the SQLite DB from local disk as well as object storage
 func cleanupSQLiteDB(workingDirectory string, indexStorageClient storage.Client) error {
 	if err := filepath.WalkDir(workingDirectory, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 		if !d.IsDir() && strings.HasPrefix(d.Name(), deleteRequestsDBSQLiteFileName) {
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				return err
