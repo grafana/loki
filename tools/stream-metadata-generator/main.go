@@ -81,6 +81,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type config struct {
 	NumPartitions             int      `yaml:"num_partitions"`
 	NumTenants                int      `yaml:"num_tenants"`
+	TenantPrefix              string   `yaml:"tenant_prefix"`
 	QPSPerTenant              int      `yaml:"qps_per_tenant"`
 	BatchSize                 int      `yaml:"batch_size"`
 	StreamsPerTenant          int      `yaml:"streams_per_tenant"`
@@ -101,7 +102,7 @@ type config struct {
 	IngesterLifecyclerConfig ring.LifecyclerConfig `yaml:"ingester_lifecycler,omitempty"`
 
 	// Frontend ring config
-	FrontendLifecyclerConfig ring.LifecyclerConfig `yaml:"frontend_lifecycler,omitempty"`
+	FrontendLifecyclerConfig ring.LifecyclerConfig  `yaml:"frontend_lifecycler,omitempty"`
 	FrontendClientConfig     frontend_client.Config `yaml:"frontend_client,omitempty"`
 }
 
@@ -119,6 +120,7 @@ func (s *streamLabelsFlag) Set(value string) error {
 func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumPartitions, "partitions.total", 64, "Number of partitions to generate metadata for")
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
+	f.StringVar(&c.TenantPrefix, "tenants.prefix", "", "Prefix for tenant IDs")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.BatchSize, "tenants.streams.batch-size", 100, "Number of streams to send to Kafka per tick")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
@@ -281,6 +283,11 @@ func (s *generator) starting(ctx context.Context) error {
 	s.streams = make(map[string][]distributor.KeyedStream)
 	for i := 0; i < s.cfg.NumTenants; i++ {
 		tenantID := fmt.Sprintf("tenant-%d", i)
+
+		if s.cfg.TenantPrefix != "" {
+			tenantID = fmt.Sprintf("%s-%d", s.cfg.TenantPrefix, i)
+		}
+
 		s.streams[tenantID] = generateStreamsForTenant(tenantID, s.cfg.StreamsPerTenant, s.cfg.StreamLabels)
 	}
 
