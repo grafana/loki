@@ -7,7 +7,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'deployment',
       '$datasource',
-      'label_values(kube_deployment_created{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace"}, deployment)',
+      'label_values(kube_deployment_created{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace"}, deployment)',
       sort=1,
     ),
 
@@ -15,7 +15,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'pod',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$deployment.*"}, pod)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace", ' + $._config.per_instance_label + '=~"$deployment.*"}, pod)',
       sort=1,
     ),
 
@@ -23,7 +23,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'container',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", pod=~"$pod", pod=~"$deployment.*"}, container)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace", ' + $._config.per_instance_label + '=~"$pod", ' + $._config.per_instance_label + '=~"$deployment.*"}, container)',
       sort=1,
     ),
 
