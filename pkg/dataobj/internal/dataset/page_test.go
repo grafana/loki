@@ -1,6 +1,8 @@
 package dataset
 
 import (
+	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"testing"
@@ -143,10 +145,20 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
 	var actual []string
-	for result := range iterMemPage(page, opts.Value, opts.Compression) {
-		val, err := result.Value()
-		require.NoError(t, err)
 
+	r := newPageReader(page, opts.Value, opts.Compression)
+	for {
+		var values [1]Value
+		n, err := r.Read(context.Background(), values[:])
+		if err != nil && !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
+		} else if n == 0 && errors.Is(err, io.EOF) {
+			break
+		} else if n == 0 {
+			continue
+		}
+
+		val := values[0]
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, "")
 		} else {

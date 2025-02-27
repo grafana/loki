@@ -2,7 +2,9 @@ package streams
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -61,21 +63,27 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 			return err
 		}
 
-		for result := range dataset.Iter(ctx, columns) {
-			row, err := result.Value()
-			if err != nil {
-				return err
-			}
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+		})
 
-			stream, err := decodeRow(streamsColumns, row)
-			if err != nil {
+		var rows [1]dataset.Row
+		for {
+			n, err := r.Read(ctx, rows[:])
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
-			} else if !yield(stream) {
+			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-		}
 
-		return nil
+			for _, row := range rows[:n] {
+				stream, err := decodeRow(streamsColumns, row)
+				if err != nil || !yield(stream) {
+					return err
+				}
+			}
+		}
 	})
 }
 
