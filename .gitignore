@@ -71,3 +71,9 @@ production/helm/loki/src/helm-test/helm-test
 
 # Go telemetry
 .config
+
+# Profiling files
+*.prof
+cpu.prof
+mem.prof
+*.pprof
