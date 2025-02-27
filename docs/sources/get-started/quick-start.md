@@ -13,6 +13,7 @@ killercoda:
 
     For more information about the transformation tool, refer to https://github.com/grafana/killercoda/blob/staging/docs/transformer.md.
   title: Loki Quickstart Demo
+  
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
   details:
     intro:
@@ -20,12 +21,12 @@ killercoda:
   backend:
     imageid: ubuntu
 ---
-
+<!-- INTERACTIVE page intro.md START -->
 # Quickstart to run Loki locally
 
 This quick start guide will walk you through deploying Loki in [single binary mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki stack**. The Loki stack consists of the following components:
 
-{{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-2.png" caption="Loki Stack" alt="Loki Stack" >}}
+{{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki Stack" alt="Loki Stack" >}}
 
 * **Loki**: A log aggregation system to store the collected logs. For more information on what Loki is, see [Loki overview](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/overview/).
 * **Alloy**: Grafana Alloy is an open source telemtry collector for metrics, logs, traces and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all docker containers and forward them to Loki.
@@ -49,6 +50,10 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
+<!-- INTERACTIVE page intro.md END -->
+
+<!-- INTERACTIVE page step1.md START -->
+
 ## Install the Loki stack
 
 {{< admonition type="note" >}}
@@ -60,7 +65,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
 1. Clone the Loki fundamentals repository and checkout the getting-started branch:
 
      ```bash
-     git checkout https://github.com/grafana/loki-fundamentals.git -b getting-started
+     git clone https://github.com/grafana/loki-fundamentals.git -b getting-started
      ```
 
 1. Change to the `loki-fundamentals` directory:
@@ -88,6 +93,10 @@ With the Loki stack running, you can now verify component is up and running:
 * **Grafana**: Open a browser and navigate to [http://localhost:3000](http://localhost:3000). You should see the Grafana home page.
 * **Loki**: Open a browser and navigate to [http://localhost:3100/metrics](http://localhost:3100/metrics). You should see the Loki metrics page.
 
+<!-- INTERACTIVE page step1.md END -->
+
+<!-- INTERACTIVE page step2.md START -->
+
 Since Grafana Alloy is configured to tail logs from all docker containers, Loki should already be receiving logs. The best place to verify this is using the Grafana Drilldown Logs feature. To do navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down.png" caption="Getting started sample application" alt="Grafana Drilldown" >}}
@@ -98,13 +107,17 @@ If you have only the getting started demo deployed in your docker environment, y
 
 We will not cover the rest of the Grafana Drilldown Log features in this quickstart guide. For more information on how to use the Grafana Drilldown Logs feature, see [Drilldown Logs](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
 
+<!-- INTERACTIVE page step2.md END -->
+
+<!-- INTERACTIVE page step3.md START -->
+
 ## Collect Logs from a sample application
 
 Currently, the Loki stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivourous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
-- **Websocket Service:** Manages the websocket connections for the application.
+- **WebSocket Service:** Manages the websocket connections for the application.
 - **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
 - **Main App:** The main application that ties all the services together.
 - **Database:** A database that stores user and plant data.
@@ -157,6 +170,10 @@ To deploy the sample application, follow these steps:
 
   Now that you have generated some logs, you can view them in Grafana. To do this, navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
 
+<!-- INTERACTIVE page step3.md END -->
+
+<!-- INTERACTIVE page step4.md START -->
+
 ## Querying Logs
 
 At this point, you have viewed logs using the Grafana Drilldown Logs feature. In many cases this will provide you with all the information you need. However, we can also manually query Loki to ask more advanced questions about the logs. This can be done via the **Grafana Explore**.
@@ -207,6 +224,10 @@ At this point, you have viewed logs using the Grafana Drilldown Logs feature. In
       {container="greenhouse-main_app-1"} |= `POST`
       ```
       <!-- INTERACTIVE copy END -->
+
+<!-- INTERACTIVE page step4.md END -->
+
+<!-- INTERACTIVE page step5.md START -->
 
 ### Extracting Attributes from Logs
 
@@ -266,6 +287,10 @@ sum by (service_name) (rate({env="production"} | logfmt [$__auto]))
 ```
 <!-- INTERACTIVE copy END -->
 This is made possible by the `service_name` label and the `env` label that we have added to our log lines.
+
+<!-- INTERACTIVE page step5.md END -->
+
+<!-- INTERACTIVE page step6.md START -->
 
 ## A look under the hood
 
@@ -336,6 +361,10 @@ In this view you can see the components of the Alloy configuration file and how 
 * **loki.source.docker**: This component collects logs from the discovered containers and forwards them to the next component. It requests the metadata from the `discovery.docker` component and applies the relabeling rules from the `discovery.relabel` component.
 * **loki.process**: This component provides stages for log transformation and extraction. In this case it adds a static label `env=production` to all logs.
 * **loki.write**: This component writes the logs to Loki. It forwards the logs to the Loki endpoint `http://loki:3100/loki/api/v1/push`.
+
+<!-- INTERACTIVE page step6.md END -->
+
+<!-- INTERACTIVE page step7.md START -->
 
 ### View Logs in realtime
 
@@ -421,6 +450,10 @@ To summarize the configuration file:
 
 The above configuration file is a basic configuration file for Loki. For more advanced configuration options, refer to the [Loki Configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/) documentation.
 
+<!-- INTERACTIVE page step7.md END -->
+
+<!-- INTERACTIVE page step8.md START -->
+
 ### Grafana Loki Datasource
 
 The final piece of the puzzle is the Grafana Loki datasource. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a datasource;
@@ -465,6 +498,10 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
 Within the entrypoint section of the `docker-compose.yml` file, we have defined a file called `run.sh` this runs on startup and creates the datasource configuration file `ds.yaml` in the Grafana provisioning directory. 
 This file defines the Loki datasource and tells Grafana to use it. Since Loki is running in the same docker network as Grafana, we can use the service name `loki` as the URL.
 
+<!-- INTERACTIVE page step8.md END -->
+
+<!-- INTERACTIVE page finish.md START -->
+
 ## What next?
 
 {{< docs/ignore >}}
@@ -483,5 +520,7 @@ You have completed the Loki Quickstart demo. So where to go next? Here are a few
 If you would like to run a demonstration environment that includes Mimir, Loki, Tempo, and Grafana, you can use [Introduction to Metrics, Logs, Traces, and Profiling in Grafana](https://github.com/grafana/intro-to-mlt).
 It's a self-contained environment for learning about Mimir, Loki, Tempo, and Grafana.
 
-##The project includes detailed explanations of each component and annotated configurations for a single-instance deployment.
+The project includes detailed explanations of each component and annotated configurations for a single-instance deployment.
 You can also push the data from the environment to [Grafana Cloud](https://grafana.com/cloud/).
+
+<!-- INTERACTIVE page finish.md END -->
