@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -364,7 +365,7 @@ type bitpackBuffer struct {
 
 	width int
 
-	sets int    // Number of encoded sets. Each set has 8 elements.
+	sets uint64 // Number of encoded sets. Each set has 8 elements.
 	data []byte // Total amount of data.
 }
 
@@ -409,7 +410,7 @@ func (b *bitpackBuffer) Flush(w streamio.Writer) error {
 	//
 	// To encode the width in 6 bits, we encode width-1. That reserves the bottom
 	// 7 bits for metadata, and the remaining 57 bits for the number of sets.
-	const maxSets = 1<<57 - 1
+	const maxSets uint64 = 1<<57 - 1
 
 	// Validate constraints for safety.
 	switch {
@@ -423,7 +424,7 @@ func (b *bitpackBuffer) Flush(w streamio.Writer) error {
 
 	// Width can be between 1 and 64. To pack it into 6 bits, we subtract 1 from
 	// the value.
-	header := (uint64(b.sets) << 7) | (uint64(b.width-1) << 1) | 1
+	header := (b.sets << 7) | (uint64(b.width-1) << 1) | 1
 	if err := streamio.WriteUvarint(w, header); err != nil {
 		return err
 	}
@@ -500,8 +501,34 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_BITMAP
 }
 
-// Decode reads the next uint64 value from the stream.
-func (dec *bitmapDecoder) Decode() (Value, error) {
+// Decode decodes up to len(s) values, storing the results into s. The
+// number of decoded values is returned, followed by an error (if any).
+// At the end of the stream, Decode returns 0, [io.EOF].
+func (dec *bitmapDecoder) Decode(s []Value) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+
+	var err error
+	var v Value
+
+	for i := range s {
+		v, err = dec.decode()
+		if errors.Is(err, io.EOF) {
+			if i == 0 {
+				return 0, io.EOF
+			}
+			return i, nil
+		} else if err != nil {
+			return i, err
+		}
+		s[i] = v
+	}
+	return len(s), nil
+}
+
+// decode reads the next uint64 value from the stream.
+func (dec *bitmapDecoder) decode() (Value, error) {
 	// See comment inside [bitmapDecoder] for the state machine details.
 
 NextState:

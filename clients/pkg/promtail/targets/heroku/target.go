@@ -68,7 +68,7 @@ func (h *Target) run() error {
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 
 	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
-	if !model.IsValidMetricName(model.LabelValue(tentativeServerMetricNamespace)) {
+	if !model.LabelName(tentativeServerMetricNamespace).IsValidLegacy() {
 		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
 	}
 	h.config.Server.MetricsNamespace = tentativeServerMetricNamespace

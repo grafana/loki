@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -13,15 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/math"
-
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -115,7 +112,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// Parallelism will be at least 1
-	p := math.Max(parallelism, 1)
+	p := max(parallelism, 1)
 	// don't spawn unnecessary goroutines
 	if len(input) < parallelism {
 		p = len(input)
@@ -195,10 +192,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
-	if err != nil {
-		return nil, err
-	}
+	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -260,18 +254,19 @@ func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, ti
 	if err != nil {
 		return 0, 0, err
 	}
-	return maxRangeVectorAndOffsetDuration(parsed)
+	dur, offset := maxRangeVectorAndOffsetDuration(parsed)
+	return dur, offset, nil
 }
 
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
-func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration, error) {
+func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration) {
 	if _, ok := expr.(syntax.SampleExpr); !ok {
-		return 0, 0, nil
+		return 0, 0
 	}
 
 	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e syntax.Expr) {
-		if r, ok := e.(*syntax.LogRange); ok {
+		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
 			}
@@ -280,5 +275,5 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 			}
 		}
 	})
-	return maxRVDuration, maxOffset, nil
+	return maxRVDuration, maxOffset
 }

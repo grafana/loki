@@ -73,11 +73,25 @@ enum CompressionType {
 // Statistics about a column or a page. All statistics are optional and are
 // conditionally set depending on the column type.
 message Statistics {
-  // Minimum value.
+  // Minimum value. Applications should only set min_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, min_value should be unset.
+  //
+  // Applications must not assume that an unset min_value means that the column
+  // is empty; check for values_count == 0 instead.
   bytes min_value = 1;
 
-  // Maximum value.
+  // Maximum value. Applications should only set max_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, max_value should be unset.
+  //
+  // Applications must not assume that an unset max_value means that the column
+  // is empty; check for values_count == 0 instead.
   bytes max_value = 2;
+
+  // Estimated number of distinct values in the column.
+  //
+  // Applications must not assume that an unset cardinality_count means that
+  // the column has no distinct values; check for values_count == 0 instead.
+  uint64 cardinality_count = 3;
 }
 
 // Page describes an individual page within a column.

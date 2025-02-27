@@ -109,6 +109,46 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "<hostname>"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 3m]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -129,6 +169,25 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 # The ruler block configures the Loki ruler.
 [ruler: <ruler>]
+
+ruler_storage:
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is: ruler-storage
+  [<thanos_object_store_config>]
+
+  # Backend storage to use. Supported backends are: local, s3, gcs, azure,
+  # swift, filesystem, alibabacloud, bos
+  # CLI flag: -ruler-storage.backend
+  [backend: <string> | default = "filesystem"]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler-storage.local.directory
+    [directory: <string> | default = ""]
 
 # The ingester_client block configures how the distributor will connect to
 # ingesters. Only appropriate when running all components, the distributor, or
@@ -659,138 +718,10 @@ pattern_ingester:
 [compactor: <compactor>]
 
 compactor_grpc_client:
-  # gRPC client max receive message size (bytes).
-  # CLI flag: -compactor.grpc-client.grpc-max-recv-msg-size
-  [max_recv_msg_size: <int> | default = 104857600]
-
-  # gRPC client max send message size (bytes).
-  # CLI flag: -compactor.grpc-client.grpc-max-send-msg-size
-  [max_send_msg_size: <int> | default = 104857600]
-
-  # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
-  # CLI flag: -compactor.grpc-client.grpc-compression
-  [grpc_compression: <string> | default = ""]
-
-  # Rate limit for gRPC client; 0 means disabled.
-  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit
-  [rate_limit: <float> | default = 0]
-
-  # Rate limit burst for gRPC client.
-  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit-burst
-  [rate_limit_burst: <int> | default = 0]
-
-  # Enable backoff and retry when we hit rate limits.
-  # CLI flag: -compactor.grpc-client.backoff-on-ratelimits
-  [backoff_on_ratelimits: <boolean> | default = false]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -compactor.grpc-client.backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -compactor.grpc-client.backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -compactor.grpc-client.backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # Initial stream window size. Values less than the default are not supported
-  # and are ignored. Setting this to a value other than the default disables the
-  # BDP estimator.
-  # CLI flag: -compactor.grpc-client.initial-stream-window-size
-  [initial_stream_window_size: <int> | default = 63KiB1023B]
-
-  # Initial connection window size. Values less than the default are not
-  # supported and are ignored. Setting this to a value other than the default
-  # disables the BDP estimator.
-  # CLI flag: -compactor.grpc-client.initial-connection-window-size
-  [initial_connection_window_size: <int> | default = 63KiB1023B]
-
-  # Enable TLS in the gRPC client. This flag needs to be enabled when any other
-  # TLS flag is set. If set to false, insecure connection to gRPC server will be
-  # used.
-  # CLI flag: -compactor.grpc-client.tls-enabled
-  [tls_enabled: <boolean> | default = false]
-
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -compactor.grpc-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -compactor.grpc-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -compactor.grpc-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -compactor.grpc-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -compactor.grpc-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -compactor.grpc-client.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -compactor.grpc-client.tls-min-version
-  [tls_min_version: <string> | default = ""]
-
-  # The maximum amount of time to establish a connection. A value of 0 means
-  # default gRPC client connect timeout and backoff.
-  # CLI flag: -compactor.grpc-client.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-
-  # Initial backoff delay after first connection failure. Only relevant if
-  # ConnectTimeout > 0.
-  # CLI flag: -compactor.grpc-client.connect-backoff-base-delay
-  [connect_backoff_base_delay: <duration> | default = 1s]
-
-  # Maximum backoff delay when establishing a connection. Only relevant if
-  # ConnectTimeout > 0.
-  # CLI flag: -compactor.grpc-client.connect-backoff-max-delay
-  [connect_backoff_max_delay: <duration> | default = 5s]
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is: compactor.grpc-client
+  [<grpc_client>]
 
 # The limits_config block configures global and per-tenant limits in Loki. The
 # values here can be overridden in the `overrides` section of the runtime_config
@@ -894,6 +825,54 @@ kafka_config:
   # disable waiting for maximum consumer lag being honored at startup.
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
+
+dataobj:
+  consumer:
+    builderconfig:
+      # The size of the target page to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-page-size
+      [target_page_size: <int> | default = 2MiB]
+
+      # The size of the target object to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-object-size
+      [target_object_size: <int> | default = 1GiB]
+
+      # Configures a maximum size for sections, for sections that support it.
+      # CLI flag: -dataobj-consumer.target-section-size
+      [target_section_size: <int> | default = 128MiB]
+
+      # The size of the buffer to use for sorting logs.
+      # CLI flag: -dataobj-consumer.buffer-size
+      [buffer_size: <int> | default = 16MiB]
+
+    uploader:
+      # The size of the SHA prefix to use for generating object storage keys for
+      # data objects.
+      # CLI flag: -dataobj-consumer.sha-prefix-size
+      [shaprefixsize: <int> | default = 2]
+
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
+  querier:
+    # Enable the dataobj querier.
+    # CLI flag: -dataobj-querier-enabled
+    [enabled: <boolean> | default = false]
+
+    # The date of the first day of when the dataobj querier should start
+    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
+    # CLI flag: -dataobj-querier-from
+    [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
+
+  # The prefix to use for the storage bucket.
+  # CLI flag: -dataobj-storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1088,110 +1067,9 @@ dynamodb:
   # CLI flag: -dynamodb.kms-key-id
   [kms_key_id: <string> | default = ""]
 
-# S3 endpoint URL with escaped Key and Secret encoded. If only region is
-# specified as a host, proper endpoint will be deduced. Use
-# inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -s3.url
-[s3: <url>]
-
-# Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -s3.force-path-style
-[s3forcepathstyle: <boolean> | default = false]
-
-# Comma separated list of bucket names to evenly distribute chunks over.
-# Overrides any buckets specified in s3.url flag
-# CLI flag: -s3.buckets
-[bucketnames: <string> | default = ""]
-
-# S3 Endpoint to connect to.
-# CLI flag: -s3.endpoint
-[endpoint: <string> | default = ""]
-
-# AWS region to use.
-# CLI flag: -s3.region
-[region: <string> | default = ""]
-
-# AWS Access Key ID
-# CLI flag: -s3.access-key-id
-[access_key_id: <string> | default = ""]
-
-# AWS Secret Access Key
-# CLI flag: -s3.secret-access-key
-[secret_access_key: <string> | default = ""]
-
-# AWS Session Token
-# CLI flag: -s3.session-token
-[session_token: <string> | default = ""]
-
-# Disable https on s3 connection.
-# CLI flag: -s3.insecure
-[insecure: <boolean> | default = false]
-
-http_config:
-  # Timeout specifies a time limit for requests made by s3 Client.
-  # CLI flag: -s3.http.timeout
-  [timeout: <duration> | default = 0s]
-
-  # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -s3.http.idle-conn-timeout
-  [idle_conn_timeout: <duration> | default = 1m30s]
-
-  # If non-zero, specifies the amount of time to wait for a server's response
-  # headers after fully writing the request.
-  # CLI flag: -s3.http.response-header-timeout
-  [response_header_timeout: <duration> | default = 0s]
-
-  # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -s3.http.insecure-skip-verify
-  [insecure_skip_verify: <boolean> | default = false]
-
-  # Path to the trusted CA file that signed the SSL certificate of the S3
-  # endpoint.
-  # CLI flag: -s3.http.ca-file
-  [ca_file: <string> | default = ""]
-
-# The signature version to use for authenticating against S3. Supported values
-# are: v4.
-# CLI flag: -s3.signature-version
-[signature_version: <string> | default = "v4"]
-
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
-# CLI flag: -s3.storage-class
-[storage_class: <string> | default = "STANDARD"]
-
-sse:
-  # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -s3.sse.type
-  [type: <string> | default = ""]
-
-  # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -s3.sse.kms-key-id
-  [kms_key_id: <string> | default = ""]
-
-  # KMS Encryption Context used for object encryption. It expects JSON formatted
-  # string.
-  # CLI flag: -s3.sse.kms-encryption-context
-  [kms_encryption_context: <string> | default = ""]
-
-# Configures back off when S3 get Object.
-backoff_config:
-  # Minimum backoff time when s3 get Object
-  # CLI flag: -s3.min-backoff
-  [min_period: <duration> | default = 100ms]
-
-  # Maximum backoff time when s3 get Object
-  # CLI flag: -s3.max-backoff
-  [max_period: <duration> | default = 3s]
-
-  # Maximum number of times to retry for s3 GetObject or ObjectExists
-  # CLI flag: -s3.max-retries
-  [max_retries: <int> | default = 5]
-
-# Disable forcing S3 dualstack endpoint usage.
-# CLI flag: -s3.disable-dualstack
-[disable_dualstack: <boolean> | default = false]
+# The s3_storage_config block configures the connection to Amazon S3 object
+# storage backend.
+[<s3_storage_config>]
 ```
 
 ### azure_storage_config
@@ -1549,67 +1427,10 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -<prefix>.memcached.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -<prefix>.memcached.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -<prefix>.memcached.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -<prefix>.memcached.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -<prefix>.memcached.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -<prefix>.memcached.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -<prefix>.memcached.tls-min-version
-  [tls_min_version: <string> | default = ""]
+  # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # store.index-cache-write.memcached
+  [<tls_config>]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A
@@ -1738,7 +1559,7 @@ Common configuration to be shared between multiple modules. If a more specific c
 storage:
   # The s3_storage_config block configures the connection to Amazon S3 object
   # storage backend.
-  # The CLI flags prefix for this block configuration is: common
+  # The CLI flags prefix for this block configuration is: common.storage
   [s3: <s3_storage_config>]
 
   # The gcs_storage_config block configures the connection to Google Cloud
@@ -1842,6 +1663,15 @@ storage:
       # 'limited').
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
+
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is:
+  # common.storage.object-store
+  [object_store: <thanos_object_store_config>]
 
 [persist_tokens: <boolean>]
 
@@ -2362,6 +2192,28 @@ otlp_config:
 # Enable writes to Ingesters during Push requests. Defaults to true.
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
+
+tenant_topic:
+  # Enable the tenant topic tee, which writes logs to Kafka topics based on
+  # tenant IDs instead of using multitenant topics/partitions.
+  # CLI flag: -distributor.tenant-topic-tee.enabled
+  [enabled: <boolean> | default = false]
+
+  # Prefix to prepend to tenant IDs to form the final Kafka topic name
+  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
+  [topic_prefix: <string> | default = "loki.tenant"]
+
+  # Maximum number of bytes that can be buffered before producing to Kafka
+  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 100MiB]
+
+  # Maximum size of a single Kafka record in bytes
+  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
+
+  # Topic strategy to use. Valid values are 'simple' or 'automatic'
+  # CLI flag: -distributor.tenant-topic-tee.strategy
+  [strategy: <string> | default = "simple"]
 ```
 
 ### etcd
@@ -2396,66 +2248,9 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.etcd.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.etcd.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.etcd.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.etcd.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.etcd.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.etcd.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: ruler.ring.etcd
+[<tls_config>]
 
 # Etcd username.
 # CLI flag: -<prefix>.etcd.username
@@ -2628,6 +2423,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
+
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
@@ -2665,6 +2464,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
+- `compactor.grpc-client`
 - `frontend.grpc-client-config`
 - `ingester.client`
 - `pattern-ingester.client`
@@ -2734,66 +2534,10 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is:
+# tsdb.shipper.index-gateway-client.grpc
+[<tls_config>]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
@@ -3404,6 +3148,12 @@ discover_generic_fields:
 # CLI flag: -validation.log-level-fields
 [log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
 
+# Maximum depth to search for log level fields in JSON logs. A value of 0 or
+# less means unlimited depth. Default is 2 which searches the first 2 levels of
+# the JSON object.
+# CLI flag: -validation.log-level-from-json-max-depth
+[log_level_from_json_max_depth: <int> | default = 2]
+
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
@@ -3739,7 +3489,7 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 0s]
 
-# Per-stream retention to apply, if the retention is enable on the compactor
+# Per-stream retention to apply, if the retention is enabled on the compactor
 # side.
 # Example:
 #  retention_stream:
@@ -3750,7 +3500,7 @@ ruler_remote_write_sigv4_config:
 #  priority: 1
 #  period: 744h
 # Selector is a Prometheus labels matchers that will apply the 'period'
-# retention only if the stream is matching. In case multiple stream are
+# retention only if the stream is matching. In case multiple streams are
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
@@ -3904,6 +3654,11 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
+# Block ingestion for policy until the configured date. The time should be in
+# RFC3339 format. The policy is based on the policy_stream_mapping
+# configuration.
+[block_ingestion_policy_until: <map of string to Time>]
+
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
 # CLI flag: -limits.block-ingestion-until
@@ -3920,6 +3675,29 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+[policy_enforced_labels: <map of string to list of strings>]
+
+# Map of policies to stream selectors with a priority. Experimental.  Example:
+#  policy_stream_mapping: 
+#   finance: 
+#     - selector: '{namespace="prod", container="billing"}' 
+#       priority: 2 
+#   ops: 
+#     - selector: '{namespace="prod", container="ops"}' 
+#       priority: 1 
+#   staging: 
+#     - selector: '{namespace="staging"}' 
+#       priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
@@ -4108,66 +3886,9 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -memberlist.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -memberlist.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -memberlist.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -memberlist.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -memberlist.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -memberlist.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -memberlist.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: memberlist
+[<tls_config>]
 ```
 
 ### named_stores_config
@@ -4338,6 +4059,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Enable experimental support for running multiple query variants over the
+  # same underlying data. For example, running both a rate() and
+  # count_over_time() query over the same range selector.
+  # CLI flag: -querier.engine.enable-multi-variant-queries
+  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4674,7 +4401,7 @@ storage:
   [gcs: <gcs_storage_config>]
 
   # Configures backend rule storage for S3.
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [s3: <s3_storage_config>]
 
   # Configures backend rule storage for Baidu Object Storage (BOS).
@@ -4731,67 +4458,10 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -ruler.alertmanager-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -ruler.alertmanager-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -ruler.alertmanager-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -ruler.alertmanager-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -ruler.alertmanager-client.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -ruler.alertmanager-client.tls-min-version
-  [tls_min_version: <string> | default = ""]
+  # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # ruler.alertmanager-client
+  [<tls_config>]
 
   # HTTP Basic authentication username. It overrides the username set in the URL
   # (if any).
@@ -5013,67 +4683,10 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate, which will be used for authenticating with
-    # the server. Also requires the key path to be configured.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
-    [tls_cert_path: <string> | default = ""]
-
-    # Path to the key for the client certificate. Also requires the client
-    # certificate to be configured.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
-    [tls_key_path: <string> | default = ""]
-
-    # Path to the CA certificates to validate server certificate against. If not
-    # set, the host's root CA certificates are used.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
-    [tls_ca_path: <string> | default = ""]
-
-    # Override the expected name on the server certificate.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-server-name
-    [tls_server_name: <string> | default = ""]
-
-    # Skip validating server certificate.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
-    [tls_insecure_skip_verify: <boolean> | default = false]
-
-    # Override the default cipher suite list (separated by commas). Allowed
-    # values:
-    # 
-    # Secure Ciphers:
-    # - TLS_AES_128_GCM_SHA256
-    # - TLS_AES_256_GCM_SHA384
-    # - TLS_CHACHA20_POLY1305_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-    # 
-    # Insecure Ciphers:
-    # - TLS_RSA_WITH_RC4_128_SHA
-    # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_RSA_WITH_AES_256_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA256
-    # - TLS_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_RSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-    # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-    # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-    # CLI flag: -ruler.evaluation.query-frontend.tls-cipher-suites
-    [tls_cipher_suites: <string> | default = ""]
-
-    # Override the default minimum TLS version. Allowed values: VersionTLS10,
-    # VersionTLS11, VersionTLS12, VersionTLS13
-    # CLI flag: -ruler.evaluation.query-frontend.tls-min-version
-    [tls_min_version: <string> | default = ""]
+    # The TLS configuration.
+    # The CLI flags prefix for this block configuration is:
+    # ruler.evaluation.query-frontend
+    [<tls_config>]
 ```
 
 ### runtime_config
@@ -5095,8 +4708,8 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 
 The `s3_storage_config` block configures the connection to Amazon S3 object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage`
+- `ruler.storage`
 
 &nbsp;
 
@@ -5104,106 +4717,106 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -<prefix>.storage.s3.url
+# CLI flag: -<prefix>.s3.url
 [s3: <url>]
 
 # Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -<prefix>.storage.s3.force-path-style
+# CLI flag: -<prefix>.s3.force-path-style
 [s3forcepathstyle: <boolean> | default = false]
 
 # Comma separated list of bucket names to evenly distribute chunks over.
 # Overrides any buckets specified in s3.url flag
-# CLI flag: -<prefix>.storage.s3.buckets
+# CLI flag: -<prefix>.s3.buckets
 [bucketnames: <string> | default = ""]
 
 # S3 Endpoint to connect to.
-# CLI flag: -<prefix>.storage.s3.endpoint
+# CLI flag: -<prefix>.s3.endpoint
 [endpoint: <string> | default = ""]
 
 # AWS region to use.
-# CLI flag: -<prefix>.storage.s3.region
+# CLI flag: -<prefix>.s3.region
 [region: <string> | default = ""]
 
 # AWS Access Key ID
-# CLI flag: -<prefix>.storage.s3.access-key-id
+# CLI flag: -<prefix>.s3.access-key-id
 [access_key_id: <string> | default = ""]
 
 # AWS Secret Access Key
-# CLI flag: -<prefix>.storage.s3.secret-access-key
+# CLI flag: -<prefix>.s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
 # AWS Session Token
-# CLI flag: -<prefix>.storage.s3.session-token
+# CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
 # Disable https on s3 connection.
-# CLI flag: -<prefix>.storage.s3.insecure
+# CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
-  # CLI flag: -<prefix>.storage.s3.http.timeout
+  # CLI flag: -<prefix>.s3.http.timeout
   [timeout: <duration> | default = 0s]
 
   # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
+  # CLI flag: -<prefix>.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
 
   # If non-zero, specifies the amount of time to wait for a server's response
   # headers after fully writing the request.
-  # CLI flag: -<prefix>.storage.s3.http.response-header-timeout
+  # CLI flag: -<prefix>.s3.http.response-header-timeout
   [response_header_timeout: <duration> | default = 0s]
 
   # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -<prefix>.storage.s3.http.insecure-skip-verify
+  # CLI flag: -<prefix>.s3.http.insecure-skip-verify
   [insecure_skip_verify: <boolean> | default = false]
 
   # Path to the trusted CA file that signed the SSL certificate of the S3
   # endpoint.
-  # CLI flag: -<prefix>.storage.s3.http.ca-file
+  # CLI flag: -<prefix>.s3.http.ca-file
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
 # are: v4.
-# CLI flag: -<prefix>.storage.s3.signature-version
+# CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
 # The S3 storage class which objects will use. Supported values are: GLACIER,
 # DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
 # REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
-# CLI flag: -<prefix>.storage.s3.storage-class
+# CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -<prefix>.storage.s3.sse.type
+  # CLI flag: -<prefix>.s3.sse.type
   [type: <string> | default = ""]
 
   # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -<prefix>.storage.s3.sse.kms-key-id
+  # CLI flag: -<prefix>.s3.sse.kms-key-id
   [kms_key_id: <string> | default = ""]
 
   # KMS Encryption Context used for object encryption. It expects JSON formatted
   # string.
-  # CLI flag: -<prefix>.storage.s3.sse.kms-encryption-context
+  # CLI flag: -<prefix>.s3.sse.kms-encryption-context
   [kms_encryption_context: <string> | default = ""]
 
 # Configures back off when S3 get Object.
 backoff_config:
   # Minimum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.min-backoff
+  # CLI flag: -<prefix>.s3.min-backoff
   [min_period: <duration> | default = 100ms]
 
   # Maximum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.max-backoff
+  # CLI flag: -<prefix>.s3.max-backoff
   [max_period: <duration> | default = 3s]
 
   # Maximum number of times to retry for s3 GetObject or ObjectExists
-  # CLI flag: -<prefix>.storage.s3.max-retries
+  # CLI flag: -<prefix>.s3.max-retries
   [max_retries: <int> | default = 5]
 
 # Disable forcing S3 dualstack endpoint usage.
-# CLI flag: -<prefix>.storage.s3.disable-dualstack
+# CLI flag: -<prefix>.s3.disable-dualstack
 [disable_dualstack: <boolean> | default = false]
 ```
 
@@ -5765,6 +5378,33 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
+
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
+
+object_store:
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is: object-store
+  [<thanos_object_store_config>]
+
+  named_stores:
+    [azure: <map of string to NamedAzureStorageConfig>]
+
+    [filesystem: <map of string to NamedFilesystemStorageConfig>]
+
+    [gcs: <map of string to NamedGCSStorageConfig>]
+
+    [s3: <map of string to NamedS3StorageConfig>]
+
+    [swift: <map of string to NamedSwiftStorageConfig>]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
@@ -6369,12 +6009,481 @@ chunk_tables_provisioning:
   [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
+### thanos_object_store_config
+
+The `thanos_object_store_config` block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
+Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage.object-store`
+- `object-store`
+- `ruler-storage`
+
+&nbsp;
+
+```yaml
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -<prefix>.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -<prefix>.s3.region
+  [region: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -<prefix>.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -<prefix>.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -<prefix>.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # S3 session token
+  # CLI flag: -<prefix>.s3.session-token
+  [session_token: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -<prefix>.s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # Use a specific version of the S3 list object API. Supported values are v1 or
+  # v2. Default is unset.
+  # CLI flag: -<prefix>.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
+  # Bucket lookup style type, used to access bucket in S3-compatible service.
+  # Default is auto. Supported values are: auto, path, virtual-hosted.
+  # CLI flag: -<prefix>.s3.bucket-lookup-type
+  [bucket_lookup_type: <int> | default = auto]
+
+  # When enabled, direct all AWS S3 requests to the dual-stack IPv4/IPv6
+  # endpoint for the configured region.
+  # CLI flag: -<prefix>.s3.dualstack-enabled
+  [dualstack_enabled: <boolean> | default = true]
+
+  # The S3 storage class to use, not set by default. Details can be found at
+  # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
+  # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE
+  # CLI flag: -<prefix>.s3.storage-class
+  [storage_class: <string> | default = ""]
+
+  # If enabled, it will use the default authentication methods of the AWS SDK
+  # for go based on known environment variables and known AWS config files.
+  # CLI flag: -<prefix>.s3.native-aws-auth-enabled
+  [native_aws_auth_enabled: <boolean> | default = false]
+
+  # The minimum file size in bytes used for multipart uploads. If 0, the value
+  # is optimally computed for each object.
+  # CLI flag: -<prefix>.s3.part-size
+  [part_size: <int> | default = 0]
+
+  # If enabled, a Content-MD5 header is sent with S3 Put Object requests.
+  # Consumes more resources to compute the MD5, but may improve compatibility
+  # with object storage services that do not support checksums.
+  # CLI flag: -<prefix>.s3.send-content-md5
+  [send_content_md5: <boolean> | default = false]
+
+  # Accessing S3 resources using temporary, secure credentials provided by AWS
+  # Security Token Service.
+  # CLI flag: -<prefix>.s3.sts-endpoint
+  [sts_endpoint: <string> | default = ""]
+
+  # The maximum number of retries for S3 requests that are retryable. Default is
+  # 10, set this to 1 to disable retries.
+  # CLI flag: -<prefix>.s3.max-retries
+  [max_retries: <int> | default = 10]
+
+  sse:
+    # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+    # CLI flag: -<prefix>.s3.sse.type
+    [type: <string> | default = ""]
+
+    # KMS Key ID used to encrypt objects in S3
+    # CLI flag: -<prefix>.s3.sse.kms-key-id
+    [kms_key_id: <string> | default = ""]
+
+    # KMS Encryption Context used for object encryption. It expects JSON
+    # formatted string.
+    # CLI flag: -<prefix>.s3.sse.kms-encryption-context
+    [kms_encryption_context: <string> | default = ""]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.s3.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.s3.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.s3.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.s3.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.s3.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.s3.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.s3.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+  trace:
+    # When enabled, low-level S3 HTTP operation information is logged at the
+    # debug level.
+    # CLI flag: -<prefix>.s3.trace.enabled
+    [enabled: <boolean> | default = false]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -<prefix>.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON either from a Google Developers Console client_credentials.json file,
+  # or a Google Developers service account key. Needs to be valid JSON, not a
+  # filesystem path. If empty, fallback to Google default logic:
+  # 1. A JSON file whose path is specified by the GOOGLE_APPLICATION_CREDENTIALS
+  # environment variable. For workload identity federation, refer to
+  # https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation
+  # on how to generate the JSON configuration file for on-prem/non-Google cloud
+  # platforms.
+  # 2. A JSON file in a location known to the gcloud command-line tool:
+  # $HOME/.config/gcloud/application_default_credentials.json.
+  # 3. On Google Compute Engine it fetches credentials from the metadata server.
+  # CLI flag: -<prefix>.gcs.service-account
+  [service_account: <string> | default = ""]
+
+  # The maximum size of the buffer that GCS client for a single PUT request. 0
+  # to disable buffering.
+  # CLI flag: -<prefix>.gcs.chunk-buffer-size
+  [chunk_buffer_size: <int> | default = 0]
+
+  # The maximum number of retries for idempotent operations. Overrides the
+  # default gcs storage client behavior if this value is greater than 0. Set
+  # this to 1 to disable retries.
+  # CLI flag: -<prefix>.gcs.max-retries
+  [max_retries: <int> | default = 10]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -<prefix>.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key. If unset, Azure managed identities will be used
+  # for authentication instead.
+  # CLI flag: -<prefix>.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # If `connection-string` is set, the value of `endpoint-suffix` will not be
+  # used. Use this method over `account-key` if you need to authenticate via a
+  # SAS token. Or if you use the Azurite emulator.
+  # CLI flag: -<prefix>.azure.connection-string
+  [connection_string: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -<prefix>.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN. If set to empty string, default
+  # endpoint suffix is used.
+  # CLI flag: -<prefix>.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -<prefix>.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # User assigned managed identity. If empty, then System assigned identity is
+  # used.
+  # CLI flag: -<prefix>.azure.user-assigned-id
+  [user_assigned_id: <string> | default = ""]
+
+  # Delimiter used to replace ':' in chunk IDs when storing chunks
+  # CLI flag: -<prefix>.azure.chunk-delimiter
+  [chunk_delimiter: <string> | default = "-"]
+
+swift:
+  # OpenStack Swift application credential id
+  # CLI flag: -<prefix>.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name
+  # CLI flag: -<prefix>.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret
+  # CLI flag: -<prefix>.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
+
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -<prefix>.swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
+  # CLI flag: -<prefix>.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # OpenStack Swift username.
+  # CLI flag: -<prefix>.swift.username
+  [username: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -<prefix>.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -<prefix>.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # OpenStack Swift user ID.
+  # CLI flag: -<prefix>.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # OpenStack Swift API key.
+  # CLI flag: -<prefix>.swift.password
+  [password: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -<prefix>.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -<prefix>.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # OpenStack Swift project ID (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # OpenStack Swift project name (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
+  # differs the from user domain.
+  # CLI flag: -<prefix>.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
+  # it differs from the user domain.
+  # CLI flag: -<prefix>.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # OpenStack Swift Region to use (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the OpenStack Swift container to put chunks in.
+  # CLI flag: -<prefix>.swift.container-name
+  [container_name: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -<prefix>.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -<prefix>.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -<prefix>.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.swift.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.swift.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.swift.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.swift.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.swift.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.swift.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.swift.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.swift.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.swift.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.swift.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.swift.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.swift.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+filesystem:
+  # Local filesystem storage directory.
+  # CLI flag: -<prefix>.filesystem.dir
+  [dir: <string> | default = ""]
+
+alibaba:
+  # Endpoint to connect to.
+  # CLI flag: -<prefix>.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # Name of OSS bucket.
+  # CLI flag: -<prefix>.oss.bucketname
+  [bucket: <string> | default = ""]
+
+  # alibabacloud Access Key ID
+  # CLI flag: -<prefix>.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # alibabacloud Secret Access Key
+  # CLI flag: -<prefix>.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
+bos:
+  # Name of BOS bucket.
+  # CLI flag: -<prefix>.bos.bucket
+  [bucket: <string> | default = ""]
+
+  # BOS endpoint to connect to.
+  # CLI flag: -<prefix>.bos.endpoint
+  [endpoint: <string> | default = ""]
+
+  # Baidu Cloud Engine (BCE) Access Key ID.
+  # CLI flag: -<prefix>.bos.access-key
+  [access_key: <string> | default = ""]
+
+  # Baidu Cloud Engine (BCE) Secret Access Key.
+  # CLI flag: -<prefix>.bos.secret-key
+  [secret_key: <string> | default = ""]
+
+# Prefix for all objects stored in the backend storage. For simplicity, it may
+# only contain digits and English alphabet letters.
+# CLI flag: -<prefix>.storage-prefix
+[storage_prefix: <string> | default = ""]
+```
+
 ### tls_config
 
 The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bigtable`
+- `blockbuilder.scheduler-grpc-client`
+- `bloom-build.builder.grpc`
+- `bloom-gateway-client.grpc`
+- `bloom.metas-cache.memcached`
+- `boltdb.shipper.index-gateway-client.grpc`
+- `common.storage.ring.etcd`
+- `compactor.grpc-client`
+- `compactor.ring.etcd`
+- `distributor.ring.etcd`
+- `etcd`
+- `frontend.grpc-client-config`
+- `frontend.index-stats-results-cache.memcached`
+- `frontend.instant-metric-results-cache.memcached`
+- `frontend.label-results-cache.memcached`
+- `frontend.memcached`
+- `frontend.series-results-cache.memcached`
 - `frontend.tail-tls-config`
+- `frontend.volume-results-cache.memcached`
+- `index-gateway.ring.etcd`
+- `ingester.client`
+- `ingester.partition-ring.etcd`
+- `memberlist`
+- `pattern-ingester.client`
+- `pattern-ingester.etcd`
+- `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
+- `query-scheduler.grpc-client-config`
+- `query-scheduler.ring.etcd`
 - `reporting.tls-config`
+- `ruler.alertmanager-client`
+- `ruler.client`
+- `ruler.evaluation.query-frontend`
+- `ruler.ring.etcd`
+- `store.chunks-cache-l2.memcached`
+- `store.chunks-cache.memcached`
+- `store.index-cache-read.memcached`
+- `store.index-cache-write.memcached`
+- `tsdb.shipper.index-gateway-client.grpc`
 
 &nbsp;
 

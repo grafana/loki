@@ -9,6 +9,8 @@ weight:
 
 # replace
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `replace` stage is a parsing stage that parses a log line using a regular
 expression and replaces the log line. Named capture groups in the regex support adding data into the
 extracted map.

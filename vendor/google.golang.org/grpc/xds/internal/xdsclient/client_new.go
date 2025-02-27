@@ -26,7 +26,6 @@ import (
 
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/backoff"
-	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdsclientinternal "google.golang.org/grpc/xds/internal/xdsclient/internal"
@@ -61,11 +60,11 @@ func New(name string) (XDSClient, func(), error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("xds: failed to get xDS bootstrap config: %v", err)
 	}
-	return newRefCounted(name, config, defaultWatchExpiryTimeout, defaultIdleChannelExpiryTimeout, backoff.DefaultExponential.Backoff)
+	return newRefCounted(name, config, defaultWatchExpiryTimeout, backoff.DefaultExponential.Backoff)
 }
 
 // newClientImpl returns a new xdsClient with the given config.
-func newClientImpl(config *bootstrap.Config, watchExpiryTimeout, idleChannelExpiryTimeout time.Duration, streamBackoff func(int) time.Duration) (*clientImpl, error) {
+func newClientImpl(config *bootstrap.Config, watchExpiryTimeout time.Duration, streamBackoff func(int) time.Duration) (*clientImpl, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &clientImpl{
 		done:               grpcsync.NewEvent(),
@@ -78,7 +77,6 @@ func newClientImpl(config *bootstrap.Config, watchExpiryTimeout, idleChannelExpi
 		transportBuilder:   &grpctransport.Builder{},
 		resourceTypes:      newResourceTypeRegistry(),
 		xdsActiveChannels:  make(map[string]*channelState),
-		xdsIdleChannels:    cache.NewTimeoutCache(idleChannelExpiryTimeout),
 	}
 
 	for name, cfg := range config.Authorities() {
@@ -121,10 +119,6 @@ type OptionsForTesting struct {
 	// unspecified, uses the default value used in non-test code.
 	WatchExpiryTimeout time.Duration
 
-	// IdleChannelExpiryTimeout is the timeout before idle xdsChannels are
-	// deleted. If unspecified, uses the default value used in non-test code.
-	IdleChannelExpiryTimeout time.Duration
-
 	// StreamBackoffAfterFailure is the backoff function used to determine the
 	// backoff duration after stream failures.
 	// If unspecified, uses the default value used in non-test code.
@@ -147,9 +141,6 @@ func NewForTesting(opts OptionsForTesting) (XDSClient, func(), error) {
 	if opts.WatchExpiryTimeout == 0 {
 		opts.WatchExpiryTimeout = defaultWatchExpiryTimeout
 	}
-	if opts.IdleChannelExpiryTimeout == 0 {
-		opts.IdleChannelExpiryTimeout = defaultIdleChannelExpiryTimeout
-	}
 	if opts.StreamBackoffAfterFailure == nil {
 		opts.StreamBackoffAfterFailure = defaultStreamBackoffFunc
 	}
@@ -158,7 +149,7 @@ func NewForTesting(opts OptionsForTesting) (XDSClient, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return newRefCounted(opts.Name, config, opts.WatchExpiryTimeout, opts.IdleChannelExpiryTimeout, opts.StreamBackoffAfterFailure)
+	return newRefCounted(opts.Name, config, opts.WatchExpiryTimeout, opts.StreamBackoffAfterFailure)
 }
 
 // GetForTesting returns an xDS client created earlier using the given name.

@@ -55,7 +55,7 @@ func removeLineformat(expr syntax.SampleExpr) {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LineParserExpr); ok {
 					found = true
 					break
 				}
@@ -63,11 +63,11 @@ func removeLineformat(expr syntax.SampleExpr) {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.JSONExpressionParser); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.JSONExpressionParserExpr); ok {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtExpressionParser); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtExpressionParserExpr); ok {
 					found = true
 					break
 				}

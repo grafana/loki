@@ -30,6 +30,7 @@ import (
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/tags"
 	"golang.org/x/net/http/httpguts"
 )
 
@@ -229,7 +230,9 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	}
 
 	if len(opts.UserTags) != 0 {
-		header.Set(amzTaggingHeader, s3utils.TagEncode(opts.UserTags))
+		if tags, _ := tags.NewTags(opts.UserTags, true); tags != nil {
+			header.Set(amzTaggingHeader, tags.String())
+		}
 	}
 
 	for k, v := range opts.UserMetadata {

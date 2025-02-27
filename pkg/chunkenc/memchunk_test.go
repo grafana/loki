@@ -55,6 +55,13 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}()
+	bytesExtractor = func() log.StreamSampleExtractor {
+		ex, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
+		if err != nil {
+			panic(err)
+		}
+		return ex.ForStream(labels.Labels{})
+	}()
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
 		chunkFormat  byte
@@ -110,66 +117,79 @@ func TestBlock(t *testing.T) {
 				t.Parallel()
 				chk := newMemChunkWithFormat(chunkFormat, enc, headBlockFmt, testBlockSize, testTargetSize)
 				cases := []struct {
-					ts  int64
-					str string
-					lbs []logproto.LabelAdapter
-					cut bool
+					ts    int64
+					str   string
+					bytes float64
+					lbs   []logproto.LabelAdapter
+					cut   bool
 				}{
 					{
-						ts:  1,
-						str: "hello, world!",
+						ts:    1,
+						str:   "hello, world!",
+						bytes: float64(len("hello, world!")),
 					},
 					{
-						ts:  2,
-						str: "hello, world2!",
+						ts:    2,
+						str:   "hello, world2!",
+						bytes: float64(len("hello, world2!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "app", Value: "myapp"},
 						},
 					},
 					{
-						ts:  3,
-						str: "hello, world3!",
+						ts:    3,
+						str:   "hello, world3!",
+						bytes: float64(len("hello, world3!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a"},
 							{Name: "b", Value: "b"},
 						},
 					},
 					{
-						ts:  4,
-						str: "hello, world4!",
+						ts:    4,
+						str:   "hello, world4!",
+						bytes: float64(len("hello, world4!")),
 					},
 					{
-						ts:  5,
-						str: "hello, world5!",
+						ts:    5,
+						str:   "hello, world5!",
+						bytes: float64(len("hello, world5!")),
 					},
 					{
-						ts:  6,
-						str: "hello, world6!",
-						cut: true,
+						ts:    6,
+						str:   "hello, world6!",
+						bytes: float64(len("hello, world6!")),
+						cut:   true,
 					},
 					{
-						ts:  7,
-						str: "hello, world7!",
+						ts:    7,
+						str:   "hello, world7!",
+						bytes: float64(len("hello, world7!")),
 					},
 					{
-						ts:  8,
-						str: "hello, worl\nd8!",
+						ts:    8,
+						str:   "hello, worl\nd8!",
+						bytes: float64(len("hello, worl\nd8!")),
 					},
 					{
-						ts:  8,
-						str: "hello, world 8, 2!",
+						ts:    8,
+						str:   "hello, world 8, 2!",
+						bytes: float64(len("hello, world 8, 2!")),
 					},
 					{
-						ts:  8,
-						str: "hello, world 8, 3!",
+						ts:    8,
+						str:   "hello, world 8, 3!",
+						bytes: float64(len("hello, world 8, 3!")),
 					},
 					{
-						ts:  9,
-						str: "",
+						ts:    9,
+						str:   "",
+						bytes: float64(len("")),
 					},
 					{
-						ts:  10,
-						str: "hello, world10!",
+						ts:    10,
+						str:   "hello, world10!",
+						bytes: float64(len("hello, world10!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a2"},
 							{Name: "b", Value: "b"},
@@ -214,14 +234,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				countExtractor := func() log.StreamSampleExtractor {
-					ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-					if err != nil {
-						panic(err)
-					}
-					return ex.ForStream(labels.Labels{})
-				}()
-
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -235,6 +247,60 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
+				t.Run("multi-extractor", func(t *testing.T) {
+					// Wrap extractors in variant extractors so they get a variant index we can use later for differentiating counts and bytes
+					extractors := []log.StreamSampleExtractor{
+						log.NewVariantsStreamSampleExtractorWrapper(0, countExtractor),
+						log.NewVariantsStreamSampleExtractorWrapper(1, bytesExtractor),
+					}
+					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
+					idx = 0
+
+					// variadic arguments can't guarantee order, so we're going to store the expected and actual values
+					// and do an ElementsMatch on them.
+					var actualCounts = make([]float64, 0, len(cases))
+					var actualBytes = make([]float64, 0, len(cases))
+
+					var expectedCounts = make([]float64, 0, len(cases))
+					var expectedBytes = make([]float64, 0, len(cases))
+					for _, c := range cases {
+						expectedCounts = append(expectedCounts, 1.)
+						expectedBytes = append(expectedBytes, c.bytes)
+					}
+
+					// 2 extractors, expect 2 samples per original timestamp
+					for sampleIt.Next() {
+						s := sampleIt.At()
+						require.Equal(t, cases[idx].ts, s.Timestamp)
+						require.NotEmpty(t, s.Hash)
+						lbls := sampleIt.Labels()
+						if strings.Contains(lbls, `__variant__="0"`) {
+							actualCounts = append(actualCounts, s.Value)
+						} else {
+							actualBytes = append(actualBytes, s.Value)
+						}
+
+						require.True(t, sampleIt.Next())
+						s = sampleIt.At()
+						require.Equal(t, cases[idx].ts, s.Timestamp)
+						require.NotEmpty(t, s.Hash)
+						lbls = sampleIt.Labels()
+						if strings.Contains(lbls, `__variant__="0"`) {
+							actualCounts = append(actualCounts, s.Value)
+						} else {
+							actualBytes = append(actualBytes, s.Value)
+						}
+
+						idx++
+					}
+
+					require.ElementsMatch(t, expectedCounts, actualCounts)
+					require.ElementsMatch(t, expectedBytes, actualBytes)
+
+					require.NoError(t, sampleIt.Err())
+					require.NoError(t, sampleIt.Close())
+					require.Equal(t, len(cases), idx)
+				})
 
 				t.Run("bounded-iteration", func(t *testing.T) {
 					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
@@ -468,15 +534,16 @@ func TestSerialization(t *testing.T) {
 					}
 					require.NoError(t, it.Err())
 
-					extractor := func() log.StreamSampleExtractor {
+					countExtractor := func() log.StreamSampleExtractor {
 						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 						if err != nil {
 							panic(err)
 						}
 						return ex.ForStream(labels.Labels{})
 					}()
+					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
 
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -488,6 +555,12 @@ func TestSerialization(t *testing.T) {
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
+
+						// check that the second extractor is returning samples as well
+						require.True(t, sampleIt.Next())
+						s = sampleIt.At()
+						require.Equal(t, int64(i), s.Timestamp)
+						require.Equal(t, 1., s.Value)
 					}
 					require.NoError(t, sampleIt.Err())
 
@@ -1084,6 +1157,38 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
+func BenchmarkHeadBlockMultiExtractorSampleIterator(b *testing.B) {
+	for _, j := range []int{20000, 10000, 8000, 5000} {
+		for _, withStructuredMetadata := range []bool{false, true} {
+			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {
+				h := headBlock{}
+
+				var structuredMetadata labels.Labels
+				if withStructuredMetadata {
+					structuredMetadata = labels.Labels{{Name: "foo", Value: "foo"}}
+				}
+
+				for i := 0; i < j; i++ {
+					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
+						b.Fatal(err)
+					}
+				}
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor, bytesExtractor)
+
+					for iter.Next() {
+						_ = iter.At()
+					}
+					iter.Close()
+				}
+			})
+		}
+	}
+}
+
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
@@ -1345,13 +1450,24 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					ex, err := expr.Extractor()
+					ex, err := expr.Extractors()
 					if err != nil {
 						b.Fatal(err)
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
+						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
+						for _, extractor := range ex {
+							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
+						}
+						iters = append(
+							iters,
+							c.SampleIterator(
+								context.Background(),
+								time.Unix(0, 0),
+								time.Now(),
+								streamExtractors...),
+						)
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
@@ -2018,14 +2134,30 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						expr, err := syntax.ParseSampleExpr(query)
 						require.NoError(t, err)
 
-						extractor, err := expr.Extractor()
+						extractors, err := expr.Extractors()
 						require.NoError(t, err)
 
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+
+							streamExtractors := make(
+								[]log.StreamSampleExtractor,
+								0,
+								len(extractors),
+							)
+							for _, extractor := range extractors {
+								streamExtractors = append(
+									streamExtractors,
+									extractor.ForStream(streamLabels),
+								)
+							}
+							it := chk.SampleIterator(
+								ctx,
+								time.Unix(0, 0),
+								time.Unix(0, math.MaxInt64),
+								streamExtractors...)
 
 							var sumValues int
 							var streams []string
