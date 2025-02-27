@@ -286,7 +286,7 @@ loki:
     ui:
       discovery:
         join_peers:
-          - '{{ include "loki.distributorFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
     {{- end }}
     {{- with .Values.loki.querier }}
     querier:
