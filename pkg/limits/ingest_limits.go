@@ -210,8 +210,6 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
-	s.mtxAssingedPartitions.RLock()
-	defer s.mtxAssingedPartitions.RUnlock()
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -244,8 +242,8 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 }
 
 func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	s.mtxAssingedPartitions.Lock()
-	defer s.mtxAssingedPartitions.Unlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 
 	if s.assingedPartitions == nil {
 		s.assingedPartitions = make(map[int32]int64)
@@ -273,9 +271,6 @@ func (s *IngestLimits) onPartitionsLost(_ context.Context, _ *kgo.Client, partit
 }
 
 func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
-	s.mtxAssingedPartitions.Lock()
-	defer s.mtxAssingedPartitions.Unlock()
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -437,8 +432,6 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
 func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	s.mtxAssingedPartitions.RLock()
-	defer s.mtxAssingedPartitions.RUnlock()
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
