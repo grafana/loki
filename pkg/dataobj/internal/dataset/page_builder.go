@@ -140,7 +140,9 @@ func (b *pageBuilder) AppendNull() bool {
 	return true
 }
 
-func (b *pageBuilder) AppendNulls(count uint64) bool {
+// AppendNulls appends n NULL values to the Builder. AppendNulls returns true if
+// the NULLs were appended, or false if the Builder is full.
+func (b *pageBuilder) AppendNulls(n uint64) bool {
 	// This is tricky to estimate without knowing the encoder state.
 	//
 	// For N nulls:
@@ -152,11 +154,11 @@ func (b *pageBuilder) AppendNulls(count uint64) bool {
 		return false
 	}
 
-	if err := b.presenceEnc.EncodeN(Uint64Value(0), uint64(count)); err != nil {
+	if err := b.presenceEnc.EncodeN(Uint64Value(0), uint64(n)); err != nil {
 		panic(fmt.Sprintf("Builder.AppendNulls: encoding presence bitmap entries: %v", err))
 	}
 
-	b.rows += int(count)
+	b.rows += int(n)
 	return true
 }
 

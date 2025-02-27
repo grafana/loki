@@ -178,7 +178,7 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 	}
 }
 
-func (enc *bitmapEncoder) EncodeN(v Value, count uint64) error {
+func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
 	if v.Type() != datasetmd.VALUE_TYPE_UINT64 {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
@@ -189,18 +189,18 @@ func (enc *bitmapEncoder) EncodeN(v Value, count uint64) error {
 		enc.runValue = uv
 		fallthrough
 	case enc.runLength > 0 && uv == enc.runValue: // RLE with matching value; continue the run.
-		if enc.runLength+count >= maxRunLength {
-			count -= (maxRunLength - enc.runLength) // remaining count
+		if enc.runLength+n >= maxRunLength {
+			n -= (maxRunLength - enc.runLength) // remaining count
 			enc.runLength = maxRunLength
 			if err := enc.flushRLE(); err != nil {
 				return err
 			}
 
-			if count > 0 {
-				return enc.EncodeN(v, count)
+			if n > 0 {
+				return enc.EncodeN(v, n)
 			}
 		} else {
-			enc.runLength += count
+			enc.runLength += n
 		}
 
 		return nil
@@ -211,17 +211,17 @@ func (enc *bitmapEncoder) EncodeN(v Value, count uint64) error {
 				return err
 			}
 
-			return enc.EncodeN(v, count)
+			return enc.EncodeN(v, n)
 		}
 
 		enc.switchToBitpack()
 		fallthrough
 	case enc.setSize > 0:
 		// Fill up remaining slots with the new value
-		for count > 0 && enc.setSize < 8 {
+		for n > 0 && enc.setSize < 8 {
 			enc.set[enc.setSize] = uv
 			enc.setSize++
-			count--
+			n--
 		}
 
 		if enc.setSize == 8 {
@@ -230,8 +230,8 @@ func (enc *bitmapEncoder) EncodeN(v Value, count uint64) error {
 			}
 		}
 
-		if count > 0 {
-			return enc.EncodeN(v, count)
+		if n > 0 {
+			return enc.EncodeN(v, n)
 		}
 
 		return nil
