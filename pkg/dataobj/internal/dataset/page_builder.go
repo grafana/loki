@@ -154,7 +154,7 @@ func (b *pageBuilder) AppendNulls(n uint64) bool {
 		return false
 	}
 
-	if err := b.presenceEnc.EncodeN(Uint64Value(0), uint64(n)); err != nil {
+	if err := b.presenceEnc.EncodeN(Uint64Value(0), n); err != nil {
 		panic(fmt.Sprintf("Builder.AppendNulls: encoding presence bitmap entries: %v", err))
 	}
 
