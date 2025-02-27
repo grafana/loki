@@ -37,21 +37,21 @@ const (
        total_shards INT NOT NULL,
        processed_shards INT DEFAULT 0,
        query TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);`
+    );`
+	sqlCreateRequestsTableIndex       = `CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);`
 	sqlCreateDeleteRequestShardsTable = `CREATE TABLE IF NOT EXISTS shards (
        id TEXT NOT NULL,
        user_id TEXT NOT NULL,
        start_time INT NOT NULL,
        end_time INT NOT NULL,
        FOREIGN KEY (id) REFERENCES requests(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_shards_id_user ON shards(id, user_id);`
-	sqlCreateCacheGenTable = `CREATE TABLE IF NOT EXISTS cache_gen (
+    );`
+	sqlCreateShardsTableIndex = `CREATE INDEX IF NOT EXISTS idx_shards_id_user ON shards(id, user_id);`
+	sqlCreateCacheGenTable    = `CREATE TABLE IF NOT EXISTS cache_gen (
         user_id TEXT PRIMARY KEY,
         gen_num INT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_cache_gen_user_id ON shards(user_id);`
+    );`
+	sqlCreateCacheTableIndex = `CREATE INDEX IF NOT EXISTS idx_cache_gen_user_id ON shards(user_id);`
 
 	sqlInsertDeleteRequest = `INSERT INTO requests (id, user_id, created_at, start_time, end_time, total_shards, query) 
                              VALUES (?, ?, ?, ?, ?, ?, ?);`
@@ -97,8 +97,11 @@ func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient st
 		context.Background(),
 		true,
 		sqlQuery{query: sqlCreateDeleteRequestsTable},
+		sqlQuery{query: sqlCreateRequestsTableIndex},
 		sqlQuery{query: sqlCreateDeleteRequestShardsTable},
+		sqlQuery{query: sqlCreateShardsTableIndex},
 		sqlQuery{query: sqlCreateCacheGenTable},
+		sqlQuery{query: sqlCreateCacheTableIndex},
 	)
 	if err != nil {
 		return nil, err
