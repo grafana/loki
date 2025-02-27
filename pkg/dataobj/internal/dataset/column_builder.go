@@ -150,7 +150,10 @@ func (cb *ColumnBuilder) Backfill(row int) {
 
 func (cb *ColumnBuilder) backfill(row int) bool {
 	if row > cb.rows {
-		return cb.pageBuilder.AppendNulls(uint64(row - cb.rows))
+		if !cb.pageBuilder.AppendNulls(uint64(row - cb.rows)) {
+			return false
+		}
+		cb.rows = row
 	}
 
 	return true
