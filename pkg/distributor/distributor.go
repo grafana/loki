@@ -99,11 +99,11 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
-	KafkaEnabled        bool         `yaml:"kafka_writes_enabled"`
-	IngesterEnabled     bool         `yaml:"ingester_writes_enabled"`
-	IngestLimitsEnabled bool         `yaml:"ingest_limits_enabled"`
+	KafkaEnabled        bool `yaml:"kafka_writes_enabled"`
+	IngesterEnabled     bool `yaml:"ingester_writes_enabled"`
+	IngestLimitsEnabled bool `yaml:"ingest_limits_enabled"`
 
-	KafkaConfig         kafka.Config `yaml:"-"`
+	KafkaConfig kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
