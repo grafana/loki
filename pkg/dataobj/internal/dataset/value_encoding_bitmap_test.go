@@ -85,13 +85,15 @@ func Test_bitmap_encodeN(t *testing.T) {
 	for i := range 100 {
 		require.Equal(t, uint64(2), actual[i].Uint64())
 	}
+	actual = actual[100:]
 
 	for i := range 5 {
-		require.Equal(t, uint64(3), actual[i+100].Uint64())
+		require.Equal(t, uint64(3), actual[i].Uint64())
 	}
+	actual = actual[5:]
 
 	for i := range 2 {
-		require.Equal(t, uint64(4), actual[i+100+5].Uint64())
+		require.Equal(t, uint64(4), actual[i].Uint64())
 	}
 }
 
