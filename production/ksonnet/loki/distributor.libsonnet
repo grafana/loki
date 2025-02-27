@@ -52,7 +52,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
     podDisruptionBudget.new('distributor-pdb') +
     podDisruptionBudget.mixin.metadata.withLabels({ name: 'distributor-pdb' }) +
-    podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: 'distributor'}) +
+    podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: 'distributor' }) +
     podDisruptionBudget.mixin.spec.withMaxUnavailable(1),
 
   distributor_service:
