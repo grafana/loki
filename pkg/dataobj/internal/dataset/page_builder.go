@@ -145,7 +145,7 @@ func (b *pageBuilder) AppendNulls(count uint64) bool {
 	//
 	// For N nulls:
 	// - RLE: 2-9 bytes total (1-8 byte header + 1 byte value)
-	// - Bitpacking: ~1 byte per 8 nulls + 2-8 byte header
+	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
 	//
 	// Using 4 bytes as a conservative average estimate.
 	if sz := b.EstimatedSize(); sz > 0 && sz+10 > b.opts.PageSizeHint {
