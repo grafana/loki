@@ -109,6 +109,46 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "<hostname>"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 3m]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -811,6 +851,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.sha-prefix-size
       [shaprefixsize: <int> | default = 2]
 
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
@@ -820,6 +865,10 @@ dataobj:
     # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
     # CLI flag: -dataobj-querier-from
     [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -2374,6 +2423,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
+
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
@@ -3601,6 +3654,11 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
+# Block ingestion for policy until the configured date. The time should be in
+# RFC3339 format. The policy is based on the policy_stream_mapping
+# configuration.
+[block_ingestion_policy_until: <map of string to Time>]
+
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
 # CLI flag: -limits.block-ingestion-until
@@ -3617,6 +3675,16 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+[policy_enforced_labels: <map of string to list of strings>]
 
 # Map of policies to stream selectors with a priority. Experimental.  Example:
 #  policy_stream_mapping: 
@@ -3991,6 +4059,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Enable experimental support for running multiple query variants over the
+  # same underlying data. For example, running both a rate() and
+  # count_over_time() query over the same range selector.
+  # CLI flag: -querier.engine.enable-multi-variant-queries
+  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -149,7 +148,7 @@ func (cfg *Config) Validate() error {
 
 		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
 			// add some jitter to avoid running retention and compaction at same time
-			cfg.ApplyRetentionInterval += minDuration(10*time.Minute, cfg.ApplyRetentionInterval/2)
+			cfg.ApplyRetentionInterval += min(10*time.Minute, cfg.ApplyRetentionInterval/2)
 		}
 
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
@@ -178,6 +177,7 @@ type Compactor struct {
 	indexCompactors           map[string]IndexCompactor
 	schemaConfig              config.SchemaConfig
 	tableLocker               *tableLocker
+	limits                    Limits
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -219,6 +219,7 @@ func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.Objec
 		indexCompactors: map[string]IndexCompactor{},
 		schemaConfig:    schemaConfig,
 		tableLocker:     newTableLocker(),
+		limits:          limits,
 	}
 
 	ringStore, err := kv.NewClient(
@@ -369,6 +370,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.R
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
 		c.cfg.DeleteMaxInterval,
+		c.cfg.DeleteRequestCancelPeriod,
 		r,
 	)
 
@@ -881,10 +883,6 @@ func (c *Compactor) OnRingInstanceStopping(_ *ring.BasicLifecycler)             
 func (c *Compactor) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }
 
-func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	c.ring.ServeHTTP(w, req)
-}
-
 func SortTablesByRange(tables []string) {
 	tableRanges := make(map[string]model.Interval)
 	for _, table := range tables {
@@ -905,12 +903,4 @@ func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
-}
-
-func minDuration(x time.Duration, y time.Duration) time.Duration {
-	if x < y {
-		return x
-	}
-
-	return y
 }

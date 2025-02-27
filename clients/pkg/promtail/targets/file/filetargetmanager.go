@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -84,7 +85,7 @@ func NewFileTargetManager(
 		syncers:            map[string]*targetSyncer{},
 		manager: discovery.NewManager(
 			ctx,
-			log.With(logger, "component", "discovery"),
+			util_log.SlogFromGoKit(log.With(logger, "component", "discovery")),
 			noopRegistry,
 			noopSdMetrics,
 		),

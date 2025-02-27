@@ -11,6 +11,8 @@ weight:
 
 This document explains how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 This document assumes, that reader have `gcloud` installed and have the required permissions (as mentioned in [Roles and Permission](#roles-and-permission) section).
 
 There are two flavours of how to configure this:

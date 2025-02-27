@@ -1,6 +1,9 @@
 package dataset
 
 import (
+	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -49,10 +52,20 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	t.Log("Pages: ", len(col.Pages))
 
 	var actual []string
-	for result := range iterMemColumn(col) {
-		val, err := result.Value()
-		require.NoError(t, err)
 
+	r := newColumnReader(col)
+	for {
+		var values [1]Value
+		n, err := r.Read(context.Background(), values[:])
+		if err != nil && !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
+		} else if n == 0 && errors.Is(err, io.EOF) {
+			break
+		} else if n == 0 {
+			continue
+		}
+
+		val := values[0]
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, "")
 		} else {
@@ -60,6 +73,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 			actual = append(actual, val.String())
 		}
 	}
+
 	require.Equal(t, in, actual)
 }
 
@@ -101,7 +115,9 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 
-		StoreRangeStats: true,
+		Statistics: StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	}
 	b, err := NewColumnBuilder("", opts)
 	require.NoError(t, err)
@@ -130,6 +146,56 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 	page1Min, page1Max := getMinMax(t, col.Pages[1].Info.Stats)
 	require.Equal(t, dString, page1Min.String())
 	require.Equal(t, fString, page1Max.String())
+}
+
+func TestColumnBuilder_Cardinality(t *testing.T) {
+	var (
+		// We include the null string in the test to ensure that it's never
+		// considered in min/max ranges.
+		nullString = ""
+
+		aString = strings.Repeat("a", 100)
+		bString = strings.Repeat("b", 100)
+		cString = strings.Repeat("c", 100)
+	)
+
+	// We store nulls and duplicates (should not be counted in cardinality count)
+	in := []string{
+		nullString,
+
+		aString,
+
+		bString,
+		bString,
+		bString,
+
+		cString,
+	}
+
+	opts := BuilderOptions{
+		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
+		Value:        datasetmd.VALUE_TYPE_STRING,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+
+		Statistics: StatisticsOptions{
+			StoreCardinalityStats: true,
+		},
+	}
+	b, err := NewColumnBuilder("", opts)
+	require.NoError(t, err)
+
+	for i, s := range in {
+		require.NoError(t, b.Append(i, StringValue(s)))
+	}
+
+	col, err := b.Flush()
+	require.NoError(t, err)
+	require.Equal(t, datasetmd.VALUE_TYPE_STRING, col.Info.Type)
+	require.NotNil(t, col.Info.Statistics)
+	// we use sparse hyperloglog reprs until a certain cardinality is reached,
+	// so this should not be approximate at low counts.
+	require.Equal(t, uint64(3), col.Info.Statistics.CardinalityCount)
 }
 
 func getMinMax(t *testing.T, stats *datasetmd.Statistics) (min, max Value) {

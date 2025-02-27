@@ -3073,7 +3073,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.3.0"
+    "tag": "3.4.0"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3127,7 +3127,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.1.1"
+  "version": "3.4.0"
 }
 </pre>
 </td>
@@ -3247,7 +3247,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.4.0"
 </pre>
 </td>
 		</tr>
@@ -4622,6 +4622,51 @@ true
 			<td>configures DNS service name</td>
 			<td><pre lang="json">
 "kube-dns"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraArgs</td>
+			<td>list</td>
+			<td>Common additional CLI arguments for all jobs (that is, -log.level debug, -config.expand-env=true or -log-config-reverse-order) scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraEnv</td>
+			<td>list</td>
+			<td>Common environment variables to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraEnvFrom</td>
+			<td>list</td>
+			<td>Common source of environment injections to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write. For example to inject values from a Secret, use: extraEnvFrom:   - secretRef:       name: mysecret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Common mount points to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraVolumes</td>
+			<td>list</td>
+			<td>Common volumes to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -6114,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.3.2"
+"3.4.2"
 </pre>
 </td>
 		</tr>
@@ -6365,7 +6410,6 @@ null
       "bucket_name": null,
       "service_account": null
     },
-    "prefix": null,
     "s3": {
       "access_key_id": null,
       "endpoint": null,
@@ -6375,6 +6419,7 @@ null
       "secret_access_key": null,
       "sse": {}
     },
+    "storage_prefix": null,
     "type": "s3"
   },
   "s3": {
@@ -6479,6 +6524,20 @@ null
 			<td><pre lang="json">
 {
   "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ui</td>
+			<td>object</td>
+			<td>Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "gateway": {
+    "enabled": true
+  }
 }
 </pre>
 </td>
@@ -6777,7 +6836,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.35-alpine"
+"1.6.37-alpine"
 </pre>
 </td>
 		</tr>
@@ -10849,7 +10908,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.0"
+"1.30.1"
 </pre>
 </td>
 		</tr>

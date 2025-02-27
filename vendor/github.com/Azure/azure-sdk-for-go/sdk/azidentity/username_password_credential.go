@@ -25,18 +25,20 @@ type UsernamePasswordCredentialOptions struct {
 	// application is registered.
 	AdditionallyAllowedTenants []string
 
-	// authenticationRecord returned by a call to a credential's Authenticate method. Set this option
+	// AuthenticationRecord returned by a call to a credential's Authenticate method. Set this option
 	// to enable the credential to use data from a previous authentication.
-	authenticationRecord authenticationRecord
+	AuthenticationRecord AuthenticationRecord
+
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
-
-	// tokenCachePersistenceOptions enables persistent token caching when not nil.
-	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 // UsernamePasswordCredential authenticates a user with a password. Microsoft doesn't recommend this kind of authentication,
@@ -54,13 +56,13 @@ func NewUsernamePasswordCredential(tenantID string, clientID string, username st
 		options = &UsernamePasswordCredentialOptions{}
 	}
 	opts := publicClientOptions{
-		AdditionallyAllowedTenants:   options.AdditionallyAllowedTenants,
-		ClientOptions:                options.ClientOptions,
-		DisableInstanceDiscovery:     options.DisableInstanceDiscovery,
-		Password:                     password,
-		Record:                       options.authenticationRecord,
-		TokenCachePersistenceOptions: options.tokenCachePersistenceOptions,
-		Username:                     username,
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		Password:                   password,
+		Record:                     options.AuthenticationRecord,
+		Username:                   username,
 	}
 	c, err := newPublicClient(tenantID, clientID, credNameUserPassword, opts)
 	if err != nil {
@@ -70,7 +72,7 @@ func NewUsernamePasswordCredential(tenantID string, clientID string, username st
 }
 
 // Authenticate the user. Subsequent calls to GetToken will automatically use the returned AuthenticationRecord.
-func (c *UsernamePasswordCredential) authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (authenticationRecord, error) {
+func (c *UsernamePasswordCredential) Authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (AuthenticationRecord, error) {
 	var err error
 	ctx, endSpan := runtime.StartSpan(ctx, credNameUserPassword+"."+traceOpAuthenticate, c.client.azClient.Tracer(), nil)
 	defer func() { endSpan(err) }()

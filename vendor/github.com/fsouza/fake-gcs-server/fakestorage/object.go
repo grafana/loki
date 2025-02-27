@@ -852,7 +852,7 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 		return jsonResponse{errorMessage: "Invalid metadata", status: http.StatusBadRequest}
 	}
 
-	// Only supplied metadata overwrites the new object's metdata
+	// Only supplied metadata overwrites the new object's metadata
 	if len(metadata.Metadata) == 0 {
 		metadata.Metadata = obj.Metadata
 	}

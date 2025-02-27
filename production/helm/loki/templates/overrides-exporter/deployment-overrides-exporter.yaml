@@ -32,12 +32,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.overridesExporterSelectorLabels" . | nindent 8 }}
+        {{- include "loki.overridesExporterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.overridesExporter.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.overridesExporter.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -71,7 +68,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=overrides-exporter
-            {{- with .Values.overridesExporter.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.overridesExporter.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -84,11 +81,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.overridesExporter.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.overridesExporter.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.overridesExporter.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.overridesExporter.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -105,7 +102,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.overridesExporter.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.overridesExporter.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -140,7 +137,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.overridesExporter.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.overridesExporter.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end -}}

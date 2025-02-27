@@ -245,7 +245,7 @@ func TestMappingStrings(t *testing.T) {
                sum by (foo_extracted) (
                    downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=0_of_2>++downstream<sumby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=1_of_2>
                )
-               / 
+               /
                sum by (foo_extracted) (
                    downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=0_of_2>++downstream<countby(foo_extracted)(quantile_over_time(0.95,{foo="baz"}|logfmt|unwrapfoo_extracted|__error__=""[5m])),shard=1_of_2>
                )
@@ -653,6 +653,52 @@ func TestMapping(t *testing.T) {
 			},
 		},
 		{
+			in: `rate({foo="bar"}[5m]) > 3`,
+			expr: &syntax.BinOpExpr{
+				Op: syntax.OpTypeGT,
+				SampleExpr: &ConcatSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
+						shard: NewPowerOfTwoShard(index.ShardAnnotation{
+							Shard: 0,
+							Of:    2,
+						}).Bind(nil),
+						SampleExpr: &syntax.RangeAggregationExpr{
+							Operation: syntax.OpRangeTypeRate,
+							Left: &syntax.LogRangeExpr{
+								Left: &syntax.MatchersExpr{
+									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+								},
+								Interval: 5 * time.Minute,
+							},
+						},
+					},
+					next: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: NewPowerOfTwoShard(index.ShardAnnotation{
+								Shard: 1,
+								Of:    2,
+							}).Bind(nil),
+							SampleExpr: &syntax.RangeAggregationExpr{
+								Operation: syntax.OpRangeTypeRate,
+								Left: &syntax.LogRangeExpr{
+									Left: &syntax.MatchersExpr{
+										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+									},
+									Interval: 5 * time.Minute,
+								},
+							},
+						},
+						next: nil,
+					},
+				},
+				RHS: &syntax.LiteralExpr{Val: 3},
+				Opts: &syntax.BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: &syntax.VectorMatching{},
+				},
+			},
+		},
+		{
 			in: `count_over_time({foo="bar"}[5m])`,
 			expr: &ConcatSampleExpr{
 				DownstreamSampleExpr: DownstreamSampleExpr{
@@ -831,6 +877,73 @@ func TestMapping(t *testing.T) {
 						},
 					},
 				},
+			},
+		},
+		{
+			in: `approx_topk(3, rate({foo="bar"}[5m]) > 3)`,
+			expr: &syntax.VectorAggregationExpr{
+				Grouping:  &syntax.Grouping{},
+				Params:    3,
+				Operation: syntax.OpTypeTopK,
+				Left: &CountMinSketchEvalExpr{
+					downstreams: []DownstreamSampleExpr{
+						{
+							shard: nil,
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Operation: syntax.OpTypeCountMinSketch,
+								Left: &syntax.BinOpExpr{
+									Op: syntax.OpTypeGT,
+									SampleExpr: &syntax.RangeAggregationExpr{
+										Operation: syntax.OpRangeTypeRate,
+										Left: &syntax.LogRangeExpr{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											},
+											Interval: 5 * time.Minute,
+										},
+									},
+									RHS: &syntax.LiteralExpr{Val: 3},
+									Opts: &syntax.BinOpOptions{
+										ReturnBool:     false,
+										VectorMatching: &syntax.VectorMatching{},
+									},
+								},
+								Grouping: &syntax.Grouping{},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			// A contrived query that is not shardable: but we must rewrite `approx_topk` as if it had 0 shards because the approx_topk operation is not supported on the querier
+			in: `approx_topk(3, topk(5, rate({foo="bar"}[5m])))`,
+			expr: &syntax.VectorAggregationExpr{
+				Left: &CountMinSketchEvalExpr{
+					downstreams: []DownstreamSampleExpr{{
+						SampleExpr: &syntax.VectorAggregationExpr{
+							Operation: syntax.OpTypeCountMinSketch,
+							Left: &syntax.VectorAggregationExpr{Operation: syntax.OpTypeTopK,
+								Params: 5,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeRate,
+									Left: &syntax.LogRangeExpr{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+									},
+								},
+								Grouping: &syntax.Grouping{},
+							},
+							Grouping: &syntax.Grouping{},
+						},
+						shard: nil,
+					}},
+				},
+				Grouping:  &syntax.Grouping{},
+				Operation: syntax.OpTypeTopK,
+				Params:    3,
 			},
 		},
 		{

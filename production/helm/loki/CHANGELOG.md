@@ -15,6 +15,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Add extraContainers parameter for the backend pod
 
+## 6.27.0
+
+- [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
+- [CHANGE] Changed version of Memcached image to 1.6.36
+- [CHANGE] Changed version of Grafana Loki to 3.4.2
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.4.0
+
+## 6.26.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.4.0
+
 ## 6.25.1
 
 - [BUGFIX] Disable service monitor for nginx service.
