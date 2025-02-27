@@ -3314,6 +3314,8 @@ resultsCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    # -- PVC additional labels
+    labels: {}
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
@@ -3416,6 +3418,8 @@ chunksCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    # -- PVC additional labels
+    labels: {}
 ######################################################################################################################
 #
 # Subchart configurations
