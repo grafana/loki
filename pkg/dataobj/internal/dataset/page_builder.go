@@ -150,7 +150,7 @@ func (b *pageBuilder) AppendNulls(n uint64) bool {
 	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
 	//
 	// Using 4 bytes as a conservative average estimate.
-	if sz := b.EstimatedSize(); sz > 0 && sz+10 > b.opts.PageSizeHint {
+	if sz := b.EstimatedSize(); sz > 0 && sz+4 > b.opts.PageSizeHint {
 		return false
 	}
 

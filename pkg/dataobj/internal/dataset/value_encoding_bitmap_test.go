@@ -222,16 +222,33 @@ func Fuzz_bitmap_EncodeN(f *testing.F) {
 			dec = newBitmapDecoder(&buf)
 		)
 
+		var runLength int
 		for range count {
-			v := uint64(0)
-			// randomly add distinct values
+			var v uint64
+			// Decide if this position should have a distinct value or null (0)
 			if rnd.Intn(count) < distinct {
-				v = uint64(rnd.Int63()) + 1 // non-zero
+				v = uint64(rnd.Int63()) + 1 // Use a non-zero value for distinct elements
+
+				if runLength > 0 {
+					require.NoError(t, enc.EncodeN(Uint64Value(0), uint64(runLength)))
+					runLength = 0
+				}
+
+				// Encode the distinct value
+				require.NoError(t, enc.Encode(Uint64Value(v)))
+			} else {
+				v = 0
+				runLength++
 			}
 
 			numbers = append(numbers, v)
-			require.NoError(t, enc.Encode(Uint64Value(v)))
 		}
+
+		// Encode any remaining nulls
+		if runLength > 0 {
+			require.NoError(t, enc.EncodeN(Uint64Value(0), uint64(runLength)))
+		}
+
 		require.NoError(t, enc.Flush())
 
 		actual, err := decodeValues(dec)
