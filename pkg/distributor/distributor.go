@@ -99,10 +99,11 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
-	KafkaEnabled        bool         `yaml:"kafka_writes_enabled"`
-	IngesterEnabled     bool         `yaml:"ingester_writes_enabled"`
-	IngestLimitsEnabled bool         `yaml:"ingest_limits_enabled"`
-	KafkaConfig         kafka.Config `yaml:"-"`
+	KafkaEnabled        bool `yaml:"kafka_writes_enabled"`
+	IngesterEnabled     bool `yaml:"ingester_writes_enabled"`
+	IngestLimitsEnabled bool `yaml:"ingest_limits_enabled"`
+
+	KafkaConfig kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
@@ -198,6 +199,12 @@ type Distributor struct {
 	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
 
+	// The number of partitions for the stream metadata topic. Unlike stream
+	// records, where entries are sharded over just the active partitions,
+	// stream metadata is sharded over all partitions, and all partitions
+	// are consumed.
+	numMetadataPartitions int
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -220,6 +227,7 @@ func New(
 	usageTracker push.UsageTracker,
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
+	numMetadataPartitions int,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -363,6 +371,7 @@ func New(
 			limitsFrontendClientFactory,
 			logger,
 		),
+		numMetadataPartitions: numMetadataPartitions,
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -1232,23 +1241,43 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := subring.ActivePartitionForKey(stream.RingToken)
+
+	// The distributor writes stream records to one of the active partitions
+	// in the partition ring. The number of active partitions is equal to the
+	// number of ingesters.
+	streamPartitionID, err := subring.ActivePartitionForKey(stream.RingToken)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
 	}
-
 	startTime := time.Now()
-
-	records, err := kafka.Encode(partitionID, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+	records, err := kafka.Encode(
+		streamPartitionID,
+		tenant,
+		stream.Stream,
+		d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes,
+	)
 	if err != nil {
-		d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+		d.kafkaAppends.WithLabelValues(
+			fmt.Sprintf("partition_%d", streamPartitionID),
+			"fail",
+		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
-	// Add metadata record
-	metadataRecord := kafka.EncodeStreamMetadata(partitionID, d.cfg.KafkaConfig.Topic, tenant, stream.HashNoShard)
-	records = append(records, metadataRecord)
+	// However, unlike stream records, the distributor writes stream metadata
+	// records to one of a fixed number of partitions, the size of which is
+	// determined ahead of time. It does not use a ring. The reason for this
+	// is that we want to be able to scale components that consume metadata
+	// records independent of ingesters.
+	metadataPartitionID := int32(stream.HashNoShard % uint64(d.numMetadataPartitions))
+	metadata := kafka.EncodeStreamMetadata(
+		metadataPartitionID,
+		d.cfg.KafkaConfig.Topic,
+		tenant,
+		stream.HashNoShard,
+	)
+	records = append(records, metadata)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 
@@ -1262,10 +1291,10 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	var finalErr error
 	for _, result := range produceResults {
 		if result.Err != nil {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", streamPartitionID), "fail").Inc()
 			finalErr = result.Err
 		} else {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "success").Inc()
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", streamPartitionID), "success").Inc()
 		}
 	}
 

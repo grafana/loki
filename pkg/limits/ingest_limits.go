@@ -63,24 +63,26 @@ var (
 type Config struct {
 	// Enabled enables the ingest limits service.
 	Enabled bool `yaml:"enabled"`
+
 	// WindowSize defines the time window for which stream metadata is considered active.
 	// Stream metadata older than WindowSize will be evicted from the metadata map.
 	WindowSize time.Duration `yaml:"window_size"`
+
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
-	// NumPartitions is the number of partitions to use for the ingest limits topic.
-	NumPartitions int `yaml:"num_partitions"`
-
 	KafkaConfig kafka.Config `yaml:"-"`
+
+	// The number of partitions for the Kafka topic used to read and write stream metadata.
+	// It is fixed, not a maximum.
+	NumPartitions int `yaml:"num_partitions"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.", f, util_log.Logger)
-
 	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
 	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
-	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions to use for the ingest limits topic.")
+	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
 }
 
 type metrics struct {
