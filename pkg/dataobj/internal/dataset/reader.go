@@ -528,6 +528,7 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
+			continue
 		}
 
 		var include bool

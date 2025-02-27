@@ -4,14 +4,15 @@ import (
 	"fmt"
 )
 
+// rowRange denotes an inclusive range of rows [Start, End].
 type rowRange struct {
 	Start, End uint64
 }
 
 // String prints out the row range in a human-readable format
-// "(rr.Start,rr.End)".
+// "[rr.Start,rr.End]".
 func (rr rowRange) String() string {
-	return fmt.Sprintf("(%d,%d)", rr.Start, rr.End)
+	return fmt.Sprintf("[%d,%d]", rr.Start, rr.End)
 }
 
 // GoString prints out the row range in a human-readable format, useful for

@@ -2,7 +2,7 @@ package dataset
 
 import "fmt"
 
-// Predicate is an expression used to filter rows in a [OldReader].
+// Predicate is an expression used to filter rows in a [Reader].
 type Predicate interface{ isPredicate() }
 
 // Suppported predicates..
