@@ -28,9 +28,9 @@ This quick start guide will walk you through deploying Loki in [single binary mo
 
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki Stack" alt="Loki Stack" >}}
 
+* **Alloy**: [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is an open source telemtry collector for metrics, logs, traces and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all docker containers and forward them to Loki.
 * **Loki**: A log aggregation system to store the collected logs. For more information on what Loki is, see [Loki overview](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/overview/).
-* **Alloy**: Grafana Alloy is an open source telemtry collector for metrics, logs, traces and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all docker containers and forward them to Loki.
-* **Grafana**: Grafana is an open-source platform for monitoring and observability. Grafana will be used to query and vizualize on the logs stored in Loki.
+* **Grafana**: [Grafana](https://grafana.com/docs/grafana/latest/) is an open-source platform for monitoring and observability. Grafana will be used to query and vizualize on the logs stored in Loki.
 
 <!-- INTERACTIVE ignore START -->
 ## Before you begin
@@ -54,13 +54,15 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 
 <!-- INTERACTIVE page step1.md START -->
 
-## Install the Loki stack
+## Deploy the Loki stack
 
+<!-- INTERACTIVE ignore START -->
 {{< admonition type="note" >}}
 This quickstart assumes you are running Linux or MacOS. Windows users can follow the same steps using [WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
 {{< /admonition >}}
+<!-- INTERACTIVE ignore END -->
 
-**To install Loki locally, follow these steps:**
+**To deploy the Loki stack locally, follow these steps:**
 
 1. Clone the Loki fundamentals repository and checkout the getting-started branch:
 
@@ -79,7 +81,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
      ```bash
      docker compose up -d
      ```
-      At the end of the command, you should see something similar to the following:
+      After running the command, you should see something similar output:
 
       ```console
        ✔ Container loki-fundamentals-grafana-1  Started  0.3s 
@@ -87,7 +89,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
        ✔ Container loki-fundamentals-alloy-1    Started  0.4s
       ```
 
-With the Loki stack running, you can now verify component is up and running:
+With the Loki stack running, you can now verify each component is up and running:
 
 * **Alloy**: Open a browser and navigate to [http://localhost:12345/graph](http://localhost:12345/graph). You should see the Alloy UI.
 * **Grafana**: Open a browser and navigate to [http://localhost:3000](http://localhost:3000). You should see the Grafana home page.
