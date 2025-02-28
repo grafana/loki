@@ -21,16 +21,16 @@ func (d *noOpDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteReq
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) GetAllShards(_ context.Context) ([]DeleteRequest, error) {
-	return nil, nil
-}
-
 func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
 	return nil
 }
 
 func (d *noOpDeleteRequestsStore) AddDeleteRequest(_ context.Context, _, _ string, _, _ model.Time, _ time.Duration) (string, error) {
 	return "", nil
+}
+
+func (d *noOpDeleteRequestsStore) addDeleteRequestWithID(_ context.Context, _, _, _ string, _, _ model.Time, _ time.Duration) error {
+	return nil
 }
 
 func (d *noOpDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {

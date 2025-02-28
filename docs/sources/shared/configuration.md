@@ -1837,6 +1837,16 @@ retention_backoff_config:
 # CLI flag: -compactor.delete-request-store.key-prefix
 [delete_request_store_key_prefix: <string> | default = "index/"]
 
+# Type of DB to use for storing delete requests. Supported types: boltdb, sqlite
+# CLI flag: -compactor.delete-request-store.db-type
+[delete_request_store_db_type: <string> | default = "boltdb"]
+
+# Type of DB to use as backup for storing delete requests. Backup DB should
+# ideally be used while migrating from one DB type to another. Supported
+# type(s): boltdb
+# CLI flag: -compactor.delete-request-store.backup-db-type
+[backup_delete_request_store_db_type: <string> | default = ""]
+
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
 [delete_batch_size: <int> | default = 70]
