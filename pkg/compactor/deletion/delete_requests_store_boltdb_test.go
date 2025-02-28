@@ -2,12 +2,12 @@ package deletion
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
 	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"

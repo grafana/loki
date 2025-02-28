@@ -2,10 +2,10 @@ package deletion
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
