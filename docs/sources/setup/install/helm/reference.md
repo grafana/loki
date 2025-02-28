@@ -7696,6 +7696,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry</td>
+			<td><pre lang="json">
+"docker.io"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.image.repository</td>
 			<td>string</td>
 			<td>Memcached Docker image repository</td>
@@ -7820,6 +7829,15 @@ true
 			<td></td>
 			<td><pre lang="json">
 "IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry</td>
+			<td><pre lang="json">
+"docker.io"
 </pre>
 </td>
 		</tr>

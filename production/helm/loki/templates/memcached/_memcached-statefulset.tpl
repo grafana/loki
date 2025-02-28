@@ -90,7 +90,7 @@ spec:
         {{- end }}
         - name: memcached
           {{- with $.ctx.Values.memcached.image }}
-          image: {{ .repository }}:{{ .tag }}
+          image: {{ .registry }}/{{ .repository }}:{{ .tag }}
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
           resources:
@@ -156,7 +156,7 @@ spec:
       {{- if $.ctx.Values.memcachedExporter.enabled }}
         - name: exporter
           {{- with $.ctx.Values.memcachedExporter.image }}
-          image: {{ .repository}}:{{ .tag }}
+          image: {{ .registry }}/{{ .repository }}:{{ .tag }}
           imagePullPolicy: {{ .pullPolicy }}
           {{- end }}
           ports:

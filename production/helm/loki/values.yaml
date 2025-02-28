@@ -3464,6 +3464,8 @@ memcached:
   # -- Enable the built in memcached server provided by the chart
   enabled: true
   image:
+    # -- The Docker registry
+    registry: docker.io
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
@@ -3507,6 +3509,8 @@ memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
   image:
+    # -- The Docker registry
+    registry: docker.io
     repository: prom/memcached-exporter
     tag: v0.15.3
     pullPolicy: IfNotPresent
