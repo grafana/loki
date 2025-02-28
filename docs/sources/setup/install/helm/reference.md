@@ -6900,7 +6900,7 @@ true
 		<tr>
 			<td>memcachedExporter.image.pullPolicy</td>
 			<td>string</td>
-			<td></td>
+			<td>Docker image pull policy</td>
 			<td><pre lang="json">
 "IfNotPresent"
 </pre>
@@ -6918,7 +6918,7 @@ true
 		<tr>
 			<td>memcachedExporter.image.repository</td>
 			<td>string</td>
-			<td></td>
+			<td>Docker image repository</td>
 			<td><pre lang="json">
 "prom/memcached-exporter"
 </pre>
@@ -6927,7 +6927,7 @@ true
 		<tr>
 			<td>memcachedExporter.image.tag</td>
 			<td>string</td>
-			<td></td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
 "v0.15.1"
 </pre>
