@@ -419,10 +419,7 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 				if len(s.metadata[tenant]) == 0 {
 					delete(s.metadata, tenant)
 				}
-				// Only update recorded streams gauge if the number changed
-				if evictedCount > 0 {
-					s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
-				}
+				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
 			}
 			s.mtx.Unlock()
 		}
