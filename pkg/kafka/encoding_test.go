@@ -218,9 +218,6 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 			require.Equal(t, tt.hash, metadata.StreamHash)
 			require.Equal(t, tt.lineSize, metadata.LineSize)
 			require.Equal(t, tt.structuredMetadataSize, metadata.StructuredMetadataSize)
-
-			// Return metadata to pool
-			metadataPool.Put(metadata)
 		})
 	}
 

@@ -20,19 +20,11 @@ const (
 	metadataTopicSuffix = ".metadata"
 )
 
-var (
-	encoderPool = sync.Pool{
-		New: func() any {
-			return &logproto.Stream{}
-		},
-	}
-
-	metadataPool = sync.Pool{
-		New: func() any {
-			return &logproto.StreamMetadata{}
-		},
-	}
-)
+var encoderPool = sync.Pool{
+	New: func() any {
+		return &logproto.Stream{}
+	},
+}
 
 // Encode converts a logproto.Stream into one or more Kafka records.
 // It handles splitting large streams into multiple records if necessary.
@@ -209,15 +201,12 @@ func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, l
 		return nil
 	}
 
-	// Get metadata from pool
-	metadata := metadataPool.Get().(*logproto.StreamMetadata)
-	*metadata = logproto.StreamMetadata{} // Reset to zero values
-	defer metadataPool.Put(metadata)
-
-	// Set stream hash
-	metadata.StreamHash = streamHash
-	metadata.LineSize = lineSize
-	metadata.StructuredMetadataSize = structuredMetadataSize
+	// Set metadata
+	metadata := logproto.StreamMetadata{
+		StreamHash:             streamHash,
+		LineSize:               lineSize,
+		StructuredMetadataSize: structuredMetadataSize,
+	}
 
 	// Encode the metadata into a byte slice
 	value, err := metadata.Marshal()
@@ -246,15 +235,12 @@ func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) 
 		return nil, errors.New("nil record value")
 	}
 
-	metadata := metadataPool.Get().(*logproto.StreamMetadata)
-	*metadata = logproto.StreamMetadata{} // Reset to zero values
-
+	metadata := logproto.StreamMetadata{}
 	if err := metadata.Unmarshal(record.Value); err != nil {
-		metadataPool.Put(metadata)
 		return nil, fmt.Errorf("failed to unmarshal stream metadata: %w", err)
 	}
 
-	return metadata, nil
+	return &metadata, nil
 }
 
 // MetadataTopicFor returns the metadata topic name for the given topic.
