@@ -152,11 +152,6 @@ func generateRandomString(length int) string {
 }
 
 func TestEncodeDecodeStreamMetadata(t *testing.T) {
-	// Reset the metadata pool before testing to ensure clean state
-	metadata := metadataPool.Get().(*logproto.StreamMetadata)
-	*metadata = logproto.StreamMetadata{} // Reset to zero values
-	metadataPool.Put(metadata)
-
 	tests := []struct {
 		name                   string
 		hash                   uint64

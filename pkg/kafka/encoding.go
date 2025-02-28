@@ -203,7 +203,7 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic string, tenantID string, streamHash uint64, lineSize uint64, structuredMetadataSize uint64) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, lineSize, structuredMetadataSize uint64) *kgo.Record {
 	// Validate stream hash
 	if streamHash == 0 {
 		return nil
@@ -211,6 +211,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 
 	// Get metadata from pool
 	metadata := metadataPool.Get().(*logproto.StreamMetadata)
+	*metadata = logproto.StreamMetadata{} // Reset to zero values
 	defer metadataPool.Put(metadata)
 
 	// Set stream hash
@@ -246,6 +247,8 @@ func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) 
 	}
 
 	metadata := metadataPool.Get().(*logproto.StreamMetadata)
+	*metadata = logproto.StreamMetadata{} // Reset to zero values
+
 	if err := metadata.Unmarshal(record.Value); err != nil {
 		metadataPool.Put(metadata)
 		return nil, fmt.Errorf("failed to unmarshal stream metadata: %w", err)
