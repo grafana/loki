@@ -527,6 +527,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}()
 		}
 
+		// This is used to sample the labels that were pushed to the distributor to log as a trace event.
+		streamSampleSize := len(req.Streams)
+		if streamSampleSize > 100 {
+			streamSampleSize = 100
+		}
+		streamLblSample := make(map[string]interface{}, streamSampleSize)
+
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
 			if len(stream.Entries) == 0 {
@@ -572,6 +579,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				// otherwise client will get a 400 and will log it.
 				ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
 				continue
+			}
+
+			if len(streamLblSample) < streamSampleSize {
+				if _, ok := streamLblSample[stream.Labels]; !ok {
+					streamLblSample[stream.Labels] = struct{}{}
+				}
 			}
 
 			n := 0
@@ -644,6 +657,21 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			maybeShardStreams(stream, lbs, pushSize)
+		}
+
+		if sp != nil {
+			sp.LogKV(
+				fmt.Sprintf(
+					"number of stream labels sampled in distributor (limited to %d)",
+					streamSampleSize,
+				),
+				len(streamLblSample),
+			)
+			streamLblsSampleSlice := make([]string, 0, len(streamLblSample))
+			for k := range streamLblSample {
+				streamLblsSampleSlice = append(streamLblsSampleSlice, k)
+			}
+			sp.LogKV("stream labels", strings.Join(streamLblsSampleSlice, ","))
 		}
 	}()
 
