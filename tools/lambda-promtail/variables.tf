@@ -34,6 +34,18 @@ variable "log_group_names" {
   default     = []
 }
 
+variable "log_group_prefixes" {
+  type        = set(string)
+  description = "List of prefixes to match CloudWatch Log Group names to create Subscription Filters for."
+  default     = []
+}
+
+variable "log_group_subscription_filter_patterns" {
+  type        = map(string)
+  description = "Filter subscription patterns. The key is the log group and the value is the filter pattern."
+  default     = {}
+}
+
 variable "lambda_promtail_image" {
   type        = string
   description = "The ECR image URI to pull and use for lambda-promtail."
@@ -142,4 +154,9 @@ variable "sqs_queue_name_prefix" {
   type        = string
   description = "Name prefix for SQS queues"
   default     = "s3-to-lambda-promtail"
+}
+
+variable "tags" {
+  type        = map(string)
+  description = "Tags to apply to created resources."
 }
