@@ -2,6 +2,7 @@
 
 ## Release 6.1.4
 
+- [16492](https://github.com/grafana/loki/pull/16492) **xperimental**: Select non-zero delete worker count for all sizes
 - [16360](https://github.com/grafana/loki/pull/16360) **xperimental**: Update Loki operator to v3.4.2
 
 ## Release 6.1.2
