@@ -41,39 +41,37 @@ type set struct {
 	m *intmap.Set[uint32]
 }
 
-func newSet(size int) *set {
-	return &set{m: intmap.NewSet[uint32](size)}
+var nilSet set
+
+func makeSet(size int) set {
+	return set{m: intmap.NewSet[uint32](size)}
 }
 
-func (s *set) ForEach(fn func(v uint32)) {
+func (s set) ForEach(fn func(v uint32)) {
 	s.m.ForEach(func(v uint32) bool {
 		fn(v)
 		return true
 	})
 }
 
-func (s *set) Merge(other *set) {
+func (s set) Merge(other set) {
 	other.m.ForEach(func(v uint32) bool {
 		s.m.Add(v)
 		return true
 	})
 }
 
-func (s *set) Len() int {
+func (s set) Len() int {
 	return s.m.Len()
 }
 
-func (s *set) add(v uint32) bool {
-	if s.m.Has(v) {
-		return false
-	}
-	s.m.Add(v)
-	return true
+func (s set) add(v uint32) bool {
+	return s.m.Add(v)
 }
 
-func (s *set) Clone() *set {
-	if s == nil {
-		return nil
+func (s set) Clone() set {
+	if s == nilSet {
+		return nilSet
 	}
 
 	newS := intmap.NewSet[uint32](s.m.Len())
@@ -81,7 +79,7 @@ func (s *set) Clone() *set {
 		newS.Add(v)
 		return true
 	})
-	return &set{m: newS}
+	return set{m: newS}
 }
 
 func (s *set) AppendBinary(data []byte) ([]byte, error) {
@@ -112,9 +110,3 @@ func (s *set) AppendBinary(data []byte) ([]byte, error) {
 
 	return data, nil
 }
-
-type uint64Slice []uint32
-
-func (p uint64Slice) Len() int           { return len(p) }
-func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
