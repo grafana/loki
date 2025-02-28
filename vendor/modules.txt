@@ -488,7 +488,7 @@ github.com/aws/smithy-go/time
 github.com/aws/smithy-go/tracing
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/axiomhq/hyperloglog v0.2.3
+# github.com/axiomhq/hyperloglog v0.2.5
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.217
