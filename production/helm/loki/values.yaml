@@ -3511,8 +3511,11 @@ memcachedExporter:
   image:
     # -- The Docker registry
     registry: docker.io
+    # -- Docker image repository
     repository: prom/memcached-exporter
+    # -- Docker image tag
     tag: v0.15.3
+    # -- Docker image pull policy
     pullPolicy: IfNotPresent
   resources:
     requests: {}
