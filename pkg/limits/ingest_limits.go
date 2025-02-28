@@ -400,7 +400,12 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		for partitionID, streams := range partitions {
 			for i, stream := range streams {
 				if stream.lastSeenAt < cutoff {
-					s.metadata[tenant][partitionID] = append(s.metadata[tenant][partitionID][:i], s.metadata[tenant][partitionID][i+1:]...)
+					// Delete the element without allocating or copying into
+					// a new backing array https://go.dev/wiki/SliceTricks#delete.
+					s.metadata[tenant][partitionID] = append(
+						s.metadata[tenant][partitionID][:i],
+						s.metadata[tenant][partitionID][i+1:]...,
+					)
 					evicted++
 				}
 			}
@@ -408,7 +413,9 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		if len(s.metadata[tenant]) == 0 {
 			delete(s.metadata, tenant)
 		}
-		s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evicted))
+		s.metrics.tenantStreamEvictionsTotal.
+			WithLabelValues(tenant).
+			Add(float64(evicted))
 	}
 }
 
