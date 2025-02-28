@@ -3489,27 +3489,51 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	expr, err := ParseSampleExpr(query)
 	require.Nil(b, err)
 
-	p, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.EmptyLabels())
-	var (
-		v       float64
-		lbs     log.LabelsResult
-		matches bool
-	)
-	in := []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		v, lbs, matches = sp.Process(0, in)
+
+	for _, p := range extractors {
+		sp := p.ForStream(labels.EmptyLabels())
+		var (
+			v       float64
+			lbs     log.LabelsResult
+			matches bool
+		)
+		in := []byte(
+			`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
+		)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			v, lbs, matches = sp.Process(0, in)
+		}
+		require.True(b, matches)
+		require.Equal(
+			b,
+			labels.FromStrings(
+				"caller",
+				"logging.go:66",
+				"duration",
+				"1.5s",
+				"level",
+				"debug",
+				"method",
+				"POST",
+				"msg",
+				"POST /api/prom/api/v1/query_range (200) 1.5s",
+				"path",
+				"/api/prom/api/v1/query_range",
+				"status",
+				"200",
+				"traceID",
+				"a9d4d8a928d8db1",
+				"ts",
+				"2020-10-02T10:10:42.092268913Z",
+			),
+			lbs.Labels(),
+		)
+		require.Equal(b, 1.0, v)
 	}
-	require.True(b, matches)
-	require.Equal(
-		b,
-		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
-		lbs.Labels(),
-	)
-	require.Equal(b, 1.0, v)
 }
 
 var c []*labels.Matcher

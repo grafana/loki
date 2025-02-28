@@ -124,7 +124,7 @@ ui:
 
   # How frequently to rejoin the cluster to address split brain issues.
   # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 15s]
+  [rejoin_interval: <duration> | default = 3m]
 
   # Number of initial peers to join from the discovered set.
   # CLI flag: -ui.cluster-max-join-peers
@@ -137,6 +137,10 @@ ui:
   # Enable using a IPv6 instance address.
   # CLI flag: -ui.enable-ipv6
   [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
 
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
@@ -2419,6 +2423,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
+
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
@@ -4051,6 +4059,12 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Enable experimental support for running multiple query variants over the
+  # same underlying data. For example, running both a rate() and
+  # count_over_time() query over the same range selector.
+  # CLI flag: -querier.engine.enable-multi-variant-queries
+  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

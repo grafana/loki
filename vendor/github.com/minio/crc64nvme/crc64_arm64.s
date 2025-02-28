@@ -2,6 +2,8 @@
 // Use of this source code is governed by a license that can be
 // found in the LICENSE file.
 
+//go:build !noasm && !appengine && !gccgo
+
 #include "textflag.h"
 
 TEXT ·updateAsm(SB), $0-40

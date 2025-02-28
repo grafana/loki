@@ -76,19 +76,28 @@ type UserAgentFeature string
 
 // Enumerates UserAgentFeature.
 const (
-	UserAgentFeatureResourceModel          UserAgentFeature = "A" // n/a (we don't generate separate resource types)
-	UserAgentFeatureWaiter                                  = "B"
-	UserAgentFeaturePaginator                               = "C"
-	UserAgentFeatureRetryModeLegacy                         = "D" // n/a (equivalent to standard)
-	UserAgentFeatureRetryModeStandard                       = "E"
-	UserAgentFeatureRetryModeAdaptive                       = "F"
-	UserAgentFeatureS3Transfer                              = "G"
-	UserAgentFeatureS3CryptoV1N                             = "H" // n/a (crypto client is external)
-	UserAgentFeatureS3CryptoV2                              = "I" // n/a
-	UserAgentFeatureS3ExpressBucket                         = "J"
-	UserAgentFeatureS3AccessGrants                          = "K" // not yet implemented
-	UserAgentFeatureGZIPRequestCompression                  = "L"
-	UserAgentFeatureProtocolRPCV2CBOR                       = "M"
+	UserAgentFeatureResourceModel                 UserAgentFeature = "A" // n/a (we don't generate separate resource types)
+	UserAgentFeatureWaiter                                         = "B"
+	UserAgentFeaturePaginator                                      = "C"
+	UserAgentFeatureRetryModeLegacy                                = "D" // n/a (equivalent to standard)
+	UserAgentFeatureRetryModeStandard                              = "E"
+	UserAgentFeatureRetryModeAdaptive                              = "F"
+	UserAgentFeatureS3Transfer                                     = "G"
+	UserAgentFeatureS3CryptoV1N                                    = "H" // n/a (crypto client is external)
+	UserAgentFeatureS3CryptoV2                                     = "I" // n/a
+	UserAgentFeatureS3ExpressBucket                                = "J"
+	UserAgentFeatureS3AccessGrants                                 = "K" // not yet implemented
+	UserAgentFeatureGZIPRequestCompression                         = "L"
+	UserAgentFeatureProtocolRPCV2CBOR                              = "M"
+	UserAgentFeatureRequestChecksumCRC32                           = "U"
+	UserAgentFeatureRequestChecksumCRC32C                          = "V"
+	UserAgentFeatureRequestChecksumCRC64                           = "W"
+	UserAgentFeatureRequestChecksumSHA1                            = "X"
+	UserAgentFeatureRequestChecksumSHA256                          = "Y"
+	UserAgentFeatureRequestChecksumWhenSupported                   = "Z"
+	UserAgentFeatureRequestChecksumWhenRequired                    = "a"
+	UserAgentFeatureResponseChecksumWhenSupported                  = "b"
+	UserAgentFeatureResponseChecksumWhenRequired                   = "c"
 )
 
 // RequestUserAgent is a build middleware that set the User-Agent for the request.

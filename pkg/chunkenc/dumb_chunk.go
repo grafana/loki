@@ -99,7 +99,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}, nil
 }
 
-func (c *dumbChunk) SampleIterator(_ context.Context, _, _ time.Time, _ log.StreamSampleExtractor) iter.SampleIterator {
+func (c *dumbChunk) SampleIterator(_ context.Context, _, _ time.Time, _ ...log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

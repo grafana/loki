@@ -846,30 +846,36 @@ func Test_ExtractorWrapper(t *testing.T) {
 	}
 	instance.extractorWrapper = wrapper
 
-	ctx := user.InjectOrgID(context.Background(), "test-user")
-	it, err := instance.QuerySample(ctx,
-		logql.SelectSampleParams{
-			SampleQueryRequest: &logproto.SampleQueryRequest{
-				Selector: `sum(count_over_time({job="3"}[1m]))`,
-				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, 100000000),
-				Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
+	t.Run("single extractor samples", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `sum(count_over_time({job="3"}[1m]))`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
+					},
 				},
 			},
-		},
-	)
-	require.NoError(t, err)
-	defer it.Close()
+		)
+		require.NoError(t, err)
+		defer it.Close()
 
-	for it.Next() {
-		// Consume the iterator
-		require.NoError(t, it.Err())
-	}
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
 
-	require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
-	require.Equal(t, 10, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+		require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
+		require.Equal(
+			t,
+			10,
+			wrapper.extractor.sp.called,
+		) // we've passed every log line through the wrapper
+	})
 }
 
 func Test_ExtractorWrapper_disabled(t *testing.T) {
@@ -880,31 +886,33 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 	}
 	instance.extractorWrapper = wrapper
 
-	ctx := user.InjectOrgID(context.Background(), "test-user")
-	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
-	it, err := instance.QuerySample(ctx,
-		logql.SelectSampleParams{
-			SampleQueryRequest: &logproto.SampleQueryRequest{
-				Selector: `sum(count_over_time({job="3"}[1m]))`,
-				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, 100000000),
-				Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
+	t.Run("single extractor samples", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `sum(count_over_time({job="3"}[1m]))`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
+					},
 				},
 			},
-		},
-	)
-	require.NoError(t, err)
-	defer it.Close()
+		)
+		require.NoError(t, err)
+		defer it.Close()
 
-	for it.Next() {
-		// Consume the iterator
-		require.NoError(t, it.Err())
-	}
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
 
-	require.Equal(t, ``, wrapper.query)
-	require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+		require.Equal(t, ``, wrapper.query)
+		require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+	})
 }
 
 type testExtractorWrapper struct {

@@ -44,18 +44,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
       container.mixin.readinessProbe.withInitialDelaySeconds(15) +
       container.mixin.readinessProbe.withTimeoutSeconds(1),
-
-    parseDuration(duration)::
-      if std.endsWith(duration, 's') then
-        std.parseInt(std.substr(duration, 0, std.length(duration) - 1))
-      else if std.endsWith(duration, 'm') then
-        std.parseInt(std.substr(duration, 0, std.length(duration) - 1)) * 60
-      else if std.endsWith(duration, 'h') then
-        std.parseInt(std.substr(duration, 0, std.length(duration) - 1)) * 3600
-      else if std.endsWith(duration, 'd') then
-        std.parseInt(std.substr(duration, 0, std.length(duration) - 1)) * 86400
-      else
-        error 'unable to parse duration %s' % duration,
   },
 
   // functions for k8s objects

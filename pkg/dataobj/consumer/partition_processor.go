@@ -42,6 +42,7 @@ type partitionProcessor struct {
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	lastFlush        time.Time
+	lastModified     time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -115,6 +116,7 @@ func newPartitionProcessor(
 		bufPool:          bufPool,
 		idleFlushTimeout: idleFlushTimeout,
 		lastFlush:        time.Now(),
+		lastModified:     time.Now(),
 	}
 }
 
@@ -262,6 +264,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			p.metrics.incAppendFailures()
 		}
 	}
+
+	p.lastModified = time.Now()
 }
 
 func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
@@ -294,7 +298,7 @@ func (p *partitionProcessor) idleFlush() {
 		return
 	}
 
-	if time.Since(p.lastFlush) < p.idleFlushTimeout {
+	if time.Since(p.lastModified) < p.idleFlushTimeout {
 		return // Avoid checking too frequently
 	}
 
