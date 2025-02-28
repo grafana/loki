@@ -3170,6 +3170,8 @@ overridesExporter:
 
 memcached:
   image:
+    # -- The Docker registry
+    registry: docker.io
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
@@ -3194,6 +3196,8 @@ memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
   image:
+    # -- The Docker registry
+    registry: docker.io
     repository: prom/memcached-exporter
     tag: v0.15.1
     pullPolicy: IfNotPresent
