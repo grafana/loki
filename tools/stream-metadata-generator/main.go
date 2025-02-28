@@ -420,8 +420,14 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			startTime := time.Now()
 
+			var logSize, structuredMetadataSize uint64
+			for _, entry := range stream.Stream.Entries {
+				logSize += uint64(len(entry.Line))
+				structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+			}
+
 			// Add metadata record
-			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard)
+			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard, logSize, structuredMetadataSize)
 
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
@@ -504,6 +510,12 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		stream := logproto.Stream{
 			Labels: labelsStr,
 			Hash:   lbs.Hash(),
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Now(),
+					Line:      fmt.Sprintf("line %d", i),
+				},
+			},
 		}
 
 		// Create the keyed stream
