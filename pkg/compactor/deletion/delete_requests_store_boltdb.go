@@ -46,11 +46,10 @@ var ErrDeleteRequestNotFound = errors.New("could not find matching delete reques
 // deleteRequestsStoreBoltDB provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStoreBoltDB struct {
 	indexClient index.Client
-	now         func() model.Time
 }
 
 // newDeleteRequestsStoreBoltDB creates a store for managing delete requests.
-func newDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient storage.Client, nowFunc func() model.Time) (*deleteRequestsStoreBoltDB, error) {
+func newDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient storage.Client) (*deleteRequestsStoreBoltDB, error) {
 	indexClient, err := newDeleteRequestsTable(workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
@@ -58,7 +57,6 @@ func newDeleteRequestsStoreBoltDB(workingDirectory string, indexStorageClient st
 
 	return &deleteRequestsStoreBoltDB{
 		indexClient: indexClient,
-		now:         nowFunc,
 	}, nil
 }
 
@@ -87,7 +85,7 @@ func (ds *deleteRequestsStoreBoltDB) addDeleteRequestWithID(ctx context.Context,
 		return fmt.Errorf("zero delete requests created")
 	}
 
-	createdAt := ds.now()
+	createdAt := model.Now()
 	writeBatch := ds.indexClient.NewWriteBatch()
 
 	for i, req := range reqs {

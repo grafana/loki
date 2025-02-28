@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"github.com/prometheus/common/model"
 	"testing"
 	"time"
 
@@ -143,6 +144,9 @@ func TestBatchCreateGetSQLite(t *testing.T) {
 
 		requests, err := tc.store.GetUnprocessedShards(context.Background())
 		require.NoError(t, err)
+
+		// ensure that creation time is set close to now
+		require.InDelta(t, int64(model.Now()), int64(requests[0].CreatedAt), float64(5*time.Second))
 
 		for _, req := range requests {
 			require.Equal(t, reqID, requests[0].RequestID)

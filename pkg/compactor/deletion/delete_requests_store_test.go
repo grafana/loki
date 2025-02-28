@@ -157,6 +157,9 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				requests, err := tc.store.GetUnprocessedShards(context.Background())
 				require.NoError(t, err)
 
+				// ensure that creation time is set close to now
+				require.InDelta(t, int64(model.Now()), int64(requests[0].CreatedAt), float64(5*time.Second))
+
 				for _, req := range requests {
 					require.Equal(t, reqID, requests[0].RequestID)
 					require.Equal(t, req.Status, requests[0].Status)
@@ -340,9 +343,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, func() model.Time {
-		return now
-	})
+	deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB)
 	require.NoError(t, err)
 	storeTee := deleteRequestsStore.(deleteRequestsStoreTee)
 
@@ -389,7 +390,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, shardsFromBackupStore, len(savedShards)-1)
 		resetSequenceNumInRequests(shardsFromBackupStore)
-		require.Equal(t, savedShards[1:], shardsFromBackupStore)
+		compareRequests(t, savedShards[1:], shardsFromBackupStore)
 	})
 
 	t.Run("remove delete request", func(t *testing.T) {
@@ -423,9 +424,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 	})
 
 	t.Run("initializing stores should get dbs from storage", func(t *testing.T) {
-		deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, func() model.Time {
-			return now
-		})
+		deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB)
 		require.NoError(t, err)
 		storeTee = deleteRequestsStore.(deleteRequestsStoreTee)
 
@@ -440,15 +439,13 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 
 		reqsFromBackupStore, err := storeTee.backupStore.GetAllRequests(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, reqsFromTee, reqsFromBackupStore)
+		compareRequests(t, reqsFromTee, reqsFromBackupStore)
 	})
 
 	t.Run("rollback to boltdb should cleanup sqlite db", func(t *testing.T) {
 		storeTee.Stop()
 
-		_, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "", func() model.Time {
-			return now
-		})
+		_, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
 		require.NoError(t, err)
 
 		require.NoFileExists(t, filepath.Join(workingDir, deleteRequestsWorkingDirName, deleteRequestsDBSQLiteFileName))
@@ -480,7 +477,6 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 			UserID:    user1,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-i * time.Hour).Add(30 * time.Minute),
-			CreatedAt: model.Time(38),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user1),
 			Status:    StatusReceived,
 		})
@@ -488,7 +484,6 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 			UserID:    user2,
 			StartTime: now.Add(-i * time.Hour),
 			EndTime:   now.Add(-(i + 1) * time.Hour),
-			CreatedAt: model.Time(38),
 			Query:     fmt.Sprintf(`{foo="%d", user="%s"}`, i, user2),
 			Status:    StatusReceived,
 		})
@@ -507,11 +502,11 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 
 	if storeType == DeleteRequestsStoreDBTypeBoltDB {
 		var err error
-		tc.store, err = newDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""), func() model.Time { return model.Time(38) })
+		tc.store, err = newDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 		require.NoError(t, err)
 	} else {
 		var err error
-		tc.store, err = newDeleteRequestsStoreSQLite(workingDir, storage.NewIndexStorageClient(objectClient, ""), func() model.Time { return model.Time(38) })
+		tc.store, err = newDeleteRequestsStoreSQLite(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 		require.NoError(t, err)
 	}
 

@@ -85,10 +85,9 @@ type userCacheGen struct {
 // deleteRequestsStoreSQLite provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStoreSQLite struct {
 	sqliteStore *sqliteDB
-	now         func() model.Time
 }
 
-func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient storage.Client, nowFunc func() model.Time) (*deleteRequestsStoreSQLite, error) {
+func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient storage.Client) (*deleteRequestsStoreSQLite, error) {
 	sqliteStore, err := newSQLiteDB(workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
@@ -109,7 +108,6 @@ func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient st
 
 	s := &deleteRequestsStoreSQLite{
 		sqliteStore: sqliteStore,
-		now:         nowFunc,
 	}
 
 	return s, nil
@@ -247,7 +245,7 @@ func (ds *deleteRequestsStoreSQLite) addDeleteRequestWithID(ctx context.Context,
 	req.Query = query
 	req.StartTime = startTime
 	req.EndTime = endTime
-	req.CreatedAt = ds.now()
+	req.CreatedAt = model.Now()
 	shards := buildRequests(shardByInterval, query, userID, startTime, endTime)
 	if len(shards) == 0 {
 		return fmt.Errorf("zero delete requests created")

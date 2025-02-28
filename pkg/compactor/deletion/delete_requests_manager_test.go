@@ -1117,7 +1117,8 @@ func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error 
 }
 
 func requestsAreEqual(req1, req2 DeleteRequest) bool {
-	if req1.UserID == req2.UserID &&
+	if req1.RequestID == req2.RequestID &&
+		req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
 		req1.EndTime == req2.EndTime &&

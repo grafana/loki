@@ -40,12 +40,12 @@ type DeleteRequestsStore interface {
 }
 
 func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
-	return newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, backupDeleteRequestStoreDBType, model.Now)
+	return newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, backupDeleteRequestStoreDBType)
 }
 
-func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType, now func() model.Time) (DeleteRequestsStore, error) {
+func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
 	workingDirectory = filepath.Join(workingDirectory, deleteRequestsWorkingDirName)
-	store, err := createDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, now)
+	store, err := createDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 
 		// copy data from boltdb to sqlite only if the sqlite store is empty
 		if sqliteStoreIsEmpty {
-			boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, now)
+			boltdbStore, err := newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient)
 			if err != nil {
 				return nil, err
 			}
@@ -85,7 +85,7 @@ func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	}
 
 	if backupDeleteRequestStoreDBType != "" && deleteRequestsStoreDBType != backupDeleteRequestStoreDBType {
-		backupStore, err := createDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient, now)
+		backupStore, err := createDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient)
 		if err != nil {
 			return nil, err
 		}
@@ -96,12 +96,12 @@ func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	return store, nil
 }
 
-func createDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, now func() model.Time) (DeleteRequestsStore, error) {
+func createDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
 	switch DeleteRequestsStoreDBType {
 	case DeleteRequestsStoreDBTypeBoltDB:
-		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient, now)
+		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient)
 	case DeleteRequestsStoreDBTypeSQLite:
-		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient, now)
+		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient)
 	default:
 		return nil, fmt.Errorf("unexpected delete requests store DB type %s. Supported types: (%s, %s)", DeleteRequestsStoreDBType, DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite)
 	}

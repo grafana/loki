@@ -2,12 +2,12 @@ package deletion
 
 import (
 	"context"
+	"github.com/prometheus/common/model"
 	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -150,6 +150,9 @@ func TestBatchCreateGetBoltDB(t *testing.T) {
 		requests, err := tc.store.(*deleteRequestsStoreBoltDB).getDeleteRequestGroup(context.Background(), user1, reqID)
 		require.NoError(t, err)
 
+		// ensure that creation time is set close to now
+		require.InDelta(t, int64(model.Now()), int64(requests[0].CreatedAt), float64(5*time.Second))
+
 		for i, req := range requests {
 			require.Equal(t, req.RequestID, requests[0].RequestID)
 			require.Equal(t, req.Status, requests[0].Status)
@@ -285,7 +288,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				Directory: objectStorePath,
 			})
 			require.NoError(t, err)
-			ds, err := newDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""), model.Now)
+			ds, err := newDeleteRequestsStoreBoltDB(workingDir, storage.NewIndexStorageClient(objectClient, ""))
 			require.NoError(t, err)
 
 			for _, addReqDetails := range tc.reqsToAdd {
@@ -313,6 +316,7 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 			if tc.requestsShouldBeMerged {
 				require.Len(t, inStoreReqsAfterMerging, 1)
 				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
+					RequestID: inStoreReqs[0].RequestID,
 					UserID:    user1,
 					Query:     tc.reqsToAdd[0].query,
 					StartTime: tc.reqsToAdd[0].startTime,
