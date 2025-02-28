@@ -99,7 +99,7 @@ With the Loki stack running, you can now verify each component is up and running
 
 <!-- INTERACTIVE page step2.md START -->
 
-Since Grafana Alloy is configured to tail logs from all docker containers, Loki should already be receiving logs. The best place to verify this is using the Grafana Drilldown Logs feature. To do navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
+Since Grafana Alloy is configured to tail logs from all docker containers, Loki should already be receiving logs. The best place to verify this is using the Grafana Logs Drilldown feature. To do navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app). You should see the Grafana Logs Drilldown page.
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down.png" caption="Getting started sample application" alt="Grafana Drilldown" >}}
 
@@ -107,7 +107,7 @@ If you have only the getting started demo deployed in your docker environment, y
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Getting started sample application" alt="Grafana Drilldown Service View" >}}
 
-We will not cover the rest of the Grafana Drilldown Log features in this quickstart guide. For more information on how to use the Grafana Drilldown Logs feature, see [Drilldown Logs](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
+We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [the getting started page.](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
 
 <!-- INTERACTIVE page step2.md END -->
 
