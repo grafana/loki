@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -71,25 +73,27 @@ var (
 )
 
 type Config struct {
-	WorkingDirectory            string              `yaml:"working_directory"`
-	CompactionInterval          time.Duration       `yaml:"compaction_interval"`
-	ApplyRetentionInterval      time.Duration       `yaml:"apply_retention_interval"`
-	RetentionEnabled            bool                `yaml:"retention_enabled"`
-	RetentionDeleteDelay        time.Duration       `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount    int                 `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout       time.Duration       `yaml:"retention_table_timeout"`
-	RetentionBackoffConfig      backoff.Config      `yaml:"retention_backoff_config"`
-	DeleteRequestStore          string              `yaml:"delete_request_store"`
-	DeleteRequestStoreKeyPrefix string              `yaml:"delete_request_store_key_prefix"`
-	DeleteBatchSize             int                 `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod   time.Duration       `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval           time.Duration       `yaml:"delete_max_interval"`
-	MaxCompactionParallelism    int                 `yaml:"max_compaction_parallelism"`
-	UploadParallelism           int                 `yaml:"upload_parallelism"`
-	CompactorRing               lokiring.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                     bool                `yaml:"_" doc:"hidden"`
-	TablesToCompact             int                 `yaml:"tables_to_compact"`
-	SkipLatestNTables           int                 `yaml:"skip_latest_n_tables"`
+	WorkingDirectory               string              `yaml:"working_directory"`
+	CompactionInterval             time.Duration       `yaml:"compaction_interval"`
+	ApplyRetentionInterval         time.Duration       `yaml:"apply_retention_interval"`
+	RetentionEnabled               bool                `yaml:"retention_enabled"`
+	RetentionDeleteDelay           time.Duration       `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount       int                 `yaml:"retention_delete_worker_count"`
+	RetentionTableTimeout          time.Duration       `yaml:"retention_table_timeout"`
+	RetentionBackoffConfig         backoff.Config      `yaml:"retention_backoff_config"`
+	DeleteRequestStore             string              `yaml:"delete_request_store"`
+	DeleteRequestStoreKeyPrefix    string              `yaml:"delete_request_store_key_prefix"`
+	DeleteRequestStoreDBType       string              `yaml:"delete_request_store_db_type"`
+	BackupDeleteRequestStoreDBType string              `yaml:"backup_delete_request_store_db_type"`
+	DeleteBatchSize                int                 `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod      time.Duration       `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval              time.Duration       `yaml:"delete_max_interval"`
+	MaxCompactionParallelism       int                 `yaml:"max_compaction_parallelism"`
+	UploadParallelism              int                 `yaml:"upload_parallelism"`
+	CompactorRing                  lokiring.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
+	RunOnce                        bool                `yaml:"_" doc:"hidden"`
+	TablesToCompact                int                 `yaml:"tables_to_compact"`
+	SkipLatestNTables              int                 `yaml:"skip_latest_n_tables"`
 }
 
 // RegisterFlags registers flags.
@@ -102,6 +106,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.StringVar(&cfg.DeleteRequestStore, "compactor.delete-request-store", "", "Store used for managing delete requests.")
 	f.StringVar(&cfg.DeleteRequestStoreKeyPrefix, "compactor.delete-request-store.key-prefix", "index/", "Path prefix for storing delete requests.")
+	f.StringVar(&cfg.DeleteRequestStoreDBType, "compactor.delete-request-store.db-type", string(deletion.DeleteRequestsStoreDBTypeBoltDB), fmt.Sprintf("Type of DB to use for storing delete requests. Supported types: %s", strings.Join(*(*[]string)(unsafe.Pointer(&deletion.SupportedDeleteRequestsStoreDBTypes)), ", ")))
+	f.StringVar(&cfg.BackupDeleteRequestStoreDBType, "compactor.delete-request-store.backup-db-type", "", fmt.Sprintf("Type of DB to use as backup for storing delete requests. Backup DB should ideally be used while migrating from one DB type to another. Supported type(s): %s", deletion.DeleteRequestsStoreDBTypeBoltDB))
 	f.IntVar(&cfg.DeleteBatchSize, "compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.DurationVar(&cfg.DeleteMaxInterval, "compactor.delete-max-interval", 24*time.Hour, "Constrain the size of any single delete request with line filters. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
@@ -361,10 +367,12 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 
 func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-	store, err := deletion.NewDeleteStore(deletionWorkDir, storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix))
+	indexStorageClient := storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix)
+	store, err := deletion.NewDeleteRequestsStore(deletion.DeleteRequestsStoreDBType(c.cfg.DeleteRequestStoreDBType), deletionWorkDir, indexStorageClient, deletion.DeleteRequestsStoreDBType(c.cfg.BackupDeleteRequestStoreDBType))
 	if err != nil {
 		return err
 	}
+
 	c.deleteRequestsStore = store
 
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
