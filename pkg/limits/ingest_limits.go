@@ -338,7 +338,7 @@ func (s *IngestLimits) starting(ctx context.Context) (err error) {
 // the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
 func (s *IngestLimits) running(ctx context.Context) error {
 	// Start the eviction goroutine
-	go s.evictOldStreams(ctx)
+	go s.evictOldStreamsPeriodic(ctx)
 
 	for {
 		select {
@@ -387,41 +387,42 @@ func (s *IngestLimits) running(ctx context.Context) error {
 	}
 }
 
-// evictOldStreams runs as a goroutine and periodically removes streams from the metadata map
-// that haven't been seen within the configured window size. It runs every WindowSize/2 interval
-// to ensure timely eviction of stale entries.
-func (s *IngestLimits) evictOldStreams(ctx context.Context) {
+// evictOldStreams evicts old streams. A stream is evicted if it has not
+// been seen within the window size.
+func (s *IngestLimits) evictOldStreams(_ context.Context) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+
+	for tenant, partitions := range s.metadata {
+		evicted := 0
+		for partitionID, streams := range partitions {
+			for i, stream := range streams {
+				if stream.lastSeenAt < cutoff {
+					s.metadata[tenant][partitionID] = append(s.metadata[tenant][partitionID][:i], s.metadata[tenant][partitionID][i+1:]...)
+					evicted++
+				}
+			}
+		}
+		if len(s.metadata[tenant]) == 0 {
+			delete(s.metadata, tenant)
+		}
+		s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evicted))
+	}
+}
+
+// evictOldStreamsPeriodic runs a periodic job that evicts old streams.
+// It runs two evictions per window size.
+func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.WindowSize / 2)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.mtx.Lock()
-
-			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-
-			for tenant, partitions := range s.metadata {
-				evictedCount := 0
-
-				for partitionID, streams := range partitions {
-					for i, stream := range streams {
-						if stream.lastSeenAt < cutoff {
-							s.metadata[tenant][partitionID] = append(s.metadata[tenant][partitionID][:i], s.metadata[tenant][partitionID][i+1:]...)
-							evictedCount++
-						}
-					}
-				}
-
-				// Clean up empty tenant maps and update gauges
-				if len(s.metadata[tenant]) == 0 {
-					delete(s.metadata, tenant)
-				}
-				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
-			}
-			s.mtx.Unlock()
+			s.evictOldStreams(ctx)
 		}
 	}
 }
