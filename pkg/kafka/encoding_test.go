@@ -152,36 +152,57 @@ func generateRandomString(length int) string {
 }
 
 func TestEncodeDecodeStreamMetadata(t *testing.T) {
+	// Reset the metadata pool before testing to ensure clean state
+	metadata := metadataPool.Get().(*logproto.StreamMetadata)
+	*metadata = logproto.StreamMetadata{} // Reset to zero values
+	metadataPool.Put(metadata)
+
 	tests := []struct {
-		name      string
-		hash      uint64
-		partition int32
-		topic     string
-		tenantID  string
-		expectErr bool
+		name                   string
+		hash                   uint64
+		partition              int32
+		topic                  string
+		tenantID               string
+		lineSize               uint64
+		structuredMetadataSize uint64
+		expectErr              bool
 	}{
 		{
-			name:      "Valid metadata",
-			hash:      12345,
-			partition: 1,
-			topic:     "logs",
-			tenantID:  "tenant-1",
-			expectErr: false,
+			name:                   "Valid metadata",
+			hash:                   12345,
+			partition:              1,
+			topic:                  "logs",
+			tenantID:               "tenant-1",
+			lineSize:               1024,
+			structuredMetadataSize: 512,
+			expectErr:              false,
 		},
 		{
-			name:      "Zero hash - should error",
-			hash:      0,
-			partition: 3,
-			topic:     "traces",
-			tenantID:  "tenant-3",
-			expectErr: true,
+			name:                   "Valid metadata with zero sizes",
+			hash:                   67890,
+			partition:              2,
+			topic:                  "metrics",
+			tenantID:               "tenant-2",
+			lineSize:               0,
+			structuredMetadataSize: 0,
+			expectErr:              false,
+		},
+		{
+			name:                   "Zero hash - should error",
+			hash:                   0,
+			partition:              3,
+			topic:                  "traces",
+			tenantID:               "tenant-3",
+			lineSize:               2048,
+			structuredMetadataSize: 1024,
+			expectErr:              true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
+			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.lineSize, tt.structuredMetadataSize)
 			if tt.expectErr {
 				require.Nil(t, record)
 				return
@@ -200,6 +221,8 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 
 			// Verify decoded values
 			require.Equal(t, tt.hash, metadata.StreamHash)
+			require.Equal(t, tt.lineSize, metadata.LineSize)
+			require.Equal(t, tt.structuredMetadataSize, metadata.StructuredMetadataSize)
 
 			// Return metadata to pool
 			metadataPool.Put(metadata)

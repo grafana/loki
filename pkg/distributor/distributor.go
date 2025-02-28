@@ -1265,6 +1265,12 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
+	var logSize, structuredMetadataSize uint64
+	for _, entry := range stream.Stream.Entries {
+		logSize += uint64(len(entry.Line))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	}
+
 	// However, unlike stream records, the distributor writes stream metadata
 	// records to one of a fixed number of partitions, the size of which is
 	// determined ahead of time. It does not use a ring. The reason for this
@@ -1276,6 +1282,8 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		d.cfg.KafkaConfig.Topic,
 		tenant,
 		stream.HashNoShard,
+		logSize,
+		structuredMetadataSize,
 	)
 	records = append(records, metadata)
 
