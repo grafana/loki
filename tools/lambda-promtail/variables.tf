@@ -143,3 +143,9 @@ variable "sqs_queue_name_prefix" {
   description = "Name prefix for SQS queues"
   default     = "s3-to-lambda-promtail"
 }
+
+variable "sqs_queues" {
+  type        = list(string)
+  description = "List of sqs queues (not arn) that the Lambda function will subscribe to"
+  default     = []
+}

@@ -794,7 +794,7 @@ func TestProcessSNSEvent(t *testing.T) {
 	require.True(t, handlerCalled)
 }
 
-func TestProcessSQSEvent(t *testing.T) {
+func TestProcessSQSS3Event(t *testing.T) {
 	evt := &events.SQSEvent{
 		Records: []events.SQSMessage{
 			{
@@ -806,7 +806,7 @@ func TestProcessSQSEvent(t *testing.T) {
 	ctx := context.Background()
 	handlerCalled := false
 
-	err := processSQSEvent(ctx, evt, func(ctx context.Context, ev map[string]interface{}) error {
+	err := processSQSS3Event(ctx, evt, func(ctx context.Context, ev map[string]interface{}) error {
 		handlerCalled = true
 		require.Equal(t, map[string]interface{}{"pass": "pass"}, ev)
 		return nil
