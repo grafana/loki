@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,6 +55,13 @@ var (
 	tenantActiveStreamsDesc = prometheus.NewDesc(
 		constants.Loki+"_ingest_limits_active_streams",
 		"The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant"},
+		nil,
+	)
+
+	tenantIngestedBytesTotal = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_ingested_bytes_total",
+		"The total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
 		[]string{"tenant"},
 		nil,
 	)
@@ -119,6 +127,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type streamMetadata struct {
 	hash       uint64
 	lastSeenAt int64
+	totalSize  uint64
 }
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -206,6 +215,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 	descs <- tenantPartitionDesc
 	descs <- tenantRecordedStreamsDesc
 	descs <- tenantActiveStreamsDesc
+	descs <- tenantIngestedBytesTotal
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
@@ -216,8 +226,9 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 
 	for tenant, partitions := range s.metadata {
 		var (
-			recorded int
-			active   int
+			recorded   int
+			active     int
+			totalBytes uint64
 		)
 
 		for partitionID, partition := range partitions {
@@ -230,6 +241,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 			for _, stream := range partition {
 				if stream.lastSeenAt >= cutoff {
 					active++
+					totalBytes += stream.totalSize
 				}
 			}
 		}
@@ -237,6 +249,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
 		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
 		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
+		m <- prometheus.MustNewConstMetric(tenantIngestedBytesTotal, prometheus.CounterValue, float64(totalBytes), tenant)
 	}
 }
 
@@ -399,12 +412,7 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		for partitionID, streams := range partitions {
 			for i, stream := range streams {
 				if stream.lastSeenAt < cutoff {
-					// Delete the element without allocating or copying into
-					// a new backing array https://go.dev/wiki/SliceTricks#delete.
-					s.metadata[tenant][partitionID] = append(
-						s.metadata[tenant][partitionID][:i],
-						s.metadata[tenant][partitionID][i+1:]...,
-					)
+					s.metadata[tenant][partitionID] = slices.Delete(s.metadata[tenant][partitionID], i, i+1)
 					evicted++
 				}
 			}
@@ -452,7 +460,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	if _, assigned := s.assingedPartitions[partition]; !assigned {
 		for i, stream := range s.metadata[tenant][partition] {
 			if stream.hash == rec.StreamHash {
-				s.metadata[tenant][partition] = append(s.metadata[tenant][partition][:i], s.metadata[tenant][partition][i+1:]...)
+				s.metadata[tenant][partition] = slices.Delete(s.metadata[tenant][partition], i, i+1)
 				break
 			}
 		}
@@ -462,10 +470,12 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
+	pushReqSize := rec.LineSize + rec.StructuredMetadataSize
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
 			stream.lastSeenAt = recordTime
+			stream.totalSize += pushReqSize
 			s.metadata[tenant][partition][i] = stream
 			return
 		}
@@ -474,6 +484,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
 		hash:       rec.StreamHash,
 		lastSeenAt: recordTime,
+		totalSize:  pushReqSize,
 	})
 }
 
@@ -614,7 +625,11 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// across all assigned partitions and record
 	// the streams that have been seen within the
 	// window
-	var activeStreams uint64
+	var (
+		activeStreams uint64
+		totalSize     uint64
+	)
+
 	for _, requestedID := range req.Partitions {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
@@ -634,21 +649,24 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		// assigned to and has been seen within the window,
 		// it is an active stream.
 		for _, stream := range partitions[requestedID] {
-			if stream.lastSeenAt >= cutoff {
-				activeStreams++
+			if stream.lastSeenAt < cutoff {
+				continue
 			}
+
+			activeStreams++
+			totalSize += stream.totalSize
 		}
 	}
 
-	// Get the unknown streams
+	// Get the unknown and rate limited streams
 	var unknownStreams []uint64
-	for _, reqHash := range req.StreamHashes {
+	for _, streamHash := range req.StreamHashes {
 		found := false
 
 	outer:
 		for _, streams := range partitions {
 			for _, stream := range streams {
-				if stream.hash == reqHash && stream.lastSeenAt >= cutoff {
+				if stream.hash == streamHash && stream.lastSeenAt >= cutoff {
 					found = true
 					break outer
 				}
@@ -656,7 +674,8 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		}
 
 		if !found {
-			unknownStreams = append(unknownStreams, reqHash)
+			unknownStreams = append(unknownStreams, streamHash)
+			continue
 		}
 	}
 
@@ -664,5 +683,6 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		Tenant:         req.Tenant,
 		ActiveStreams:  activeStreams,
 		UnknownStreams: unknownStreams,
+		Rate:           int64(totalSize / uint64(s.cfg.WindowSize.Seconds())),
 	}, nil
 }

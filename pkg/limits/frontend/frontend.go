@@ -11,9 +11,11 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
@@ -34,11 +36,13 @@ const (
 type Config struct {
 	ClientConfig     limits_client.Config  `yaml:"client_config"`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+	ReCheckPeriod    time.Duration         `yaml:"recheck_period"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
+	f.DurationVar(&cfg.ReCheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
 }
 
 func (cfg *Config) Validate() error {
@@ -71,7 +75,8 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 
 	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
 	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, logger, reg)
+	rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(limits), cfg.ReCheckPeriod)
+	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, rateLimiter, logger, reg)
 
 	f := &Frontend{
 		cfg:    cfg,
