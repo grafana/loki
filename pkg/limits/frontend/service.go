@@ -3,10 +3,12 @@ package frontend
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,12 +24,34 @@ const (
 	// RejectedStreamReasonExceedsGlobalLimit is the reason for rejecting a stream
 	// because it exceeds the global per tenant limit.
 	RejectedStreamReasonExceedsGlobalLimit = "exceeds_global_limit"
+
+	// RejectedStreamReasonRateLimited is the reason for rejecting a stream
+	// because it is rate limited.
+	RejectedStreamReasonRateLimited = "rate_limited"
 )
 
-// Limits is the interface of the limits confgiration
+// Limits is the interface of the limits configuration
 // builder to be passed to the frontend service.
 type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
+	IngestionRateBytes(userID string) float64
+	IngestionBurstSizeBytes(userID string) int
+}
+
+type ingestionRateStrategy struct {
+	limits Limits
+}
+
+func newIngestionRateStrategy(limits Limits) *ingestionRateStrategy {
+	return &ingestionRateStrategy{limits: limits}
+}
+
+func (s *ingestionRateStrategy) Limit(tenantID string) float64 {
+	return s.limits.IngestionRateBytes(tenantID)
+}
+
+func (s *ingestionRateStrategy) Burst(tenantID string) int {
+	return s.limits.IngestionBurstSizeBytes(tenantID)
 }
 
 // IngestLimitsService is responsible for receiving, processing and
@@ -80,19 +104,21 @@ type RingIngestLimitsService struct {
 	ring ring.ReadRing
 	pool *ring_client.Pool
 
-	limits Limits
+	limits      Limits
+	rateLimiter *limiter.RateLimiter
 
 	metrics *metrics
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
-func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger, reg prometheus.Registerer) *RingIngestLimitsService {
+func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, rateLimiter *limiter.RateLimiter, logger log.Logger, reg prometheus.Registerer) *RingIngestLimitsService {
 	return &RingIngestLimitsService{
-		logger:  logger,
-		ring:    ring,
-		pool:    pool,
-		limits:  limits,
-		metrics: newMetrics(reg),
+		logger:      logger,
+		ring:        ring,
+		pool:        pool,
+		limits:      limits,
+		rateLimiter: rateLimiter,
+		metrics:     newMetrics(reg),
 	}
 }
 
@@ -186,25 +212,23 @@ func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, r
 
 	// Sort partition IDs for each address for consistent ordering
 	for addr := range partitions {
-		sort.Slice(partitions[addr], func(i, j int) bool {
-			return partitions[addr][i] < partitions[addr][j]
-		})
+		slices.Sort(partitions[addr])
 	}
 
 	return partitions, nil
 }
 
 func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	reqStreams := make([]uint64, 0, len(req.Streams))
+	streamHashes := make([]uint64, 0, len(req.Streams))
 	for _, stream := range req.Streams {
-		reqStreams = append(reqStreams, stream.StreamHash)
+		streamHashes = append(streamHashes, stream.StreamHash)
 	}
 
 	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient, partitions []int32) (*logproto.GetStreamUsageResponse, error) {
 		return client.GetStreamUsage(ctx, &logproto.GetStreamUsageRequest{
 			Tenant:       req.Tenant,
 			Partitions:   partitions,
-			StreamHashes: reqStreams,
+			StreamHashes: streamHashes,
 		})
 	})
 	if err != nil {
@@ -213,38 +237,71 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 
 	maxGlobalStreams := s.limits.MaxGlobalStreamsPerUser(req.Tenant)
 
-	var activeStreamsTotal uint64
+	var (
+		activeStreamsTotal uint64
+		tenantRateBytes    float64
+	)
 	for _, resp := range resps {
 		activeStreamsTotal += resp.Response.ActiveStreams
+		tenantRateBytes += float64(resp.Response.Rate)
 	}
 
 	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
-
-	if activeStreamsTotal < uint64(maxGlobalStreams) {
-		return &logproto.ExceedsLimitsResponse{
-			Tenant: req.Tenant,
-		}, nil
-	}
 
 	var (
 		rejectedStreams    []*logproto.RejectedStream
 		uniqueStreamHashes = make(map[uint64]bool)
 	)
-	for _, resp := range resps {
-		for _, unknownStream := range resp.Response.UnknownStreams {
-			if !uniqueStreamHashes[unknownStream] {
-				uniqueStreamHashes[unknownStream] = true
-				rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
-					StreamHash: unknownStream,
-					Reason:     RejectedStreamReasonExceedsGlobalLimit,
-				})
+
+	tenantRateLimit := s.rateLimiter.Limit(time.Now(), req.Tenant)
+	if tenantRateBytes > tenantRateLimit {
+		rateLimitedStreams := make([]*logproto.RejectedStream, 0, len(streamHashes))
+		for _, streamHash := range streamHashes {
+			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{
+				StreamHash: streamHash,
+				Reason:     RejectedStreamReasonRateLimited,
+			})
+		}
+
+		// Count rejections by reason
+		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
+		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonRateLimited).Add(float64(len(rateLimitedStreams)))
+
+		return &logproto.ExceedsLimitsResponse{
+			Tenant:          req.Tenant,
+			RejectedStreams: rateLimitedStreams,
+		}, nil
+	}
+
+	// Only process global limit if we're exceeding it
+	if activeStreamsTotal >= uint64(maxGlobalStreams) {
+		for _, resp := range resps {
+			for _, unknownStream := range resp.Response.UnknownStreams {
+				if !uniqueStreamHashes[unknownStream] {
+					uniqueStreamHashes[unknownStream] = true
+					rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
+						StreamHash: unknownStream,
+						Reason:     RejectedStreamReasonExceedsGlobalLimit,
+					})
+				}
 			}
 		}
 	}
 
 	if len(rejectedStreams) > 0 {
 		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(len(rejectedStreams)))
+
+		// Count rejections by reason
+		exceedsLimitCount := 0
+		for _, rejected := range rejectedStreams {
+			if rejected.Reason == RejectedStreamReasonExceedsGlobalLimit {
+				exceedsLimitCount++
+			}
+		}
+
+		if exceedsLimitCount > 0 {
+			s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(exceedsLimitCount))
+		}
 	}
 
 	return &logproto.ExceedsLimitsResponse{
