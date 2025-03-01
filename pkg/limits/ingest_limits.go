@@ -59,6 +59,13 @@ var (
 		[]string{"tenant"},
 		nil,
 	)
+
+	tenantIngestedBytesTotal = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_ingested_bytes_total",
+		"The total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant"},
+		nil,
+	)
 )
 
 // Config represents the configuration for the ingest limits service.
@@ -245,6 +252,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 	descs <- tenantPartitionDesc
 	descs <- tenantRecordedStreamsDesc
 	descs <- tenantActiveStreamsDesc
+	descs <- tenantIngestedBytesTotal
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
@@ -255,8 +263,9 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 
 	for tenant, partitions := range s.metadata {
 		var (
-			recorded int
-			active   int
+			recorded   int
+			active     int
+			totalBytes uint64
 		)
 
 		for partitionID, partition := range partitions {
@@ -269,6 +278,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 			for _, stream := range partition {
 				if stream.lastSeenAt >= cutoff {
 					active++
+					totalBytes += stream.totalSize
 				}
 			}
 		}
@@ -276,6 +286,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
 		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
 		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
+		m <- prometheus.MustNewConstMetric(tenantIngestedBytesTotal, prometheus.CounterValue, float64(totalBytes), tenant)
 	}
 }
 
