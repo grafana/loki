@@ -17,33 +17,49 @@
 package tracing
 
 import (
-	"github.com/sirupsen/logrus"
+	"github.com/containerd/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// allLevels is the equivalent to [logrus.AllLevels].
+//
+// [logrus.AllLevels]: https://github.com/sirupsen/logrus/blob/v1.9.3/logrus.go#L80-L89
+var allLevels = []log.Level{
+	log.PanicLevel,
+	log.FatalLevel,
+	log.ErrorLevel,
+	log.WarnLevel,
+	log.InfoLevel,
+	log.DebugLevel,
+	log.TraceLevel,
+}
 
 // NewLogrusHook creates a new logrus hook
 func NewLogrusHook() *LogrusHook {
 	return &LogrusHook{}
 }
 
-// LogrusHook is a logrus hook which adds logrus events to active spans.
-// If the span is not recording or the span context is invalid, the hook is a no-op.
+// LogrusHook is a [logrus.Hook] which adds logrus events to active spans.
+// If the span is not recording or the span context is invalid, the hook
+// is a no-op.
+//
+// [logrus.Hook]: https://github.com/sirupsen/logrus/blob/v1.9.3/hooks.go#L3-L11
 type LogrusHook struct{}
 
 // Levels returns the logrus levels that this hook is interested in.
-func (h *LogrusHook) Levels() []logrus.Level {
-	return logrus.AllLevels
+func (h *LogrusHook) Levels() []log.Level {
+	return allLevels
 }
 
 // Fire is called when a log event occurs.
-func (h *LogrusHook) Fire(entry *logrus.Entry) error {
+func (h *LogrusHook) Fire(entry *log.Entry) error {
 	span := trace.SpanFromContext(entry.Context)
 	if span == nil {
 		return nil
 	}
 
-	if !span.SpanContext().IsValid() || !span.IsRecording() {
+	if !span.IsRecording() || !span.SpanContext().IsValid() {
 		return nil
 	}
 
@@ -57,10 +73,10 @@ func (h *LogrusHook) Fire(entry *logrus.Entry) error {
 	return nil
 }
 
-func logrusDataToAttrs(data logrus.Fields) []attribute.KeyValue {
+func logrusDataToAttrs(data map[string]any) []attribute.KeyValue {
 	attrs := make([]attribute.KeyValue, 0, len(data))
 	for k, v := range data {
-		attrs = append(attrs, any(k, v))
+		attrs = append(attrs, keyValue(k, v))
 	}
 	return attrs
 }
