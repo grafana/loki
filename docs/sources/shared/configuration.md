@@ -1002,6 +1002,10 @@ ingest_limits:
   # CLI flag: -ingest-limits.num-partitions
   [num_partitions: <int> | default = 64]
 
+  # The period to recheck per tenant ingestion rate limit configuration.
+  # CLI flag: -ingest-limits.recheck-period
+  [recheck_period: <duration> | default = 10s]
+
 ingest_limits_frontend:
   client_config:
     # Configures client gRPC connections to limits service.

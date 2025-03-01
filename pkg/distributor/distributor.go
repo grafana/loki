@@ -1151,21 +1151,30 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
-	streamHashes := make([]*logproto.StreamMetadata, 0, len(streams))
+	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		// Add the stream hash to FNV-1.
 		buf := make([]byte, binary.MaxVarintLen64)
 		binary.PutUvarint(buf, stream.Hash)
 		_, _ = h.Write(buf)
+
+		var logSize, structuredMetadataSize uint64
+		for _, entry := range stream.Entries {
+			logSize += uint64(len(entry.Line))
+			structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+		}
+
 		// Add the stream hash to the request. This is sent to limits-frontend.
-		streamHashes = append(streamHashes, &logproto.StreamMetadata{
-			StreamHash: stream.Hash,
+		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
+			StreamHash:             stream.Hash,
+			LineSize:               logSize,
+			StructuredMetadataSize: structuredMetadataSize,
 		})
 	}
 
 	req := logproto.ExceedsLimitsRequest{
 		Tenant:  tenantID,
-		Streams: streamHashes,
+		Streams: streamMetadata,
 	}
 
 	// Get the limits-frontend instances from the ring.
