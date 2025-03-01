@@ -40,8 +40,13 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
+	// Create a request-scoped policy resolver that will ensure consistent policy resolution
+	// across all parsers for this HTTP request.
+	// This is used to ensure consistent policy resolution across all parsers for a given HTTP request.
+	requestPolicyResolver := d.CreateRequestPolicyResolver()
+
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, d.policyResolver, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, logPushRequestStreams)
 	if err != nil {
 		if !errors.Is(err, push.ErrAllLogsFiltered) {
 			if d.tenantConfigs.LogPushRequest(tenantID) {
@@ -77,7 +82,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		)
 	}
 
-	_, err = d.Push(r.Context(), req)
+	_, err = d.PushWithPolicyResolver(r.Context(), req, requestPolicyResolver)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

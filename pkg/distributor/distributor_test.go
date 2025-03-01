@@ -1252,11 +1252,12 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
+	policyResolver := d.CreateRequestPolicyResolver()
 	vCtx := d.validator.getValidationContextForTime(testTime, "123")
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, policyResolver)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1300,11 +1301,11 @@ func TestParseStreamLabels(t *testing.T) {
 		d := distributors[0]
 
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
-
+		policyResolver := d.CreateRequestPolicyResolver()
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			})
+			}, policyResolver)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
