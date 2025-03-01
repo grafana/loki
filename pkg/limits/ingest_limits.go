@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -76,6 +78,9 @@ type Config struct {
 	// The number of partitions for the Kafka topic used to read and write stream metadata.
 	// It is fixed, not a maximum.
 	NumPartitions int `yaml:"num_partitions"`
+
+	// RecheckPeriod is the period for which the ingest limits will be checked.
+	RecheckPeriod time.Duration `yaml:"recheck_period"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -83,6 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
 	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
 	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
+	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
 }
 
 type metrics struct {
@@ -116,9 +122,35 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
+// Limits is the interface of the limits confgiration
+// builder to be passed to the frontend/backend services.
+type Limits interface {
+	IngestionRateBytes(userID string) float64
+	IngestionBurstSizeBytes(userID string) int
+}
+
+type ingestionRateStrategy struct {
+	limits Limits
+}
+
+func newIngestionRateStrategy(limits Limits) *ingestionRateStrategy {
+	return &ingestionRateStrategy{
+		limits: limits,
+	}
+}
+
+func (s *ingestionRateStrategy) Limit(tenantID string) float64 {
+	return s.limits.IngestionRateBytes(tenantID)
+}
+
+func (s *ingestionRateStrategy) Burst(tenantID string) int {
+	return s.limits.IngestionBurstSizeBytes(tenantID)
+}
+
 type streamMetadata struct {
 	hash       uint64
 	lastSeenAt int64
+	totalSize  uint64
 }
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -134,6 +166,9 @@ type IngestLimits struct {
 
 	// metrics
 	metrics *metrics
+
+	// limits
+	rateLimiter *limiter.RateLimiter
 
 	// Track stream metadata
 	mtx      sync.RWMutex
@@ -154,13 +189,16 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func NewIngestLimits(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+	rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(limits), cfg.RecheckPeriod)
+
 	var err error
 	s := &IngestLimits{
-		cfg:      cfg,
-		logger:   logger,
-		metadata: make(map[string]map[int32][]streamMetadata),
-		metrics:  newMetrics(reg),
+		cfg:         cfg,
+		logger:      logger,
+		metadata:    make(map[string]map[int32][]streamMetadata),
+		metrics:     newMetrics(reg),
+		rateLimiter: rateLimiter,
 	}
 
 	// Initialize internal metadata metrics
@@ -400,12 +438,7 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		for partitionID, streams := range partitions {
 			for i, stream := range streams {
 				if stream.lastSeenAt < cutoff {
-					// Delete the element without allocating or copying into
-					// a new backing array https://go.dev/wiki/SliceTricks#delete.
-					s.metadata[tenant][partitionID] = append(
-						s.metadata[tenant][partitionID][:i],
-						s.metadata[tenant][partitionID][i+1:]...,
-					)
+					s.metadata[tenant][partitionID] = slices.Delete(s.metadata[tenant][partitionID], i, i+1)
 					evicted++
 				}
 			}
@@ -463,10 +496,12 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
+	totalSize := rec.LineSize + rec.StructuredMetadataSize
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
 			stream.lastSeenAt = recordTime
+			stream.totalSize = totalSize
 			s.metadata[tenant][partition][i] = stream
 			return
 		}
@@ -475,6 +510,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
 		hash:       rec.StreamHash,
 		lastSeenAt: recordTime,
+		totalSize:  totalSize,
 	})
 }
 
@@ -615,7 +651,11 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// across all assigned partitions and record
 	// the streams that have been seen within the
 	// window
-	var activeStreams uint64
+	var (
+		activeStreams      uint64
+		rateLimitedStreams []uint64
+	)
+
 	for _, requestedID := range req.Partitions {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
@@ -635,21 +675,37 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		// assigned to and has been seen within the window,
 		// it is an active stream.
 		for _, stream := range partitions[requestedID] {
-			if stream.lastSeenAt >= cutoff {
-				activeStreams++
+			if stream.lastSeenAt < cutoff {
+				continue
+			}
+
+			activeStreams++
+
+			// Get the stream usage
+			var requestedSize uint64
+			for _, streamUsage := range req.StreamUsages {
+				if streamUsage.StreamHash == stream.hash {
+					requestedSize = streamUsage.TotalSize
+					break
+				}
+			}
+
+			// Check if the stream is should be rate limited
+			if !s.rateLimiter.AllowN(time.Now(), req.Tenant, int(requestedSize)) {
+				rateLimitedStreams = append(rateLimitedStreams, stream.hash)
 			}
 		}
 	}
 
-	// Get the unknown streams
+	// Get the unknown and rate limited streams
 	var unknownStreams []uint64
-	for _, reqHash := range req.StreamHashes {
+	for _, streamUsage := range req.StreamUsages {
 		found := false
 
 	outer:
 		for _, streams := range partitions {
 			for _, stream := range streams {
-				if stream.hash == reqHash && stream.lastSeenAt >= cutoff {
+				if stream.hash == streamUsage.StreamHash && stream.lastSeenAt >= cutoff {
 					found = true
 					break outer
 				}
@@ -657,13 +713,15 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		}
 
 		if !found {
-			unknownStreams = append(unknownStreams, reqHash)
+			unknownStreams = append(unknownStreams, streamUsage.StreamHash)
+			continue
 		}
 	}
 
 	return &logproto.GetStreamUsageResponse{
-		Tenant:         req.Tenant,
-		ActiveStreams:  activeStreams,
-		UnknownStreams: unknownStreams,
+		Tenant:             req.Tenant,
+		ActiveStreams:      activeStreams,
+		UnknownStreams:     unknownStreams,
+		RateLimitedStreams: rateLimitedStreams,
 	}, nil
 }

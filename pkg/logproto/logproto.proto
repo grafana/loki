@@ -88,13 +88,19 @@ service IngestLimits {
 message GetStreamUsageRequest {
   string tenant = 1;
   repeated int32 partitions = 2;
-  repeated uint64 streamHashes = 3;
+  repeated StreamUsage streamUsages = 3;
+}
+
+message StreamUsage {
+  uint64 streamHash = 1;
+  uint64 totalSize = 2;
 }
 
 message GetStreamUsageResponse {
   string tenant = 1;
   uint64 activeStreams = 2;
   repeated uint64 unknownStreams = 3;
+  repeated uint64 rateLimitedStreams = 4;
 }
 
 message StreamRate {
