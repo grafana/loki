@@ -88,6 +88,9 @@ type config struct {
 	StreamLabels              []string `yaml:"stream_labels"`
 	MaxGlobalStreamsPerTenant int      `yaml:"max_global_streams_per_tenant"`
 
+	// Stream size control parameter
+	RateLimitPercentage int `yaml:"rate_limit_percentage"`
+
 	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
 	HTTPListenPort int             `yaml:"http_listen_port,omitempty"`
 
@@ -126,6 +129,9 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
+
+	// Add simplified rate limit parameter
+	f.IntVar(&c.RateLimitPercentage, "stream.rate-limit-percentage", 20, "Target percentage of streams that should be rate limited (0-100)")
 
 	// Set default stream labels
 	defaultLabels := []string{"cluster", "namespace", "job", "instance"}
@@ -288,7 +294,7 @@ func (s *generator) starting(ctx context.Context) error {
 			tenantID = fmt.Sprintf("%s-%d", s.cfg.TenantPrefix, i)
 		}
 
-		s.streams[tenantID] = generateStreamsForTenant(tenantID, s.cfg.StreamsPerTenant, s.cfg.StreamLabels)
+		s.streams[tenantID] = generateStreamsForTenant(tenantID, s.cfg.StreamsPerTenant, s.cfg.StreamLabels, s.cfg)
 	}
 
 	return services.StartManagerAndAwaitHealthy(s.ctx, s.subservices)
@@ -420,10 +426,31 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			startTime := time.Now()
 
-			var logSize, structuredMetadataSize uint64
+			// Calculate log size from actual entries
+			var logSize uint64
 			for _, entry := range stream.Stream.Entries {
 				logSize += uint64(len(entry.Line))
-				structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+			}
+
+			// Calculate a simulated structured metadata size based on whether the stream is oversized
+			// We can identify oversized streams by checking the log line size
+			var structuredMetadataSize uint64
+
+			// Define default structured metadata sizes
+			const (
+				normalMetadataSize    = 100  // 100 bytes for normal streams
+				oversizedMetadataSize = 1024 // 1KB for oversized streams
+			)
+
+			// Determine if this stream is oversized by checking the log size
+			isOversized := len(stream.Stream.Entries) > 0 && len(stream.Stream.Entries[0].Line) > 1000
+
+			if isOversized {
+				// Use larger metadata size for oversized streams
+				structuredMetadataSize = uint64(oversizedMetadataSize * len(stream.Stream.Entries))
+			} else {
+				// Use normal metadata size for regular streams
+				structuredMetadataSize = uint64(normalMetadataSize * len(stream.Stream.Entries))
 			}
 
 			// Add metadata record
@@ -486,8 +513,18 @@ func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Register
 	return producer, nil
 }
 
-func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabels []string) []distributor.KeyedStream {
+func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabels []string, cfg config) []distributor.KeyedStream {
 	streams := make([]distributor.KeyedStream, streamsPerTenant)
+
+	// Calculate how many streams should be oversized to trigger rate limiting
+	oversizedStreams := (streamsPerTenant * cfg.RateLimitPercentage) / 100
+
+	// Define default sizes for normal and oversized streams
+	const (
+		normalLogSize    = 100  // 100 bytes for normal log lines
+		oversizedLogSize = 2048 // 2KB for oversized log lines
+		entriesPerStream = 5    // 5 entries per stream
+	)
 
 	for i := 0; i < streamsPerTenant; i++ {
 		// Generate static label values for this stream
@@ -506,16 +543,32 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		}
 		sort.Sort(lbs)
 
-		// Create the stream
+		// Create the stream with multiple entries
 		stream := logproto.Stream{
-			Labels: labelsStr,
-			Hash:   lbs.Hash(),
-			Entries: []logproto.Entry{
-				{
-					Timestamp: time.Now(),
-					Line:      fmt.Sprintf("line %d", i),
-				},
-			},
+			Labels:  labelsStr,
+			Hash:    lbs.Hash(),
+			Entries: make([]logproto.Entry, 0, entriesPerStream),
+		}
+
+		// Determine if this stream should be oversized to trigger rate limiting
+		isOversized := i < oversizedStreams
+
+		// Generate entries for this stream
+		for j := 0; j < entriesPerStream; j++ {
+			// Determine log size for this entry based on whether it should be oversized
+			logSize := normalLogSize
+			if isOversized {
+				logSize = oversizedLogSize
+			}
+
+			// Generate log line with the specified size
+			logLine := generateLogLine(i, j, logSize)
+
+			// Add entry to stream
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      logLine,
+			})
 		}
 
 		// Create the keyed stream
@@ -527,6 +580,18 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 	}
 
 	return streams
+}
+
+// generateLogLine creates a log line of approximately the specified size
+func generateLogLine(streamIdx, entryIdx, size int) string {
+	base := fmt.Sprintf("stream-%d entry-%d ", streamIdx, entryIdx)
+	if len(base) >= size {
+		return base[:size]
+	}
+
+	// Pad with repeating characters to reach desired size
+	padding := strings.Repeat("x", size-len(base))
+	return base + padding
 }
 
 func main() {
