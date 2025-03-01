@@ -49,7 +49,7 @@
     "react-icons": "^5.4.0",
     "react-router-dom": "^6.30.0",
     "recharts": "^2.15.1",
-    "tailwind-merge": "^2.6.0",
+    "tailwind-merge": "^3.0.0",
     "tailwindcss-animate": "^1.0.7",
     "use-react-router-breadcrumbs": "^4.0.1",
     "zod": "^3.24.1"
