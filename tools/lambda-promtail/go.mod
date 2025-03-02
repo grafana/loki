@@ -16,7 +16,7 @@ require (
 	github.com/grafana/loki/v3 v3.4.2
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/prometheus/common v0.62.0
-	github.com/prometheus/prometheus v1.99.0
+	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/stretchr/testify v1.10.0
 )
 
