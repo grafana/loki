@@ -542,12 +542,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.InvalidLabels, lbs, float64(discardedBytes))
-				}
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 				continue
 			}
 
@@ -556,20 +552,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(validation.MissingEnforcedLabels, validationContext, retentionHours, policy, discardedBytes, len(stream.Entries))
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.MissingEnforcedLabels, lbs, float64(discardedBytes))
-				}
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 				continue
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(reason, validationContext, retentionHours, policy, discardedBytes, len(stream.Entries))
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedBytes))
-				}
+				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 
 				// If the status code is 200, return no error.
 				// Note that we still log the error and increment the metrics.
