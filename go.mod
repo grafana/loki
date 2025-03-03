@@ -13,7 +13,7 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.13
-	github.com/IBM/sarama v1.45.0
+	github.com/IBM/sarama v1.45.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.5
@@ -117,7 +117,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.5
 	github.com/IBM/ibm-cos-sdk-go v1.12.1
-	github.com/axiomhq/hyperloglog v0.2.3
+	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
@@ -136,9 +136,9 @@ require (
 	github.com/prometheus/sigv4 v0.1.2
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/shirou/gopsutil/v4 v4.25.1
+	github.com/shirou/gopsutil/v4 v4.25.2
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
-	github.com/tjhop/slog-gokit v0.1.3
+	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.18.1
 	github.com/twmb/franz-go/pkg/kadm v1.15.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
@@ -154,6 +154,7 @@ require (
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.32.2
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
+	zombiezen.com/go/sqlite v1.4.0
 )
 
 require (
@@ -187,6 +188,7 @@ require (
 	github.com/minio/crc64nvme v1.0.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
+	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0 // indirect
@@ -196,6 +198,7 @@ require (
 	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tklauser/go-sysconf v0.3.13 // indirect
 	github.com/tklauser/numcpus v0.7.0 // indirect
@@ -214,6 +217,10 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.33.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
+	modernc.org/libc v1.55.3 // indirect
+	modernc.org/mathutil v1.6.0 // indirect
+	modernc.org/memory v1.8.0 // indirect
+	modernc.org/sqlite v1.34.1 // indirect
 )
 
 require (
