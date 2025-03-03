@@ -40,11 +40,10 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
-	// Create a request-scoped policy resolver that will ensure consistent policy resolution
+	// Create a request-scoped policy resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
-	// This is used to ensure consistent policy resolution across all parsers for a given HTTP request.
+	// This is used to ensure consistent policy and retention resolution across all parsers for a given HTTP request.
 	requestPolicyResolver := d.CreateRequestPolicyResolver()
-
 	retentionResolver := d.CreateRequestRetentionResolver()
 
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
