@@ -566,7 +566,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				context.Background(),
 				tc.generateLogs(),
 				"foo",
-				fakeRetention{},
 				tc.otlpConfig,
 				defaultServiceDetection,
 				tracker,
@@ -578,6 +577,14 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						return "service-1-policy"
 					}
 					return "others"
+				},
+				&RetentionResolver{
+					RetentionPeriodFor: func(_ string, _ labels.Labels) time.Duration {
+						return time.Hour
+					},
+					RetentionHoursFor: func(_ string, _ labels.Labels) string {
+						return "1h"
+					},
 				},
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)

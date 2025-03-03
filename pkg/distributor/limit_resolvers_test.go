@@ -24,15 +24,15 @@ type mockLimits struct {
 }
 
 // PoliciesStreamMapping implements the Limits interface method needed for policy resolution
-func (m *mockLimits) PoliciesStreamMapping(userID string) validation.PolicyStreamMapping {
+func (m *mockLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
 	return m.policyMapping
 }
 
-func (m *mockLimits) StreamRetention(userID string) []validation.StreamRetention {
+func (m *mockLimits) StreamRetention(_ string) []validation.StreamRetention {
 	return m.retentions
 }
 
-func (m *mockLimits) RetentionPeriod(userID string) time.Duration {
+func (m *mockLimits) RetentionPeriod(_ string) time.Duration {
 	return m.globalRetention
 }
 

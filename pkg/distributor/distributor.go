@@ -1202,7 +1202,7 @@ type labelData struct {
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		retentionHours := retentionResolver(vContext.userID, val.ls)
+		retentionHours := retentionResolver.RetentionHoursFor(vContext.userID, val.ls)
 		policy := policyResolver(vContext.userID, val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
@@ -1320,5 +1320,8 @@ func (d *Distributor) CreateRequestPolicyResolver() push.PolicyResolver {
 
 func (d *Distributor) CreateRequestRetentionResolver() push.RetentionResolver {
 	requestRetentionResolver := NewRequestScopedRetentionResolver(d.tenantsRetention)
-	return requestRetentionResolver.RetentionHoursFor
+	return push.RetentionResolver{
+		RetentionPeriodFor: requestRetentionResolver.RetentionPeriodFor,
+		RetentionHoursFor:  requestRetentionResolver.RetentionHoursFor,
+	}
 }

@@ -47,7 +47,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	retentionResolver := d.CreateRequestRetentionResolver()
 
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, retentionResolver, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, r, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, &retentionResolver, logPushRequestStreams)
 	if err != nil {
 		if !errors.Is(err, push.ErrAllLogsFiltered) {
 			if d.tenantConfigs.LogPushRequest(tenantID) {

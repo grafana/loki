@@ -94,12 +94,16 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 	return ""
 }
 
+type RetentionResolver struct {
+	RetentionPeriodFor func(userID string, lbs labels.Labels) time.Duration
+	RetentionHoursFor  func(userID string, lbs labels.Labels) string
+}
+
 type (
-	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver *RetentionResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
 	PolicyResolver       func(userID string, lbs labels.Labels) string
-	RetentionResolver    func(userID string, lbs labels.Labels) string
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -131,8 +135,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver RetentionResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, policyResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver *RetentionResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, policyResolver, retentionResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
@@ -197,7 +201,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver *RetentionResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -308,8 +312,8 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		}
 
 		var retentionPeriod time.Duration
-		if tenantsRetention != nil {
-			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
+		if retentionResolver != nil {
+			retentionPeriod = retentionResolver.RetentionPeriodFor(userID, lbs)
 		}
 		totalBytesReceived := int64(0)
 		var policy string

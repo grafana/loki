@@ -299,12 +299,14 @@ func TestParseRequest(t *testing.T) {
 				util_log.Logger,
 				"fake",
 				request,
-				nil,
 				test.fakeLimits,
 				ParseLokiRequest,
 				tracker,
 				test.fakeLimits.PolicyFor,
-				test.fakeLimits.RetentionHoursFor,
+				&RetentionResolver{
+					RetentionPeriodFor: test.fakeLimits.RetentionPeriodFor,
+					RetentionHoursFor:  test.fakeLimits.RetentionHoursFor,
+				},
 				false,
 			)
 
@@ -432,7 +434,10 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
-		data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker, limits.PolicyFor, limits.RetentionHoursFor, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseLokiRequest, tracker, limits.PolicyFor, &RetentionResolver{
+			RetentionPeriodFor: limits.RetentionPeriodFor,
+			RetentionHoursFor:  limits.RetentionHoursFor,
+		}, false)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -443,7 +448,10 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{enabled: true}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, limits.RetentionHoursFor, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
+			RetentionPeriodFor: limits.RetentionPeriodFor,
+			RetentionHoursFor:  limits.RetentionHoursFor,
+		}, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -457,7 +465,10 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{"special"},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, limits.RetentionHoursFor, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
+			RetentionPeriodFor: limits.RetentionPeriodFor,
+			RetentionHoursFor:  limits.RetentionHoursFor,
+		}, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -471,7 +482,10 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, limits.RetentionHoursFor, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
+			RetentionPeriodFor: limits.RetentionPeriodFor,
+			RetentionHoursFor:  limits.RetentionHoursFor,
+		}, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})

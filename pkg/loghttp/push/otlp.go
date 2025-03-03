@@ -35,14 +35,14 @@ const (
 	OTLPSeverityNumber = "severity_number"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver *RetentionResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, policyResolver)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, policyResolver, retentionResolver)
 	return req, stats, nil
 }
 
@@ -93,7 +93,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, policyForResolver PolicyResolver) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, policyForResolver PolicyResolver, retentionResolver *RetentionResolver) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -187,7 +187,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		}
 
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
-		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
+		retentionPeriodForUser := retentionResolver.RetentionPeriodFor(userID, lbs)
 		policy := policyForResolver(userID, lbs)
 
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
