@@ -1316,3 +1316,8 @@ func (d *Distributor) CreateRequestPolicyResolver() push.PolicyResolver {
 	requestPolicyResolver := NewRequestScopedPolicyResolver(d.validator.Limits, d.logger)
 	return requestPolicyResolver.AsPolicyResolver()
 }
+
+func (d *Distributor) CreateRequestRetentionResolver() push.RetentionResolver {
+	requestRetentionResolver := NewRequestScopedRetentionResolver(d.tenantsRetention)
+	return requestRetentionResolver.RetentionPeriodFor
+}

@@ -2,18 +2,23 @@ package distributor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // mockLimits is a simple implementation of the Limits interface for testing
 type mockLimits struct {
-	policyMapping validation.PolicyStreamMapping
+	policyMapping   validation.PolicyStreamMapping
+	retentions      []validation.StreamRetention
+	globalRetention time.Duration
 
 	Limits
 }
@@ -21,6 +26,14 @@ type mockLimits struct {
 // PoliciesStreamMapping implements the Limits interface method needed for policy resolution
 func (m *mockLimits) PoliciesStreamMapping(userID string) validation.PolicyStreamMapping {
 	return m.policyMapping
+}
+
+func (m *mockLimits) StreamRetention(userID string) []validation.StreamRetention {
+	return m.retentions
+}
+
+func (m *mockLimits) RetentionPeriod(userID string) time.Duration {
+	return m.globalRetention
 }
 
 func TestRequestScopedPolicyResolver_StabilityAcrossConfigChanges(t *testing.T) {
@@ -81,6 +94,51 @@ func TestRequestScopedPolicyResolver_StabilityAcrossConfigChanges(t *testing.T) 
 	// The new resolver should use the updated configuration
 	policy = newResolver.ResolvePolicy("user-1", lbls)
 	assert.Equal(t, "policy-2", policy, "Expected policy-2 to be returned with the new resolver")
+}
+
+func TestRequestScopedRetentionResolver_StabilityAcrossConfigChanges(t *testing.T) {
+	lbs := labels.FromStrings("service", "foo")
+
+	mockOverrides := &mockLimits{
+		retentions: []validation.StreamRetention{},
+	}
+
+	var matchers []*labels.Matcher
+	for _, lb := range lbs {
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, lb.Name, lb.Value))
+	}
+
+	mockOverrides.retentions = []validation.StreamRetention{
+		{
+			Matchers: matchers,
+			Priority: 1,
+			Period:   model.Duration(time.Hour * 24),
+		},
+	}
+
+	tenantsRetention := retention.NewTenantsRetention(mockOverrides)
+
+	// Create a request-scoped retention resolver with the initial configuration
+	resolver := NewRequestScopedRetentionResolver(tenantsRetention)
+
+	// Resolve the retention period for the labels.
+	retentionPeriod := resolver.RetentionPeriodFor("" /* not used on this test */, lbs)
+	assert.Equal(t, time.Hour*24, retentionPeriod)
+
+	// Change the duration mapped in runtime.
+	mockOverrides.retentions[0].Period = model.Duration(time.Hour * 48)
+
+	// The second retention period resolution should return the same result,
+	// since the resolver caches the result during its lifetime
+	retentionPeriod = resolver.RetentionPeriodFor("" /* not used on this test */, lbs)
+	assert.Equal(t, time.Hour*24, retentionPeriod)
+
+	// Create a new resolver with the updated configuration
+	newResolver := NewRequestScopedRetentionResolver(tenantsRetention)
+
+	// The new resolver should use the updated configuration
+	retentionPeriod = newResolver.RetentionPeriodFor("" /* not used on this test */, lbs)
+	assert.Equal(t, time.Hour*48, retentionPeriod)
 }
 
 func TestRequestScopedPolicyResolver_MultipleLabels(t *testing.T) {

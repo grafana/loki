@@ -99,6 +99,7 @@ type (
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
 	PolicyResolver       func(userID string, lbs labels.Labels) string
+	RetentionResolver    func(userID string, lbs labels.Labels) time.Duration
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -130,7 +131,7 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, retentionResolver RetentionResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, policyResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err

@@ -45,8 +45,10 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// This is used to ensure consistent policy resolution across all parsers for a given HTTP request.
 	requestPolicyResolver := d.CreateRequestPolicyResolver()
 
+	retentionResolver := d.CreateRequestRetentionResolver()
+
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, retentionResolver, logPushRequestStreams)
 	if err != nil {
 		if !errors.Is(err, push.ErrAllLogsFiltered) {
 			if d.tenantConfigs.LogPushRequest(tenantID) {

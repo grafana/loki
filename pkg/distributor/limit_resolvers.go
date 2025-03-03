@@ -1,10 +1,13 @@
 package distributor
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/validation"
 	"github.com/prometheus/prometheus/model/labels"
@@ -74,4 +77,54 @@ func (r *RequestScopedPolicyResolver) fetchPolicy(userID string, lbs labels.Labe
 	}
 
 	return policy
+}
+
+// RequestScopedRetentionResolver maintains a cache of retention periods
+// that only exists for the duration of a single push request.
+type RequestScopedRetentionResolver struct {
+	tenantsRetention *retention.TenantsRetention
+	cache            map[uint64]time.Duration
+}
+
+// NewRequestScopedRetentionResolver creates a new RequestScopedRetentionResolver for a single request.
+// The resolver is not thread-safe, and should not be used concurrently.
+// Because we have a fresh new map for each request, we don't need to care about memory explosion/use an LRU cache.
+func NewRequestScopedRetentionResolver(tenantsRetention *retention.TenantsRetention) *RequestScopedRetentionResolver {
+	return &RequestScopedRetentionResolver{
+		tenantsRetention: tenantsRetention,
+		cache:            make(map[uint64]time.Duration),
+	}
+}
+
+// RetentionPeriodFor returns a consistent retention period for the given userID and labels,
+// caching the result during the lifetime of this resolver.
+func (r *RequestScopedRetentionResolver) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
+	labelHash := lbs.Hash()
+
+	// Check if we already have a cached decision
+	if period, ok := r.cache[labelHash]; ok {
+		return period
+	}
+
+	// If not cached, resolve the retention period
+	period := r.tenantsRetention.RetentionPeriodFor(userID, lbs)
+
+	// Cache the decision
+	r.cache[labelHash] = period
+
+	return period
+}
+
+// RetentionHoursFor returns the retention period as a string in hours,
+// using the cached value if available.
+func (r *RequestScopedRetentionResolver) RetentionHoursFor(userID string, lbs labels.Labels) string {
+	period := r.RetentionPeriodFor(userID, lbs)
+
+	// Convert to hours format
+	if period <= 0 {
+		return "0"
+	}
+
+	// Convert hours (float64) to string
+	return strconv.FormatInt(int64(period.Hours()), 10)
 }
