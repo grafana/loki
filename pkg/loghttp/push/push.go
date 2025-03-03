@@ -99,7 +99,7 @@ type (
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
 	PolicyResolver       func(userID string, lbs labels.Labels) string
-	RetentionResolver    func(userID string, lbs labels.Labels) time.Duration
+	RetentionResolver    func(userID string, lbs labels.Labels) string
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64

@@ -457,10 +457,10 @@ func (p *pushTracker) doneWithResult(err error) {
 // The returned error is the last one seen.
 // Old signature for backwards compatibility.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	return d.PushWithPolicyResolver(ctx, req, d.CreateRequestPolicyResolver())
+	return d.PushWithPolicyResolver(ctx, req, d.CreateRequestPolicyResolver(), d.CreateRequestRetentionResolver())
 }
 
-func (d *Distributor) PushWithPolicyResolver(ctx context.Context, req *logproto.PushRequest, policyResolver push.PolicyResolver) (*logproto.PushResponse, error) {
+func (d *Distributor) PushWithPolicyResolver(ctx context.Context, req *logproto.PushRequest, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -536,7 +536,7 @@ func (d *Distributor) PushWithPolicyResolver(ctx context.Context, req *logproto.
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver, retentionResolver)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -659,7 +659,7 @@ func (d *Distributor) PushWithPolicyResolver(ctx context.Context, req *logproto.
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, policyResolver)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, policyResolver, retentionResolver)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -809,6 +809,7 @@ func (d *Distributor) trackDiscardedData(
 	validationMetrics validationMetrics,
 	reason string,
 	policyResolver push.PolicyResolver,
+	retentionResolver push.RetentionResolver,
 ) {
 	for policy, retentionToStats := range validationMetrics.policyPushStats {
 		for retentionHours, stats := range retentionToStats {
@@ -819,7 +820,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver, retentionResolver)
 			if err != nil {
 				continue
 			}
@@ -1199,9 +1200,9 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, policyResolver push.PolicyResolver) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
+		retentionHours := retentionResolver(vContext.userID, val.ls)
 		policy := policyResolver(vContext.userID, val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
@@ -1319,5 +1320,5 @@ func (d *Distributor) CreateRequestPolicyResolver() push.PolicyResolver {
 
 func (d *Distributor) CreateRequestRetentionResolver() push.RetentionResolver {
 	requestRetentionResolver := NewRequestScopedRetentionResolver(d.tenantsRetention)
-	return requestRetentionResolver.RetentionPeriodFor
+	return requestRetentionResolver.RetentionHoursFor
 }
