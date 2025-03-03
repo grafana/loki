@@ -48,7 +48,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       k.util.antiAffinity,
 
   distributor_pdb:
-    local podDisruptionBudget = $.policy.v1.podDisruptionBudget;
+    local podDisruptionBudget = k.policy.v1.podDisruptionBudget;
 
     podDisruptionBudget.new('distributor-pdb') +
     podDisruptionBudget.mixin.metadata.withLabels({ name: 'distributor-pdb' }) +
