@@ -34,12 +34,12 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
 	"google.golang.org/api/support/bundler"
-	fmpb "google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	fmpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 const (
@@ -407,6 +407,11 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 		}
 		paths = append(paths, "message_retention_duration")
 	}
+	// Updating SchemaSettings' field masks are more complicated here
+	// since each field should be able to be independently edited, while
+	// preserving the current values for everything else. We also denote
+	// the zero value SchemaSetting to mean clearing or removing schema
+	// from the topic.
 	if cfg.SchemaSettings != nil {
 		pt.SchemaSettings = schemaSettingsToProto(cfg.SchemaSettings)
 		clearSchema := true
@@ -426,9 +431,10 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 			paths = append(paths, "schema_settings.last_revision_id")
 			clearSchema = false
 		}
-		// Clear the schema if none of it's value changes.
+		// Clear the schema if all of its values are equal to the zero value.
 		if clearSchema {
 			paths = append(paths, "schema_settings")
+			pt.SchemaSettings = nil
 		}
 	}
 	return &pb.UpdateTopicRequest{
@@ -535,7 +541,8 @@ func (t *Topic) Subscriptions(ctx context.Context) *SubscriptionIterator {
 	}
 }
 
-var errTopicStopped = errors.New("pubsub: Stop has been called for this topic")
+// ErrTopicStopped indicates that topic has been stopped and further publishing will fail.
+var ErrTopicStopped = errors.New("pubsub: Stop has been called for this topic")
 
 // A PublishResult holds the result from a call to Publish.
 //
@@ -547,6 +554,8 @@ var errTopicStopped = errors.New("pubsub: Stop has been called for this topic")
 //	    // TODO: Handle error.
 //	}
 type PublishResult = ipubsub.PublishResult
+
+var errTopicOrderingNotEnabled = errors.New("Topic.EnableMessageOrdering=false, but an OrderingKey was set in Message. Please remove the OrderingKey or turn on Topic.EnableMessageOrdering")
 
 // Publish publishes msg to the topic asynchronously. Messages are batched and
 // sent according to the topic's PublishSettings. Publish never blocks.
@@ -565,7 +574,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 
 	r := ipubsub.NewPublishResult()
 	if !t.EnableMessageOrdering && msg.OrderingKey != "" {
-		ipubsub.SetPublishResult(r, "", errors.New("Topic.EnableMessageOrdering=false, but an OrderingKey was set in Message. Please remove the OrderingKey or turn on Topic.EnableMessageOrdering"))
+		ipubsub.SetPublishResult(r, "", errTopicOrderingNotEnabled)
 		return r
 	}
 
@@ -582,7 +591,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	defer t.mu.RUnlock()
 	// TODO(aboulhosn) [from bcmills] consider changing the semantics of bundler to perform this logic so we don't have to do it here
 	if t.stopped {
-		ipubsub.SetPublishResult(r, "", errTopicStopped)
+		ipubsub.SetPublishResult(r, "", ErrTopicStopped)
 		return r
 	}
 
@@ -697,6 +706,16 @@ func (t *Topic) initBundler() {
 	t.scheduler.BundleByteLimit = MaxPublishRequestBytes - calcFieldSizeString(t.name) - 5
 }
 
+// ErrPublishingPaused is a custom error indicating that the publish paused for the specified ordering key.
+type ErrPublishingPaused struct {
+	OrderingKey string
+}
+
+func (e ErrPublishingPaused) Error() string {
+	return fmt.Sprintf("pubsub: Publishing for ordering key, %s, paused due to previous error. Call topic.ResumePublish(orderingKey) before resuming publishing", e.OrderingKey)
+
+}
+
 func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage) {
 	ctx, err := tag.New(ctx, tag.Insert(keyStatus, "OK"), tag.Upsert(keyTopic, t.name))
 	if err != nil {
@@ -716,7 +735,7 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 	var res *pb.PublishResponse
 	start := time.Now()
 	if orderingKey != "" && t.scheduler.IsPaused(orderingKey) {
-		err = fmt.Errorf("pubsub: Publishing for ordering key, %s, paused due to previous error. Call topic.ResumePublish(orderingKey) before resuming publishing", orderingKey)
+		err = ErrPublishingPaused{OrderingKey: orderingKey}
 	} else {
 		// Apply custom publish retryer on top of user specified retryer and
 		// default retryer.
