@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,8 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -1120,7 +1117,8 @@ func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error 
 }
 
 func requestsAreEqual(req1, req2 DeleteRequest) bool {
-	if req1.UserID == req2.UserID &&
+	if req1.RequestID == req2.RequestID &&
+		req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
 		req1.EndTime == req2.EndTime &&
@@ -1130,22 +1128,4 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	}
 
 	return false
-}
-
-func setupManager(t *testing.T) *DeleteRequestsManager {
-	t.Helper()
-	// build the store
-	tempDir := t.TempDir()
-
-	workingDir := filepath.Join(tempDir, "working-dir")
-	objectStorePath := filepath.Join(tempDir, "object-store")
-
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{
-		Directory: objectStorePath,
-	})
-	require.NoError(t, err)
-	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
-	require.NoError(t, err)
-
-	return NewDeleteRequestsManager(ds, time.Hour, 1, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 }
