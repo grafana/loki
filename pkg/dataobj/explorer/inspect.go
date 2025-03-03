@@ -281,13 +281,13 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section
 				return err
 			}
 
-			if col.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP {
+			if col.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP && col.Info.Statistics != nil {
 				var ts dataset.Value
 				_ = ts.UnmarshalBinary(col.Info.Statistics.MaxValue)
 				globalMaxTimestamp = time.Unix(0, ts.Int64()).UTC()
 			}
 
-			if col.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP {
+			if col.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP && col.Info.Statistics != nil {
 				var ts dataset.Value
 				_ = ts.UnmarshalBinary(col.Info.Statistics.MinValue)
 				globalMinTimestamp = time.Unix(0, ts.Int64()).UTC()
