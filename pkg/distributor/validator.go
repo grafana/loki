@@ -57,7 +57,6 @@ type validationContext struct {
 	blockIngestionUntil      time.Time
 	blockIngestionStatusCode int
 	enforcedLabels           []string
-	policyResolver           push.PolicyResolver
 
 	userID string
 
