@@ -7,10 +7,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/validation"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // RequestScopedPolicyResolver maintains a cache of policy decisions
