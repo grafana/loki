@@ -457,10 +457,10 @@ func (p *pushTracker) doneWithResult(err error) {
 // The returned error is the last one seen.
 // Old signature for backwards compatibility.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	return d.PushWithPolicyResolver(ctx, req, d.CreateRequestPolicyResolver(), d.CreateRequestRetentionResolver())
+	return d.PushWithResolvers(ctx, req, d.CreateRequestPolicyResolver(), d.CreateRequestRetentionResolver())
 }
 
-func (d *Distributor) PushWithPolicyResolver(ctx context.Context, req *logproto.PushRequest, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (*logproto.PushResponse, error) {
+func (d *Distributor) PushWithResolvers(ctx context.Context, req *logproto.PushRequest, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
