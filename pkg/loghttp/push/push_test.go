@@ -88,7 +88,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -99,7 +99,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -117,7 +117,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -128,7 +128,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -146,7 +146,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -157,7 +157,7 @@ func TestParseRequest(t *testing.T) {
 			valid:                     true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
@@ -220,9 +220,9 @@ func TestParseRequest(t *testing.T) {
 			contentType:               `application/json`,
 			valid:                     true,
 			enableServiceDiscovery:    true,
-			expectedBytes:             map[string]int{"": len("fizzbuzz")},
+			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff", service_name="stuff"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff", service_name="stuff"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff")},
 		},
 		{
@@ -233,7 +233,7 @@ func TestParseRequest(t *testing.T) {
 			enableServiceDiscovery:    true,
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", service_name="unknown_service"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", service_name="unknown_service"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown)},
 		},
 		{
@@ -242,9 +242,9 @@ func TestParseRequest(t *testing.T) {
 			contentType:               `application/json`,
 			valid:                     true,
 			enableServiceDiscovery:    true,
-			expectedBytes:             map[string]int{"": len("fizzbuzz")},
+			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{__aggregated_metric__="stuff", foo="bar2", job="stuff"}`: float64(len("fizzbuzz"))},
+			expectedBytesUsageTracker: map[string]float64{`{__aggregated_metric__="stuff", foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("__aggregated_metric__", "stuff", "foo", "bar2", "job", "stuff")},
 			aggregatedMetric:          true,
 		},
