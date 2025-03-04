@@ -47,6 +47,14 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     else
       k.util.antiAffinity,
 
+  distributor_pdb:
+    local podDisruptionBudget = k.policy.v1.podDisruptionBudget;
+
+    podDisruptionBudget.new('distributor-pdb') +
+    podDisruptionBudget.mixin.metadata.withLabels({ name: 'distributor-pdb' }) +
+    podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: 'distributor' }) +
+    podDisruptionBudget.mixin.spec.withMaxUnavailable(1),
+
   distributor_service:
     k.util.serviceFor($.distributor_deployment, $._config.service_ignored_labels),
 }
