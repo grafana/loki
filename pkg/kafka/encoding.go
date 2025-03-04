@@ -224,14 +224,6 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 // DecodeStreamMetadata decodes a Kafka record into a StreamMetadata.
 // It returns the decoded metadata and any error encountered.
 func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) {
-	if record == nil {
-		return nil, errors.New("nil record")
-	}
-
-	if record.Value == nil {
-		return nil, errors.New("nil record value")
-	}
-
 	var metadata logproto.StreamMetadata
 	if err := metadata.Unmarshal(record.Value); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal stream metadata: %w", err)

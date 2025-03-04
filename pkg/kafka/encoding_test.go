@@ -204,21 +204,6 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 		})
 	}
 
-	t.Run("Decode nil record", func(t *testing.T) {
-		metadata, err := DecodeStreamMetadata(nil)
-		require.Error(t, err)
-		require.Nil(t, metadata)
-	})
-
-	t.Run("Decode nil value", func(t *testing.T) {
-		record := &kgo.Record{
-			Value: nil,
-		}
-		metadata, err := DecodeStreamMetadata(record)
-		require.Error(t, err)
-		require.Nil(t, metadata)
-	})
-
 	t.Run("Decode invalid value", func(t *testing.T) {
 		record := &kgo.Record{
 			Value: []byte("invalid data"),
