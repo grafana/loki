@@ -140,8 +140,7 @@ type IngestLimits struct {
 	metadata map[string]map[int32][]streamMetadata // tenant -> partitionID -> streamMetadata
 
 	// Track partition assignments
-	mtxAssingedPartitions sync.RWMutex
-	assingedPartitions    map[int32]int64 // partitionID -> lastAssignedAt
+	assignedPartitions map[int32]int64 // partitionID -> lastAssignedAt
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -222,7 +221,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		)
 
 		for partitionID, partition := range partitions {
-			if _, assigned := s.assingedPartitions[partitionID]; !assigned {
+			if _, assigned := s.assignedPartitions[partitionID]; !assigned {
 				continue
 			}
 
@@ -245,14 +244,14 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	if s.assingedPartitions == nil {
-		s.assingedPartitions = make(map[int32]int64)
+	if s.assignedPartitions == nil {
+		s.assignedPartitions = make(map[int32]int64)
 	}
 
 	var assigned []string
 	for _, partitionIDs := range partitions {
 		for _, partitionID := range partitionIDs {
-			s.assingedPartitions[partitionID] = time.Now().UnixNano()
+			s.assignedPartitions[partitionID] = time.Now().UnixNano()
 			assigned = append(assigned, strconv.Itoa(int(partitionID)))
 		}
 	}
@@ -280,7 +279,7 @@ func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
 		dropped += len(partitionIDs)
 		for _, partitionID := range partitionIDs {
 			// Unassign the partition from the ingest limits instance
-			delete(s.assingedPartitions, partitionID)
+			delete(s.assignedPartitions, partitionID)
 
 			// Remove the partition from the metadata map
 			for _, partitions := range s.metadata {
@@ -450,7 +449,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	}
 
 	// Partition not assigned to this instance, evict stream
-	if _, assigned := s.assingedPartitions[partition]; !assigned {
+	if _, assigned := s.assignedPartitions[partition]; !assigned {
 		for i, stream := range s.metadata[tenant][partition] {
 			if stream.hash == rec.StreamHash {
 				s.metadata[tenant][partition] = append(s.metadata[tenant][partition][:i], s.metadata[tenant][partition][i+1:]...)
@@ -580,12 +579,12 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
-	s.mtxAssingedPartitions.RLock()
-	defer s.mtxAssingedPartitions.RUnlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	// Make a copy of the assigned partitions map to avoid potential concurrent access issues
-	partitions := make(map[int32]int64, len(s.assingedPartitions))
-	for k, v := range s.assingedPartitions {
+	partitions := make(map[int32]int64, len(s.assignedPartitions))
+	for k, v := range s.assignedPartitions {
 		partitions[k] = v
 	}
 
