@@ -32,9 +32,9 @@ func (s *MakeTable) Schema() schema.Schema {
 	return s.schema
 }
 
-// Type implements the Plan interface
-func (s *MakeTable) Type() PlanType {
-	return PlanTypeTable
+// Category implements the Plan interface
+func (s *MakeTable) Category() PlanCategory {
+	return PlanCategoryTable
 }
 
 // TableSchema implements the tableNode interface

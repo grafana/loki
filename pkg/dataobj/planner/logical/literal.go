@@ -38,9 +38,9 @@ func (l LiteralString) Literal() string {
 	return l.str
 }
 
-// Type implements the Expr interface
-func (l LiteralString) Type() ExprType {
-	return ExprTypeLiteral
+// Category implements the Expr interface
+func (l LiteralString) Category() ExprCategory {
+	return ExprCategoryLiteral
 }
 
 func (l LiteralString) ValueType() datasetmd.ValueType {
@@ -71,9 +71,9 @@ func (l LiteralI64) Literal() string {
 	return fmt.Sprint(l.n)
 }
 
-// Type implements the Expr interface
-func (l LiteralI64) Type() ExprType {
-	return ExprTypeLiteral
+// Category implements the Expr interface
+func (l LiteralI64) Category() ExprCategory {
+	return ExprCategoryLiteral
 }
 
 func (l LiteralI64) ValueType() datasetmd.ValueType {

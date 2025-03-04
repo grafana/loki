@@ -36,14 +36,14 @@ func (t *treeFormatter) writeNode(node treeNode) *treeFormatter {
 }
 
 func (t *treeFormatter) writePlan(ast Plan) {
-	switch ty := ast.Type(); ty {
-	case PlanTypeTable:
+	switch ty := ast.Category(); ty {
+	case PlanCategoryTable:
 		t.writeTablePlan(ast.(tableNode))
-	case PlanTypeFilter:
+	case PlanCategoryFilter:
 		t.writeFilterPlan(ast.(filterNode))
-	case PlanTypeProjection:
+	case PlanCategoryProjection:
 		t.writeProjectionPlan(ast.(projectionNode))
-	case PlanTypeAggregate:
+	case PlanCategoryAggregate:
 		t.writeAggregatePlan(ast.(aggregateNode))
 	default:
 		panic(fmt.Sprintf("unknown plan type: (signal: %v, type: %T)", ty, ast))
@@ -145,17 +145,17 @@ func (t *treeFormatter) writeAggregatePlan(ast aggregateNode) {
 }
 
 func (t *treeFormatter) writeExpr(expr Expr) {
-	switch expr.Type() {
-	case ExprTypeColumn:
+	switch expr.Category() {
+	case ExprCategoryColumn:
 		t.writeColumnExpr(expr.(columnExpr))
-	case ExprTypeLiteral:
+	case ExprCategoryLiteral:
 		t.writeLiteralExpr(expr.(literalExpr))
-	case ExprTypeBinaryOp:
+	case ExprCategoryBinaryOp:
 		t.writeBinaryOpExpr(expr.(binaryOpExpr))
-	case ExprTypeAggregate:
+	case ExprCategoryAggregate:
 		t.writeAggregateExpr(expr.(aggregateExpr))
 	default:
-		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Type(), expr))
+		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Category(), expr))
 	}
 }
 
@@ -186,7 +186,7 @@ func (t *treeFormatter) writeLiteralExpr(expr literalExpr) {
 func (t *treeFormatter) writeBinaryOpExpr(expr binaryOpExpr) {
 	wrapped := fmt.Sprintf("(%s)", expr.Op()) // for clarity
 	n := treeNode{
-		Singletons: []string{expr.Type().String()},
+		Singletons: []string{expr.Category().String()},
 		Tuples: []treeContentTuple{{
 			Key:   "op",
 			Value: SingleContent(wrapped),
