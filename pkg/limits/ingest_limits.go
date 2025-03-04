@@ -432,9 +432,8 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		if len(s.metadata[tenant]) == 0 {
 			delete(s.metadata, tenant)
 		}
-		s.metrics.tenantStreamEvictionsTotal.
-			WithLabelValues(tenant).
-			Add(float64(evicted))
+
+		s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evicted))
 	}
 }
 
@@ -534,6 +533,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	type tenantLimits struct {
 		Tenant          string   `json:"tenant"`
 		ActiveStreams   uint64   `json:"activeStreams"`
+		Rate            uint64   `json:"rate"`
 		AssignedStreams []uint64 `json:"assignedStreams"`
 	}
 
@@ -560,6 +560,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		activeStreams   uint64
+		rate            uint64
 		assignedStreams = make([]uint64, 0)
 		response        = make(map[string]tenantLimits)
 	)
@@ -585,6 +586,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, stream := range partitions[requestedID] {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
+				rate += stream.totalSize
 				assignedStreams = append(assignedStreams, stream.hash)
 			}
 		}
@@ -595,6 +597,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Tenant:          tenant,
 			ActiveStreams:   activeStreams,
 			AssignedStreams: assignedStreams,
+			Rate:            rate / uint64(s.cfg.WindowSize.Seconds()),
 		}
 	}
 
