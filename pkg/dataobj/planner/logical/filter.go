@@ -5,12 +5,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Filter implements Plan and filterNode
-var (
-	_ Plan       = &Filter{}
-	_ filterNode = &Filter{}
-)
-
 // Filter represents a plan node that filters rows based on a boolean expression.
 type Filter struct {
 	// input is the child plan node providing data to filter
@@ -24,7 +18,7 @@ type Filter struct {
 // should be selected (included) in its output. This is represented by the WHERE
 // clause in SQL. A simple example would be SELECT * FROM foo WHERE a > 5.
 // The filter expression needs to evaluate to a Boolean result.
-func NewFilter(input Plan, expr Expr) *Filter {
+func newFilter(input Plan, expr Expr) *Filter {
 	return &Filter{
 		input: input,
 		expr:  expr,

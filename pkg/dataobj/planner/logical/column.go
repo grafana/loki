@@ -6,10 +6,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-var (
-	_ Expr = ColumnExpr{}
-)
-
 // ColumnExpr represents a reference to a column in the input data
 type ColumnExpr struct {
 	// name is the identifier of the referenced column
@@ -17,8 +13,8 @@ type ColumnExpr struct {
 }
 
 // Col creates a column reference expression
-func Col(name string) ColumnExpr {
-	return ColumnExpr{name: name}
+func Col(name string) Expr {
+	return NewColumnExpr(ColumnExpr{name: name})
 }
 
 // ToField looks up and returns the schema for the referenced column
@@ -29,10 +25,6 @@ func (c ColumnExpr) ToField(p Plan) schema.ColumnSchema {
 		}
 	}
 	panic(fmt.Sprintf("column %s not found", c.name))
-}
-
-func (c ColumnExpr) Type() ExprType {
-	return ExprTypeColumn
 }
 
 func (c ColumnExpr) ColumnName() string {

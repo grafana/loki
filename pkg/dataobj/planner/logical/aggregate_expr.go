@@ -9,11 +9,6 @@ import (
 // AggregateOp represents the type of aggregation operation to perform
 type AggregateOp string
 
-// Compile-time check to ensure AggregateExpr implements Expr
-var (
-	_ Expr = AggregateExpr{}
-)
-
 const (
 	// AggregateOpSum represents a sum aggregation
 	AggregateOpSum AggregateOp = "sum"
@@ -75,7 +70,7 @@ func (a AggregateExpr) Op() AggregateOp {
 	return a.op
 }
 
-func (a AggregateExpr) Expr() Expr {
+func (a AggregateExpr) SubExpr() Expr {
 	return a.expr
 }
 

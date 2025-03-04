@@ -42,7 +42,7 @@ Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
 ├── Column #id
 ├── Column #name
 └── Filter expr=age_gt_21
-    ├── BinaryOp op=(>) name=age_gt_21
+    ├── BinaryOp type=cmp op=(>) name=age_gt_21
     │   ├── Column #age
     │   └── Literal value=21 type=VALUE_TYPE_INT64
     └── MakeTable name=users`
@@ -94,7 +94,7 @@ Aggregate groupings=(region) aggregates=(total_sales)
     ├── Column #sales
     ├── Column #year
     └── Filter expr=year_2020
-        ├── BinaryOp op=(==) name=year_2020
+        ├── BinaryOp type=cmp op=(==) name=year_2020
         │   ├── Column #year
         │   └── Literal value=2020 type=VALUE_TYPE_INT64
         └── MakeTable name=orders`

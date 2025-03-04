@@ -4,12 +4,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Aggregate implements Plan and aggregateNode
-var (
-	_ Plan          = &Aggregate{}
-	_ aggregateNode = &Aggregate{}
-)
-
 // Aggregate represents a plan node that performs aggregation operations.
 // The output schema is organized with grouping columns followed by aggregate expressions.
 // It often needs to be wrapped in a projection to achieve the desired column ordering.
@@ -27,7 +21,7 @@ type Aggregate struct {
 // calculating minimum, maximum, averages, and sums of data. Aggregates are often
 // grouped by other columns (or expressions).
 // A simple example would be SELECT region, SUM(sales) FROM orders GROUP BY region.
-func NewAggregate(input Plan, groupExprs []Expr, aggExprs []AggregateExpr) *Aggregate {
+func newAggregate(input Plan, groupExprs []Expr, aggExprs []AggregateExpr) *Aggregate {
 	return &Aggregate{
 		input:      input,
 		groupExprs: groupExprs,

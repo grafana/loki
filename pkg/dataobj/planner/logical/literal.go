@@ -8,74 +8,79 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time checks to ensure types implement Expr interface
-var (
-	_ Expr = LiteralString{}
-	_ Expr = LiteralI64{}
+type LiteralType int
+
+// loosely matches the datasetmd.ValueType enum;
+// consider using that directly in the future
+const (
+	LiteralTypeInvalid LiteralType = iota
+	LiteralTypeString
+	LiteralTypeInt64
 )
 
-// LiteralString represents a string constant in the query plan
-type LiteralString struct {
-	// str holds the string value
-	str string
+func (t LiteralType) String() string {
+	switch t {
+	case LiteralTypeString:
+		return "string"
+	case LiteralTypeInt64:
+		return "int64"
+	default:
+		return "unknown"
+	}
+}
+
+type LiteralExpr struct {
+	ty  LiteralType
+	val any
+}
+
+func (l LiteralExpr) ValueString() string {
+	switch l.ty {
+	case LiteralTypeString:
+		return l.val.(string)
+	}
+	return fmt.Sprintf("%v", l.val)
+}
+
+func (l LiteralExpr) ToField(_ Plan) schema.ColumnSchema {
+	switch l.ty {
+	case LiteralTypeString:
+		return schema.ColumnSchema{
+			Name: l.val.(string),
+			Type: l.ValueType(),
+		}
+	case LiteralTypeInt64:
+		return schema.ColumnSchema{
+			Name: fmt.Sprint(l.val.(int64)),
+			Type: l.ValueType(),
+		}
+	default:
+		panic(fmt.Sprintf("unsupported literal type: %d", l.ty))
+	}
+}
+
+func (l LiteralExpr) ValueType() datasetmd.ValueType {
+	switch l.ty {
+	case LiteralTypeString:
+		return datasetmd.VALUE_TYPE_STRING
+	case LiteralTypeInt64:
+		return datasetmd.VALUE_TYPE_INT64
+	default:
+		panic(fmt.Sprintf("unsupported literal type: %d", l.ty))
+	}
 }
 
 // LitStr creates a string literal expression
-func LitStr(v string) LiteralString {
-	return LiteralString{str: v}
+func LitStr(v string) Expr {
+	return NewLiteralExpr(LiteralExpr{
+		ty:  LiteralTypeString,
+		val: v,
+	})
 }
 
-// ToField converts the string literal to a column schema
-func (l LiteralString) ToField(_ Plan) schema.ColumnSchema {
-	return schema.ColumnSchema{
-		Name: l.str,
-		Type: l.ValueType(),
-	}
-}
-
-// Literal returns the string representation of the literal value
-func (l LiteralString) Literal() string {
-	return l.str
-}
-
-// Type implements the Expr interface
-func (l LiteralString) Type() ExprType {
-	return ExprTypeLiteral
-}
-
-func (l LiteralString) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_STRING
-}
-
-// LiteralI64 represents a 64-bit integer constant in the query plan
-type LiteralI64 struct {
-	// n holds the integer value
-	n int64
-}
-
-// LitI64 creates an int64 literal expression
-func LitI64(v int64) LiteralI64 {
-	return LiteralI64{n: v}
-}
-
-// ToField converts the integer literal to a column schema
-func (l LiteralI64) ToField(_ Plan) schema.ColumnSchema {
-	return schema.ColumnSchema{
-		Name: fmt.Sprint(l.n),
-		Type: l.ValueType(),
-	}
-}
-
-// Literal returns the string representation of the literal value
-func (l LiteralI64) Literal() string {
-	return fmt.Sprint(l.n)
-}
-
-// Type implements the Expr interface
-func (l LiteralI64) Type() ExprType {
-	return ExprTypeLiteral
-}
-
-func (l LiteralI64) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_INT64
+func LitI64(v int64) Expr {
+	return NewLiteralExpr(LiteralExpr{
+		ty:  LiteralTypeInt64,
+		val: v,
+	})
 }

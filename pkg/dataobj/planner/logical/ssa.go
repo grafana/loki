@@ -99,13 +99,13 @@ func (b *ssaBuilder) getID() int {
 func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 	switch plan.Type() {
 	case PlanTypeTable:
-		return b.processTablePlan(plan.(tableNode))
+		return b.processTablePlan(plan.Table())
 	case PlanTypeFilter:
-		return b.processFilterPlan(plan.(filterNode))
+		return b.processFilterPlan(plan.Filter())
 	case PlanTypeProjection:
-		return b.processProjectionPlan(plan.(projectionNode))
+		return b.processProjectionPlan(plan.Projection())
 	case PlanTypeAggregate:
-		return b.processAggregatePlan(plan.(aggregateNode))
+		return b.processAggregatePlan(plan.Aggregate())
 	default:
 		return 0, fmt.Errorf("unknown plan type: %v", plan.Type())
 	}
@@ -113,7 +113,7 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 
 // processTablePlan processes a table plan node
 // It creates a MakeTable node with the table name
-func (b *ssaBuilder) processTablePlan(plan tableNode) (int, error) {
+func (b *ssaBuilder) processTablePlan(plan *MakeTable) (int, error) {
 	// Create a node for the table
 	id := b.getID()
 	node := SSANode{
@@ -130,7 +130,7 @@ func (b *ssaBuilder) processTablePlan(plan tableNode) (int, error) {
 
 // processFilterPlan processes a filter plan node
 // It processes the child plan and filter expression, then creates a Filter node
-func (b *ssaBuilder) processFilterPlan(plan filterNode) (int, error) {
+func (b *ssaBuilder) processFilterPlan(plan *Filter) (int, error) {
 	// Process the child plan first
 	childID, err := b.processPlan(plan.Child())
 	if err != nil {
@@ -145,8 +145,9 @@ func (b *ssaBuilder) processFilterPlan(plan filterNode) (int, error) {
 
 	// Get the name of the expression
 	var exprName string
-	if binaryOp, ok := plan.FilterExpr().(binaryOpExpr); ok {
-		exprName = binaryOp.Name()
+
+	if plan.FilterExpr().Type() == ExprTypeBinaryOp {
+		exprName = plan.FilterExpr().BinaryOp().Name()
 	} else {
 		exprName = plan.FilterExpr().ToField(plan.Child()).Name
 	}
@@ -170,7 +171,7 @@ func (b *ssaBuilder) processFilterPlan(plan filterNode) (int, error) {
 
 // processProjectionPlan processes a projection plan node
 // It processes the child plan and all projection expressions, then creates a Project node
-func (b *ssaBuilder) processProjectionPlan(plan projectionNode) (int, error) {
+func (b *ssaBuilder) processProjectionPlan(plan *Projection) (int, error) {
 	// Process the child plan first
 	childID, err := b.processPlan(plan.Child())
 	if err != nil {
@@ -213,7 +214,7 @@ func (b *ssaBuilder) processProjectionPlan(plan projectionNode) (int, error) {
 // processAggregatePlan processes an aggregate plan node
 // It processes the child plan, group expressions, and aggregate expressions,
 // then creates an AggregatePlan node
-func (b *ssaBuilder) processAggregatePlan(plan aggregateNode) (int, error) {
+func (b *ssaBuilder) processAggregatePlan(plan *Aggregate) (int, error) {
 	// Process the child plan first
 	_, err := b.processPlan(plan.Child())
 	if err != nil {
@@ -239,7 +240,7 @@ func (b *ssaBuilder) processAggregatePlan(plan aggregateNode) (int, error) {
 	var aggregationIDs []int
 
 	for _, expr := range plan.AggregateExprs() {
-		exprID, err := b.processAggregateExpr(expr, plan.Child())
+		exprID, err := b.processAggregateExpr(&expr, plan.Child())
 		if err != nil {
 			return 0, err
 		}
@@ -269,13 +270,13 @@ func (b *ssaBuilder) processAggregatePlan(plan aggregateNode) (int, error) {
 func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
 	switch expr.Type() {
 	case ExprTypeColumn:
-		return b.processColumnExpr(expr.(columnExpr), parent)
+		return b.processColumnExpr(expr.Column(), parent)
 	case ExprTypeLiteral:
-		return b.processLiteralExpr(expr.(literalExpr))
+		return b.processLiteralExpr(expr.Literal())
 	case ExprTypeBinaryOp:
-		return b.processBinaryOpExpr(expr.(binaryOpExpr), parent)
+		return b.processBinaryOpExpr(expr.BinaryOp(), parent)
 	case ExprTypeAggregate:
-		return b.processAggregateExpr(expr.(aggregateExpr), parent)
+		return b.processAggregateExpr(expr.Aggregate(), parent)
 	default:
 		return 0, fmt.Errorf("unknown expression type: %v", expr.Type())
 	}
@@ -283,7 +284,7 @@ func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
 
 // processColumnExpr processes a column expression
 // It creates a ColumnRef node with the column name and type
-func (b *ssaBuilder) processColumnExpr(expr columnExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processColumnExpr(expr *ColumnExpr, parent Plan) (int, error) {
 	field := expr.ToField(parent)
 
 	// Create a node for the column reference
@@ -303,14 +304,14 @@ func (b *ssaBuilder) processColumnExpr(expr columnExpr, parent Plan) (int, error
 
 // processLiteralExpr processes a literal expression
 // It creates a Literal node with the value and type
-func (b *ssaBuilder) processLiteralExpr(expr literalExpr) (int, error) {
+func (b *ssaBuilder) processLiteralExpr(expr *LiteralExpr) (int, error) {
 	// Create a node for the literal
 	id := b.getID()
 	node := SSANode{
 		ID:       id,
 		NodeType: "Literal",
 		Tuples: []nodeProperty{
-			{Key: "val", Value: expr.Literal()},
+			{Key: "val", Value: expr.ValueString()},
 			{Key: "type", Value: expr.ValueType().String()},
 		},
 	}
@@ -321,7 +322,7 @@ func (b *ssaBuilder) processLiteralExpr(expr literalExpr) (int, error) {
 
 // processBinaryOpExpr processes a binary operation expression
 // It processes the left and right operands, then creates a BinaryOp node
-func (b *ssaBuilder) processBinaryOpExpr(expr binaryOpExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, error) {
 	// Process the left and right operands first
 	leftID, err := b.processExpr(expr.Left(), parent)
 	if err != nil {
@@ -339,7 +340,7 @@ func (b *ssaBuilder) processBinaryOpExpr(expr binaryOpExpr, parent Plan) (int, e
 		ID:       id,
 		NodeType: "BinaryOp",
 		Tuples: []nodeProperty{
-			{Key: "op", Value: fmt.Sprintf("(%s)", expr.Op())},
+			{Key: "op", Value: fmt.Sprintf("(%s)", expr.Op().String())},
 			{Key: "name", Value: expr.Name()},
 			{Key: "left", Value: fmt.Sprintf("%%%d", leftID)},
 			{Key: "right", Value: fmt.Sprintf("%%%d", rightID)},
@@ -353,15 +354,11 @@ func (b *ssaBuilder) processBinaryOpExpr(expr binaryOpExpr, parent Plan) (int, e
 
 // processAggregateExpr processes an aggregate expression
 // It processes the input expression first if it exists, then creates an AggregationExpr node
-func (b *ssaBuilder) processAggregateExpr(expr aggregateExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processAggregateExpr(expr *AggregateExpr, parent Plan) (int, error) {
 	// Process the input expression first if it exists
-	var exprID int
-	var err error
-	if expr.Expr() != nil {
-		exprID, err = b.processExpr(expr.Expr(), parent)
-		if err != nil {
-			return 0, err
-		}
+	exprID, err := b.processExpr(expr.SubExpr(), parent)
+	if err != nil {
+		return 0, err
 	}
 
 	// Create a node for the aggregate expression
@@ -373,10 +370,7 @@ func (b *ssaBuilder) processAggregateExpr(expr aggregateExpr, parent Plan) (int,
 			{Key: "name", Value: expr.Name()},
 			{Key: "op", Value: string(expr.Op())},
 		},
-	}
-
-	if expr.Expr() != nil {
-		node.References = []int{exprID}
+		References: []int{exprID},
 	}
 
 	b.nodes = append(b.nodes, node)

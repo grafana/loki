@@ -5,12 +5,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure MakeTable implements Plan and tableNode
-var (
-	_ Plan      = &MakeTable{}
-	_ tableNode = &MakeTable{}
-)
-
 // MakeTable represents a plan node that scans input data from a DataSource
 // It is the leaf node in our query tree
 type MakeTable struct {
@@ -21,7 +15,7 @@ type MakeTable struct {
 }
 
 // NewScan creates a new Scan plan node
-func NewScan(name string, schema schema.Schema) *MakeTable {
+func makeTable(name string, schema schema.Schema) *MakeTable {
 	return &MakeTable{
 		name:   name,
 		schema: schema,

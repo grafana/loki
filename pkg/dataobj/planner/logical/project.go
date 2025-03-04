@@ -5,12 +5,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time check to ensure Projection implements Plan and projectionNode
-var (
-	_ Plan           = &Projection{}
-	_ projectionNode = &Projection{}
-)
-
 // Projection represents a plan node that projects expressions from its input
 type Projection struct {
 	// input is the child plan node providing data to project
@@ -25,7 +19,7 @@ type Projection struct {
 // Sometimes this is as simple as a list of columns, such as SELECT a, b, c FROM foo,
 // but it could also include any other type of expression that is supported.
 // A more complex example would be SELECT (CAST(a AS float) * 3.141592)) AS my_float FROM foo.
-func NewProjection(input Plan, exprs []Expr) *Projection {
+func newProjection(input Plan, exprs []Expr) *Projection {
 	return &Projection{
 		input: input,
 		exprs: exprs,

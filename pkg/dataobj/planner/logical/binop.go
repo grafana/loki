@@ -2,201 +2,263 @@
 package logical
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// Compile-time checks to ensure types implement Expr interface
-var (
-	_ Expr = BinaryMathExpr{}
-	_ Expr = BooleanCmpExpr{}
-	_ Expr = BooleanSetExpr{}
-)
+/*
+This file defines the structures and methods for binary operations within the logical query plan.
 
-// BinaryOpMath represents mathematical binary operations
-type BinaryOpMath string
+Key components:
+1. BinOpType: An enum representing the type of binary operation (e.g., math, comparison, set).
+2. BinOpExpr: A struct representing a binary operation expression, which includes:
+   - name: Identifier for the binary operation.
+   - ty: Type of binary operation (BinOpType).
+   - op: The actual operation (e.g., +, -, ==, !=, &&, ||).
+   - l: Left expression operand.
+   - r: Right expression operand.
+3. Methods for BinOpExpr:
+   - ToField: Converts the binary operation expression to a column schema.
+   - Type: Returns the type of binary operation.
+   - Name: Returns the name of the binary operation.
+*/
 
-const (
-	// BinaryOpAdd represents addition operation (+)
-	BinaryOpAdd BinaryOpMath = "+"
-	// BinaryOpSubtract represents subtraction operation (-)
-	BinaryOpSubtract BinaryOpMath = "-"
-	// BinaryOpMultiply represents multiplication operation (*)
-	BinaryOpMultiply BinaryOpMath = "*"
-	// BinaryOpDivide represents division operation (/)
-	BinaryOpDivide BinaryOpMath = "/"
-	// BinaryOpModulo represents modulo operation (%)
-	BinaryOpModulo BinaryOpMath = "%"
-)
+const UNKNOWN = "unknown"
 
-var (
-	// Add creates a binary addition expression
-	Add = newBinaryMathExprConstructor(BinaryOpAdd)
-	// Subtract creates a binary subtraction expression
-	Subtract = newBinaryMathExprConstructor(BinaryOpSubtract)
-	// Multiply creates a binary multiplication expression
-	Multiply = newBinaryMathExprConstructor(BinaryOpMultiply)
-	// Divide creates a binary division expression
-	Divide = newBinaryMathExprConstructor(BinaryOpDivide)
-	// Modulo creates a binary modulo expression
-	Modulo = newBinaryMathExprConstructor(BinaryOpModulo)
-)
-
-// BinaryOpCmp represents comparison binary operations
-type BinaryOpCmp string
+type BinOpType int
 
 const (
-	// BinaryOpEq represents equality comparison (==)
-	BinaryOpEq BinaryOpCmp = "=="
-	// BinaryOpNeq represents inequality comparison (!=)
-	BinaryOpNeq BinaryOpCmp = "!="
-	// BinaryOpLt represents less than comparison (<)
-	BinaryOpLt BinaryOpCmp = "<"
-	// BinaryOpLte represents less than or equal comparison (<=)
-	BinaryOpLte BinaryOpCmp = "<="
-	// BinaryOpGt represents greater than comparison (>)
-	BinaryOpGt BinaryOpCmp = ">"
-	// BinaryOpGte represents greater than or equal comparison (>=)
-	BinaryOpGte BinaryOpCmp = ">="
+	BinOpTypeInvalid BinOpType = iota
+	BinOpTypeMath
+	BinOpTypeCmp
+	BinOpTypeSet
 )
 
-var (
-	// Eq creates an equality comparison expression
-	Eq = newBinaryCompareExprConstructor(BinaryOpEq)
-	// Neq creates an inequality comparison expression
-	Neq = newBinaryCompareExprConstructor(BinaryOpNeq)
-	// Lt creates a less than comparison expression
-	Lt = newBinaryCompareExprConstructor(BinaryOpLt)
-	// Lte creates a less than or equal comparison expression
-	Lte = newBinaryCompareExprConstructor(BinaryOpLte)
-	// Gt creates a greater than comparison expression
-	Gt = newBinaryCompareExprConstructor(BinaryOpGt)
-	// Gte creates a greater than or equal comparison expression
-	Gte = newBinaryCompareExprConstructor(BinaryOpGte)
-)
-
-// BinaryOpSet represents set operations between boolean expressions
-type BinaryOpSet string
-
-const (
-	// BinaryOpAnd represents logical AND operation
-	BinaryOpAnd BinaryOpSet = "and"
-	// BinaryOpOr represents logical OR operation
-	BinaryOpOr BinaryOpSet = "or"
-	// BinaryOpNot represents logical NOT operation (also known as "unless")
-	BinaryOpNot BinaryOpSet = "not"
-	// BinaryOpXor represents logical XOR operation
-	BinaryOpXor BinaryOpSet = "xor"
-)
-
-var (
-	// And creates a logical AND expression
-	And = newBinarySetExprConstructor(BinaryOpAnd)
-	// Or creates a logical OR expression
-	Or = newBinarySetExprConstructor(BinaryOpOr)
-	// Not creates a logical NOT expression
-	Not = newBinarySetExprConstructor(BinaryOpNot)
-	// Xor creates a logical XOR expression
-	Xor = newBinarySetExprConstructor(BinaryOpXor)
-)
-
-// baseBinOpImpl is an embeddable implementation of shared functionality for binary operations
-type baseBinOpImpl struct {
-	name string
-	l    Expr
-	r    Expr
+func (t BinOpType) String() string {
+	switch t {
+	case BinOpTypeMath:
+		return "math"
+	case BinOpTypeCmp:
+		return "cmp"
+	case BinOpTypeSet:
+		return "set"
+	default:
+		return UNKNOWN
+	}
 }
 
-func (b baseBinOpImpl) ToField(p Plan) schema.ColumnSchema {
+type BinOpExpr struct {
+	// name is the identifier for this binary operation
+	name string
+	// ty is the type of binary operation (e.g. math, cmp, set)
+	ty BinOpType
+	// op is the actual operation (e.g. +, -, ==, !=, &&, ||)
+	op int
+	// l is the left expression
+	l Expr
+	// r is the right expression
+	r Expr
+}
+
+func (b BinOpExpr) ToField(p Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: b.name,
 		Type: b.l.ToField(p).Type,
 	}
 }
 
-func (b baseBinOpImpl) Type() ExprType {
-	return ExprTypeBinaryOp
+func (b BinOpExpr) Type() BinOpType {
+	return b.ty
 }
 
-func (b baseBinOpImpl) Name() string {
+func (b BinOpExpr) Name() string {
 	return b.name
 }
 
-func (b baseBinOpImpl) Left() Expr {
+func (b BinOpExpr) Left() Expr {
 	return b.l
 }
 
-func (b baseBinOpImpl) Right() Expr {
+func (b BinOpExpr) Right() Expr {
 	return b.r
 }
 
-// BinaryMathExpr represents a mathematical operation between two expressions
-type BinaryMathExpr struct {
-	baseBinOpImpl
-	op BinaryOpMath
-}
-
-func (b BinaryMathExpr) Op() string {
-	return string(b.op)
-}
-
-// newBinaryMathExprConstructor creates a constructor function for binary mathematical expressions
-func newBinaryMathExprConstructor(op BinaryOpMath) func(name string, l Expr, r Expr) BinaryMathExpr {
-	return func(name string, l Expr, r Expr) BinaryMathExpr {
-		return BinaryMathExpr{
-			baseBinOpImpl: baseBinOpImpl{
-				name: name,
-				l:    l,
-				r:    r,
-			},
-			op: op,
-		}
+func (b BinOpExpr) Op() fmt.Stringer {
+	switch b.ty {
+	case BinOpTypeMath:
+		return BinaryOpMath(b.op)
+	case BinOpTypeCmp:
+		return BinaryOpCmp(b.op)
+	case BinOpTypeSet:
+		return BinaryOpSet(b.op)
+	default:
+		panic(fmt.Sprintf("unknown binary operation type: %d", b.ty))
 	}
 }
 
-// BooleanCmpExpr represents a comparison operation between two expressions
-type BooleanCmpExpr struct {
-	baseBinOpImpl
-	op BinaryOpCmp
-}
+// BinaryOpMath represents mathematical binary operations
+type BinaryOpMath int
 
-func (b BooleanCmpExpr) Op() string {
-	return string(b.op)
-}
+const (
+	BinaryOpMathInvalid BinaryOpMath = iota
+	// BinaryOpAdd represents addition operation (+)
+	BinaryOpAdd
+	// BinaryOpSubtract represents subtraction operation (-)
+	BinaryOpSubtract
+	// BinaryOpMultiply represents multiplication operation (*)
+	BinaryOpMultiply
+	// BinaryOpDivide represents division operation (/)
+	BinaryOpDivide
+	// BinaryOpModulo represents modulo operation (%)
+	BinaryOpModulo
+)
 
-// newBinaryCompareExprConstructor creates a constructor function for binary comparison expressions
-func newBinaryCompareExprConstructor(op BinaryOpCmp) func(name string, l Expr, r Expr) BooleanCmpExpr {
-	return func(name string, l Expr, r Expr) BooleanCmpExpr {
-		return BooleanCmpExpr{
-			baseBinOpImpl: baseBinOpImpl{
-				name: name,
-				l:    l,
-				r:    r,
-			},
-			op: op,
-		}
+func (b BinaryOpMath) String() string {
+	switch b {
+	case BinaryOpAdd:
+		return "+"
+	case BinaryOpSubtract:
+		return "-"
+	case BinaryOpMultiply:
+		return "*"
+	case BinaryOpDivide:
+		return "/"
+	case BinaryOpModulo:
+		return "%"
+	default:
+		return "unknown"
 	}
 }
 
-// BooleanSetExpr represents a set operation between two boolean expressions
-type BooleanSetExpr struct {
-	baseBinOpImpl
-	op BinaryOpSet
-}
+// BinaryOpCmp represents comparison binary operations
+type BinaryOpCmp int
 
-func (b BooleanSetExpr) Op() string {
-	return string(b.op)
-}
+const (
+	BinaryOpCmpInvalid BinaryOpCmp = iota
+	// BinaryOpEq represents equality comparison (==)
+	BinaryOpEq
+	// BinaryOpNeq represents inequality comparison (!=)
+	BinaryOpNeq
+	// BinaryOpLt represents less than comparison (<)
+	BinaryOpLt
+	// BinaryOpLte represents less than or equal comparison (<=)
+	BinaryOpLte
+	// BinaryOpGt represents greater than comparison (>)
+	BinaryOpGt
+	// BinaryOpGte represents greater than or equal comparison (>=)
+	BinaryOpGte
+)
 
-// newBinarySetExprConstructor creates a constructor function for binary set expressions
-func newBinarySetExprConstructor(op BinaryOpSet) func(name string, l Expr, r Expr) BooleanSetExpr {
-	return func(name string, l Expr, r Expr) BooleanSetExpr {
-		return BooleanSetExpr{
-			baseBinOpImpl: baseBinOpImpl{
-				name: name,
-				l:    l,
-				r:    r,
-			},
-			op: op,
-		}
+func (b BinaryOpCmp) String() string {
+	switch b {
+	case BinaryOpEq:
+		return "=="
+	case BinaryOpNeq:
+		return "!="
+	case BinaryOpLt:
+		return "<"
+	case BinaryOpLte:
+		return "<="
+	case BinaryOpGt:
+		return ">"
+	case BinaryOpGte:
+		return ">="
+	default:
+		return UNKNOWN
 	}
 }
+
+// BinaryOpSet represents set operations between boolean expressions
+type BinaryOpSet int
+
+const (
+	BinaryOpSetInvalid BinaryOpSet = iota
+	// BinaryOpAnd represents logical AND operation
+	BinaryOpAnd
+	// BinaryOpOr represents logical OR operation
+	BinaryOpOr
+	// BinaryOpNot represents logical NOT operation (also known as "unless")
+	BinaryOpNot
+	// BinaryOpXor represents logical XOR operation
+	BinaryOpXor
+)
+
+func (b BinaryOpSet) String() string {
+	switch b {
+	case BinaryOpAnd:
+		return "and"
+	case BinaryOpOr:
+		return "or"
+	case BinaryOpNot:
+		return "not"
+	case BinaryOpXor:
+		return "xor"
+	default:
+		return UNKNOWN
+	}
+}
+
+func newBinOpConstructor(t BinOpType, op int) func(name string, l Expr, r Expr) Expr {
+	return func(name string, l Expr, r Expr) Expr {
+		binop := BinOpExpr{
+			name: name,
+			ty:   t,
+			op:   op,
+			l:    l,
+			r:    r,
+		}
+		return NewBinOpExpr(binop)
+	}
+}
+
+func newBinOpSetConstructor(op BinaryOpSet) func(name string, l Expr, r Expr) Expr {
+	return newBinOpConstructor(BinOpTypeSet, int(op))
+}
+
+func newBinOpCmpConstructor(op BinaryOpCmp) func(name string, l Expr, r Expr) Expr {
+	return newBinOpConstructor(BinOpTypeCmp, int(op))
+}
+
+func newBinOpMathConstructor(op BinaryOpMath) func(name string, l Expr, r Expr) Expr {
+	return newBinOpConstructor(BinOpTypeMath, int(op))
+}
+
+var (
+	// And creates a logical AND expression
+	And = newBinOpSetConstructor(BinaryOpAnd)
+	// Or creates a logical OR expression
+	Or = newBinOpSetConstructor(BinaryOpOr)
+	// Not creates a logical NOT expression
+	Not = newBinOpSetConstructor(BinaryOpNot)
+	// Xor creates a logical XOR expression
+	Xor = newBinOpSetConstructor(BinaryOpXor)
+)
+
+var (
+	// Eq creates an equality comparison expression
+	Eq = newBinOpCmpConstructor(BinaryOpEq)
+	// Neq creates an inequality comparison expression
+	Neq = newBinOpCmpConstructor(BinaryOpNeq)
+	// Lt creates a less than comparison expression
+	Lt = newBinOpCmpConstructor(BinaryOpLt)
+	// Lte creates a less than or equal comparison expression
+	Lte = newBinOpCmpConstructor(BinaryOpLte)
+	// Gt creates a greater than comparison expression
+	Gt = newBinOpCmpConstructor(BinaryOpGt)
+	// Gte creates a greater than or equal comparison expression
+	Gte = newBinOpCmpConstructor(BinaryOpGte)
+)
+
+var (
+	// Add creates a binary addition expression
+	Add = newBinOpMathConstructor(BinaryOpAdd)
+	// Subtract creates a binary subtraction expression
+	Subtract = newBinOpMathConstructor(BinaryOpSubtract)
+	// Multiply creates a binary multiplication expression
+	Multiply = newBinOpMathConstructor(BinaryOpMultiply)
+	// Divide creates a binary division expression
+	Divide = newBinOpMathConstructor(BinaryOpDivide)
+	// Modulo creates a binary modulo expression
+	Modulo = newBinOpMathConstructor(BinaryOpModulo)
+)

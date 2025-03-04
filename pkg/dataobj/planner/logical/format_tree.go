@@ -38,19 +38,19 @@ func (t *treeFormatter) writeNode(node treeNode) *treeFormatter {
 func (t *treeFormatter) writePlan(ast Plan) {
 	switch ty := ast.Type(); ty {
 	case PlanTypeTable:
-		t.writeTablePlan(ast.(tableNode))
+		t.writeTablePlan(ast.Table())
 	case PlanTypeFilter:
-		t.writeFilterPlan(ast.(filterNode))
+		t.writeFilterPlan(ast.Filter())
 	case PlanTypeProjection:
-		t.writeProjectionPlan(ast.(projectionNode))
+		t.writeProjectionPlan(ast.Projection())
 	case PlanTypeAggregate:
-		t.writeAggregatePlan(ast.(aggregateNode))
+		t.writeAggregatePlan(ast.Aggregate())
 	default:
 		panic(fmt.Sprintf("unknown plan type: (signal: %v, type: %T)", ty, ast))
 	}
 }
 
-func (t *treeFormatter) writeTablePlan(ast tableNode) {
+func (t *treeFormatter) writeTablePlan(ast *MakeTable) {
 	n := treeNode{
 		Singletons: []string{"MakeTable"},
 		Tuples: []treeContentTuple{{
@@ -61,7 +61,7 @@ func (t *treeFormatter) writeTablePlan(ast tableNode) {
 	t.writeNode(n)
 }
 
-func (t *treeFormatter) writeFilterPlan(ast filterNode) {
+func (t *treeFormatter) writeFilterPlan(ast *Filter) {
 	n := treeNode{
 		Singletons: []string{"Filter"},
 		Tuples: []treeContentTuple{{
@@ -75,7 +75,7 @@ func (t *treeFormatter) writeFilterPlan(ast filterNode) {
 	nextFM.writePlan(ast.Child())
 }
 
-func (t *treeFormatter) writeProjectionPlan(ast projectionNode) {
+func (t *treeFormatter) writeProjectionPlan(ast *Projection) {
 	var tuples []treeContentTuple
 	for _, expr := range ast.ProjectExprs() {
 		field := expr.ToField(ast.Child())
@@ -97,7 +97,7 @@ func (t *treeFormatter) writeProjectionPlan(ast projectionNode) {
 	nextFM.writePlan(ast.Child())
 }
 
-func (t *treeFormatter) writeAggregatePlan(ast aggregateNode) {
+func (t *treeFormatter) writeAggregatePlan(ast *Aggregate) {
 	// Collect grouping names
 	var groupNames []string
 	for _, expr := range ast.GroupExprs() {
@@ -137,7 +137,7 @@ func (t *treeFormatter) writeAggregatePlan(ast aggregateNode) {
 	aggNode := treeNode{Singletons: []string{"AggregateExprs"}}
 	aggFM := nextFM.writeNode(aggNode)
 	for _, expr := range ast.AggregateExprs() {
-		aggFM.writeExpr(expr)
+		aggFM.writeAggregateExpr(&expr)
 	}
 
 	// format input plan
@@ -147,32 +147,32 @@ func (t *treeFormatter) writeAggregatePlan(ast aggregateNode) {
 func (t *treeFormatter) writeExpr(expr Expr) {
 	switch expr.Type() {
 	case ExprTypeColumn:
-		t.writeColumnExpr(expr.(columnExpr))
+		t.writeColumnExpr(expr.Column())
 	case ExprTypeLiteral:
-		t.writeLiteralExpr(expr.(literalExpr))
+		t.writeLiteralExpr(expr.Literal())
 	case ExprTypeBinaryOp:
-		t.writeBinaryOpExpr(expr.(binaryOpExpr))
+		t.writeBinaryOpExpr(expr.BinaryOp())
 	case ExprTypeAggregate:
-		t.writeAggregateExpr(expr.(aggregateExpr))
+		t.writeAggregateExpr(expr.Aggregate())
 	default:
 		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Type(), expr))
 	}
 }
 
-func (t *treeFormatter) writeColumnExpr(expr columnExpr) {
+func (t *treeFormatter) writeColumnExpr(expr *ColumnExpr) {
 	node := treeNode{
 		Singletons: []string{"Column", fmt.Sprintf("#%s", expr.ColumnName())},
 	}
 	t.writeNode(node)
 }
 
-func (t *treeFormatter) writeLiteralExpr(expr literalExpr) {
+func (t *treeFormatter) writeLiteralExpr(expr *LiteralExpr) {
 	node := treeNode{
 		Singletons: []string{"Literal"},
 		Tuples: []treeContentTuple{
 			{
 				Key:   "value",
-				Value: SingleContent(expr.Literal()),
+				Value: SingleContent(expr.ValueString()),
 			},
 			{
 				Key:   "type",
@@ -183,17 +183,23 @@ func (t *treeFormatter) writeLiteralExpr(expr literalExpr) {
 	t.writeNode(node)
 }
 
-func (t *treeFormatter) writeBinaryOpExpr(expr binaryOpExpr) {
-	wrapped := fmt.Sprintf("(%s)", expr.Op()) // for clarity
+func (t *treeFormatter) writeBinaryOpExpr(expr *BinOpExpr) {
+	wrapped := fmt.Sprintf("(%v)", expr.Op()) // for clarity
 	n := treeNode{
-		Singletons: []string{expr.Type().String()},
-		Tuples: []treeContentTuple{{
-			Key:   "op",
-			Value: SingleContent(wrapped),
-		}, {
-			Key:   "name",
-			Value: SingleContent(expr.Name()),
-		}},
+		Singletons: []string{ExprTypeBinaryOp.String()},
+		Tuples: []treeContentTuple{
+			{
+				Key:   "type",
+				Value: SingleContent(expr.Type().String()),
+			},
+			{
+				Key:   "op",
+				Value: SingleContent(wrapped),
+			}, {
+				Key:   "name",
+				Value: SingleContent(expr.Name()),
+			},
+		},
 	}
 
 	nextFM := t.writeNode(n)
@@ -201,7 +207,7 @@ func (t *treeFormatter) writeBinaryOpExpr(expr binaryOpExpr) {
 	nextFM.writeExpr(expr.Right())
 }
 
-func (t *treeFormatter) writeAggregateExpr(expr aggregateExpr) {
+func (t *treeFormatter) writeAggregateExpr(expr *AggregateExpr) {
 	n := treeNode{
 		Singletons: []string{"AggregateExpr"},
 		Tuples: []treeContentTuple{{
@@ -211,7 +217,7 @@ func (t *treeFormatter) writeAggregateExpr(expr aggregateExpr) {
 	}
 
 	nextFM := t.writeNode(n)
-	nextFM.writeExpr(expr.Expr())
+	nextFM.writeExpr(expr.SubExpr())
 }
 
 // Format builds the tree and returns the formatted string
