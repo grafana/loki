@@ -279,6 +279,8 @@ func TestParseRequest(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
+			streamResolver := newMockStreamResolver("fake", test.fakeLimits)
+
 			structuredMetadataBytesIngested.Reset()
 			bytesIngested.Reset()
 			linesIngested.Reset()
@@ -302,11 +304,7 @@ func TestParseRequest(t *testing.T) {
 				test.fakeLimits,
 				ParseLokiRequest,
 				tracker,
-				test.fakeLimits.PolicyFor,
-				&RetentionResolver{
-					RetentionPeriodFor: test.fakeLimits.RetentionPeriodFor,
-					RetentionHoursFor:  test.fakeLimits.RetentionHoursFor,
-				},
+				streamResolver,
 				false,
 			)
 
@@ -434,10 +432,8 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseLokiRequest, tracker, limits.PolicyFor, &RetentionResolver{
-			RetentionPeriodFor: limits.RetentionPeriodFor,
-			RetentionHoursFor:  limits.RetentionHoursFor,
-		}, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseLokiRequest, tracker, streamResolver, false)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -448,10 +444,8 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{enabled: true}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
-			RetentionPeriodFor: limits.RetentionPeriodFor,
-			RetentionHoursFor:  limits.RetentionHoursFor,
-		}, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -465,10 +459,8 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{"special"},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
-			RetentionPeriodFor: limits.RetentionPeriodFor,
-			RetentionHoursFor:  limits.RetentionHoursFor,
-		}, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -482,10 +474,8 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, limits.PolicyFor, &RetentionResolver{
-			RetentionPeriodFor: limits.RetentionPeriodFor,
-			RetentionHoursFor:  limits.RetentionHoursFor,
-		}, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
@@ -638,6 +628,36 @@ func (f *fakeLimits) DiscoverServiceName(_ string) []string {
 		"job",
 		"k8s_job_name",
 	}
+}
+
+type mockStreamResolver struct {
+	tenant string
+	limits *fakeLimits
+
+	policyForOverride func(lbs labels.Labels) string
+}
+
+func newMockStreamResolver(tenant string, limits *fakeLimits) *mockStreamResolver {
+	return &mockStreamResolver{
+		tenant: tenant,
+		limits: limits,
+	}
+}
+
+func (m mockStreamResolver) RetentionPeriodFor(lbs labels.Labels) time.Duration {
+	return m.limits.RetentionPeriodFor(m.tenant, lbs)
+}
+
+func (m mockStreamResolver) RetentionHoursFor(lbs labels.Labels) string {
+	return m.limits.RetentionHoursFor(m.tenant, lbs)
+}
+
+func (m mockStreamResolver) PolicyFor(lbs labels.Labels) string {
+	if m.policyForOverride != nil {
+		return m.policyForOverride(lbs)
+	}
+
+	return m.limits.PolicyFor(m.tenant, lbs)
 }
 
 type MockCustomTracker struct {
