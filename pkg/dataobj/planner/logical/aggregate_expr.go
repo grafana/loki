@@ -1,4 +1,3 @@
-// Package logical implements logical query plan operations and expressions
 package logical
 
 import (
@@ -6,7 +5,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
 )
 
-// AggregateOp represents the type of aggregation operation to perform
+// AggregateOp represents the type of aggregation operation to perform.
+// It is a string-based enum that identifies different aggregation functions
+// that can be applied to expressions.
 type AggregateOp string
 
 const (
@@ -36,7 +37,9 @@ var (
 	Count = newAggregateExprConstructor(AggregateOpCount)
 )
 
-// AggregateExpr represents an aggregation operation on an expression
+// AggregateExpr represents an aggregation operation on an expression.
+// It encapsulates the operation to perform (sum, avg, etc.), the expression
+// to aggregate, and a name for the result.
 type AggregateExpr struct {
 	// name is the identifier for this aggregation
 	name string
@@ -46,7 +49,9 @@ type AggregateExpr struct {
 	expr Expr
 }
 
-// newAggregateExprConstructor creates a constructor function for a specific aggregate operation
+// newAggregateExprConstructor creates a constructor function for a specific aggregate operation.
+// This is a higher-order function that returns a function for creating aggregate expressions
+// with a specific operation type.
 func newAggregateExprConstructor(op AggregateOp) func(name string, expr Expr) AggregateExpr {
 	return func(name string, expr Expr) AggregateExpr {
 		return AggregateExpr{
@@ -57,24 +62,33 @@ func newAggregateExprConstructor(op AggregateOp) func(name string, expr Expr) Ag
 	}
 }
 
-// Type implements the Expr interface
+// Type returns the type of the expression.
+// For aggregate expressions, this is always ExprTypeAggregate.
 func (a AggregateExpr) Type() ExprType {
 	return ExprTypeAggregate
 }
 
+// Name returns the name of the aggregation.
+// This is used as the column name in the output schema.
 func (a AggregateExpr) Name() string {
 	return a.name
 }
 
+// Op returns the aggregation operation.
+// This identifies which aggregation function to apply.
 func (a AggregateExpr) Op() AggregateOp {
 	return a.op
 }
 
+// SubExpr returns the expression being aggregated.
+// This is the input to the aggregation function.
 func (a AggregateExpr) SubExpr() Expr {
 	return a.expr
 }
 
-// ToField converts the aggregation expression to a column schema
+// ToField converts the aggregation expression to a column schema.
+// It determines the output type based on the input expression and
+// the aggregation operation.
 func (a AggregateExpr) ToField(p Plan) schema.ColumnSchema {
 	// Get the input field schema
 
@@ -85,6 +99,10 @@ func (a AggregateExpr) ToField(p Plan) schema.ColumnSchema {
 	}
 }
 
+// determineAggregationTypeFromFieldType calculates the output type of an aggregation
+// based on the input field type and the aggregation operation.
+// Currently, this is a placeholder that always returns int64, but it should be
+// implemented to handle different input types and operations correctly.
 func determineAggregationTypeFromFieldType(_ datasetmd.ValueType, _ AggregateOp) datasetmd.ValueType {
 	// TODO: implement
 	return datasetmd.VALUE_TYPE_INT64

@@ -1,4 +1,3 @@
-// Package logical implements logical query plan operations and expressions
 package logical
 
 import (
@@ -24,17 +23,21 @@ Key components:
    - Name: Returns the name of the binary operation.
 */
 
+// UNKNOWN is a constant used for string representation of unknown operation types
 const UNKNOWN = "unknown"
 
+// BinOpType is an enum representing the category of binary operation.
+// It allows for grouping similar operations together for type-safe handling.
 type BinOpType int
 
 const (
-	BinOpTypeInvalid BinOpType = iota
-	BinOpTypeMath
-	BinOpTypeCmp
-	BinOpTypeSet
+	BinOpTypeInvalid BinOpType = iota // Invalid or uninitialized binary operation
+	BinOpTypeMath                     // Mathematical operations (+, -, *, /, %)
+	BinOpTypeCmp                      // Comparison operations (==, !=, <, <=, >, >=)
+	BinOpTypeSet                      // Set operations (AND, OR, NOT, XOR)
 )
 
+// String returns a human-readable representation of the binary operation type.
 func (t BinOpType) String() string {
 	switch t {
 	case BinOpTypeMath:
@@ -48,6 +51,8 @@ func (t BinOpType) String() string {
 	}
 }
 
+// BinOpExpr represents a binary operation expression in the query plan.
+// It combines two expressions with an operation to produce a result.
 type BinOpExpr struct {
 	// name is the identifier for this binary operation
 	name string
@@ -61,6 +66,9 @@ type BinOpExpr struct {
 	r Expr
 }
 
+// ToField converts the binary operation to a column schema.
+// The name of the column is the name of the binary operation,
+// and the type is derived from the left operand.
 func (b BinOpExpr) ToField(p Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: b.name,
@@ -68,22 +76,28 @@ func (b BinOpExpr) ToField(p Plan) schema.ColumnSchema {
 	}
 }
 
+// Type returns the type of the binary operation.
 func (b BinOpExpr) Type() BinOpType {
 	return b.ty
 }
 
+// Name returns the name of the binary operation.
 func (b BinOpExpr) Name() string {
 	return b.name
 }
 
+// Left returns the left operand of the binary operation.
 func (b BinOpExpr) Left() Expr {
 	return b.l
 }
 
+// Right returns the right operand of the binary operation.
 func (b BinOpExpr) Right() Expr {
 	return b.r
 }
 
+// Op returns a string representation of the binary operation.
+// It delegates to the appropriate type-specific operation based on the operation type.
 func (b BinOpExpr) Op() fmt.Stringer {
 	switch b.ty {
 	case BinOpTypeMath:
@@ -114,6 +128,7 @@ const (
 	BinaryOpModulo
 )
 
+// String returns a human-readable representation of the mathematical operation.
 func (b BinaryOpMath) String() string {
 	switch b {
 	case BinaryOpAdd:
@@ -150,6 +165,7 @@ const (
 	BinaryOpGte
 )
 
+// String returns a human-readable representation of the comparison operation.
 func (b BinaryOpCmp) String() string {
 	switch b {
 	case BinaryOpEq:
@@ -184,6 +200,7 @@ const (
 	BinaryOpXor
 )
 
+// String returns a human-readable representation of the set operation.
 func (b BinaryOpSet) String() string {
 	switch b {
 	case BinaryOpAnd:
@@ -199,6 +216,8 @@ func (b BinaryOpSet) String() string {
 	}
 }
 
+// newBinOpConstructor creates a constructor function for binary operations of a specific type.
+// This is a higher-order function that returns a function for creating binary operations.
 func newBinOpConstructor(t BinOpType, op int) func(name string, l Expr, r Expr) Expr {
 	return func(name string, l Expr, r Expr) Expr {
 		binop := BinOpExpr{
@@ -212,14 +231,17 @@ func newBinOpConstructor(t BinOpType, op int) func(name string, l Expr, r Expr) 
 	}
 }
 
+// newBinOpSetConstructor creates a constructor function for set operations.
 func newBinOpSetConstructor(op BinaryOpSet) func(name string, l Expr, r Expr) Expr {
 	return newBinOpConstructor(BinOpTypeSet, int(op))
 }
 
+// newBinOpCmpConstructor creates a constructor function for comparison operations.
 func newBinOpCmpConstructor(op BinaryOpCmp) func(name string, l Expr, r Expr) Expr {
 	return newBinOpConstructor(BinOpTypeCmp, int(op))
 }
 
+// newBinOpMathConstructor creates a constructor function for mathematical operations.
 func newBinOpMathConstructor(op BinaryOpMath) func(name string, l Expr, r Expr) Expr {
 	return newBinOpConstructor(BinOpTypeMath, int(op))
 }

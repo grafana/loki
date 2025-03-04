@@ -6,7 +6,8 @@ import (
 
 // Aggregate represents a plan node that performs aggregation operations.
 // The output schema is organized with grouping columns followed by aggregate expressions.
-// It often needs to be wrapped in a projection to achieve the desired column ordering.
+// It corresponds to the GROUP BY clause in SQL and is used to compute aggregate
+// functions like SUM, AVG, MIN, MAX, and COUNT over groups of rows.
 type Aggregate struct {
 	// input is the child plan node providing data to aggregate
 	input Plan
@@ -31,6 +32,8 @@ func newAggregate(input Plan, groupExprs []Expr, aggExprs []AggregateExpr) *Aggr
 
 // Schema returns the schema of the data produced by this aggregate.
 // The schema consists of group-by expressions followed by aggregate expressions.
+// This ordering is important for downstream operations that expect group columns
+// to come before aggregate columns.
 func (a *Aggregate) Schema() schema.Schema {
 	var columns []schema.ColumnSchema
 
@@ -52,17 +55,20 @@ func (a *Aggregate) Type() PlanType {
 	return PlanTypeAggregate
 }
 
-// GroupExprs implements the aggregateNode interface
+// GroupExprs returns the list of expressions to group by.
+// These expressions define the grouping keys for the aggregation.
 func (a *Aggregate) GroupExprs() []Expr {
 	return a.groupExprs
 }
 
-// AggregateExprs implements the aggregateNode interface
+// AggregateExprs returns the list of aggregate expressions to compute.
+// These expressions define the aggregate functions to apply to each group.
 func (a *Aggregate) AggregateExprs() []AggregateExpr {
 	return a.aggExprs
 }
 
-// Child implements the aggregateNode interface
+// Child returns the input plan.
+// This is a convenience method for accessing the child plan.
 func (a *Aggregate) Child() Plan {
 	return a.input
 }
