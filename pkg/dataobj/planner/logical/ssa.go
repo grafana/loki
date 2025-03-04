@@ -107,6 +107,8 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 		return b.processAggregatePlan(plan.Aggregate())
 	case PlanTypeLimit:
 		return b.processLimitPlan(plan.Limit())
+	case PlanTypeSort:
+		return b.processSortPlan(plan.Sort())
 	default:
 		return 0, fmt.Errorf("unsupported plan type: %v", plan.Type())
 	}
@@ -417,6 +419,56 @@ func (b *ssaBuilder) processLimitPlan(plan *Limit) (int, error) {
 		Tuples:     tuples,
 		References: []int{inputID},
 	})
+	return id, nil
+}
+
+// processSortPlan processes a sort plan and returns the ID of the resulting SSA node.
+// This converts a Sort logical plan node to its SSA representation.
+//
+// The SSA node for a Sort plan has the following format:
+//
+//	%ID = Sort [expr=X, direction=Y, nulls=Z]
+//
+// Where X is the name of the sort expression, Y is the sort direction, and Z is the nulls position.
+// The Sort node references its input plan and sort expression as dependencies.
+func (b *ssaBuilder) processSortPlan(plan *Sort) (int, error) {
+	// Process the child plan first
+	childID, err := b.processPlan(plan.Child())
+	if err != nil {
+		return 0, err
+	}
+
+	// Process the sort expression
+	exprID, err := b.processExpr(plan.Expr().Expr(), plan.Child())
+	if err != nil {
+		return 0, err
+	}
+
+	// Create direction and nulls position properties
+	direction := "asc"
+	if !plan.Expr().Asc() {
+		direction = "desc"
+	}
+
+	nullsPosition := "last"
+	if plan.Expr().NullsFirst() {
+		nullsPosition = "first"
+	}
+
+	// Create the Sort node
+	id := b.getID()
+	node := SSANode{
+		ID:       id,
+		NodeType: "Sort",
+		Tuples: []nodeProperty{
+			{Key: "expr", Value: plan.Expr().Name()},
+			{Key: "direction", Value: direction},
+			{Key: "nulls", Value: nullsPosition},
+		},
+		References: []int{exprID, childID},
+	}
+
+	b.nodes = append(b.nodes, node)
 	return id, nil
 }
 

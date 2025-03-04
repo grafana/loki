@@ -21,6 +21,7 @@ const (
 	PlanTypeProjection                 // Represents a projection operation
 	PlanTypeAggregate                  // Represents an aggregation operation
 	PlanTypeLimit                      // Represents a limit operation
+	PlanTypeSort                       // Represents a sort operation
 )
 
 // String returns a string representation of the plan type.
@@ -39,8 +40,10 @@ func (t PlanType) String() string {
 		return "Aggregate"
 	case PlanTypeLimit:
 		return "Limit"
+	case PlanTypeSort:
+		return "Sort"
 	default:
-		return UNKNOWN
+		return "Unknown"
 	}
 }
 
@@ -75,6 +78,8 @@ func (p Plan) Schema() schema.Schema {
 		return p.val.(*Aggregate).Schema()
 	case PlanTypeLimit:
 		return p.val.(*Limit).Schema()
+	case PlanTypeSort:
+		return p.val.(*Sort).Schema()
 	default:
 		panic(fmt.Sprintf("unknown plan type: %v", p.ty))
 	}
@@ -125,6 +130,15 @@ func (p Plan) Limit() *Limit {
 	return p.val.(*Limit)
 }
 
+// Sort returns the concrete sort plan if this is a sort plan.
+// Panics if this is not a sort plan.
+func (p Plan) Sort() *Sort {
+	if p.ty != PlanTypeSort {
+		panic(fmt.Sprintf("not a sort plan: %v", p.ty))
+	}
+	return p.val.(*Sort)
+}
+
 // newPlan creates a new plan with the given type and value.
 // This is a helper function for creating plans of different types.
 func newPlan(ty PlanType, val any) Plan {
@@ -164,4 +178,10 @@ func NewAggregate(input Plan, groupExprs []Expr, aggExprs []AggregateExpr) Plan 
 // If skip is 0, no rows are skipped. If fetch is 0, all rows are returned after applying skip.
 func NewLimit(input Plan, skip uint64, fetch uint64) Plan {
 	return newPlan(PlanTypeLimit, newLimit(input, skip, fetch))
+}
+
+// NewSort creates a new sort plan.
+// This sorts the rows from the input plan based on the provided sort expression.
+func NewSort(input Plan, expr SortExpr) Plan {
+	return newPlan(PlanTypeSort, newSort(input, expr))
 }

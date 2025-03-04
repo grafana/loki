@@ -135,3 +135,56 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 		require.Equal(t, strings.TrimSpace(line), strings.TrimSpace(ssaLines[i]), fmt.Sprintf("Mismatch at line %d", i+1))
 	}
 }
+
+func TestConvertSortQueryToSSA(t *testing.T) {
+	// Build a query plan with sorting:
+	// SELECT id, name, age FROM users WHERE age > 21 ORDER BY age ASC, name DESC
+	ds := &testDataSource{
+		name: "users",
+		schema: schema.Schema{
+			Columns: []schema.ColumnSchema{
+				{Name: "id", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "name", Type: datasetmd.VALUE_TYPE_STRING},
+				{Name: "age", Type: datasetmd.VALUE_TYPE_UINT64},
+			},
+		},
+	}
+
+	scan := NewScan(ds.Name(), ds.Schema())
+	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	proj := NewProjection(filter, []Expr{Col("id"), Col("name"), Col("age")})
+
+	// Sort by age ascending, nulls last
+	sortByAge := NewSort(proj, NewSortExpr("sort_by_age", Col("age"), true, false))
+
+	ssa, err := ConvertToSSA(sortByAge)
+	require.NoError(t, err)
+
+	t.Logf("SSA Form:\n%s", ssa.Format())
+
+	// Verify the structure of the SSA form
+	nodes := ssa.Nodes()
+	require.NotEmpty(t, nodes)
+
+	// The last node should be the Sort node
+	lastNodeID := len(ssa.nodes) - 1
+	lastNode := ssa.nodes[lastNodeID]
+	require.Equal(t, "Sort", lastNode.NodeType)
+
+	// Verify the properties of the Sort node
+	var exprName, direction, nulls string
+	for _, tuple := range lastNode.Tuples {
+		switch tuple.Key {
+		case "expr":
+			exprName = tuple.Value
+		case "direction":
+			direction = tuple.Value
+		case "nulls":
+			nulls = tuple.Value
+		}
+	}
+
+	require.Equal(t, "sort_by_age", exprName)
+	require.Equal(t, "asc", direction)
+	require.Equal(t, "last", nulls)
+}

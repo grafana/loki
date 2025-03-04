@@ -99,3 +99,28 @@ func (df *DataFrame) LogicalPlan() Plan {
 func (df *DataFrame) ToSSA() (*SSAForm, error) {
 	return ConvertToSSA(df.plan)
 }
+
+// Sort applies a sort operation to the DataFrame.
+// It creates a new DataFrame with a sort plan that orders rows from the
+// input DataFrame based on the specified sort expression.
+// This corresponds to the ORDER BY clause in SQL.
+//
+// Parameters:
+//   - expr: The sort expression specifying the column to sort by, sort direction,
+//     and NULL handling.
+//
+// Example usage:
+//
+//	// Sort by age in ascending order, NULLs last
+//	df = df.Sort(NewSortExpr("sort_by_age", Col("age"), true, false))
+//
+//	// Sort by name in descending order, NULLs first
+//	df = df.Sort(NewSortExpr("sort_by_name", Col("name"), false, true))
+//
+// The Sort operation is typically applied after filtering and projection,
+// but before limiting the results.
+func (df *DataFrame) Sort(expr SortExpr) *DataFrame {
+	return &DataFrame{
+		plan: NewSort(df.plan, expr),
+	}
+}

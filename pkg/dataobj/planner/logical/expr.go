@@ -17,6 +17,7 @@ const (
 	ExprTypeLiteral            // Represents a literal value
 	ExprTypeBinaryOp           // Represents a binary operation (e.g., a + b)
 	ExprTypeAggregate          // Represents an aggregate function (e.g., SUM(a))
+	ExprTypeSort               // Represents a sort expression
 )
 
 func (t ExprType) String() string {
@@ -29,6 +30,8 @@ func (t ExprType) String() string {
 		return "BinaryOp"
 	case ExprTypeAggregate:
 		return "Aggregate"
+	case ExprTypeSort:
+		return "Sort"
 	default:
 		return "Unknown"
 	}
@@ -116,4 +119,11 @@ func (e Expr) Aggregate() *AggregateExpr {
 		panic(fmt.Sprintf("expression is not an aggregate: %d", e.ty))
 	}
 	return e.val.(*AggregateExpr)
+}
+
+func (e Expr) Sort() *SortExpr {
+	if e.ty != ExprTypeSort {
+		panic(fmt.Sprintf("expression is not a sort: %d", e.ty))
+	}
+	return e.val.(*SortExpr)
 }

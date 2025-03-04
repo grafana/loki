@@ -49,6 +49,8 @@ func (t *treeFormatter) writePlan(ast Plan) {
 		t.writeAggregatePlan(ast.Aggregate())
 	case PlanTypeLimit:
 		t.writeLimitPlan(ast.Limit())
+	case PlanTypeSort:
+		t.writeSortPlan(ast.Sort())
 	default:
 		panic(fmt.Sprintf("unknown plan type: %v", ast.Type()))
 	}
@@ -176,6 +178,40 @@ func (t *treeFormatter) writeLimitPlan(ast *Limit) {
 	}
 
 	nextFM := t.writeNode(n)
+	nextFM.writePlan(ast.Child())
+}
+
+func (t *treeFormatter) writeSortPlan(ast *Sort) {
+	direction := "asc"
+	if !ast.Expr().Asc() {
+		direction = "desc"
+	}
+
+	nullsPosition := "last"
+	if ast.Expr().NullsFirst() {
+		nullsPosition = "first"
+	}
+
+	n := treeNode{
+		Singletons: []string{"Sort"},
+		Tuples: []treeContentTuple{
+			{
+				Key:   "expr",
+				Value: SingleContent(ast.Expr().Name()),
+			},
+			{
+				Key:   "direction",
+				Value: SingleContent(direction),
+			},
+			{
+				Key:   "nulls",
+				Value: SingleContent(nullsPosition),
+			},
+		},
+	}
+
+	nextFM := t.writeNode(n)
+	nextFM.writeExpr(ast.Expr().Expr())
 	nextFM.writePlan(ast.Child())
 }
 
