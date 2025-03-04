@@ -335,7 +335,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             123,
-				LineSize:               1000,
+				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
 			},
 			assignedPartitions: map[int32]int64{
@@ -357,7 +357,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 1,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             456,
-				LineSize:               2000,
+				EntriesSize:            2000,
 				StructuredMetadataSize: 1000,
 			},
 			assignedPartitions: map[int32]int64{
@@ -389,7 +389,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             123,
-				LineSize:               3000,
+				EntriesSize:            3000,
 				StructuredMetadataSize: 1500,
 			},
 			assignedPartitions: map[int32]int64{
@@ -417,7 +417,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             123,
-				LineSize:               4000,
+				EntriesSize:            4000,
 				StructuredMetadataSize: 2000,
 			},
 			assignedPartitions: map[int32]int64{
@@ -446,7 +446,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             789,
-				LineSize:               5000,
+				EntriesSize:            5000,
 				StructuredMetadataSize: 0,
 			},
 			assignedPartitions: map[int32]int64{
@@ -463,12 +463,12 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:      "zero line size",
+			name:      "zero entries size",
 			tenant:    "tenant1",
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             999,
-				LineSize:               0,
+				EntriesSize:            0,
 				StructuredMetadataSize: 3000,
 			},
 			assignedPartitions: map[int32]int64{
@@ -490,7 +490,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			partition: 0,
 			metadata: &logproto.StreamMetadata{
 				StreamHash:             123,
-				LineSize:               10000,
+				EntriesSize:            10000,
 				StructuredMetadataSize: 5000,
 			},
 			assignedPartitions: map[int32]int64{

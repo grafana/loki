@@ -57,7 +57,7 @@ message StreamRatesResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
-  uint64 lineSize = 2;
+  uint64 entriesSize = 2;
   uint64 structuredMetadataSize = 3;
 }
 

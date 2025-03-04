@@ -30,7 +30,7 @@ const (
 	RejectedStreamReasonRateLimited = "rate_limited"
 )
 
-// Limits is the interface of the limits confgiration
+// Limits is the interface of the limits configuration
 // builder to be passed to the frontend service.
 type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
@@ -291,12 +291,9 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
 
 		// Count rejections by reason
-		rateLimitedCount := 0
 		exceedsLimitCount := 0
 		for _, rejected := range rejectedStreams {
-			if rejected.Reason == RejectedStreamReasonRateLimited {
-				rateLimitedCount++
-			} else if rejected.Reason == RejectedStreamReasonExceedsGlobalLimit {
+			if rejected.Reason == RejectedStreamReasonExceedsGlobalLimit {
 				exceedsLimitCount++
 			}
 		}
