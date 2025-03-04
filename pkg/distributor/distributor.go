@@ -777,16 +777,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
 func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, policy string) (bool, []string) {
 	perPolicyEnforcedLabels := d.validator.Limits.PolicyEnforcedLabels(tenantID, policy)
-	globalEnforcedLabels := d.validator.Limits.EnforcedLabels(tenantID)
+	tenantEnforcedLabels := d.validator.Limits.EnforcedLabels(tenantID)
 
-	requiredLbs := append(globalEnforcedLabels, perPolicyEnforcedLabels...)
+	requiredLbs := append(tenantEnforcedLabels, perPolicyEnforcedLabels...)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.
 		return false, []string{}
 	}
 
 	// Use a map to deduplicate the required labels. Duplicates may happen if the same label is configured
-	// in both global and per-policy enforced labels.
+	// in both the per-tenant and per-policy enforced labels.
 	seen := make(map[string]struct{})
 	missingLbs := []string{}
 
