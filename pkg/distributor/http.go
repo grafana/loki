@@ -40,14 +40,12 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
-	// Create a request-scoped policy resolver that will ensure consistent policy and retention resolution
+	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
-	// This is used to ensure consistent policy and retention resolution across all parsers for a given HTTP request.
-	requestPolicyResolver := d.CreateRequestPolicyResolver()
-	retentionResolver := d.CreateRequestRetentionResolver()
+	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.validator.Limits, pushRequestParser, d.usageTracker, requestPolicyResolver, &retentionResolver, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams)
 	if err != nil {
 		if !errors.Is(err, push.ErrAllLogsFiltered) {
 			if d.tenantConfigs.LogPushRequest(tenantID) {
@@ -83,7 +81,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		)
 	}
 
-	_, err = d.PushWithResolvers(r.Context(), req, requestPolicyResolver, retentionResolver)
+	_, err = d.Push(r.Context(), req)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

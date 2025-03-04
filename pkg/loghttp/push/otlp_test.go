@@ -561,6 +561,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := NewPushStats()
 			tracker := NewMockTracker()
+			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+			streamResolver.policyForOverride = func(lbs labels.Labels) string {
+				if lbs.Get("service_name") == "service-1" {
+					return "service-1-policy"
+				}
+				return "others"
+			}
 
 			pushReq := otlpToLokiPushRequest(
 				context.Background(),
@@ -572,20 +579,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				false,
 				log.NewNopLogger(),
-				func(_ string, lbs labels.Labels) string {
-					if lbs.Get("service_name") == "service-1" {
-						return "service-1-policy"
-					}
-					return "others"
-				},
-				&RetentionResolver{
-					RetentionPeriodFor: func(_ string, _ labels.Labels) time.Duration {
-						return time.Hour
-					},
-					RetentionHoursFor: func(_ string, _ labels.Labels) string {
-						return "1h"
-					},
-				},
+				streamResolver,
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)

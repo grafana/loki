@@ -455,12 +455,7 @@ func (p *pushTracker) doneWithResult(err error) {
 
 // Push a set of streams.
 // The returned error is the last one seen.
-// Old signature for backwards compatibility.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
-	return d.PushWithResolvers(ctx, req, d.CreateRequestPolicyResolver(), d.CreateRequestRetentionResolver())
-}
-
-func (d *Distributor) PushWithResolvers(ctx context.Context, req *logproto.PushRequest, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -475,6 +470,10 @@ func (d *Distributor) PushWithResolvers(ctx context.Context, req *logproto.PushR
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
+
+	// For resolving stream policy and retention. This guarantees that the policy and retention configuration
+	// doesn't change throughout the request handling.
+	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger)
 
 	var validationErrors util.GroupedErrors
 
@@ -536,7 +535,7 @@ func (d *Distributor) PushWithResolvers(ctx context.Context, req *logproto.PushR
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver, retentionResolver)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -659,7 +658,7 @@ func (d *Distributor) PushWithResolvers(ctx context.Context, req *logproto.PushR
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, policyResolver, retentionResolver)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -808,8 +807,7 @@ func (d *Distributor) trackDiscardedData(
 	tenantID string,
 	validationMetrics validationMetrics,
 	reason string,
-	policyResolver push.PolicyResolver,
-	retentionResolver push.RetentionResolver,
+	streamResolver push.StreamResolver,
 ) {
 	for policy, retentionToStats := range validationMetrics.policyPushStats {
 		for retentionHours, stats := range retentionToStats {
@@ -820,7 +818,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, policyResolver, retentionResolver)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver)
 			if err != nil {
 				continue
 			}
@@ -1200,10 +1198,10 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, policyResolver push.PolicyResolver, retentionResolver push.RetentionResolver) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		retentionHours := retentionResolver.RetentionHoursFor(vContext.userID, val.ls)
-		policy := policyResolver(vContext.userID, val.ls)
+		retentionHours := streamResolver.RetentionHoursFor(val.ls)
+		policy := streamResolver.PolicyFor(val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1214,7 +1212,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := policyResolver(vContext.userID, ls)
+	policy := streamResolver.PolicyFor(ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
@@ -1311,17 +1309,48 @@ func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
 }
 
-// CreateRequestPolicyResolver creates a new policy resolver that's scoped to a single request
-// This is used to ensure consistent policy resolution across all parsers for a given HTTP request.
-func (d *Distributor) CreateRequestPolicyResolver() push.PolicyResolver {
-	requestPolicyResolver := NewRequestScopedPolicyResolver(d.validator.Limits, d.logger)
-	return requestPolicyResolver.AsPolicyResolver()
+type requestScopedStreamResolver struct {
+	userID               string
+	policyStreamMappings validation.PolicyStreamMapping
+	retention            *retention.TenantRetentionSnapshot
+
+	logger log.Logger
 }
 
-func (d *Distributor) CreateRequestRetentionResolver() push.RetentionResolver {
-	requestRetentionResolver := NewRequestScopedRetentionResolver(d.tenantsRetention)
-	return push.RetentionResolver{
-		RetentionPeriodFor: requestRetentionResolver.RetentionPeriodFor,
-		RetentionHoursFor:  requestRetentionResolver.RetentionHoursFor,
+func newRequestScopedStreamResolver(userID string, overrides Limits, logger log.Logger) *requestScopedStreamResolver {
+	return &requestScopedStreamResolver{
+		userID:               userID,
+		policyStreamMappings: overrides.PoliciesStreamMapping(userID),
+		retention:            retention.NewTenantRetentionSnapshot(overrides, userID),
+		logger:               logger,
 	}
+}
+
+func (r requestScopedStreamResolver) RetentionPeriodFor(lbs labels.Labels) time.Duration {
+	return r.retention.RetentionPeriodFor(lbs)
+}
+
+func (r requestScopedStreamResolver) RetentionHoursFor(lbs labels.Labels) string {
+	return r.retention.RetentionHoursFor(lbs)
+}
+
+func (r requestScopedStreamResolver) PolicyFor(lbs labels.Labels) string {
+	policies := r.policyStreamMappings.PolicyFor(lbs)
+
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(r.logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", r.userID,
+				"stream", lbs.String(),
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+				"insight", "true",
+			)
+		}
+	}
+
+	return policy
 }

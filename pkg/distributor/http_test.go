@@ -127,8 +127,7 @@ func (p *fakeParser) parseRequest(
 	_ *http.Request,
 	_ push.Limits,
 	_ push.UsageTracker,
-	_ push.PolicyResolver,
-	_ *push.RetentionResolver,
+	_ push.StreamResolver,
 	_ bool,
 	_ log.Logger,
 ) (*logproto.PushRequest, *push.Stats, error) {
