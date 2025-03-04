@@ -253,7 +253,8 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		uniqueStreamHashes = make(map[uint64]bool)
 	)
 
-	if !s.rateLimiter.AllowN(time.Now(), req.Tenant, tenantRate) {
+	tenantRateLimit := s.rateLimiter.Limit(time.Now(), req.Tenant)
+	if float64(tenantRate) > tenantRateLimit {
 		rateLimitedStreams := make([]*logproto.RejectedStream, 0, len(streamHashes))
 		for _, streamHash := range streamHashes {
 			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{
