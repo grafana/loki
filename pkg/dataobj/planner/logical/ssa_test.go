@@ -91,6 +91,9 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 		[]AggregateExpr{
 			Sum("total_sales", Col("sales")),
 		},
+	).Limit(
+		0,
+		10,
 	)
 
 	// Convert to SSA
@@ -117,6 +120,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 %11 = ColumnRef [name=sales, type=VALUE_TYPE_UINT64]
 %12 = AggregationExpr [name=total_sales, op=sum]
 %13 = AggregatePlan [aggregations=[%12], groupings=[%10]]
+%14 = Limit [Skip=0, Fetch=10]
 `
 	exp = strings.TrimSpace(exp)
 

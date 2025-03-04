@@ -37,6 +37,9 @@ func TestFormatSimpleQuery(t *testing.T) {
 
 	f := newTreeFormatter()
 
+	actual := "\n" + f.Format(proj)
+	t.Logf("Actual output:\n%s", actual)
+
 	expected := `
 Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
 ├── Column #id
@@ -47,7 +50,7 @@ Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
     │   └── Literal value=21 type=VALUE_TYPE_INT64
     └── MakeTable name=users`
 
-	require.Equal(t, expected, "\n"+f.Format(proj))
+	require.Equal(t, expected, actual)
 }
 
 func TestFormatDataFrameQuery(t *testing.T) {
@@ -78,26 +81,33 @@ func TestFormatDataFrameQuery(t *testing.T) {
 		[]AggregateExpr{
 			Sum("total_sales", Col("sales")),
 		},
+	).Limit(
+		0,
+		10,
 	)
 
 	f := newTreeFormatter()
 
-	expected := `
-Aggregate groupings=(region) aggregates=(total_sales)
-├── GroupExprs
-│   └── Column #region
-├── AggregateExprs
-│   └── AggregateExpr op=sum
-│       └── Column #sales
-└── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-    ├── Column #region
-    ├── Column #sales
-    ├── Column #year
-    └── Filter expr=year_2020
-        ├── BinaryOp type=cmp op=(==) name=year_2020
-        │   ├── Column #year
-        │   └── Literal value=2020 type=VALUE_TYPE_INT64
-        └── MakeTable name=orders`
+	actual := "\n" + f.Format(df.LogicalPlan())
+	t.Logf("Actual output:\n%s", actual)
 
-	require.Equal(t, expected, "\n"+f.Format(df.LogicalPlan()))
+	expected := `
+Limit offset=0 fetch=10
+└── Aggregate groupings=(region) aggregates=(total_sales)
+    ├── GroupExprs
+    │   └── Column #region
+    ├── AggregateExprs
+    │   └── AggregateExpr op=sum
+    │       └── Column #sales
+    └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
+        ├── Column #region
+        ├── Column #sales
+        ├── Column #year
+        └── Filter expr=year_2020
+            ├── BinaryOp type=cmp op=(==) name=year_2020
+            │   ├── Column #year
+            │   └── Literal value=2020 type=VALUE_TYPE_INT64
+            └── MakeTable name=orders`
+
+	require.Equal(t, expected, actual)
 }

@@ -49,6 +49,36 @@ func (df *DataFrame) Aggregate(groupBy []Expr, aggExprs []AggregateExpr) *DataFr
 	}
 }
 
+// Limit applies a row limit to the DataFrame.
+// It creates a new DataFrame with a limit plan that restricts the number of rows
+// returned, optionally with an offset to skip initial rows.
+// This corresponds to the LIMIT and OFFSET clauses in SQL.
+//
+// Parameters:
+//   - skip: Number of rows to skip before returning results (OFFSET in SQL).
+//     Use 0 to start from the first row.
+//   - fetch: Maximum number of rows to return after skipping (LIMIT in SQL).
+//     Use 0 to return all remaining rows.
+//
+// Example usage:
+//
+//	// Return the first 10 rows
+//	df = df.Limit(0, 10)
+//
+//	// Skip the first 20 rows and return the next 10
+//	df = df.Limit(20, 10)
+//
+//	// Skip the first 100 rows and return all remaining rows
+//	df = df.Limit(100, 0)
+//
+// The Limit operation is typically applied as the final step in a query,
+// after filtering, projection, and aggregation.
+func (df *DataFrame) Limit(skip uint64, fetch uint64) *DataFrame {
+	return &DataFrame{
+		plan: NewLimit(df.plan, skip, fetch),
+	}
+}
+
 // Schema returns the schema of the data that will be produced by this DataFrame.
 // This is useful for understanding the structure of the data that will result
 // from executing the query plan.

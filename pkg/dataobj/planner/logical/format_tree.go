@@ -35,8 +35,10 @@ func (t *treeFormatter) writeNode(node treeNode) *treeFormatter {
 	return child
 }
 
+// writePlan writes a plan node to the tree formatter.
+// It dispatches to the appropriate write method based on the plan type.
 func (t *treeFormatter) writePlan(ast Plan) {
-	switch ty := ast.Type(); ty {
+	switch ast.Type() {
 	case PlanTypeTable:
 		t.writeTablePlan(ast.Table())
 	case PlanTypeFilter:
@@ -45,8 +47,10 @@ func (t *treeFormatter) writePlan(ast Plan) {
 		t.writeProjectionPlan(ast.Projection())
 	case PlanTypeAggregate:
 		t.writeAggregatePlan(ast.Aggregate())
+	case PlanTypeLimit:
+		t.writeLimitPlan(ast.Limit())
 	default:
-		panic(fmt.Sprintf("unknown plan type: (signal: %v, type: %T)", ty, ast))
+		panic(fmt.Sprintf("unknown plan type: %v", ast.Type()))
 	}
 }
 
@@ -141,6 +145,37 @@ func (t *treeFormatter) writeAggregatePlan(ast *Aggregate) {
 	}
 
 	// format input plan
+	nextFM.writePlan(ast.Child())
+}
+
+// writeLimitPlan writes a limit plan node to the tree formatter.
+// It formats the limit plan with its skip and fetch values.
+//
+// The limit plan is represented in the tree as:
+//
+//	Limit offset=X fetch=Y
+//	└── [Child Plan]
+//
+// Where X is the number of rows to skip (offset) and Y is the maximum
+// number of rows to return (fetch). If offset is 0, no rows are skipped.
+// If fetch is 0, all rows are returned after applying the offset.
+func (t *treeFormatter) writeLimitPlan(ast *Limit) {
+
+	n := treeNode{
+		Singletons: []string{"Limit"},
+		Tuples: []treeContentTuple{
+			{
+				Key:   "offset",
+				Value: SingleContent(fmt.Sprintf("%d", ast.Skip())),
+			},
+			{
+				Key:   "fetch",
+				Value: SingleContent(fmt.Sprintf("%d", ast.Fetch())),
+			},
+		},
+	}
+
+	nextFM := t.writeNode(n)
 	nextFM.writePlan(ast.Child())
 }
 

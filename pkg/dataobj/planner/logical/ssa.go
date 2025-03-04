@@ -94,8 +94,7 @@ func (b *ssaBuilder) getID() int {
 	return id
 }
 
-// processPlan processes a plan node and returns its ID
-// It handles different plan types by delegating to specific processing methods
+// processPlan processes a logical plan and returns the ID of the resulting SSA node.
 func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 	switch plan.Type() {
 	case PlanTypeTable:
@@ -106,8 +105,10 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 		return b.processProjectionPlan(plan.Projection())
 	case PlanTypeAggregate:
 		return b.processAggregatePlan(plan.Aggregate())
+	case PlanTypeLimit:
+		return b.processLimitPlan(plan.Limit())
 	default:
-		return 0, fmt.Errorf("unknown plan type: %v", plan.Type())
+		return 0, fmt.Errorf("unsupported plan type: %v", plan.Type())
 	}
 }
 
@@ -374,6 +375,48 @@ func (b *ssaBuilder) processAggregateExpr(expr *AggregateExpr, parent Plan) (int
 	}
 
 	b.nodes = append(b.nodes, node)
+	return id, nil
+}
+
+// processLimitPlan processes a limit plan and returns the ID of the resulting SSA node.
+// This converts a Limit logical plan node to its SSA representation.
+//
+// The SSA node for a Limit plan has the following format:
+//
+//	%ID = Limit [Skip=X, Fetch=Y]
+//
+// Where X is the number of rows to skip and Y is the maximum number of rows to return.
+// The Limit node always includes both Skip and Fetch properties, even when they are zero.
+// This ensures consistent representation and allows for optimization in a separate step.
+//
+// The Limit node references its input plan as a dependency.
+func (b *ssaBuilder) processLimitPlan(plan *Limit) (int, error) {
+	// Process the input plan
+	inputID, err := b.processPlan(plan.Child())
+	if err != nil {
+		return 0, fmt.Errorf("failed to process limit input plan: %w", err)
+	}
+
+	// Create properties for the limit node
+	tuples := []nodeProperty{
+		{
+			Key:   "Skip",
+			Value: fmt.Sprintf("%d", plan.Skip()),
+		},
+		{
+			Key:   "Fetch",
+			Value: fmt.Sprintf("%d", plan.Fetch()),
+		},
+	}
+
+	// Create the limit node
+	id := b.getID()
+	b.nodes = append(b.nodes, SSANode{
+		ID:         id,
+		NodeType:   "Limit",
+		Tuples:     tuples,
+		References: []int{inputID},
+	})
 	return id, nil
 }
 
