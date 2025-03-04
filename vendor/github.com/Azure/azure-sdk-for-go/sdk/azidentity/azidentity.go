@@ -42,6 +42,8 @@ const (
 	developerSignOnClientID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
 	defaultSuffix           = "/.default"
 
+	scopeLogFmt = "%s.GetToken() acquired a token for scope %q"
+
 	traceNamespace      = "Microsoft.Entra"
 	traceOpGetToken     = "GetToken"
 	traceOpAuthenticate = "Authenticate"
@@ -53,8 +55,14 @@ var (
 	errInvalidTenantID = errors.New("invalid tenantID. You can locate your tenantID by following the instructions listed here: https://learn.microsoft.com/partner-center/find-ids-and-domain-names")
 )
 
-// tokenCachePersistenceOptions contains options for persistent token caching
-type tokenCachePersistenceOptions = internal.TokenCachePersistenceOptions
+// Cache represents a persistent cache that makes authentication data available across processes.
+// Construct one with [github.com/Azure/azure-sdk-for-go/sdk/azidentity/cache.New]. This package's
+// [persistent user authentication example] shows how to use a persistent cache to reuse user
+// logins across application runs. For service principal credential types such as
+// [ClientCertificateCredential], simply set the Cache field on the credential options.
+//
+// [persistent user authentication example]: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#example-package-PersistentUserAuthentication
+type Cache = internal.Cache
 
 // setAuthorityHost initializes the authority host for credentials. Precedence is:
 //  1. cloud.Configuration.ActiveDirectoryAuthorityHost value set by user
@@ -97,7 +105,16 @@ func resolveAdditionalTenants(tenants []string) []string {
 	return cp
 }
 
-// resolveTenant returns the correct tenant for a token request
+// resolveTenant returns the correct tenant for a token request, or "" when the calling credential doesn't
+// have an explicitly configured tenant and the caller didn't specify a tenant for the token request.
+//
+//   - defaultTenant: tenant set when constructing the credential, if any. "" is valid for credentials
+//     having an optional or implicit tenant such as dev tool and interactive user credentials. Those
+//     default to the tool's configured tenant or the user's home tenant, respectively.
+//   - specified: tenant specified for this token request i.e., TokenRequestOptions.TenantID. May be "".
+//   - credName: name of the calling credential type; for error messages
+//   - additionalTenants: optional allow list of tenants the credential may acquire tokens from in
+//     addition to defaultTenant i.e., the credential's AdditionallyAllowedTenants option
 func resolveTenant(defaultTenant, specified, credName string, additionalTenants []string) (string, error) {
 	if specified == "" || specified == defaultTenant {
 		return defaultTenant, nil
@@ -110,6 +127,17 @@ func resolveTenant(defaultTenant, specified, credName string, additionalTenants 
 	}
 	for _, t := range additionalTenants {
 		if t == "*" || t == specified {
+			return specified, nil
+		}
+	}
+	if len(additionalTenants) == 0 {
+		switch defaultTenant {
+		case "", organizationsTenantID:
+			// The application didn't specify a tenant or allow list when constructing the credential. Allow the
+			// tenant specified for this token request because we have nothing to compare it to (i.e., it vacuously
+			// satisfies the credential's configuration); don't know whether the application is multitenant; and
+			// don't want to return an error in the common case that the specified tenant matches the credential's
+			// default tenant determined elsewhere e.g., in some dev tool's configuration.
 			return specified, nil
 		}
 	}

@@ -94,11 +94,18 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 	return ""
 }
 
+// StreamResolver is a request-scoped interface that provides retention period and policy for a given stream.
+// The values returned by the resolver will not chance throught the handling of the request
+type StreamResolver interface {
+	RetentionPeriodFor(lbs labels.Labels) time.Duration
+	RetentionHoursFor(lbs labels.Labels) string
+	PolicyFor(lbs labels.Labels) string
+}
+
 type (
-	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
-	PolicyResolver       func(userID string, lbs labels.Labels) string
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -130,8 +137,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, policyResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
@@ -196,7 +203,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -306,14 +313,12 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			)
 		}
 
+		var totalBytesReceived int64
 		var retentionPeriod time.Duration
-		if tenantsRetention != nil {
-			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
-		}
-		totalBytesReceived := int64(0)
 		var policy string
-		if policyResolver != nil {
-			policy = policyResolver(userID, lbs)
+		if streamResolver != nil {
+			retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
+			policy = streamResolver.PolicyFor(lbs)
 		}
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
