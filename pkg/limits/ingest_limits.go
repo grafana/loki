@@ -540,50 +540,15 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get tenant and partitions from query parameters
 	params := r.URL.Query()
 	tenant := params.Get("tenant")
-	partitionsStr := params.Get("partitions")
-
-	var requestedPartitions []int32
-	if partitionsStr != "" {
-		// Split comma-separated partition list
-		partitionStrs := strings.Split(partitionsStr, ",")
-		requestedPartitions = make([]int32, 0, len(partitionStrs))
-
-		// Convert each partition string to int32
-		for _, p := range partitionStrs {
-			if val, err := strconv.ParseInt(strings.TrimSpace(p), 10, 32); err == nil {
-				requestedPartitions = append(requestedPartitions, int32(val))
-			}
-		}
-	}
-
-	partitions := s.metadata[tenant]
-
 	var (
 		activeStreams   uint64
 		rate            uint64
 		assignedStreams = make([]uint64, 0)
-		response        = make(map[string]tenantLimits)
+		response        tenantLimits
 	)
 
-	for _, requestedID := range requestedPartitions {
-		// Consider the recorded stream if it's partition
-		// is one of the partitions we are still assigned to.
-		assigned := false
-		for assignedID := range partitions {
-			if requestedID == assignedID {
-				assigned = true
-				break
-			}
-		}
-
-		if !assigned {
-			continue
-		}
-
-		// If the stream is written into a partition we are
-		// assigned to and has been seen within the window,
-		// it is an active stream.
-		for _, stream := range partitions[requestedID] {
+	for _, partitions := range s.metadata[tenant] {
+		for _, stream := range partitions {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
 				rate += stream.totalSize
@@ -593,7 +558,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if activeStreams > 0 || len(assignedStreams) > 0 {
-		response[tenant] = tenantLimits{
+		response = tenantLimits{
 			Tenant:          tenant,
 			ActiveStreams:   activeStreams,
 			AssignedStreams: assignedStreams,
