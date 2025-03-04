@@ -181,8 +181,9 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
+			record, err := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
 			if tt.expectErr {
+				require.Error(t, err)
 				require.Nil(t, record)
 				return
 			}

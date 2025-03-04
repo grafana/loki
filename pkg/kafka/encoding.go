@@ -197,10 +197,10 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic string, tenantID string, streamHash uint64) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic string, tenantID string, streamHash uint64) (*kgo.Record, error) {
 	// Validate stream hash
 	if streamHash == 0 {
-		return nil
+		return nil, fmt.Errorf("invalid stream hash '%d'", streamHash)
 	}
 
 	metadata := logproto.StreamMetadata{
@@ -210,9 +210,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 	// Encode the metadata into a byte slice
 	value, err := metadata.Marshal()
 	if err != nil {
-		// Since we're in a function that returns a *kgo.Record, we can't return an error.
-		// The best we can do is return nil which will fail later.
-		return nil
+		return nil, err
 	}
 
 	return &kgo.Record{
@@ -220,7 +218,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 		Value:     value,
 		Partition: partition,
 		Topic:     MetadataTopicFor(topic),
-	}
+	}, nil
 }
 
 // DecodeStreamMetadata decodes a Kafka record into a StreamMetadata.
