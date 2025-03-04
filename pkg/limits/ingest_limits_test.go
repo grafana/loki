@@ -558,3 +558,269 @@ func TestNewIngestLimits(t *testing.T) {
 	require.NotNil(t, s.metadata)
 	require.NotNil(t, s.lifecycler)
 }
+
+func TestIngestLimits_evictOldStreams(t *testing.T) {
+	tests := []struct {
+		name               string
+		initialMetadata    map[string]map[int32][]streamMetadata
+		windowSize         time.Duration
+		assignedPartitions map[int32]int64
+		expectedMetadata   map[string]map[int32][]streamMetadata
+		expectedEvictions  map[string]int
+	}{
+		{
+			name: "all streams active",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000},
+					},
+				},
+			},
+			expectedEvictions: map[string]int{
+				"tenant1": 0,
+			},
+		},
+		{
+			name: "all streams expired",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{},
+			expectedEvictions: map[string]int{
+				"tenant1": 2,
+			},
+		},
+		{
+			name: "mixed active and expired streams",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000},
+					},
+				},
+			},
+			expectedEvictions: map[string]int{
+				"tenant1": 1,
+			},
+		},
+		{
+			name: "multiple tenants with mixed streams",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+					},
+				},
+				"tenant2": {
+					0: []streamMetadata{
+						{hash: 3, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 3000},
+						{hash: 4, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 4000},
+					},
+				},
+				"tenant3": {
+					0: []streamMetadata{
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+					},
+				},
+				"tenant3": {
+					0: []streamMetadata{
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000},
+					},
+				},
+			},
+			expectedEvictions: map[string]int{
+				"tenant1": 1,
+				"tenant2": 2,
+				"tenant3": 0,
+			},
+		},
+		{
+			name: "multiple partitions with some empty after eviction",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+					},
+					1: []streamMetadata{
+						{hash: 3, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 3000},
+					},
+					2: []streamMetadata{
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+				1: time.Now().UnixNano(),
+				2: time.Now().UnixNano(),
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+					},
+					2: []streamMetadata{
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000},
+					},
+				},
+			},
+			expectedEvictions: map[string]int{
+				"tenant1": 2,
+			},
+		},
+		{
+			name: "unassigned partitions should still be evicted",
+			initialMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+					},
+					1: []streamMetadata{
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+					},
+				},
+			},
+			windowSize: time.Hour,
+			assignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+				// Partition 1 is not assigned
+			},
+			expectedMetadata: map[string]map[int32][]streamMetadata{
+				"tenant1": {
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000},
+					},
+				},
+			},
+			expectedEvictions: map[string]int{
+				"tenant1": 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a registry to capture metrics
+			reg := prometheus.NewRegistry()
+
+			// Create IngestLimits instance with mock data
+			s := &IngestLimits{
+				cfg: Config{
+					WindowSize: tt.windowSize,
+				},
+				logger:             log.NewNopLogger(),
+				metrics:            newMetrics(reg),
+				metadata:           deepCopyMetadata(tt.initialMetadata),
+				assingedPartitions: tt.assignedPartitions,
+			}
+
+			// Call evictOldStreams
+			s.evictOldStreams(context.Background())
+
+			// Verify metadata after eviction
+			require.Equal(t, len(tt.expectedMetadata), len(s.metadata), "number of tenants after eviction")
+
+			for tenant, expectedPartitions := range tt.expectedMetadata {
+				require.Contains(t, s.metadata, tenant, "tenant should exist after eviction")
+
+				actualPartitions := s.metadata[tenant]
+				require.Equal(t, len(expectedPartitions), len(actualPartitions),
+					"number of partitions for tenant %s after eviction", tenant)
+
+				for partitionID, expectedStreams := range expectedPartitions {
+					require.Contains(t, actualPartitions, partitionID,
+						"partition %d should exist for tenant %s after eviction", partitionID, tenant)
+
+					actualStreams := actualPartitions[partitionID]
+					require.Equal(t, len(expectedStreams), len(actualStreams),
+						"number of streams for tenant %s partition %d after eviction", tenant, partitionID)
+
+					// Check that all expected streams exist
+					// Note: We don't check exact lastSeenAt timestamps as they're generated at test time
+					streamMap := make(map[uint64]bool)
+					for _, stream := range actualStreams {
+						streamMap[stream.hash] = true
+					}
+
+					for _, expectedStream := range expectedStreams {
+						require.True(t, streamMap[expectedStream.hash],
+							"stream with hash %d should exist for tenant %s partition %d after eviction",
+							expectedStream.hash, tenant, partitionID)
+					}
+				}
+			}
+
+			// Verify that tenants not in expectedMetadata don't exist in actual metadata
+			for tenant := range tt.initialMetadata {
+				if _, exists := tt.expectedMetadata[tenant]; !exists {
+					require.NotContains(t, s.metadata, tenant,
+						"tenant %s should not exist after eviction", tenant)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to deep copy metadata map for testing
+func deepCopyMetadata(src map[string]map[int32][]streamMetadata) map[string]map[int32][]streamMetadata {
+	dst := make(map[string]map[int32][]streamMetadata)
+	for tenant, partitions := range src {
+		dst[tenant] = make(map[int32][]streamMetadata)
+		for partitionID, streams := range partitions {
+			dst[tenant][partitionID] = make([]streamMetadata, len(streams))
+			copy(dst[tenant][partitionID], streams)
+		}
+	}
+	return dst
+}

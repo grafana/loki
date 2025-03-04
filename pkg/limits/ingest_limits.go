@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -145,11 +144,9 @@ type IngestLimits struct {
 	metrics *metrics
 
 	// Track stream metadata
-	mtx      sync.RWMutex
-	metadata map[string]map[int32][]streamMetadata // tenant -> partitionID -> streamMetadata
-
-	// Track partition assignments
-	assingedPartitions map[int32]int64 // partitionID -> lastAssignedAt
+	mtx                sync.RWMutex
+	metadata           map[string]map[int32][]streamMetadata // tenant -> partitionID -> streamMetadata
+	assingedPartitions map[int32]int64                       // partitionID -> lastAssignedAt
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -295,8 +292,12 @@ func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
 			delete(s.assingedPartitions, partitionID)
 
 			// Remove the partition from the metadata map
-			for _, partitions := range s.metadata {
+			for tenant, partitions := range s.metadata {
 				delete(partitions, partitionID)
+				// Check if tenant has any partitions left after deletion
+				if len(partitions) == 0 {
+					delete(s.metadata, tenant)
+				}
 			}
 		}
 	}
@@ -410,13 +411,24 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 	for tenant, partitions := range s.metadata {
 		evicted := 0
 		for partitionID, streams := range partitions {
-			for i, stream := range streams {
-				if stream.lastSeenAt < cutoff {
-					s.metadata[tenant][partitionID] = slices.Delete(s.metadata[tenant][partitionID], i, i+1)
+			// Create a new slice with only active streams
+			activeStreams := make([]streamMetadata, 0, len(streams))
+			for _, stream := range streams {
+				if stream.lastSeenAt >= cutoff {
+					activeStreams = append(activeStreams, stream)
+				} else {
 					evicted++
 				}
 			}
+			s.metadata[tenant][partitionID] = activeStreams
+
+			// If no active streams in this partition, delete it
+			if len(activeStreams) == 0 {
+				delete(s.metadata[tenant], partitionID)
+			}
 		}
+
+		// If no partitions left for this tenant, delete the tenant
 		if len(s.metadata[tenant]) == 0 {
 			delete(s.metadata, tenant)
 		}
@@ -460,7 +472,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	if _, assigned := s.assingedPartitions[partition]; !assigned {
 		for i, stream := range s.metadata[tenant][partition] {
 			if stream.hash == rec.StreamHash {
-				s.metadata[tenant][partition] = slices.Delete(s.metadata[tenant][partition], i, i+1)
+				s.metadata[tenant][partition] = append(s.metadata[tenant][partition][:i], s.metadata[tenant][partition][i+1:]...)
 				break
 			}
 		}
@@ -474,9 +486,11 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
-			stream.lastSeenAt = recordTime
-			stream.totalSize += pushReqSize
-			s.metadata[tenant][partition][i] = stream
+			s.metadata[tenant][partition][i] = streamMetadata{
+				hash:       stream.hash,
+				lastSeenAt: recordTime,
+				totalSize:  stream.totalSize + pushReqSize,
+			}
 			return
 		}
 	}
