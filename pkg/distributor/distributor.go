@@ -1158,16 +1158,16 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 		binary.PutUvarint(buf, stream.Hash)
 		_, _ = h.Write(buf)
 
-		var logSize, structuredMetadataSize uint64
+		var entriesSize, structuredMetadataSize uint64
 		for _, entry := range stream.Entries {
-			logSize += uint64(len(entry.Line))
+			entriesSize += uint64(len(entry.Line))
 			structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
 		}
 
 		// Add the stream hash to the request. This is sent to limits-frontend.
 		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
 			StreamHash:             stream.Hash,
-			LineSize:               logSize,
+			EntriesSize:            entriesSize,
 			StructuredMetadataSize: structuredMetadataSize,
 		})
 	}

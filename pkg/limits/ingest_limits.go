@@ -482,14 +482,14 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
-	pushReqSize := rec.LineSize + rec.StructuredMetadataSize
+	recTotalSize := rec.EntriesSize + rec.StructuredMetadataSize
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
 			s.metadata[tenant][partition][i] = streamMetadata{
 				hash:       stream.hash,
 				lastSeenAt: recordTime,
-				totalSize:  stream.totalSize + pushReqSize,
+				totalSize:  stream.totalSize + recTotalSize,
 			}
 			return
 		}
@@ -498,7 +498,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
 		hash:       rec.StreamHash,
 		lastSeenAt: recordTime,
-		totalSize:  pushReqSize,
+		totalSize:  recTotalSize,
 	})
 }
 
