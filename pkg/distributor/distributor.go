@@ -453,9 +453,17 @@ func (p *pushTracker) doneWithResult(err error) {
 	}
 }
 
+func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
+}
+
 // Push a set of streams.
 // The returned error is the last one seen.
-func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -470,10 +478,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-
-	// For resolving stream policy and retention. This guarantees that the policy and retention configuration
-	// doesn't change throughout the request handling.
-	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger)
 
 	var validationErrors util.GroupedErrors
 
