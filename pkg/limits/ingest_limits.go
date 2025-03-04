@@ -140,8 +140,7 @@ type IngestLimits struct {
 	metadata map[string]map[int32][]streamMetadata // tenant -> partitionID -> streamMetadata
 
 	// Track partition assignments
-	mtxAssingedPartitions sync.RWMutex
-	assingedPartitions    map[int32]int64 // partitionID -> lastAssignedAt
+	assingedPartitions map[int32]int64 // partitionID -> lastAssignedAt
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -580,8 +579,8 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
-	s.mtxAssingedPartitions.RLock()
-	defer s.mtxAssingedPartitions.RUnlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	// Make a copy of the assigned partitions map to avoid potential concurrent access issues
 	partitions := make(map[int32]int64, len(s.assingedPartitions))
