@@ -43,7 +43,7 @@ func processNode(p Plan) {
 }
 ```
 
-This design allows new implementations to be added (e.g., a new node type)
+This design allows new implementations to be added (e.g., a new JoinNode type)
 without requiring changes to existing code that processes Plans, as long as the
 new implementation fits into one of the existing type categories.
 
@@ -54,33 +54,33 @@ The same pattern applies to expressions through the Expr interface and ExprType 
 type Expr interface {
 	// ToField converts the expression to a column schema
 	ToField(Plan) schema.ColumnSchema
-	// Category returns the type of the expression, which can be used to safely
+	// Type returns the type of the expression, which can be used to safely
 	// cast to a more specific interface (columnExpr, literalExpr, etc.)
-	Category() ExprCategory
+	Type() ExprType
 }
 
-// ExprCategory is an enum representing the type of expression.
+// ExprType is an enum representing the type of expression.
 // It allows consumers to determine the concrete type of an Expr
 // and safely cast to the appropriate interface.
-type ExprCategory int
+type ExprType int
 
 const (
-	ExprCategoryInvalid   ExprCategory = iota
-	ExprCategoryColumn                 // Represents a reference to a column in the input
-	ExprCategoryLiteral                // Represents a literal value
-	ExprCategoryBinaryOp               // Represents a binary operation (e.g., a + b)
-	ExprCategoryAggregate              // Represents an aggregate function (e.g., SUM(a))
+	ExprTypeInvalid   ExprType = iota
+	ExprTypeColumn             // Represents a reference to a column in the input
+	ExprTypeLiteral            // Represents a literal value
+	ExprTypeBinaryOp           // Represents a binary operation (e.g., a + b)
+	ExprTypeAggregate          // Represents an aggregate function (e.g., SUM(a))
 )
 
-func (t ExprCategory) String() string {
+func (t ExprType) String() string {
 	switch t {
-	case ExprCategoryColumn:
+	case ExprTypeColumn:
 		return "Column"
-	case ExprCategoryLiteral:
+	case ExprTypeLiteral:
 		return "Literal"
-	case ExprCategoryBinaryOp:
+	case ExprTypeBinaryOp:
 		return "BinaryOp"
-	case ExprCategoryAggregate:
+	case ExprTypeAggregate:
 		return "Aggregate"
 	default:
 		return "Unknown"
@@ -124,35 +124,35 @@ type aggregateExpr interface {
 // Plan represents a logical query plan node that can provide its schema and children.
 // It serves as the base interface for all plan node types.
 type Plan interface {
-	// Category returns the type of the plan node, which can be used to safely
+	// Type returns the type of the plan node, which can be used to safely
 	// cast to a more specific interface (tableNode, filterNode, etc.)
-	Category() PlanCategory
+	Type() PlanType
 	// Schema returns the schema of the data produced by this plan node
 	Schema() schema.Schema
 }
 
-// PlanCategory is an enum representing the type of plan node.
+// PlanType is an enum representing the type of plan node.
 // It allows consumers to determine the concrete type of a Plan
 // and safely cast to the appropriate interface.
-type PlanCategory int
+type PlanType int
 
 const (
-	PlanCategoryInvalid    PlanCategory = iota
-	PlanCategoryTable                   // Represents a table scan operation
-	PlanCategoryFilter                  // Represents a filter operation
-	PlanCategoryProjection              // Represents a projection operation
-	PlanCategoryAggregate               // Represents an aggregation operation
+	PlanTypeInvalid    PlanType = iota
+	PlanTypeTable               // Represents a table scan operation
+	PlanTypeFilter              // Represents a filter operation
+	PlanTypeProjection          // Represents a projection operation
+	PlanTypeAggregate           // Represents an aggregation operation
 )
 
-func (t PlanCategory) String() string {
+func (t PlanType) String() string {
 	switch t {
-	case PlanCategoryTable:
+	case PlanTypeTable:
 		return "Table"
-	case PlanCategoryFilter:
+	case PlanTypeFilter:
 		return "Filter"
-	case PlanCategoryProjection:
+	case PlanTypeProjection:
 		return "Projection"
-	case PlanCategoryAggregate:
+	case PlanTypeAggregate:
 		return "Aggregate"
 	default:
 		return "Unknown"

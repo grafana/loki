@@ -97,17 +97,17 @@ func (b *ssaBuilder) getID() int {
 // processPlan processes a plan node and returns its ID
 // It handles different plan types by delegating to specific processing methods
 func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
-	switch plan.Category() {
-	case PlanCategoryTable:
+	switch plan.Type() {
+	case PlanTypeTable:
 		return b.processTablePlan(plan.(tableNode))
-	case PlanCategoryFilter:
+	case PlanTypeFilter:
 		return b.processFilterPlan(plan.(filterNode))
-	case PlanCategoryProjection:
+	case PlanTypeProjection:
 		return b.processProjectionPlan(plan.(projectionNode))
-	case PlanCategoryAggregate:
+	case PlanTypeAggregate:
 		return b.processAggregatePlan(plan.(aggregateNode))
 	default:
-		return 0, fmt.Errorf("unknown plan type: %v", plan.Category())
+		return 0, fmt.Errorf("unknown plan type: %v", plan.Type())
 	}
 }
 
@@ -267,17 +267,17 @@ func (b *ssaBuilder) processAggregatePlan(plan aggregateNode) (int, error) {
 // processExpr processes an expression and returns its ID
 // It handles different expression types by delegating to specific processing methods
 func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
-	switch expr.Category() {
-	case ExprCategoryColumn:
+	switch expr.Type() {
+	case ExprTypeColumn:
 		return b.processColumnExpr(expr.(columnExpr), parent)
-	case ExprCategoryLiteral:
+	case ExprTypeLiteral:
 		return b.processLiteralExpr(expr.(literalExpr))
-	case ExprCategoryBinaryOp:
+	case ExprTypeBinaryOp:
 		return b.processBinaryOpExpr(expr.(binaryOpExpr), parent)
-	case ExprCategoryAggregate:
+	case ExprTypeAggregate:
 		return b.processAggregateExpr(expr.(aggregateExpr), parent)
 	default:
-		return 0, fmt.Errorf("unknown expression type: %v", expr.Category())
+		return 0, fmt.Errorf("unknown expression type: %v", expr.Type())
 	}
 }
 

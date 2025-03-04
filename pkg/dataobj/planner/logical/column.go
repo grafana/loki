@@ -31,8 +31,8 @@ func (c ColumnExpr) ToField(p Plan) schema.ColumnSchema {
 	panic(fmt.Sprintf("column %s not found", c.name))
 }
 
-func (c ColumnExpr) Category() ExprCategory {
-	return ExprCategoryColumn
+func (c ColumnExpr) Type() ExprType {
+	return ExprTypeColumn
 }
 
 func (c ColumnExpr) ColumnName() string {

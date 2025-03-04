@@ -41,9 +41,9 @@ func (p *Projection) Schema() schema.Schema {
 	return schema.FromColumns(columns)
 }
 
-// Category implements the Plan interface
-func (p *Projection) Category() PlanCategory {
-	return PlanCategoryProjection
+// Type implements the Plan interface
+func (p *Projection) Type() PlanType {
+	return PlanTypeProjection
 }
 
 // Child implements the projectionNode interface

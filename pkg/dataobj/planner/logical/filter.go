@@ -37,9 +37,9 @@ func (f *Filter) Schema() schema.Schema {
 	return f.input.Schema()
 }
 
-// Category implements the Plan interface
-func (f *Filter) Category() PlanCategory {
-	return PlanCategoryFilter
+// Type implements the Plan interface
+func (f *Filter) Type() PlanType {
+	return PlanTypeFilter
 }
 
 // Child implements the filterNode interface

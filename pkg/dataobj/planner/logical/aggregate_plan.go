@@ -53,9 +53,9 @@ func (a *Aggregate) Schema() schema.Schema {
 	return schema.FromColumns(columns)
 }
 
-// Category implements the ast interface
-func (a *Aggregate) Category() PlanCategory {
-	return PlanCategoryAggregate
+// Type implements the ast interface
+func (a *Aggregate) Type() PlanType {
+	return PlanTypeAggregate
 }
 
 // GroupExprs implements the aggregateNode interface

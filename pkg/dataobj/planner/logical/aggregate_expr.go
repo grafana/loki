@@ -62,9 +62,9 @@ func newAggregateExprConstructor(op AggregateOp) func(name string, expr Expr) Ag
 	}
 }
 
-// Category implements the Expr interface
-func (a AggregateExpr) Category() ExprCategory {
-	return ExprCategoryAggregate
+// Type implements the Expr interface
+func (a AggregateExpr) Type() ExprType {
+	return ExprTypeAggregate
 }
 
 func (a AggregateExpr) Name() string {

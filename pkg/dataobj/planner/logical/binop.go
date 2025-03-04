@@ -113,8 +113,8 @@ func (b baseBinOpImpl) ToField(p Plan) schema.ColumnSchema {
 	}
 }
 
-func (b baseBinOpImpl) Category() ExprCategory {
-	return ExprCategoryBinaryOp
+func (b baseBinOpImpl) Type() ExprType {
+	return ExprTypeBinaryOp
 }
 
 func (b baseBinOpImpl) Name() string {
