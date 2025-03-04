@@ -171,6 +171,17 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		return err
 	}
 
+	return b.AppendLabels(stream, ls)
+}
+
+// Append buffers a stream to be written to a data object. Append returns an
+// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
+// builder is full.
+//
+// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
+// then call Append again with the same entry.
+func (b *Builder) AppendLabels(stream logproto.Stream, ls labels.Labels) error {
+
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//

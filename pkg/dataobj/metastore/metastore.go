@@ -36,6 +36,14 @@ var metastoreBuilderCfg = dataobj.BuilderConfig{
 	TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
 }
 
+// WIP Interface
+type MetastoreQuerier interface {
+	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error)         // Used to get all streams for the matchers
+	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) (labels.Labels, error)     // Used to get the labels for a given set of matchers
+	Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error)          // Used to get all values for a given set of matchers
+	ListDataObjects(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get all dataobjects for a given set of matchers
+}
+
 type Manager struct {
 	metastoreBuilder *dataobj.Builder
 	tenantID         string
