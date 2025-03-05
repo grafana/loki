@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobjquerier "github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -422,7 +423,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier")),
+			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier"), metastore.NewObjectMetastore(store)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{

@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -94,15 +93,17 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 
 // Store implements querier.Store for querying data objects.
 type Store struct {
-	bucket objstore.Bucket
-	logger log.Logger
+	bucket    objstore.Bucket
+	logger    log.Logger
+	metastore metastore.Metastore
 }
 
 // NewStore creates a new Store.
-func NewStore(bucket objstore.Bucket, logger log.Logger) *Store {
+func NewStore(bucket objstore.Bucket, logger log.Logger, metastore metastore.Metastore) *Store {
 	return &Store{
-		bucket: bucket,
-		logger: logger,
+		bucket:    bucket,
+		logger:    logger,
+		metastore: metastore,
 	}
 }
 
@@ -185,11 +186,7 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	span.SetTag("from", from)
 	span.SetTag("through", through)
 
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	files, err := metastore.ListDataObjects(ctx, s.bucket, userID, from, through)
+	files, err := s.metastore.DataObjects(ctx, from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -206,10 +203,10 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	span.LogKV("files", files)
 
 	objects := make([]object, 0, len(files))
-	for _, path := range files {
+	for _, objMeta := range files {
 		objects = append(objects, object{
-			Object: dataobj.FromBucket(s.bucket, path),
-			path:   path,
+			Object: dataobj.FromBucket(s.bucket, objMeta.Path),
+			path:   objMeta.Path,
 		})
 	}
 	return objects, nil
