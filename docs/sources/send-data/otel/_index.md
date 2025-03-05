@@ -76,7 +76,7 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - cloud.availability_zone
   - cloud.region
   - container.name
-  - deployment.environment
+  - deployment.environment.name
   - k8s.cluster.name
   - k8s.container.name
   - k8s.cronjob.name
