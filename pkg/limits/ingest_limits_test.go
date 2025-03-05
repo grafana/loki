@@ -554,7 +554,13 @@ func TestNewIngestLimits(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	require.NotNil(t, s.client)
-	require.Equal(t, cfg, s.cfg)
+
+	// The NewIngestLimits function sets a default RateWindow value of 5 minutes
+	// if it's not specified in the config
+	expectedCfg := cfg
+	expectedCfg.RateWindow = 5 * time.Minute
+	require.Equal(t, expectedCfg, s.cfg)
+
 	require.NotNil(t, s.metadata)
 	require.NotNil(t, s.lifecycler)
 }
