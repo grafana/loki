@@ -30,7 +30,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
@@ -62,14 +61,14 @@ type bb struct{}
 
 func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Balancer {
 	b := &outlierDetectionBalancer{
-		cc:             cc,
+		ClientConn:     cc,
 		closed:         grpcsync.NewEvent(),
 		done:           grpcsync.NewEvent(),
-		addrs:          make(map[string]*addressInfo),
-		scWrappers:     make(map[balancer.SubConn]*subConnWrapper),
+		addrs:          make(map[string]*endpointInfo),
 		scUpdateCh:     buffer.NewUnbounded(),
 		pickerUpdateCh: buffer.NewUnbounded(),
 		channelzParent: bOpts.ChannelzParent,
+		endpoints:      resolver.NewEndpointMap(),
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
@@ -159,6 +158,7 @@ type scHealthUpdate struct {
 }
 
 type outlierDetectionBalancer struct {
+	balancer.ClientConn
 	// These fields are safe to be accessed without holding any mutex because
 	// they are synchronized in run(), which makes these field accesses happen
 	// serially.
@@ -172,7 +172,6 @@ type outlierDetectionBalancer struct {
 
 	closed         *grpcsync.Event
 	done           *grpcsync.Event
-	cc             balancer.ClientConn
 	logger         *grpclog.PrefixLogger
 	channelzParent channelz.Identifier
 
@@ -188,22 +187,25 @@ type outlierDetectionBalancer struct {
 	// balancer will wait for the interval timer algorithm to finish before
 	// persisting the new configuration.
 	//
-	// Another example would be the updating of the addrs map, such as from a
-	// SubConn address update in the middle of the interval timer algorithm
-	// which uses addrs. This balancer waits for the interval timer algorithm to
-	// finish before making the update to the addrs map.
+	// Another example would be the updating of the endpoints or addrs map, such
+	// as from a SubConn address update in the middle of the interval timer
+	// algorithm which uses endpoints. This balancer waits for the interval
+	// timer algorithm to finish before making the update to the endpoints map.
 	//
 	// This mutex is never held when calling methods on the child policy
 	// (within the context of a single goroutine).
-	mu                    sync.Mutex
-	addrs                 map[string]*addressInfo
+	mu sync.Mutex
+	// endpoints stores pointers to endpointInfo objects for each endpoint.
+	endpoints *resolver.EndpointMap // endpoint -> endpointInfo
+	// addrs stores pointers to endpointInfo objects for each address. Addresses
+	// belonging to the same endpoint point to the same object.
+	addrs                 map[string]*endpointInfo
 	cfg                   *LBConfig
-	scWrappers            map[balancer.SubConn]*subConnWrapper
 	timerStartTime        time.Time
 	intervalTimer         *time.Timer
 	inhibitPickerUpdates  bool
 	updateUnconditionally bool
-	numAddrsEjected       int // For fast calculations of percentage of addrs ejected
+	numEndpointsEjected   int // For fast calculations of percentage of endpoints ejected
 
 	scUpdateCh     *buffer.Unbounded
 	pickerUpdateCh *buffer.Unbounded
@@ -227,8 +229,9 @@ func (b *outlierDetectionBalancer) onIntervalConfig() {
 	var interval time.Duration
 	if b.timerStartTime.IsZero() {
 		b.timerStartTime = time.Now()
-		for _, addrInfo := range b.addrs {
-			addrInfo.callCounter.clear()
+		for _, val := range b.endpoints.Values() {
+			epInfo := val.(*endpointInfo)
+			epInfo.callCounter.clear()
 		}
 		interval = time.Duration(b.cfg.Interval)
 	} else {
@@ -250,13 +253,14 @@ func (b *outlierDetectionBalancer) onNoopConfig() {
 	// do the following:"
 	// "Unset the timer start timestamp."
 	b.timerStartTime = time.Time{}
-	for _, addrInfo := range b.addrs {
-		// "Uneject all currently ejected addresses."
-		if !addrInfo.latestEjectionTimestamp.IsZero() {
-			b.unejectAddress(addrInfo)
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
+		// "Uneject all currently ejected endpoints."
+		if !epInfo.latestEjectionTimestamp.IsZero() {
+			b.unejectEndpoint(epInfo)
 		}
-		// "Reset each address's ejection time multiplier to 0."
-		addrInfo.ejectionTimeMultiplier = 0
+		// "Reset each endpoint's ejection time multiplier to 0."
+		epInfo.ejectionTimeMultiplier = 0
 	}
 }
 
@@ -294,16 +298,31 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 	b.updateUnconditionally = false
 	b.cfg = lbCfg
 
-	addrs := make(map[string]bool, len(s.ResolverState.Addresses))
-	for _, addr := range s.ResolverState.Addresses {
-		addrs[addr.Addr] = true
-		if _, ok := b.addrs[addr.Addr]; !ok {
-			b.addrs[addr.Addr] = newAddressInfo()
+	newEndpoints := resolver.NewEndpointMap()
+	for _, ep := range s.ResolverState.Endpoints {
+		newEndpoints.Set(ep, true)
+		if _, ok := b.endpoints.Get(ep); !ok {
+			b.endpoints.Set(ep, newEndpointInfo())
 		}
 	}
-	for addr := range b.addrs {
-		if !addrs[addr] {
-			delete(b.addrs, addr)
+
+	for _, ep := range b.endpoints.Keys() {
+		if _, ok := newEndpoints.Get(ep); !ok {
+			b.endpoints.Delete(ep)
+		}
+	}
+
+	// populate the addrs map.
+	b.addrs = map[string]*endpointInfo{}
+	for _, ep := range s.ResolverState.Endpoints {
+		val, _ := b.endpoints.Get(ep)
+		epInfo := val.(*endpointInfo)
+		for _, addr := range ep.Addresses {
+			if _, ok := b.addrs[addr.Addr]; ok {
+				b.logger.Errorf("Endpoints contain duplicate address %q", addr.Addr)
+				continue
+			}
+			b.addrs[addr.Addr] = epInfo
 		}
 	}
 
@@ -337,19 +356,9 @@ func (b *outlierDetectionBalancer) ResolverError(err error) {
 	b.child.resolverError(err)
 }
 
-func (b *outlierDetectionBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+func (b *outlierDetectionBalancer) updateSubConnState(scw *subConnWrapper, state balancer.SubConnState) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	scw, ok := b.scWrappers[sc]
-	if !ok {
-		// Shouldn't happen if passed down a SubConnWrapper to child on SubConn
-		// creation.
-		b.logger.Errorf("UpdateSubConnState called with SubConn that has no corresponding SubConnWrapper")
-		return
-	}
-	if state.ConnectivityState == connectivity.Shutdown {
-		delete(b.scWrappers, scw.SubConn)
-	}
 	scw.setLatestConnectivityState(state.ConnectivityState)
 	b.scUpdateCh.Put(&scUpdate{
 		scw:   scw,
@@ -429,23 +438,23 @@ func incrementCounter(sc balancer.SubConn, info balancer.DoneInfo) {
 		return
 	}
 
-	// scw.addressInfo and callCounter.activeBucket can be written to
+	// scw.endpointInfo and callCounter.activeBucket can be written to
 	// concurrently (the pointers themselves). Thus, protect the reads here with
 	// atomics to prevent data corruption. There exists a race in which you read
-	// the addressInfo or active bucket pointer and then that pointer points to
+	// the endpointInfo or active bucket pointer and then that pointer points to
 	// deprecated memory. If this goroutine yields the processor, in between
-	// reading the addressInfo pointer and writing to the active bucket,
-	// UpdateAddresses can switch the addressInfo the scw points to. Writing to
-	// an outdated addresses is a very small race and tolerable. After reading
+	// reading the endpointInfo pointer and writing to the active bucket,
+	// UpdateAddresses can switch the endpointInfo the scw points to. Writing to
+	// an outdated endpoint is a very small race and tolerable. After reading
 	// callCounter.activeBucket in this picker a swap call can concurrently
 	// change what activeBucket points to. A50 says to swap the pointer, which
 	// will cause this race to write to deprecated memory the interval timer
 	// algorithm will never read, which makes this race alright.
-	addrInfo := (*addressInfo)(atomic.LoadPointer(&scw.addressInfo))
-	if addrInfo == nil {
+	epInfo := scw.endpointInfo.Load()
+	if epInfo == nil {
 		return
 	}
-	ab := (*bucket)(atomic.LoadPointer(&addrInfo.callCounter.activeBucket))
+	ab := epInfo.callCounter.activeBucket.Load()
 
 	if info.Err == nil {
 		atomic.AddUint32(&ab.numSuccesses, 1)
@@ -459,15 +468,8 @@ func (b *outlierDetectionBalancer) UpdateState(s balancer.State) {
 }
 
 func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
-	var sc balancer.SubConn
 	oldListener := opts.StateListener
-	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state) }
-	sc, err := b.cc.NewSubConn(addrs, opts)
-	if err != nil {
-		return nil, err
-	}
 	scw := &subConnWrapper{
-		SubConn:                    sc,
 		addresses:                  addrs,
 		scUpdateCh:                 b.scUpdateCh,
 		listener:                   oldListener,
@@ -475,19 +477,24 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 		latestHealthState:          balancer.SubConnState{ConnectivityState: connectivity.Connecting},
 		healthListenerEnabled:      len(addrs) == 1 && pickfirstleaf.IsManagedByPickfirst(addrs[0]),
 	}
+	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(scw, state) }
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.scWrappers[sc] = scw
+	sc, err := b.ClientConn.NewSubConn(addrs, opts)
+	if err != nil {
+		return nil, err
+	}
+	scw.SubConn = sc
 	if len(addrs) != 1 {
 		return scw, nil
 	}
-	addrInfo, ok := b.addrs[addrs[0].Addr]
+	epInfo, ok := b.addrs[addrs[0].Addr]
 	if !ok {
 		return scw, nil
 	}
-	addrInfo.sws = append(addrInfo.sws, scw)
-	atomic.StorePointer(&scw.addressInfo, unsafe.Pointer(addrInfo))
-	if !addrInfo.latestEjectionTimestamp.IsZero() {
+	epInfo.sws = append(epInfo.sws, scw)
+	scw.endpointInfo.Store(epInfo)
+	if !epInfo.latestEjectionTimestamp.IsZero() {
 		scw.eject()
 	}
 	return scw, nil
@@ -497,34 +504,34 @@ func (b *outlierDetectionBalancer) RemoveSubConn(sc balancer.SubConn) {
 	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
-// appendIfPresent appends the scw to the address, if the address is present in
+// appendIfPresent appends the scw to the endpoint, if the address is present in
 // the Outlier Detection balancers address map. Returns nil if not present, and
 // the map entry if present.
 //
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) appendIfPresent(addr string, scw *subConnWrapper) *addressInfo {
-	addrInfo, ok := b.addrs[addr]
+func (b *outlierDetectionBalancer) appendIfPresent(addr string, scw *subConnWrapper) *endpointInfo {
+	epInfo, ok := b.addrs[addr]
 	if !ok {
 		return nil
 	}
 
-	addrInfo.sws = append(addrInfo.sws, scw)
-	atomic.StorePointer(&scw.addressInfo, unsafe.Pointer(addrInfo))
-	return addrInfo
+	epInfo.sws = append(epInfo.sws, scw)
+	scw.endpointInfo.Store(epInfo)
+	return epInfo
 }
 
-// removeSubConnFromAddressesMapEntry removes the scw from its map entry if
+// removeSubConnFromEndpointMapEntry removes the scw from its map entry if
 // present.
 //
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) removeSubConnFromAddressesMapEntry(scw *subConnWrapper) {
-	addrInfo := (*addressInfo)(atomic.LoadPointer(&scw.addressInfo))
-	if addrInfo == nil {
+func (b *outlierDetectionBalancer) removeSubConnFromEndpointMapEntry(scw *subConnWrapper) {
+	epInfo := scw.endpointInfo.Load()
+	if epInfo == nil {
 		return
 	}
-	for i, sw := range addrInfo.sws {
+	for i, sw := range epInfo.sws {
 		if scw == sw {
-			addrInfo.sws = append(addrInfo.sws[:i], addrInfo.sws[i+1:]...)
+			epInfo.sws = append(epInfo.sws[:i], epInfo.sws[i+1:]...)
 			return
 		}
 	}
@@ -537,7 +544,7 @@ func (b *outlierDetectionBalancer) UpdateAddresses(sc balancer.SubConn, addrs []
 		return
 	}
 
-	b.cc.UpdateAddresses(scw.SubConn, addrs)
+	b.ClientConn.UpdateAddresses(scw.SubConn, addrs)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -551,40 +558,32 @@ func (b *outlierDetectionBalancer) UpdateAddresses(sc balancer.SubConn, addrs []
 		if scw.addresses[0].Addr == addrs[0].Addr {
 			return
 		}
-		b.removeSubConnFromAddressesMapEntry(scw)
-		addrInfo := b.appendIfPresent(addrs[0].Addr, scw)
-		if addrInfo == nil { // uneject unconditionally because could have come from an ejected address
+		b.removeSubConnFromEndpointMapEntry(scw)
+		endpointInfo := b.appendIfPresent(addrs[0].Addr, scw)
+		if endpointInfo == nil { // uneject unconditionally because could have come from an ejected endpoint
 			scw.uneject()
 			break
 		}
-		if addrInfo.latestEjectionTimestamp.IsZero() { // relay new updated subconn state
+		if endpointInfo.latestEjectionTimestamp.IsZero() { // relay new updated subconn state
 			scw.uneject()
 		} else {
 			scw.eject()
 		}
 	case len(scw.addresses) == 1: // single address to multiple/no addresses
-		b.removeSubConnFromAddressesMapEntry(scw)
-		addrInfo := (*addressInfo)(atomic.LoadPointer(&scw.addressInfo))
+		b.removeSubConnFromEndpointMapEntry(scw)
+		addrInfo := scw.endpointInfo.Load()
 		if addrInfo != nil {
 			addrInfo.callCounter.clear()
 		}
 		scw.uneject()
 	case len(addrs) == 1: // multiple/no addresses to single address
-		addrInfo := b.appendIfPresent(addrs[0].Addr, scw)
-		if addrInfo != nil && !addrInfo.latestEjectionTimestamp.IsZero() {
+		endpointInfo := b.appendIfPresent(addrs[0].Addr, scw)
+		if endpointInfo != nil && !endpointInfo.latestEjectionTimestamp.IsZero() {
 			scw.eject()
 		}
 	} // otherwise multiple/no addresses to multiple/no addresses; ignore
 
 	scw.addresses = addrs
-}
-
-func (b *outlierDetectionBalancer) ResolveNow(opts resolver.ResolveNowOptions) {
-	b.cc.ResolveNow(opts)
-}
-
-func (b *outlierDetectionBalancer) Target() string {
-	return b.cc.Target()
 }
 
 // handleSubConnUpdate stores the recent state and forward the update
@@ -621,7 +620,7 @@ func (b *outlierDetectionBalancer) handleChildStateUpdate(u balancer.State) {
 	noopCfg := b.noopConfig()
 	b.mu.Unlock()
 	b.recentPickerNoop = noopCfg
-	b.cc.UpdateState(balancer.State{
+	b.ClientConn.UpdateState(balancer.State{
 		ConnectivityState: b.childState.ConnectivityState,
 		Picker: &wrappedPicker{
 			childPicker: b.childState.Picker,
@@ -645,7 +644,7 @@ func (b *outlierDetectionBalancer) handleLBConfigUpdate(u lbCfgUpdate) {
 	// the bit.
 	if b.childState.Picker != nil && noopCfg != b.recentPickerNoop || b.updateUnconditionally {
 		b.recentPickerNoop = noopCfg
-		b.cc.UpdateState(balancer.State{
+		b.ClientConn.UpdateState(balancer.State{
 			ConnectivityState: b.childState.ConnectivityState,
 			Picker: &wrappedPicker{
 				childPicker: b.childState.Picker,
@@ -698,16 +697,17 @@ func (b *outlierDetectionBalancer) run() {
 	}
 }
 
-// intervalTimerAlgorithm ejects and unejects addresses based on the Outlier
-// Detection configuration and data about each address from the previous
+// intervalTimerAlgorithm ejects and unejects endpoints based on the Outlier
+// Detection configuration and data about each endpoint from the previous
 // interval.
 func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.timerStartTime = time.Now()
 
-	for _, addrInfo := range b.addrs {
-		addrInfo.callCounter.swap()
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
+		epInfo.callCounter.swap()
 	}
 
 	if b.cfg.SuccessRateEjection != nil {
@@ -718,21 +718,22 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 		b.failurePercentageAlgorithm()
 	}
 
-	for _, addrInfo := range b.addrs {
-		if addrInfo.latestEjectionTimestamp.IsZero() && addrInfo.ejectionTimeMultiplier > 0 {
-			addrInfo.ejectionTimeMultiplier--
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
+		if epInfo.latestEjectionTimestamp.IsZero() && epInfo.ejectionTimeMultiplier > 0 {
+			epInfo.ejectionTimeMultiplier--
 			continue
 		}
-		if addrInfo.latestEjectionTimestamp.IsZero() {
-			// Address is already not ejected, so no need to check for whether
-			// to uneject the address below.
+		if epInfo.latestEjectionTimestamp.IsZero() {
+			// Endpoint is already not ejected, so no need to check for whether
+			// to uneject the endpoint below.
 			continue
 		}
-		et := time.Duration(b.cfg.BaseEjectionTime) * time.Duration(addrInfo.ejectionTimeMultiplier)
+		et := time.Duration(b.cfg.BaseEjectionTime) * time.Duration(epInfo.ejectionTimeMultiplier)
 		met := max(time.Duration(b.cfg.BaseEjectionTime), time.Duration(b.cfg.MaxEjectionTime))
-		uet := addrInfo.latestEjectionTimestamp.Add(min(et, met))
+		uet := epInfo.latestEjectionTimestamp.Add(min(et, met))
 		if now().After(uet) {
-			b.unejectAddress(addrInfo)
+			b.unejectEndpoint(epInfo)
 		}
 	}
 
@@ -744,107 +745,108 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 	b.intervalTimer = afterFunc(time.Duration(b.cfg.Interval), b.intervalTimerAlgorithm)
 }
 
-// addrsWithAtLeastRequestVolume returns a slice of address information of all
-// addresses with at least request volume passed in.
+// endpointsWithAtLeastRequestVolume returns a slice of endpoint information of
+// all endpoints with at least request volume passed in.
 //
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) addrsWithAtLeastRequestVolume(requestVolume uint32) []*addressInfo {
-	var addrs []*addressInfo
-	for _, addrInfo := range b.addrs {
-		bucket := addrInfo.callCounter.inactiveBucket
-		rv := bucket.numSuccesses + bucket.numFailures
+func (b *outlierDetectionBalancer) endpointsWithAtLeastRequestVolume(requestVolume uint32) []*endpointInfo {
+	var endpoints []*endpointInfo
+	for _, val := range b.endpoints.Values() {
+		epInfo := val.(*endpointInfo)
+		bucket1 := epInfo.callCounter.inactiveBucket
+		rv := bucket1.numSuccesses + bucket1.numFailures
 		if rv >= requestVolume {
-			addrs = append(addrs, addrInfo)
+			endpoints = append(endpoints, epInfo)
 		}
 	}
-	return addrs
+	return endpoints
 }
 
 // meanAndStdDev returns the mean and std dev of the fractions of successful
-// requests of the addresses passed in.
+// requests of the endpoints passed in.
 //
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) meanAndStdDev(addrs []*addressInfo) (float64, float64) {
+func (b *outlierDetectionBalancer) meanAndStdDev(endpoints []*endpointInfo) (float64, float64) {
 	var totalFractionOfSuccessfulRequests float64
 	var mean float64
-	for _, addrInfo := range addrs {
-		bucket := addrInfo.callCounter.inactiveBucket
+	for _, epInfo := range endpoints {
+		bucket := epInfo.callCounter.inactiveBucket
 		rv := bucket.numSuccesses + bucket.numFailures
 		totalFractionOfSuccessfulRequests += float64(bucket.numSuccesses) / float64(rv)
 	}
-	mean = totalFractionOfSuccessfulRequests / float64(len(addrs))
+	mean = totalFractionOfSuccessfulRequests / float64(len(endpoints))
 	var sumOfSquares float64
-	for _, addrInfo := range addrs {
-		bucket := addrInfo.callCounter.inactiveBucket
+	for _, epInfo := range endpoints {
+		bucket := epInfo.callCounter.inactiveBucket
 		rv := bucket.numSuccesses + bucket.numFailures
 		devFromMean := (float64(bucket.numSuccesses) / float64(rv)) - mean
 		sumOfSquares += devFromMean * devFromMean
 	}
-	variance := sumOfSquares / float64(len(addrs))
+	variance := sumOfSquares / float64(len(endpoints))
 	return mean, math.Sqrt(variance)
 }
 
-// successRateAlgorithm ejects any addresses where the success rate falls below
-// the other addresses according to mean and standard deviation, and if overall
+// successRateAlgorithm ejects any endpoints where the success rate falls below
+// the other endpoints according to mean and standard deviation, and if overall
 // applicable from other set heuristics.
 //
 // Caller must hold b.mu.
 func (b *outlierDetectionBalancer) successRateAlgorithm() {
-	addrsToConsider := b.addrsWithAtLeastRequestVolume(b.cfg.SuccessRateEjection.RequestVolume)
-	if len(addrsToConsider) < int(b.cfg.SuccessRateEjection.MinimumHosts) {
+	endpointsToConsider := b.endpointsWithAtLeastRequestVolume(b.cfg.SuccessRateEjection.RequestVolume)
+	if len(endpointsToConsider) < int(b.cfg.SuccessRateEjection.MinimumHosts) {
 		return
 	}
-	mean, stddev := b.meanAndStdDev(addrsToConsider)
-	for _, addrInfo := range addrsToConsider {
-		bucket := addrInfo.callCounter.inactiveBucket
+	mean, stddev := b.meanAndStdDev(endpointsToConsider)
+	for _, epInfo := range endpointsToConsider {
+		bucket := epInfo.callCounter.inactiveBucket
 		ejectionCfg := b.cfg.SuccessRateEjection
-		if float64(b.numAddrsEjected)/float64(len(b.addrs))*100 >= float64(b.cfg.MaxEjectionPercent) {
+		if float64(b.numEndpointsEjected)/float64(b.endpoints.Len())*100 >= float64(b.cfg.MaxEjectionPercent) {
 			return
 		}
 		successRate := float64(bucket.numSuccesses) / float64(bucket.numSuccesses+bucket.numFailures)
 		requiredSuccessRate := mean - stddev*(float64(ejectionCfg.StdevFactor)/1000)
 		if successRate < requiredSuccessRate {
-			channelz.Infof(logger, b.channelzParent, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", addrInfo, successRate, mean, stddev, requiredSuccessRate)
+			channelz.Infof(logger, b.channelzParent, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", epInfo, successRate, mean, stddev, requiredSuccessRate)
 			if uint32(rand.Int32N(100)) < ejectionCfg.EnforcementPercentage {
-				b.ejectAddress(addrInfo)
+				b.ejectEndpoint(epInfo)
 			}
 		}
 	}
 }
 
-// failurePercentageAlgorithm ejects any addresses where the failure percentage
+// failurePercentageAlgorithm ejects any endpoints where the failure percentage
 // rate exceeds a set enforcement percentage, if overall applicable from other
 // set heuristics.
 //
 // Caller must hold b.mu.
 func (b *outlierDetectionBalancer) failurePercentageAlgorithm() {
-	addrsToConsider := b.addrsWithAtLeastRequestVolume(b.cfg.FailurePercentageEjection.RequestVolume)
-	if len(addrsToConsider) < int(b.cfg.FailurePercentageEjection.MinimumHosts) {
+	endpointsToConsider := b.endpointsWithAtLeastRequestVolume(b.cfg.FailurePercentageEjection.RequestVolume)
+	if len(endpointsToConsider) < int(b.cfg.FailurePercentageEjection.MinimumHosts) {
 		return
 	}
 
-	for _, addrInfo := range addrsToConsider {
-		bucket := addrInfo.callCounter.inactiveBucket
+	for _, epInfo := range endpointsToConsider {
+		bucket := epInfo.callCounter.inactiveBucket
 		ejectionCfg := b.cfg.FailurePercentageEjection
-		if float64(b.numAddrsEjected)/float64(len(b.addrs))*100 >= float64(b.cfg.MaxEjectionPercent) {
+		if float64(b.numEndpointsEjected)/float64(b.endpoints.Len())*100 >= float64(b.cfg.MaxEjectionPercent) {
 			return
 		}
 		failurePercentage := (float64(bucket.numFailures) / float64(bucket.numSuccesses+bucket.numFailures)) * 100
 		if failurePercentage > float64(b.cfg.FailurePercentageEjection.Threshold) {
-			channelz.Infof(logger, b.channelzParent, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", addrInfo, failurePercentage)
+			channelz.Infof(logger, b.channelzParent, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", epInfo, failurePercentage)
 			if uint32(rand.Int32N(100)) < ejectionCfg.EnforcementPercentage {
-				b.ejectAddress(addrInfo)
+				b.ejectEndpoint(epInfo)
 			}
 		}
 	}
 }
 
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) ejectAddress(addrInfo *addressInfo) {
-	b.numAddrsEjected++
-	addrInfo.latestEjectionTimestamp = b.timerStartTime
-	addrInfo.ejectionTimeMultiplier++
-	for _, sbw := range addrInfo.sws {
+func (b *outlierDetectionBalancer) ejectEndpoint(epInfo *endpointInfo) {
+	b.numEndpointsEjected++
+	epInfo.latestEjectionTimestamp = b.timerStartTime
+	epInfo.ejectionTimeMultiplier++
+	for _, sbw := range epInfo.sws {
 		sbw.eject()
 		channelz.Infof(logger, b.channelzParent, "Subchannel ejected: %s", sbw)
 	}
@@ -852,10 +854,10 @@ func (b *outlierDetectionBalancer) ejectAddress(addrInfo *addressInfo) {
 }
 
 // Caller must hold b.mu.
-func (b *outlierDetectionBalancer) unejectAddress(addrInfo *addressInfo) {
-	b.numAddrsEjected--
-	addrInfo.latestEjectionTimestamp = time.Time{}
-	for _, sbw := range addrInfo.sws {
+func (b *outlierDetectionBalancer) unejectEndpoint(epInfo *endpointInfo) {
+	b.numEndpointsEjected--
+	epInfo.latestEjectionTimestamp = time.Time{}
+	for _, sbw := range epInfo.sws {
 		sbw.uneject()
 		channelz.Infof(logger, b.channelzParent, "Subchannel unejected: %s", sbw)
 	}
@@ -924,28 +926,28 @@ func (sbw *synchronizingBalancerWrapper) handleEjectionUpdate(u *ejectionUpdate)
 	}
 }
 
-// addressInfo contains the runtime information about an address that pertains
+// endpointInfo contains the runtime information about an endpoint that pertains
 // to Outlier Detection. This struct and all of its fields is protected by
 // outlierDetectionBalancer.mu in the case where it is accessed through the
-// address map. In the case of Picker callbacks, the writes to the activeBucket
-// of callCounter are protected by atomically loading and storing
+// address or endpoint map. In the case of Picker callbacks, the writes to the
+// activeBucket of callCounter are protected by atomically loading and storing
 // unsafe.Pointers (see further explanation in incrementCounter()).
-type addressInfo struct {
+type endpointInfo struct {
 	// The call result counter object.
 	callCounter *callCounter
 
-	// The latest ejection timestamp, or zero if the address is currently not
+	// The latest ejection timestamp, or zero if the endpoint is currently not
 	// ejected.
 	latestEjectionTimestamp time.Time
 
 	// The current ejection time multiplier, starting at 0.
 	ejectionTimeMultiplier int64
 
-	// A list of subchannel wrapper objects that correspond to this address.
+	// A list of subchannel wrapper objects that correspond to this endpoint.
 	sws []*subConnWrapper
 }
 
-func (a *addressInfo) String() string {
+func (a *endpointInfo) String() string {
 	var res strings.Builder
 	res.WriteString("[")
 	for _, sw := range a.sws {
@@ -955,8 +957,8 @@ func (a *addressInfo) String() string {
 	return res.String()
 }
 
-func newAddressInfo() *addressInfo {
-	return &addressInfo{
+func newEndpointInfo() *endpointInfo {
+	return &endpointInfo{
 		callCounter: newCallCounter(),
 	}
 }

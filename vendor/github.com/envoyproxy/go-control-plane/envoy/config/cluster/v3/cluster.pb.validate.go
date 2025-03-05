@@ -647,32 +647,33 @@ func (m *Cluster) validate(all bool) error {
 		}
 	}
 
-	if all {
-		switch v := interface{}(m.GetDnsJitter()).(type) {
-		case interface{ ValidateAll() error }:
-			if err := v.ValidateAll(); err != nil {
-				errors = append(errors, ClusterValidationError{
-					field:  "DnsJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		case interface{ Validate() error }:
-			if err := v.Validate(); err != nil {
-				errors = append(errors, ClusterValidationError{
-					field:  "DnsJitter",
-					reason: "embedded message failed validation",
-					cause:  err,
-				})
-			}
-		}
-	} else if v, ok := interface{}(m.GetDnsJitter()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return ClusterValidationError{
+	if d := m.GetDnsJitter(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = ClusterValidationError{
 				field:  "DnsJitter",
-				reason: "embedded message failed validation",
+				reason: "value is not a valid duration",
 				cause:  err,
 			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
+
+			if dur < gte {
+				err := ClusterValidationError{
+					field:  "DnsJitter",
+					reason: "value must be greater than or equal to 0s",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
 		}
 	}
 

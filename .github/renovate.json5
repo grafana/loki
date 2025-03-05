@@ -95,8 +95,8 @@
     "addLabels": [
       "area/security"
     ],
-    "automerge": true, 
-    "autoApprove": true
+    "automerge": false, 
+    "autoApprove": false
   },
   "osvVulnerabilityAlerts": true,
   "prConcurrentLimit": 15,

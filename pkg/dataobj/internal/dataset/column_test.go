@@ -198,7 +198,7 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 	require.Equal(t, uint64(3), col.Info.Statistics.CardinalityCount)
 }
 
-func getMinMax(t *testing.T, stats *datasetmd.Statistics) (min, max Value) {
+func getMinMax(t *testing.T, stats *datasetmd.Statistics) (minVal, maxVal Value) {
 	t.Helper()
 	require.NotNil(t, stats)
 

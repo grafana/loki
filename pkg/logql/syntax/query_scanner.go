@@ -364,12 +364,12 @@ func isHex(ch rune) bool     { return '0' <= ch && ch <= '9' || 'a' <= lower(ch)
 func (s *Scanner) digits(ch0 rune, base int, invalid *rune) (ch rune, digsep int) {
 	ch = ch0
 	if base <= 10 {
-		max := rune('0' + base)
+		maxVal := rune('0' + base)
 		for isDecimal(ch) || ch == '_' {
 			ds := 1
 			if ch == '_' {
 				ds = 2
-			} else if ch >= max && *invalid == 0 {
+			} else if ch >= maxVal && *invalid == 0 {
 				*invalid = ch
 			}
 			digsep |= ds

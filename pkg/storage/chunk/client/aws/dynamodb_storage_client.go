@@ -691,12 +691,12 @@ func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byt
 	})
 }
 
-// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
@@ -738,12 +738,12 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'b' with ReadRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
+// Fill 'b' with ReadRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {

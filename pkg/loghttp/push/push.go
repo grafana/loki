@@ -95,7 +95,7 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 }
 
 // StreamResolver is a request-scoped interface that provides retention period and policy for a given stream.
-// The values returned by the resolver will not chance throught the handling of the request
+// The values returned by the resolver will not chance thought the handling of the request
 type StreamResolver interface {
 	RetentionPeriodFor(lbs labels.Labels) time.Duration
 	RetentionHoursFor(lbs labels.Labels) string
@@ -105,7 +105,7 @@ type StreamResolver interface {
 type (
 	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
-	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
+	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -376,7 +376,7 @@ func RetentionPeriodToString(retentionPeriod time.Duration) string {
 // > 503 Service Unavailable
 // > 504 Gateway Timeout
 // In loki, we expect clients to retry on 500 errors, so we map 500 errors to 503.
-func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger) {
+func OTLPError(w http.ResponseWriter, errorStr string, code int, logger log.Logger) {
 	// Map 500 errors to 503. 500 errors are never retried on the client side, but 503 are.
 	if code == http.StatusInternalServerError {
 		code = http.StatusServiceUnavailable
@@ -386,7 +386,7 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 	w.WriteHeader(code)
 
 	// Status 0 because we omit the Status.code field.
-	status := grpcstatus.New(0, error).Proto()
+	status := grpcstatus.New(0, errorStr).Proto()
 	respBytes, err := proto.Marshal(status)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to marshal error response", "error", err)
@@ -411,8 +411,8 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 
 var _ ErrorWriter = OTLPError
 
-func HTTPError(w http.ResponseWriter, error string, code int, _ log.Logger) {
-	http.Error(w, error, code)
+func HTTPError(w http.ResponseWriter, errorStr string, code int, _ log.Logger) {
+	http.Error(w, errorStr, code)
 }
 
 var _ ErrorWriter = HTTPError

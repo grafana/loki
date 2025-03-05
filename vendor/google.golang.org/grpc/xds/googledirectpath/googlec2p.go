@@ -39,6 +39,7 @@ import (
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/xds/internal/xdsclient"
 
 	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
 )
@@ -62,8 +63,9 @@ var (
 	universeDomainMu sync.Mutex
 	universeDomain   = ""
 	// For overriding in unittests.
-	onGCE   = googlecloud.OnGCE
-	randInt = rand.Int
+	onGCE         = googlecloud.OnGCE
+	randInt       = rand.Int
+	xdsClientPool = xdsclient.DefaultPool
 )
 
 func init() {
@@ -155,9 +157,11 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bootstrap configuration: %v", err)
 	}
-	if err := bootstrap.SetFallbackBootstrapConfig(cfgJSON); err != nil {
-		return nil, fmt.Errorf("failed to set fallback bootstrap configuration: %v", err)
+	config, err := bootstrap.NewConfigFromContents(cfgJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse bootstrap contents: %s, %v", string(cfgJSON), err)
 	}
+	xdsClientPool.SetFallbackBootstrapConfig(config)
 
 	t = resolver.Target{
 		URL: url.URL{
