@@ -124,7 +124,7 @@ ui:
 
   # How frequently to rejoin the cluster to address split brain issues.
   # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 15s]
+  [rejoin_interval: <duration> | default = 3m]
 
   # Number of initial peers to join from the discovered set.
   # CLI flag: -ui.cluster-max-join-peers
@@ -137,6 +137,10 @@ ui:
   # Enable using a IPv6 instance address.
   # CLI flag: -ui.enable-ipv6
   [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
 
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
@@ -1832,6 +1836,16 @@ retention_backoff_config:
 # Path prefix for storing delete requests.
 # CLI flag: -compactor.delete-request-store.key-prefix
 [delete_request_store_key_prefix: <string> | default = "index/"]
+
+# Type of DB to use for storing delete requests. Supported types: boltdb, sqlite
+# CLI flag: -compactor.delete-request-store.db-type
+[delete_request_store_db_type: <string> | default = "boltdb"]
+
+# Type of DB to use as backup for storing delete requests. Backup DB should
+# ideally be used while migrating from one DB type to another. Supported
+# type(s): boltdb
+# CLI flag: -compactor.delete-request-store.backup-db-type
+[backup_delete_request_store_db_type: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
@@ -3650,9 +3664,10 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
-# Block ingestion for policy until the configured date. The time should be in
-# RFC3339 format. The policy is based on the policy_stream_mapping
-# configuration.
+# Block ingestion for policy until the configured date. The policy '*' is the
+# global policy, which is applied to all streams not matching a policy and can
+# be overridden by other policies. The time should be in RFC3339 format. The
+# policy is based on the policy_stream_mapping configuration.
 [block_ingestion_policy_until: <map of string to Time>]
 
 # Block ingestion until the configured date. The time should be in RFC3339
@@ -3672,7 +3687,8 @@ otlp_config:
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
-# Map of policies to enforced labels. Example:
+# Map of policies to enforced labels. The policy '*' is the global policy, which
+# is applied to all streams and can be extended by other policies. Example:
 #  policy_enforced_labels: 
 #   policy1: 
 #     - label1 
@@ -3680,6 +3696,8 @@ otlp_config:
 #   policy2: 
 #     - label3 
 #     - label4
+#   '*':
+#     - label5
 [policy_enforced_labels: <map of string to list of strings>]
 
 # Map of policies to stream selectors with a priority. Experimental.  Example:

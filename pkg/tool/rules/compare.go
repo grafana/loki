@@ -131,9 +131,9 @@ func rulesEqual(a, b *rulefmt.RuleNode) bool {
 
 // CompareNamespaces returns the differences between the two provided
 // namespaces
-func CompareNamespaces(original, new RuleNamespace) NamespaceChange {
+func CompareNamespaces(original, newNamespace RuleNamespace) NamespaceChange {
 	result := NamespaceChange{
-		Namespace:     new.Namespace,
+		Namespace:     newNamespace.Namespace,
 		State:         Unchanged,
 		GroupsUpdated: []UpdatedRuleGroup{},
 		GroupsCreated: []rwrulefmt.RuleGroup{},
@@ -145,7 +145,7 @@ func CompareNamespaces(original, new RuleNamespace) NamespaceChange {
 		origMap[g.Name] = g
 	}
 
-	for _, newGroup := range new.Groups {
+	for _, newGroup := range newNamespace.Groups {
 		origGroup, found := origMap[newGroup.Name]
 		if !found {
 			result.State = Updated
