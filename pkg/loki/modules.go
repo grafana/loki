@@ -1429,9 +1429,18 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isTarget(Read)
-	storageNotConfigured := (t.Cfg.StorageConfig.UseThanosObjstore && t.Cfg.RulerStorage.IsDefaults()) || t.Cfg.Ruler.StoreConfig.IsDefaults()
+	var storageNotConfigured bool
+	var storagekey string
+	if t.Cfg.StorageConfig.UseThanosObjstore {
+		storageNotConfigured = t.Cfg.RulerStorage.IsDefaults()
+		storagekey = "ruler_storage"
+	} else {
+		storageNotConfigured = t.Cfg.Ruler.StoreConfig.IsDefaults()
+		storagekey = "ruler.storage"
+	}
 	if (t.Cfg.isTarget(All) || legacyReadMode || t.Cfg.isTarget(Backend)) && storageNotConfigured {
-		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.")
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.",
+			"config_key", storagekey)
 		return
 	}
 
