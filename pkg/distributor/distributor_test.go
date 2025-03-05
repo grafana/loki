@@ -431,10 +431,11 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 
-	limits.EnforcedLabels = []string{"app", "env"}
+	limits.EnforcedLabels = []string{"app"}
 	limits.PolicyEnforcedLabels = map[string][]string{
-		"policy1": {"cluster", "namespace"},
-		"policy2": {"namespace"},
+		"policy1":               {"cluster", "namespace"},
+		"policy2":               {"namespace"},
+		validation.GlobalPolicy: {"env"},
 	}
 
 	distributors, _ := prepare(t, 1, 5, limits, nil)
@@ -446,11 +447,17 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	assert.False(t, missing)
 	assert.Empty(t, missingLabels)
 
-	// request missing the `app` label from global enforced labels and `cluster` label from policy enforced labels.
+	// request missing the `app` label from per-tenant enforced labels and `cluster` label from policy enforced labels.
 	lbs = labels.FromMap(map[string]string{"env": "prod", "namespace": "ns1"})
 	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
 	assert.True(t, missing)
 	assert.EqualValues(t, []string{"app", "cluster"}, missingLabels)
+
+	// request missing the `env` label from global policy enforced labels and `cluster` label from policy1 enforced labels.
+	lbs = labels.FromMap(map[string]string{"app": "foo", "namespace": "ns1"})
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
+	assert.True(t, missing)
+	assert.EqualValues(t, []string{"env", "cluster"}, missingLabels)
 
 	// request missing all required labels.
 	lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
@@ -1252,11 +1259,12 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
+	streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 	vCtx := d.validator.getValidationContextForTime(testTime, "123")
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1300,11 +1308,11 @@ func TestParseStreamLabels(t *testing.T) {
 		d := distributors[0]
 
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
-
+		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			})
+			}, streamResolver)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -2249,4 +2257,109 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestRequestScopedStreamResolver(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.RetentionPeriod = model.Duration(24 * time.Hour)
+	limits.StreamRetention = []validation.StreamRetention{
+		{
+			Period:   model.Duration(48 * time.Hour),
+			Selector: `{env="prod"}`,
+		},
+	}
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"policy0": []*validation.PriorityStream{
+			{
+				Selector: `{env="prod"}`,
+			},
+		},
+	}
+
+	// Load matchers
+	require.NoError(t, limits.Validate())
+
+	overrides, err := validation.NewOverrides(*limits, nil)
+	require.NoError(t, err)
+
+	resolver := newRequestScopedStreamResolver("123", overrides, nil)
+
+	retentionHours := resolver.RetentionHoursFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, "48", retentionHours)
+	retentionPeriod := resolver.RetentionPeriodFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, 48*time.Hour, retentionPeriod)
+
+	retentionHours = resolver.RetentionHoursFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, "24", retentionHours)
+	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, 24*time.Hour, retentionPeriod)
+
+	policy := resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, "policy0", policy)
+
+	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	require.Empty(t, policy)
+
+	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
+	limits.RetentionPeriod = model.Duration(36 * time.Hour)
+	limits.StreamRetention = []validation.StreamRetention{
+		{
+			Period:   model.Duration(72 * time.Hour),
+			Selector: `{env="dev"}`,
+		},
+	}
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"policy1": []*validation.PriorityStream{
+			{
+				Selector: `{env="dev"}`,
+			},
+		},
+	}
+
+	// Load matchers
+	require.NoError(t, limits.Validate())
+
+	newOverrides, err := validation.NewOverrides(*limits, nil)
+	require.NoError(t, err)
+
+	// overwrite the overrides we passed to the resolver by the new ones
+	*overrides = *newOverrides
+
+	// All should be the same as before
+	retentionHours = resolver.RetentionHoursFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, "48", retentionHours)
+	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, 48*time.Hour, retentionPeriod)
+
+	retentionHours = resolver.RetentionHoursFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, "24", retentionHours)
+	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, 24*time.Hour, retentionPeriod)
+
+	policy = resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, "policy0", policy)
+
+	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	require.Empty(t, policy)
+
+	// But a new resolver should return the new values
+	newResolver := newRequestScopedStreamResolver("123", overrides, nil)
+
+	retentionHours = newResolver.RetentionHoursFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, "36", retentionHours)
+	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "prod"))
+	require.Equal(t, 36*time.Hour, retentionPeriod)
+
+	retentionHours = newResolver.RetentionHoursFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, "72", retentionHours)
+	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, 72*time.Hour, retentionPeriod)
+
+	policy = newResolver.PolicyFor(labels.FromStrings("env", "prod"))
+	require.Empty(t, policy)
+
+	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
+	require.Equal(t, "policy1", policy)
 }

@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build darwin && cgo
+//go:build darwin && !ios && cgo
 
 #include <mach/mach_init.h>
 #include <mach/task.h>
