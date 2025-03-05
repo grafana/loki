@@ -2,8 +2,6 @@ module github.com/grafana/loki/pkg/push
 
 go 1.22.7
 
-toolchain go1.23.3
-
 require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/stretchr/testify v1.10.0
