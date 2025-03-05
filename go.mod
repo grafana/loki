@@ -105,7 +105,7 @@ require (
 	golang.org/x/sys v0.31.0
 	golang.org/x/time v0.11.0
 	google.golang.org/api v0.223.0
-	google.golang.org/grpc v1.70.0
+	google.golang.org/grpc v1.71.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog/v2 v2.130.1
@@ -171,6 +171,7 @@ require (
 	github.com/containerd/containerd v1.7.25 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/ebitengine/purego v0.8.2 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.4 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
@@ -211,10 +212,10 @@ require (
 	go.opentelemetry.io/collector/consumer v1.24.0 // indirect
 	go.opentelemetry.io/collector/pipeline v0.118.0 // indirect
 	go.opentelemetry.io/collector/processor v0.118.0 // indirect
-	go.opentelemetry.io/contrib/detectors/gcp v1.33.0 // indirect
+	go.opentelemetry.io/contrib/detectors/gcp v1.34.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.59.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.34.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.33.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.34.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	modernc.org/libc v1.55.3 // indirect
@@ -263,7 +264,6 @@ require (
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
@@ -283,7 +283,6 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
-	github.com/envoyproxy/go-control-plane v0.13.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
