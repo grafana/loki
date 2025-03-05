@@ -239,11 +239,11 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 
 	var (
 		activeStreamsTotal uint64
-		tenantRate         int
+		tenantRateBytes    float64
 	)
 	for _, resp := range resps {
 		activeStreamsTotal += resp.Response.ActiveStreams
-		tenantRate += int(resp.Response.Rate)
+		tenantRateBytes += float64(resp.Response.Rate)
 	}
 
 	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
@@ -254,7 +254,7 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 	)
 
 	tenantRateLimit := s.rateLimiter.Limit(time.Now(), req.Tenant)
-	if float64(tenantRate) > tenantRateLimit {
+	if tenantRateBytes > tenantRateLimit {
 		rateLimitedStreams := make([]*logproto.RejectedStream, 0, len(streamHashes))
 		for _, streamHash := range streamHashes {
 			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{

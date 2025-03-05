@@ -75,6 +75,11 @@ type Config struct {
 	// Stream metadata older than WindowSize will be evicted from the metadata map.
 	WindowSize time.Duration `yaml:"window_size"`
 
+	// RateWindow defines the time window for rate calculation.
+	// This should match the window used in Prometheus rate() queries for consistency.
+	// Defaults to the same value as WindowSize if not specified.
+	RateWindow time.Duration `yaml:"rate_window"`
+
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
@@ -89,6 +94,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.", f, util_log.Logger)
 	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
 	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
+	f.DurationVar(&cfg.RateWindow, "ingest-limits.rate-window", 5*time.Minute, "The time window for rate calculation. This should match the window used in Prometheus rate() queries for consistency.")
 	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
 }
 
@@ -161,11 +167,19 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
 func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
+
+	// If RateWindow is not set, default to 5 minutes to match common Prometheus rate() window
+	if cfg.RateWindow == 0 {
+		cfg.RateWindow = 5 * time.Minute
+		level.Info(logger).Log("msg", "RateWindow not set, defaulting to 5m")
+	}
+
 	s := &IngestLimits{
-		cfg:      cfg,
-		logger:   logger,
-		metadata: make(map[string]map[int32][]streamMetadata),
-		metrics:  newMetrics(reg),
+		cfg:                cfg,
+		logger:             logger,
+		metrics:            newMetrics(reg),
+		metadata:           make(map[string]map[int32][]streamMetadata),
+		assingedPartitions: make(map[int32]int64),
 	}
 
 	// Initialize internal metadata metrics
@@ -529,43 +543,67 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
+	// Get the rate window for rate calculations
+	// If RateWindow is configured, use it, otherwise fall back to WindowSize
+	var rateWindow time.Duration
+	if s.cfg.RateWindow > 0 {
+		rateWindow = s.cfg.RateWindow
+	} else {
+		rateWindow = s.cfg.WindowSize
+	}
+
 	// Calculate stream counts and status per tenant
 	type tenantLimits struct {
-		Tenant          string   `json:"tenant"`
-		ActiveStreams   uint64   `json:"activeStreams"`
-		Rate            uint64   `json:"rate"`
-		AssignedStreams []uint64 `json:"assignedStreams"`
+		Tenant        string  `json:"tenant"`
+		ActiveStreams uint64  `json:"activeStreams"`
+		Rate          float64 `json:"rate"`
 	}
 
 	// Get tenant and partitions from query parameters
 	params := r.URL.Query()
 	tenant := params.Get("tenant")
 	var (
-		activeStreams   uint64
-		rate            uint64
-		assignedStreams = make([]uint64, 0)
-		response        tenantLimits
+		activeStreams uint64
+		totalSize     uint64
+		response      tenantLimits
 	)
 
 	for _, partitions := range s.metadata[tenant] {
 		for _, stream := range partitions {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
-				rate += stream.totalSize
-				assignedStreams = append(assignedStreams, stream.hash)
+				totalSize += stream.totalSize
 			}
 		}
 	}
 
-	if activeStreams > 0 || len(assignedStreams) > 0 {
+	// Calculate rate using the configured rate window
+	// This provides better alignment with Prometheus rate() calculations
+	calculatedRate := float64(totalSize) / rateWindow.Seconds()
+
+	if activeStreams > 0 {
 		response = tenantLimits{
-			Tenant:          tenant,
-			ActiveStreams:   activeStreams,
-			AssignedStreams: assignedStreams,
-			Rate:            rate / uint64(s.cfg.WindowSize.Seconds()),
+			Tenant:        tenant,
+			ActiveStreams: activeStreams,
+			Rate:          calculatedRate,
+		}
+	} else {
+		response = tenantLimits{
+			Tenant: tenant,
 		}
 	}
 
+	// Log the calculated values for debugging
+	level.Debug(s.logger).Log(
+		"msg", "HTTP endpoint calculated stream usage",
+		"tenant", tenant,
+		"active_streams", activeStreams,
+		"total_size", totalSize,
+		"rate_window_seconds", rateWindow.Seconds(),
+		"calculated_rate", calculatedRate,
+	)
+
+	// Use util.WriteJSONResponse to write the JSON response
 	util.WriteJSONResponse(w, response)
 }
 
@@ -592,6 +630,15 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+
+	// Get the rate window cutoff for rate calculations
+	// If RateWindow is configured, use it, otherwise fall back to WindowSize
+	var rateWindow time.Duration
+	if s.cfg.RateWindow > 0 {
+		rateWindow = s.cfg.RateWindow
+	} else {
+		rateWindow = s.cfg.WindowSize
+	}
 
 	// Get the tenant's streams
 	partitions := s.metadata[req.Tenant]
@@ -661,10 +708,24 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		}
 	}
 
+	// Calculate rate using the configured rate window
+	// This provides better alignment with Prometheus rate() calculations
+	rate := float64(totalSize) / rateWindow.Seconds()
+
+	// Debug logging to help diagnose rate calculation issues
+	level.Debug(s.logger).Log(
+		"msg", "calculated stream usage",
+		"tenant", req.Tenant,
+		"active_streams", activeStreams,
+		"total_size", totalSize,
+		"rate_window_seconds", rateWindow.Seconds(),
+		"calculated_rate", rate,
+	)
+
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,
 		ActiveStreams:  activeStreams,
 		UnknownStreams: unknownStreams,
-		Rate:           int64(totalSize / uint64(s.cfg.WindowSize.Seconds())),
+		Rate:           int64(rate),
 	}, nil
 }
