@@ -1444,9 +1444,23 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return
 	}
 
-	// Make sure storage directory exists if using filesystem store
-	if t.Cfg.Ruler.StoreConfig.Type == "local" && t.Cfg.Ruler.StoreConfig.Local.Directory != "" {
-		err := chunk_util.EnsureDirectory(t.Cfg.Ruler.StoreConfig.Local.Directory)
+	// Make sure storage directory exists if using a filesystem store
+	var localStoreDir string
+	if t.Cfg.StorageConfig.UseThanosObjstore {
+		// storage_config.use_thanos_objstore is true so we're using
+		// ruler_storage. Is it one of the local backend spellings
+		// 'filesystem' or 'local'?
+		if t.Cfg.RulerStorage.Backend == "local" {
+			localStoreDir = t.Cfg.RulerStorage.Local.Directory
+		} else if t.Cfg.RulerStorage.Backend == "filesystem" {
+			localStoreDir = t.Cfg.RulerStorage.Filesystem.Directory
+		}
+	} else if t.Cfg.Ruler.StoreConfig.Type == "local" {
+		// Legacy ruler.storage.local.directory
+		localStoreDir = t.Cfg.Ruler.StoreConfig.Local.Directory
+	}
+	if localStoreDir != "" {
+		err := chunk_util.EnsureDirectory(localStoreDir)
 		if err != nil {
 			return nil, err
 		}
