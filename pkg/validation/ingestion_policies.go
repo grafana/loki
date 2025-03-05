@@ -9,6 +9,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+const (
+	GlobalPolicy = "*"
+)
+
 type PriorityStream struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description=The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description=Stream selector expression."`
