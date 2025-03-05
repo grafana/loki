@@ -1,0 +1,165 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+      dockerfile_path:
+        required: true
+        type: string
+      release_lib_ref:
+        required: true
+        type: string
+        default: main
+      release_repo:
+        required: true
+        type: string
+        default: grafana/loki
+      go_version:
+        required: false
+        type: string
+        default: 1.23.6
+      build_timeout:
+        required: false
+        type: number
+        default: 60
+      image_prefix:
+        required: false
+        type: string
+        default: grafana
+      use_ecr:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-image:
+    runs-on: ${{ matrix.runs_on }}
+    outputs:
+      image_digest_linux_amd64: ${{ steps.digest.outputs.digest_linux_amd64 }}
+      image_digest_linux_arm: ${{ steps.digest.outputs.digest_linux_arm }}
+      image_digest_linux_arm64: ${{ steps.digest.outputs.digest_linux_arm64 }}
+      image_name: ${{ steps.weekly-version.outputs.image_name }}
+      image_tag: ${{ steps.weekly-version.outputs.image_version }}
+
+    steps:
+      - name: Pull release library code
+        uses: actions/checkout@v4
+        with:
+          path: lib
+          ref: ${{ inputs.release_lib_ref }}
+          repository: ${{ inputs.release_repo }}
+
+      - name: Pull code to release
+        uses: actions/checkout@v4
+        with:
+          path: release
+          repository: ${{ inputs.release_repo }}
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        if: ${{ not inputs.use_ecr }}
+        uses: grafana/shared-workflows/actions/dockerhub-login@main
+
+      # If we are using ECR, we need to get the secrets from Vault
+      - name: "get-secrets"
+        if: ${{ inputs.use_ecr }}
+        uses: "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
+        with:
+          repo_secrets: |
+            ECR_ACCESS_KEY=aws-credentials:access_key_id
+            ECR_SECRET_KEY=aws-credentials:secret_access_key
+
+      # If we are using ECR, we need to configure the AWS credentials
+      - name: Configure AWS credentials
+        if: ${{ inputs.use_ecr }}
+        uses: "aws-actions/configure-aws-credentials@v4"
+        with:
+          aws-access-key-id: "${{ env.ECR_ACCESS_KEY }}"
+          aws-region: "us-east-1"
+          aws-secret-access-key: "${{ env.ECR_SECRET_KEY }}"
+
+      # If we are using ECR, we need to login to the ECR public registry
+      - name: "Login to Amazon ECR Public"
+        if: ${{ inputs.use_ecr }}
+        uses: "aws-actions/amazon-ecr-login@v2"
+        with:
+          registry-type: "public"
+
+      - id: weekly-version
+        name: Get weekly version
+        working-directory: release
+        run: |
+          version=$(./tools/image-tag)
+          echo "image_version=$version" >> $GITHUB_OUTPUT
+          echo "image_name=${{ inputs.image_prefix }}/${{ inputs.image_name }}" >> $GITHUB_OUTPUT
+          echo "image_full_name=${{ inputs.image_prefix }}/${{ inputs.image_name }}:$version" >> $GITHUB_OUTPUT
+
+      - id: platform
+        name: Parse image platform
+        run: |
+          platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+          echo "platform=${platform}" >> $GITHUB_OUTPUT
+          echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+
+      - id: build-push
+        name: Build and push
+        timeout-minutes: ${{ inputs.build_timeout }}
+        uses: docker/build-push-action@v6
+        with:
+          build-args: |
+            IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+            GO_VERSION=${{ inputs.go_version }}
+          context: release
+          file: release/${{ inputs.dockerfile_path }}
+          outputs: push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true
+          platforms: ${{ steps.platform.outputs.platform }}
+          provenance: true
+          tags: ${{ steps.weekly-version.outputs.image_name }}
+
+      - id: digest
+        name: Process image digest
+        working-directory: release
+        run: |
+          arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+          echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: linux/amd64
+            runs_on: github-hosted-ubuntu-x64-small
+          - arch: linux/arm64
+            runs_on: github-hosted-ubuntu-arm64-small
+          - arch: linux/arm
+            runs_on: github-hosted-ubuntu-arm64-small
+
+  create-manifest:
+    needs: [build-image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: grafana/shared-workflows/actions/dockerhub-login@main
+
+      - name: Publish multi-arch manifest
+        run: |
+          IMAGE=${{ needs.build-image.outputs.image_name }}:${{ needs.build-image.outputs.image_tag }}
+          echo "Create multi-arch manifest for $IMAGE"
+          docker buildx imagetools create -t $IMAGE \
+            ${{ needs.build-image.outputs.image_name }}@${{ needs.build-image.outputs.image_digest_linux_amd64 }} \
+            ${{ needs.build-image.outputs.image_name }}@${{ needs.build-image.outputs.image_digest_linux_arm64 }} \
+            ${{ needs.build-image.outputs.image_name }}@${{ needs.build-image.outputs.image_digest_linux_arm }}
+          docker buildx imagetools inspect $IMAGE
