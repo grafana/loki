@@ -310,7 +310,7 @@ if err != nil {
 }
 
 writer := parquet.NewGenericWriter[RowType](output)
-_, err := parquet.CopyRows(writer, merge)
+_, err := parquet.CopyRows(writer, merge.Rows())
 if err != nil {
     ...
 }

@@ -14,7 +14,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
-func newMultiExtractorSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractors []log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newMultiExtractorSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	return &multiExtractorSampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractors:       extractors,

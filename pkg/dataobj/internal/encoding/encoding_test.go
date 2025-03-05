@@ -3,6 +3,8 @@ package encoding_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -102,16 +104,29 @@ func TestStreams(t *testing.T) {
 
 		var actual []Country
 
-		for result := range dataset.Iter(context.Background(), columns) {
-			row, err := result.Value()
-			require.NoError(t, err)
-			require.Len(t, row.Values, 2)
-			require.Equal(t, len(actual), row.Index)
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+		})
 
-			actual = append(actual, Country{
-				Name:    row.Values[0].String(),
-				Capital: row.Values[1].String(),
-			})
+		buf := make([]dataset.Row, 1024)
+		for {
+			n, err := r.Read(context.Background(), buf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				require.NoError(t, err)
+			} else if n == 0 && errors.Is(err, io.EOF) {
+				break
+			}
+
+			for _, row := range buf[:n] {
+				require.Len(t, row.Values, 2)
+				require.Equal(t, len(actual), row.Index)
+
+				actual = append(actual, Country{
+					Name:    row.Values[0].String(),
+					Capital: row.Values[1].String(),
+				})
+			}
 		}
 
 		require.Equal(t, countries, actual)

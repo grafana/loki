@@ -321,6 +321,25 @@ func convertBytes(v string) (float64, error) {
 	return float64(b), nil
 }
 
+type variantsSampleExtractorWrapper struct {
+	SampleExtractor
+	index int
+}
+
+func NewVariantsSampleExtractorWrapper(
+	index int,
+	extractor SampleExtractor,
+) SampleExtractor {
+	return &variantsSampleExtractorWrapper{
+		SampleExtractor: extractor,
+		index:           index,
+	}
+}
+
+func (v *variantsSampleExtractorWrapper) ForStream(labels labels.Labels) StreamSampleExtractor {
+	return NewVariantsStreamSampleExtractorWrapper(v.index, v.SampleExtractor.ForStream(labels))
+}
+
 type variantsStreamSampleExtractorWrapper struct {
 	StreamSampleExtractor
 	index int
