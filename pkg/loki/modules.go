@@ -1444,6 +1444,13 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		return
 	}
 
+	// To help reduce user confusion, warn if the user has configured both the legacy ruler.storage and the new ruler_storage is overriding it, or vice versa.
+	if t.Cfg.StorageConfig.UseThanosObjstore && !t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Warn(util_log.Logger).Log("msg", "ruler.storage exists and is not empty, but will be ignored in favour of ruler_storage because storage_config.use_thanos_objstore is true.")
+	} else if !t.Cfg.StorageConfig.UseThanosObjstore && !t.Cfg.RulerStorage.IsDefaults() {
+		level.Warn(util_log.Logger).Log("msg", "ruler_storage exists and is not empty, but will be ignored in favour of ruler.storage because storage_config.use_thanos_objstore is false.")
+	}
+
 	// Make sure storage directory exists if using a filesystem store
 	var localStoreDir string
 	if t.Cfg.StorageConfig.UseThanosObjstore {
