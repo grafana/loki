@@ -460,9 +460,9 @@ type SemaphoreWithTiming struct {
 	sem *semaphore.Weighted
 }
 
-func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
+func NewSemaphoreWithTiming(maxVal int64) *SemaphoreWithTiming {
 	return &SemaphoreWithTiming{
-		sem: semaphore.NewWeighted(max),
+		sem: semaphore.NewWeighted(maxVal),
 	}
 }
 
