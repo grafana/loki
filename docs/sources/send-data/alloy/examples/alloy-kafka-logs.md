@@ -195,7 +195,7 @@ And finally, add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
-    url = "http://<loki-addr>:3100/otlp/v1/logs"
+    url = "http://loki:3100/loki/api/v1/push"
   }
 }
 ```
@@ -299,7 +299,7 @@ Finally, add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
-    endpoint = "http://<loki-addr>:3100/otlp/v1/logs"
+    endpoint = "http://loki:3100/otlp"
   }
 }
 ```
