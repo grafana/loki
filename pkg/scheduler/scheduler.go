@@ -443,9 +443,9 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 			level.Error(s.log).Log("msg", "dequeue() call resulted in nil response", "querier", querierID)
 		}
 		r, ok := req.(*schedulerRequest)
-    if !ok {
-      level.Error(s.log).Log("msg", "dequeue() call returned a non-schedulerRequest request", "querier", querierID)
-    }
+		if !ok {
+			level.Error(s.log).Log("msg", "dequeue() call returned a non-schedulerRequest request", "querier", querierID)
+		}
 
 		reqQueueTime := time.Since(r.queueTime)
 		s.queueDuration.Observe(reqQueueTime.Seconds())
