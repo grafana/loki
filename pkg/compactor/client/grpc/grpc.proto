@@ -7,7 +7,9 @@ service Compactor {
   rpc GetCacheGenNumbers(GetCacheGenNumbersRequest) returns (GetCacheGenNumbersResponse);
 }
 
-message GetDeleteRequestsRequest {}
+message GetDeleteRequestsRequest {
+  bool forQuerytimeFiltering = 1;
+}
 
 message GetDeleteRequestsResponse {
   repeated DeleteRequest deleteRequests = 1;

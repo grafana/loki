@@ -19,9 +19,10 @@ import (
 
 const (
 	orgHeaderKey    = "X-Scope-OrgID"
-	getDeletePath   = "/loki/api/v1/delete"
 	cacheGenNumPath = "/loki/api/v1/cache/generation_numbers"
 )
+
+var getDeletePath = fmt.Sprintf("/loki/api/v1/delete?%s=true", deletion.ForQuerytimeFilteringQueryParam)
 
 type HTTPConfig struct {
 	TLSEnabled bool             `yaml:"tls_enabled"`
