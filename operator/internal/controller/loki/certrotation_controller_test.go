@@ -18,6 +18,7 @@ func TestCertRotationController_RegistersCustomResource_WithDefaultPredicates(t 
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
+	b.NamedReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)
@@ -37,6 +38,7 @@ func TestCertRotationController_RegisterOwnedResources_WithDefaultPredicates(t *
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
+	b.NamedReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)

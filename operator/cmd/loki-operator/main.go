@@ -206,7 +206,6 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameZoneAware)
 		os.Exit(1)
 	}
-	
 
 	// +kubebuilder:scaffold:builder
 
