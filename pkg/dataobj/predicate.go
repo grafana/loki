@@ -65,7 +65,7 @@ type (
 		Keep func(name, value string) bool
 	}
 
-	// A MetadataMatcherPredicate is a [LogsPredicae] that requires a metadata
+	// A MetadataMatcherPredicate is a [LogsPredicate] that requires a metadata
 	// key named Key to exist with a value of Value.
 	MetadataMatcherPredicate struct{ Key, Value string }
 
