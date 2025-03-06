@@ -788,6 +788,7 @@ func TestNewIngestLimits(t *testing.T) {
 	// if it's not specified in the config
 	expectedCfg := cfg
 	expectedCfg.RateWindow = 5 * time.Minute
+	expectedCfg.BucketDuration = 1 * time.Minute
 	require.Equal(t, expectedCfg, s.cfg)
 
 	require.NotNil(t, s.metadata)
