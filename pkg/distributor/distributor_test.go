@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
@@ -63,7 +64,7 @@ const (
 
 var (
 	success = &logproto.PushResponse{}
-	ctx     = user.InjectOrgID(context.Background(), "test")
+	ctx     = user.InjectOrgID(opentracing.ContextWithSpan(context.Background(), opentracing.StartSpan("test")), "test")
 )
 
 func TestDistributor(t *testing.T) {

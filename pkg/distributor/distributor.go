@@ -183,6 +183,8 @@ type Distributor struct {
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
+	kafkaTasks     chan pushKafkaTask
+	kafkaTaskWg    sync.WaitGroup
 
 	// kafka
 	kafkaWriter   KafkaProducer
@@ -282,6 +284,7 @@ func New(
 		tee:                   tee,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
+		kafkaTasks:            make(chan pushKafkaTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -400,6 +403,11 @@ func (d *Distributor) running(ctx context.Context) error {
 	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
 	for i := 0; i < d.cfg.PushWorkerCount; i++ {
 		go d.pushIngesterWorker(ctx)
+	}
+	// kafka writes one record per stream instead of once per ingester, so it needs more workers
+	d.kafkaTaskWg.Add(d.cfg.PushWorkerCount * 8)
+	for i := 0; i < d.cfg.PushWorkerCount*8; i++ {
+		go d.pushKafkaWorker(ctx)
 	}
 	select {
 	case <-ctx.Done():
@@ -699,7 +707,22 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+		for _, s := range streams {
+			func() {
+				select {
+				case <-ctx.Done():
+					return
+				case d.kafkaTasks <- pushKafkaTask{
+					stream:  s,
+					tenant:  tenantID,
+					subring: subring,
+					ctx:     ctx,
+					tracker: &tracker,
+				}:
+					return
+				}
+			}()
+		}
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -764,11 +787,21 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	select {
 	case err := <-tracker.err:
+		d.recordFinish(ctx, "tracker error", err)
 		return nil, err
 	case <-tracker.done:
+		d.recordFinish(ctx, "tracker finished successfully", nil)
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
+		d.recordFinish(ctx, "context done", ctx.Err())
 		return nil, ctx.Err()
+	}
+}
+
+func (d *Distributor) recordFinish(ctx context.Context, event string, err error) {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span.LogKV("event", event, "error", err)
 	}
 }
 
@@ -1133,16 +1166,32 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
-	for _, s := range streams {
-		go func(s KeyedStream) {
-			err := d.sendStreamToKafka(ctx, s, tenant, subring)
-			if err != nil {
-				err = fmt.Errorf("failed to write stream to kafka: %w", err)
-			}
-			tracker.doneWithResult(err)
-		}(s)
+type pushKafkaTask struct {
+	stream  KeyedStream
+	tenant  string
+	tracker *pushTracker
+	subring *ring.PartitionRing
+	ctx     context.Context
+}
+
+func (d *Distributor) pushKafkaWorker(ctx context.Context) {
+	defer d.kafkaTaskWg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-d.kafkaTasks:
+			d.sendStreamToKafkaErr(task)
+		}
 	}
+}
+
+func (d *Distributor) sendStreamToKafkaErr(task pushKafkaTask) {
+	err := d.sendStreamToKafka(task.ctx, task.stream, task.tenant, task.subring)
+	if err != nil {
+		err = fmt.Errorf("failed to write stream to kafka: %w", err)
+	}
+	task.tracker.doneWithResult(err)
 }
 
 func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
