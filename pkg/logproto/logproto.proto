@@ -57,7 +57,7 @@ message StreamRatesResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
-  uint64 lineSize = 2;
+  uint64 entriesSize = 2;
   uint64 structuredMetadataSize = 3;
 }
 
@@ -94,7 +94,8 @@ message GetStreamUsageRequest {
 message GetStreamUsageResponse {
   string tenant = 1;
   uint64 activeStreams = 2;
-  repeated uint64 unknownStreams = 3;
+  int64 rate = 3;
+  repeated uint64 unknownStreams = 4;
 }
 
 message StreamRate {

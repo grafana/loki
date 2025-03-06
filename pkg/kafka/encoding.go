@@ -195,7 +195,7 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, lineSize, structuredMetadataSize uint64) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, entriesSize, structuredMetadataSize uint64) *kgo.Record {
 	// Validate stream hash
 	if streamHash == 0 {
 		return nil
@@ -204,7 +204,7 @@ func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, l
 	// Set metadata
 	metadata := logproto.StreamMetadata{
 		StreamHash:             streamHash,
-		LineSize:               lineSize,
+		EntriesSize:            entriesSize,
 		StructuredMetadataSize: structuredMetadataSize,
 	}
 

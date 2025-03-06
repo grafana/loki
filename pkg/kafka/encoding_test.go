@@ -158,7 +158,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 		partition              int32
 		topic                  string
 		tenantID               string
-		lineSize               uint64
+		entriesSize            uint64
 		structuredMetadataSize uint64
 		expectErr              bool
 	}{
@@ -168,7 +168,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 			partition:              1,
 			topic:                  "logs",
 			tenantID:               "tenant-1",
-			lineSize:               1024,
+			entriesSize:            1024,
 			structuredMetadataSize: 512,
 			expectErr:              false,
 		},
@@ -178,7 +178,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 			partition:              2,
 			topic:                  "metrics",
 			tenantID:               "tenant-2",
-			lineSize:               0,
+			entriesSize:            0,
 			structuredMetadataSize: 0,
 			expectErr:              false,
 		},
@@ -188,7 +188,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 			partition:              3,
 			topic:                  "traces",
 			tenantID:               "tenant-3",
-			lineSize:               2048,
+			entriesSize:            2048,
 			structuredMetadataSize: 1024,
 			expectErr:              true,
 		},
@@ -197,7 +197,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.lineSize, tt.structuredMetadataSize)
+			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.entriesSize, tt.structuredMetadataSize)
 			if tt.expectErr {
 				require.Nil(t, record)
 				return
@@ -216,7 +216,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 
 			// Verify decoded values
 			require.Equal(t, tt.hash, metadata.StreamHash)
-			require.Equal(t, tt.lineSize, metadata.LineSize)
+			require.Equal(t, tt.entriesSize, metadata.EntriesSize)
 			require.Equal(t, tt.structuredMetadataSize, metadata.StructuredMetadataSize)
 		})
 	}
