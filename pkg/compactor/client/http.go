@@ -19,10 +19,9 @@ import (
 
 const (
 	orgHeaderKey    = "X-Scope-OrgID"
+	getDeletePath   = "/loki/api/v1/delete"
 	cacheGenNumPath = "/loki/api/v1/cache/generation_numbers"
 )
-
-var getDeletePath = fmt.Sprintf("/loki/api/v1/delete?%s=true", deletion.ForQuerytimeFilteringQueryParam)
 
 type HTTPConfig struct {
 	TLSEnabled bool             `yaml:"tls_enabled"`
@@ -52,7 +51,11 @@ func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
 		return nil, err
 	}
+
 	u.Path = getDeletePath
+	q := u.Query()
+	q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
+	u.RawQuery = q.Encode()
 	deleteRequestsURL := u.String()
 
 	u.Path = cacheGenNumPath
