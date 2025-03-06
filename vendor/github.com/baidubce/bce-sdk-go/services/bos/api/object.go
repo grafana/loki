@@ -204,6 +204,11 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 		if validMetadataDirective(args.TaggingDirective) {
 			req.SetHeader(http.BCE_COPY_TAGGING_DIRECTIVE, args.TaggingDirective)
 		}
+		if len(args.ObjectTagging) != 0 {
+			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
+				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
+			}
+		}
 		if validStorageClass(args.StorageClass) {
 			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
 		} else {
