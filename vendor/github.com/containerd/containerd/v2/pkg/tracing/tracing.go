@@ -19,6 +19,7 @@ package tracing
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -35,16 +36,11 @@ type StartConfig struct {
 
 type SpanOpt func(config *StartConfig)
 
-// WithHTTPRequest marks span as a HTTP request operation from client to server.
-// It'll append attributes from the HTTP request object and mark it with `SpanKindClient` type.
-//
-// Deprecated: use upstream functionality from otelhttp directly instead. This function is kept for API compatibility
-// but no longer works as expected due to required functionality no longer exported in OpenTelemetry libraries.
-func WithHTTPRequest(_ *http.Request) SpanOpt {
+// WithAttribute appends attributes to a new created span.
+func WithAttribute(k string, v interface{}) SpanOpt {
 	return func(config *StartConfig) {
 		config.spanOpts = append(config.spanOpts,
-			trace.WithSpanKind(trace.SpanKindClient), // A client making a request to a server
-		)
+			trace.WithAttributes(Attribute(k, v)))
 	}
 }
 
@@ -92,8 +88,13 @@ func (s *Span) End() {
 }
 
 // AddEvent adds an event with provided name and options.
-func (s *Span) AddEvent(name string, options ...trace.EventOption) {
-	s.otelSpan.AddEvent(name, options...)
+func (s *Span) AddEvent(name string, attributes ...attribute.KeyValue) {
+	s.otelSpan.AddEvent(name, trace.WithAttributes(attributes...))
+}
+
+// RecordError will record err as an exception span event for this span
+func (s *Span) RecordError(err error, options ...trace.EventOption) {
+	s.otelSpan.RecordError(err, options...)
 }
 
 // SetStatus sets the status of the current span.
@@ -112,14 +113,16 @@ func (s *Span) SetAttributes(kv ...attribute.KeyValue) {
 	s.otelSpan.SetAttributes(kv...)
 }
 
+const spanDelimiter = "."
+
 // Name sets the span name by joining a list of strings in dot separated format.
 func Name(names ...string) string {
-	return makeSpanName(names...)
+	return strings.Join(names, spanDelimiter)
 }
 
 // Attribute takes a key value pair and returns attribute.KeyValue type.
-func Attribute(k string, v interface{}) attribute.KeyValue {
-	return any(k, v)
+func Attribute(k string, v any) attribute.KeyValue {
+	return keyValue(k, v)
 }
 
 // HTTPStatusCodeAttributes generates attributes of the HTTP namespace as specified by the OpenTelemetry
