@@ -13,9 +13,9 @@ require (
 	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.16
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.11.2
-	github.com/openshift/api v0.0.0-20240912201240-0a8800162826 // release-4.17
-	github.com/openshift/cloud-credential-operator v0.0.0-20240908131729-d5b0b95c40f7 // release-4.17
-	github.com/openshift/library-go v0.0.0-20240731134552-8211143dfde7 // release-4.17
+	github.com/openshift/api v0.0.0-20250305013520-e7f23be12279 // release-4.18
+	github.com/openshift/cloud-credential-operator v0.0.0-20250103203211-020f8b841abf // release-4.18
+	github.com/openshift/library-go v0.0.0-20250203153547-76273507b614 // release-4.18
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.80.1
 	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/common v0.62.0
@@ -51,7 +51,7 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
-	github.com/fatih/color v1.15.0 // indirect
+	github.com/fatih/color v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2 // indirect
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
