@@ -530,8 +530,6 @@ github.com/cncf/xds/go/xds/data/orca/v3
 github.com/cncf/xds/go/xds/service/orca/v3
 github.com/cncf/xds/go/xds/type/matcher/v3
 github.com/cncf/xds/go/xds/type/v3
-# github.com/containerd/containerd v1.7.25
-## explicit; go 1.21
 # github.com/containerd/containerd/v2 v2.0.3
 ## explicit; go 1.22.0
 github.com/containerd/containerd/v2/pkg/tracing
