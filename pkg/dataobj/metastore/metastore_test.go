@@ -250,19 +250,17 @@ func TestDataObjectsPaths(t *testing.T) {
 	ms := NewObjectMetastore(bucket)
 
 	t.Run("finds objects within current window", func(t *testing.T) {
-		metas, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
+		paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, metas, 2)
-		paths := extractPaths(metas)
+		require.Len(t, paths, 2)
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 	})
 
 	t.Run("finds objects across two 12h windows", func(t *testing.T) {
-		metas, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
+		paths, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, metas, 4)
-		paths := extractPaths(metas)
+		require.Len(t, paths, 4)
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 		require.Contains(t, paths, "path3")
@@ -270,10 +268,9 @@ func TestDataObjectsPaths(t *testing.T) {
 	})
 
 	t.Run("finds objects across three 12h windows", func(t *testing.T) {
-		metas, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
+		paths, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, metas, 5)
-		paths := extractPaths(metas)
+		require.Len(t, paths, 5)
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 		require.Contains(t, paths, "path3")
@@ -282,10 +279,9 @@ func TestDataObjectsPaths(t *testing.T) {
 	})
 
 	t.Run("finds all objects across all windows", func(t *testing.T) {
-		metas, err := ms.DataObjects(ctx, now.Add(-36*time.Hour), now)
+		paths, err := ms.DataObjects(ctx, now.Add(-36*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, metas, 6)
-		paths := extractPaths(metas)
+		require.Len(t, paths, 6)
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 		require.Contains(t, paths, "path3")
@@ -302,24 +298,15 @@ func TestDataObjectsPaths(t *testing.T) {
 
 	t.Run("finds half of objects with partial window overlap", func(t *testing.T) {
 		// Query starting from middle of first window to current time
-		metas, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
+		paths, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, metas, 5) // Should exclude path6 which is before -30h
-		paths := extractPaths(metas)
+		require.Len(t, paths, 5) // Should exclude path6 which is before -30h
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 		require.Contains(t, paths, "path3")
 		require.Contains(t, paths, "path4")
 		require.Contains(t, paths, "path5")
 	})
-}
-
-func extractPaths(metas []DataObjectMeta) []string {
-	paths := make([]string, 0, len(metas))
-	for _, meta := range metas {
-		paths = append(paths, meta.Path)
-	}
-	return paths
 }
 
 func TestObjectOverlapsRange(t *testing.T) {

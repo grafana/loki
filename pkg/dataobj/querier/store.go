@@ -203,10 +203,10 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	span.LogKV("files", files)
 
 	objects := make([]object, 0, len(files))
-	for _, objMeta := range files {
+	for _, path := range files {
 		objects = append(objects, object{
-			Object: dataobj.FromBucket(s.bucket, objMeta.Path),
-			path:   objMeta.Path,
+			Object: dataobj.FromBucket(s.bucket, path),
+			path:   path,
 		})
 	}
 	return objects, nil

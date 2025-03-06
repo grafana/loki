@@ -7,20 +7,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type StreamMeta struct {
-	Labels *labels.Labels
-}
-
-type DataObjectMeta struct {
-	Path string
-}
-
 type Metastore interface {
 	// Streams returns all streams corresponding to the given matchers between [start,end]
-	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]StreamMeta, error)
+	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error)
 
-	// DataObjects returns metadata about all dataobjects matching the given matchers between [start,end]
-	DataObjects(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]DataObjectMeta, error)
+	// DataObjects returns paths to all matching the given matchers between [start,end]
+	DataObjects(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error)
 
 	// Labels returns all possible labels from matching streams between [start,end]
 	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream

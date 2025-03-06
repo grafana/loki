@@ -50,7 +50,7 @@ func NewObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	}
 }
 
-func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]StreamMeta, error) {
+func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -69,22 +69,10 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
-	matchedStreams, err := m.listStreamsFromObjects(ctx, paths, predicate)
-	if err != nil {
-		return nil, err
-	}
-
-	streams := make([]StreamMeta, 0, len(matchedStreams))
-	for _, stream := range matchedStreams {
-		streams = append(streams, StreamMeta{
-			Labels: stream,
-		})
-	}
-
-	return streams, nil
+	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
-func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]DataObjectMeta, error) {
+func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -97,16 +85,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	}
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
-	if err != nil {
-		return nil, err
-	}
-
-	objects := make([]DataObjectMeta, 0, len(paths))
-	for _, path := range paths {
-		objects = append(objects, DataObjectMeta{Path: path})
-	}
-	return objects, nil
+	return m.listObjectsFromStores(ctx, storePaths, start, end)
 }
 
 func (m *ObjectMetastore) Labels(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
