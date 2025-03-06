@@ -76,14 +76,15 @@ type Config struct {
 	WindowSize time.Duration `yaml:"window_size"`
 
 	// RateWindow defines the time window for rate calculation.
-	// This should match the window used in Prometheus rate() queries for consistency.
-	// Defaults to the same value as WindowSize if not specified.
+	// This should match the window used in Prometheus rate() queries for consistency,
+	// when using the `loki_ingest_limits_ingested_bytes_total` metric.
+	// Defaults to 5 minutes if not specified.
 	RateWindow time.Duration `yaml:"rate_window"`
 
-	// IntervalDuration defines the granularity of time intervals used for sliding window rate calculation.
-	// Smaller intervals provide more precise rate tracking but require more memory.
+	// BucketDuration defines the granularity of time buckets used for sliding window rate calculation.
+	// Smaller buckets provide more precise rate tracking but require more memory.
 	// Defaults to 1 minute if not specified.
-	IntervalDuration time.Duration `yaml:"interval_duration"`
+	BucketDuration time.Duration `yaml:"bucket_duration"`
 
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
@@ -100,7 +101,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
 	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
 	f.DurationVar(&cfg.RateWindow, "ingest-limits.rate-window", 5*time.Minute, "The time window for rate calculation. This should match the window used in Prometheus rate() queries for consistency.")
-	f.DurationVar(&cfg.IntervalDuration, "ingest-limits.interval-duration", 1*time.Minute, "The granularity of time intervals used for sliding window rate calculation. Smaller intervals provide more precise rate tracking but require more memory.")
+	f.DurationVar(&cfg.BucketDuration, "ingest-limits.bucket-duration", 1*time.Minute, "The granularity of time buckets used for sliding window rate calculation. Smaller buckets provide more precise rate tracking but require more memory.")
 	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
 }
 
@@ -140,11 +141,11 @@ type streamMetadata struct {
 	lastSeenAt int64
 	totalSize  uint64
 	// Add a slice to track bytes per time interval for sliding window rate calculation
-	sizeByInterval []intervalSize
+	sizeBuckets []sizeBucket
 }
 
-// intervalSize represents the bytes received during a specific time interval
-type intervalSize struct {
+// sizeBucket represents the bytes received during a specific time interval
+type sizeBucket struct {
 	timestamp int64  // start of the interval
 	size      uint64 // bytes received during this interval
 }
@@ -189,8 +190,8 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	}
 
 	// If IntervalDuration is not set, default to 1 minute for a good balance between precision and memory usage
-	if cfg.IntervalDuration == 0 {
-		cfg.IntervalDuration = 1 * time.Minute
+	if cfg.BucketDuration == 0 {
+		cfg.BucketDuration = 1 * time.Minute
 		level.Info(logger).Log("msg", "IntervalDuration not set, defaulting to 1m")
 	}
 
@@ -199,7 +200,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 		logger:             logger,
 		metrics:            newMetrics(reg),
 		metadata:           make(map[string]map[int32][]streamMetadata),
-		assingedPartitions: make(map[int32]int64),
+		assignedPartitions: make(map[int32]int64),
 	}
 
 	// Initialize internal metadata metrics
@@ -517,54 +518,54 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	recordTime := lastSeenAt.UnixNano()
 	recTotalSize := rec.EntriesSize + rec.StructuredMetadataSize
 
-	// Get the interval for this timestamp using the configured interval duration
-	intervalStart := lastSeenAt.Truncate(s.cfg.IntervalDuration).UnixNano()
+	// Get the bucket for this timestamp using the configured interval duration
+	bucketStart := lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 
-	// Calculate the rate window cutoff for cleaning up old intervals
+	// Calculate the rate window cutoff for cleaning up old buckets
 	rateWindowCutoff := lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
 			// Update total size
-			newTotalSize := stream.totalSize + recTotalSize
+			totalSize := stream.totalSize + recTotalSize
 
-			// Update or add size for the current interval
-			intervalUpdated := false
-			newSizeByInterval := make([]intervalSize, 0, len(stream.sizeByInterval)+1)
+			// Update or add size for the current bucket
+			updated := false
+			sb := make([]sizeBucket, 0, len(stream.sizeBuckets)+1)
 
-			// Only keep intervals within the rate window and update the current interval
-			for _, interval := range stream.sizeByInterval {
-				// Clean up intervals outside the rate window
-				if interval.timestamp < rateWindowCutoff {
+			// Only keep buckets within the rate window and update the current bucket
+			for _, bucket := range stream.sizeBuckets {
+				// Clean up buckets outside the rate window
+				if bucket.timestamp < rateWindowCutoff {
 					continue
 				}
 
-				if interval.timestamp == intervalStart {
-					// Update existing interval
-					newSizeByInterval = append(newSizeByInterval, intervalSize{
-						timestamp: intervalStart,
-						size:      interval.size + recTotalSize,
+				if bucket.timestamp == bucketStart {
+					// Update existing bucket
+					sb = append(sb, sizeBucket{
+						timestamp: bucketStart,
+						size:      bucket.size + recTotalSize,
 					})
-					intervalUpdated = true
+					updated = true
 				} else {
-					// Keep other intervals within the rate window as is
-					newSizeByInterval = append(newSizeByInterval, interval)
+					// Keep other buckets within the rate window as is
+					sb = append(sb, bucket)
 				}
 			}
 
-			// Add new interval if it wasn't updated
-			if !intervalUpdated {
-				newSizeByInterval = append(newSizeByInterval, intervalSize{
-					timestamp: intervalStart,
+			// Add new bucket if it wasn't updated
+			if !updated {
+				sb = append(sb, sizeBucket{
+					timestamp: bucketStart,
 					size:      recTotalSize,
 				})
 			}
 
 			s.metadata[tenant][partition][i] = streamMetadata{
-				hash:           stream.hash,
-				lastSeenAt:     recordTime,
-				totalSize:      newTotalSize,
-				sizeByInterval: newSizeByInterval,
+				hash:        stream.hash,
+				lastSeenAt:  recordTime,
+				totalSize:   totalSize,
+				sizeBuckets: sb,
 			}
 			return
 		}
@@ -572,10 +573,10 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Create new stream metadata with the initial interval
 	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
-		hash:           rec.StreamHash,
-		lastSeenAt:     recordTime,
-		totalSize:      recTotalSize,
-		sizeByInterval: []intervalSize{{timestamp: intervalStart, size: recTotalSize}},
+		hash:        rec.StreamHash,
+		lastSeenAt:  recordTime,
+		totalSize:   recTotalSize,
+		sizeBuckets: []sizeBucket{{timestamp: bucketStart, size: recTotalSize}},
 	})
 }
 
@@ -608,7 +609,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
 	// Get the rate window cutoff for rate calculations
-	rateWindowCutoff := time.Now().Add(-s.cfg.IntervalDuration).UnixNano()
+	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
 
 	// Calculate stream counts and status per tenant
 	type tenantLimits struct {
@@ -621,9 +622,9 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	tenant := params.Get("tenant")
 	var (
-		activeStreams             uint64
-		totalSize uint64
-		response                  tenantLimits
+		activeStreams uint64
+		totalSize     uint64
+		response      tenantLimits
 	)
 
 	for _, partitions := range s.metadata[tenant] {
@@ -632,9 +633,9 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				activeStreams++
 
 				// Calculate size only within the rate window
-				for _, interval := range stream.sizeByInterval {
-					if interval.timestamp >= rateWindowCutoff {
-						totalSize += interval.size
+				for _, bucket := range stream.sizeBuckets {
+					if bucket.timestamp >= rateWindowCutoff {
+						totalSize += bucket.size
 					}
 				}
 			}
@@ -664,9 +665,9 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"msg", "HTTP endpoint calculated stream usage",
 		"tenant", tenant,
 		"active_streams", activeStreams,
-		"total_size_within_rate_window", totalSize,
+		"total_size", util.HumanizeBytes(totalSize),
 		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", calculatedRate,
+		"calculated_rate", util.HumanizeBytes(uint64(calculatedRate)),
 	)
 
 	// Use util.WriteJSONResponse to write the JSON response
@@ -745,15 +746,15 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 			activeStreams++
 
 			// Calculate size only within the rate window
-			for _, interval := range stream.sizeByInterval {
-				if interval.timestamp >= rateWindowCutoff {
-					totalSize += interval.size
+			for _, bucket := range stream.sizeBuckets {
+				if bucket.timestamp >= rateWindowCutoff {
+					totalSize += bucket.size
 				}
 			}
 		}
 	}
 
-	// Get the unknown and rate limited streams
+	// Get the unknown streams
 	var unknownStreams []uint64
 	for _, streamHash := range req.StreamHashes {
 		found := false
@@ -782,9 +783,9 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		"msg", "calculated stream usage",
 		"tenant", req.Tenant,
 		"active_streams", activeStreams,
-		"total_size_within_rate_window", totalSize,
+		"total_size", util.HumanizeBytes(totalSize),
 		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", rate,
+		"calculated_rate", util.HumanizeBytes(uint64(rate)),
 	)
 
 	return &logproto.GetStreamUsageResponse{
