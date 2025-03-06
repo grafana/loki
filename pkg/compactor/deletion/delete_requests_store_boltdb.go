@@ -201,7 +201,7 @@ func (ds *deleteRequestsStoreBoltDB) GetAllRequests(ctx context.Context) ([]Dele
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
-func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Context, userID string, _ bool) ([]DeleteRequest, error) {
 	deleteGroups, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
