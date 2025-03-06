@@ -278,9 +278,8 @@ function Section({
           Section #{sectionIndex + 1}: {section.type}
         </h3>
         <svg
-          className={`w-5 h-5 transform transition-transform duration-300 ${
-            isExpanded ? "rotate-180" : ""
-          }`}
+          className={`w-5 h-5 transform transition-transform duration-300 ${isExpanded ? "rotate-180" : ""
+            }`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -411,9 +410,8 @@ function Column({ column, isExpanded, onToggle }: ColumnProps) {
             </Badge>
           </div>
           <svg
-            className={`w-4 h-4 transform transition-transform ${
-              isExpanded ? "rotate-180" : ""
-            }`}
+            className={`w-4 h-4 transform transition-transform ${isExpanded ? "rotate-180" : ""
+              }`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -480,6 +478,23 @@ function ColumnStats({ column }: ColumnStatsProps) {
           {formatBytes(column.metadata_offset)}
         </div>
       </div>
+      {column.statistics && (
+        <div className="col-span-full">
+          <div className="rounded-lg bg-muted p-6">
+            <div className="text-sm text-muted-foreground mb-4">Statistics</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {column.statistics.cardinality_count !== undefined && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Cardinality</div>
+                  <div className="font-medium">
+                    {column.statistics.cardinality_count.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,9 @@ package logs
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -32,14 +34,16 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			return nil, err
 		}
 
-		seq := dataset.Iter(context.Background(), dsetColumns)
-		next, stop := result.Pull(seq)
-		defer stop()
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: t,
+			Columns: dsetColumns,
+		})
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns: dsetColumns,
 
-			pull: next, stop: stop,
+			r:   r,
+			buf: make([]dataset.Row, 128), // Read 128 values at a time.
 		})
 	}
 
@@ -96,21 +100,44 @@ type tableSequence struct {
 
 	columns []dataset.Column
 
-	pull func() (result.Result[dataset.Row], bool)
-	stop func()
+	r *dataset.Reader
+
+	buf  []dataset.Row
+	off  int // Offset into buf
+	size int // Number of valid values in buf
 }
 
 var _ loser.Sequence = (*tableSequence)(nil)
 
 func (seq *tableSequence) Next() bool {
-	val, ok := seq.pull()
-	seq.curValue = val
-	return ok
+	if seq.off < seq.size {
+		seq.curValue = result.Value(seq.buf[seq.off])
+		seq.off++
+		return true
+	}
+
+ReadBatch:
+	n, err := seq.r.Read(context.Background(), seq.buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		seq.curValue = result.Error[dataset.Row](err)
+		return true
+	} else if n == 0 && errors.Is(err, io.EOF) {
+		return false
+	} else if n == 0 {
+		// Re-read if we got an empty batch without hitting EOF.
+		goto ReadBatch
+	}
+
+	seq.curValue = result.Value(seq.buf[0])
+
+	seq.off = 1
+	seq.size = n
+	return true
 }
 
 func tableSequenceValue(seq *tableSequence) result.Result[dataset.Row] { return seq.curValue }
 
-func tableSequenceStop(seq *tableSequence) { seq.stop() }
+func tableSequenceStop(seq *tableSequence) { _ = seq.r.Close() }
 
 func rowResultLess(a, b result.Result[dataset.Row]) bool {
 	var (

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { PageContainer } from "@/layout/page-container";
+import { absolutePath } from "@/util";
 
 interface DeleteRequest {
   request_id: string;
@@ -58,7 +59,9 @@ const useDeletes = (status: string[]) => {
         const requests = await Promise.all(
           status.map(async (s) => {
             const response = await fetch(
-              `/ui/api/v1/proxy/${nodeName}/compactor/ui/api/v1/deletes?status=${s}`
+              absolutePath(
+                `/api/v1/proxy/${nodeName}/compactor/ui/api/v1/deletes?status=${s}`
+              )
             );
             if (!response.ok) {
               const errorText = await response.text();

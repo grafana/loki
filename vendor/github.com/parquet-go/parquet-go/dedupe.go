@@ -66,14 +66,12 @@ func (d *dedupeRowWriter) WriteRows(rows []Row) (int, error) {
 }
 
 type dedupe struct {
-	alloc   rowAllocator
 	lastRow Row
 	uniq    []Row
 	dupe    []Row
 }
 
 func (d *dedupe) reset() {
-	d.alloc.reset()
 	d.lastRow = d.lastRow[:0]
 }
 
@@ -104,8 +102,6 @@ func (d *dedupe) deduplicate(rows []Row, compare func(Row, Row) int) int {
 	rows = append(rows, d.uniq...)
 	rows = append(rows, d.dupe...)
 
-	d.alloc.reset()
-	d.alloc.capture(lastRow)
 	d.lastRow = append(d.lastRow[:0], lastRow...)
 	return len(d.uniq)
 }

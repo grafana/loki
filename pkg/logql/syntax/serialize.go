@@ -77,6 +77,8 @@ const (
 	VectorAgg           = "vector_agg"
 	VectorMatchingField = "vector_matching"
 	Without             = "without"
+	Variants            = "variants"
+	Of                  = "of"
 )
 
 func DecodeJSON(raw string) (Expr, error) {
@@ -98,6 +100,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeLabelReplace(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
+	case Variants:
+		return decodeVariants(iter)
 	default:
 		return nil, fmt.Errorf("unknown expression type: %s", key)
 	}
@@ -300,6 +304,33 @@ func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 
 	v.WriteObjectField(LogSelector)
 	encodeLogSelector(v.Stream, e)
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Variants)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(LogSelector)
+
+	// Serialize log range as string.
+	v.VisitLogRange(e.LogRange())
+	v.WriteMore()
+
+	v.WriteObjectField(Variants)
+	v.WriteArrayStart()
+	for i, variant := range e.Variants() {
+		if i > 0 {
+			v.WriteMore()
+		}
+		variant.Accept(v)
+	}
+	v.WriteArrayEnd()
+
+	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -936,4 +967,31 @@ func decodeMatchers(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 
 func decodePipeline(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 	return decodeLogSelector(iter)
+}
+
+func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
+	var e MultiVariantExpr
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Variants:
+			for iter.ReadArray() {
+				expr, err := decodeSample(iter)
+				if err != nil {
+					return nil, err
+				}
+
+				e.AddVariant(expr)
+			}
+		case LogSelector:
+			logRange, err := decodeLogRange(iter)
+			if err != nil {
+				return nil, err
+			}
+
+			e.SetLogSelector(logRange)
+		}
+	}
+
+	return &e, nil
 }

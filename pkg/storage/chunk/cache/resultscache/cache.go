@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -394,7 +393,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 }
 
 func (s ResultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
-	step := math.Max64(1, req.GetStep())
+	step := max(1, req.GetStep())
 	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / step) * step
 	for i := range extents {
 		// Never cache data for the latest freshness period.

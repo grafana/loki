@@ -80,3 +80,10 @@ func (d memDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[Page
 		return nil
 	})
 }
+
+// A Row in a Dataset is a set of values across multiple columns with the same
+// row number.
+type Row struct {
+	Index  int     // Index of the row in the dataset.
+	Values []Value // Values for the row, one per [Column].
+}

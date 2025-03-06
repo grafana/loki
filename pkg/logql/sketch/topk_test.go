@@ -21,20 +21,20 @@ type event struct {
 }
 
 func TestTopkCardinality(t *testing.T) {
-	max := 1000000
+	maxVal := 1000000
 	topk, err := newCMSTopK(100, 10, 10)
 	assert.NoError(t, err)
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxVal; i++ {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough := topk.Cardinality()
 	// hll has a typical error accuracy of 2%
-	assert.True(t, (c >= uint64(float64(max)*0.98)) && (c <= uint64(float64(max)*1.02)))
+	assert.True(t, (c >= uint64(float64(maxVal)*0.98)) && (c <= uint64(float64(maxVal)*1.02)))
 	assert.False(t, bigEnough)
 
-	topk, err = NewCMSTopkForCardinality(nil, 100, max)
+	topk, err = NewCMSTopkForCardinality(nil, 100, maxVal)
 	assert.NoError(t, err)
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxVal; i++ {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough = topk.Cardinality()
@@ -47,14 +47,14 @@ func TestTopK_Merge(t *testing.T) {
 	k := 1
 	maxPerStream := 1000
 	events := make([]event, 0)
-	max := int64(0)
+	maxVal := int64(0)
 	r := rand.New(rand.NewSource(99))
 
 	for i := 0; i < nStreams-k; i++ {
 		num := int64(maxPerStream)
 		n := r.Int63n(num) + 1
-		if n > max {
-			max = n
+		if n > maxVal {
+			maxVal = n
 		}
 		for j := 0; j < int(n); j++ {
 			events = append(events, event{name: strconv.Itoa(i), count: 1})
@@ -62,7 +62,7 @@ func TestTopK_Merge(t *testing.T) {
 	}
 	// then another set of things more than the max of the previous entries
 	for i := nStreams - k; i < nStreams; i++ {
-		n := rand.Int63n(int64(maxPerStream)) + 1 + max
+		n := rand.Int63n(int64(maxPerStream)) + 1 + maxVal
 		for j := 0; j < int(n); j++ {
 			events = append(events, event{name: strconv.Itoa(i), count: 1})
 		}

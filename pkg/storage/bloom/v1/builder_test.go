@@ -221,10 +221,10 @@ func TestMergeBuilder(t *testing.T) {
 		indexBuf := bytes.NewBuffer(nil)
 		bloomsBuf := bytes.NewBuffer(nil)
 
-		min := i * numSeries / nBlocks
-		max := (i + 2) * numSeries / nBlocks // allow some overlap
-		if max > len(data) {
-			max = len(data)
+		minVal := i * numSeries / nBlocks
+		maxVal := (i + 2) * numSeries / nBlocks // allow some overlap
+		if maxVal > len(data) {
+			maxVal = len(data)
 		}
 
 		writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -236,7 +236,7 @@ func TestMergeBuilder(t *testing.T) {
 		)
 
 		require.Nil(t, err)
-		itr := iter.NewSliceIter(data[min:max])
+		itr := iter.NewSliceIter(data[minVal:maxVal])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 		blocks = append(blocks, iter.NewPeekIter(NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))

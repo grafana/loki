@@ -19,12 +19,14 @@ type syntaxSymType struct {
 	str   string
 	strs  []string
 
-	expr       Expr
-	logExpr    LogSelectorExpr
-	metricExpr SampleExpr
+	expr         Expr
+	logExpr      LogSelectorExpr
+	metricExpr   SampleExpr
+	variantsExpr VariantsExpr
 
 	matcher                       *labels.Matcher
 	matchers                      []*labels.Matcher
+	metricExprs                   []SampleExpr
 	stage                         StageExpr
 	stages                        MultiStageExpr
 	filterer                      log.LabelFilterer
@@ -122,21 +124,23 @@ const GROUP_RIGHT = 57419
 const DECOLORIZE = 57420
 const DROP = 57421
 const KEEP = 57422
-const OR = 57423
-const AND = 57424
-const UNLESS = 57425
-const CMP_EQ = 57426
-const NEQ = 57427
-const LT = 57428
-const LTE = 57429
-const GT = 57430
-const GTE = 57431
-const ADD = 57432
-const SUB = 57433
-const MUL = 57434
-const DIV = 57435
-const MOD = 57436
-const POW = 57437
+const VARIANTS = 57423
+const OF = 57424
+const OR = 57425
+const AND = 57426
+const UNLESS = 57427
+const CMP_EQ = 57428
+const NEQ = 57429
+const LT = 57430
+const LTE = 57431
+const GT = 57432
+const GTE = 57433
+const ADD = 57434
+const SUB = 57435
+const MUL = 57436
+const DIV = 57437
+const MOD = 57438
+const POW = 57439
 
 var syntaxToknames = [...]string{
 	"$end",
@@ -219,6 +223,8 @@ var syntaxToknames = [...]string{
 	"DECOLORIZE",
 	"DROP",
 	"KEEP",
+	"VARIANTS",
+	"OF",
 	"OR",
 	"AND",
 	"UNLESS",
@@ -245,267 +251,277 @@ var syntaxExca = [...]int{
 	-1, 1,
 	1, -1,
 	-2, 0,
+	-1, 150,
+	21, 227,
+	27, 227,
+	-2, 3,
+	-1, 290,
+	21, 228,
+	27, 228,
+	-2, 3,
 }
 
 const syntaxPrivate = 57344
 
-const syntaxLast = 656
+const syntaxLast = 642
 
 var syntaxAct = [...]int{
 
-	284, 225, 85, 4, 212, 65, 183, 127, 201, 190,
-	77, 198, 234, 64, 200, 5, 153, 188, 78, 2,
-	57, 81, 49, 50, 51, 58, 59, 62, 63, 60,
-	61, 52, 53, 54, 55, 56, 57, 10, 50, 51,
-	58, 59, 62, 63, 60, 61, 52, 53, 54, 55,
-	56, 57, 58, 59, 62, 63, 60, 61, 52, 53,
-	54, 55, 56, 57, 52, 53, 54, 55, 56, 57,
-	110, 279, 140, 287, 116, 54, 55, 56, 57, 262,
-	213, 218, 16, 292, 261, 149, 151, 152, 157, 289,
-	258, 141, 217, 16, 162, 257, 167, 168, 214, 155,
-	277, 165, 166, 16, 68, 276, 360, 205, 151, 152,
-	360, 164, 95, 357, 221, 169, 170, 171, 172, 173,
-	174, 175, 176, 177, 178, 179, 180, 181, 182, 274,
-	287, 380, 16, 137, 273, 86, 87, 271, 195, 325,
-	16, 192, 270, 203, 203, 334, 137, 143, 260, 185,
-	268, 204, 321, 16, 131, 267, 216, 150, 143, 256,
-	333, 375, 185, 232, 368, 17, 18, 131, 142, 226,
-	288, 111, 228, 229, 237, 236, 17, 18, 211, 206,
-	209, 210, 207, 208, 367, 265, 17, 18, 16, 301,
-	264, 245, 246, 247, 301, 350, 137, 311, 73, 75,
-	349, 289, 336, 337, 338, 249, 70, 71, 72, 186,
-	184, 289, 185, 365, 353, 17, 18, 131, 84, 320,
-	86, 87, 343, 17, 18, 282, 285, 324, 291, 236,
-	294, 299, 110, 297, 116, 298, 17, 18, 286, 155,
-	283, 333, 295, 259, 263, 266, 269, 272, 275, 278,
-	240, 309, 288, 301, 305, 307, 310, 312, 363, 348,
-	313, 290, 221, 203, 319, 315, 73, 75, 74, 340,
-	230, 17, 18, 184, 70, 71, 72, 301, 341, 301,
-	145, 236, 289, 347, 322, 303, 326, 296, 328, 330,
-	236, 332, 110, 289, 224, 236, 331, 342, 327, 73,
-	75, 110, 227, 308, 344, 236, 221, 70, 71, 72,
-	301, 293, 306, 154, 144, 13, 302, 238, 137, 280,
-	244, 137, 243, 13, 156, 242, 378, 235, 354, 355,
-	374, 222, 156, 110, 356, 227, 74, 185, 241, 131,
-	358, 359, 131, 252, 215, 161, 364, 160, 159, 91,
-	90, 83, 346, 290, 16, 250, 147, 300, 73, 75,
-	370, 255, 371, 372, 13, 253, 70, 71, 72, 74,
-	239, 231, 146, 6, 376, 148, 223, 21, 22, 23,
-	36, 45, 46, 37, 39, 40, 38, 41, 42, 43,
-	44, 47, 24, 25, 227, 254, 82, 186, 184, 251,
-	373, 329, 26, 27, 28, 29, 30, 31, 32, 80,
-	362, 361, 33, 34, 35, 48, 19, 233, 224, 339,
-	317, 318, 191, 73, 75, 248, 191, 13, 74, 189,
-	163, 70, 71, 72, 89, 88, 6, 17, 18, 379,
-	21, 22, 23, 36, 45, 46, 37, 39, 40, 38,
-	41, 42, 43, 44, 47, 24, 25, 3, 377, 227,
-	366, 352, 351, 323, 76, 26, 27, 28, 29, 30,
-	31, 32, 314, 304, 281, 33, 34, 35, 48, 19,
-	158, 316, 220, 219, 199, 369, 73, 75, 218, 217,
-	13, 196, 194, 74, 70, 71, 72, 193, 345, 6,
-	17, 18, 137, 21, 22, 23, 36, 45, 46, 37,
-	39, 40, 38, 41, 42, 43, 44, 47, 24, 25,
-	202, 191, 227, 131, 82, 199, 197, 94, 26, 27,
-	28, 29, 30, 31, 32, 93, 137, 187, 33, 34,
-	35, 48, 19, 20, 79, 123, 124, 122, 69, 132,
-	134, 292, 73, 75, 128, 129, 74, 131, 138, 130,
-	70, 71, 72, 17, 18, 139, 15, 125, 335, 126,
-	14, 66, 92, 121, 120, 133, 135, 136, 119, 123,
-	124, 122, 118, 132, 134, 73, 75, 117, 227, 115,
-	114, 113, 112, 70, 71, 72, 12, 11, 9, 8,
-	7, 125, 1, 126, 0, 0, 0, 0, 287, 133,
-	135, 136, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 67, 74, 96, 97, 98, 99, 100, 101, 102,
-	103, 104, 105, 106, 107, 108, 109, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 74,
+	293, 232, 88, 4, 217, 67, 130, 6, 188, 206,
+	158, 79, 203, 195, 66, 241, 205, 193, 80, 2,
+	59, 286, 84, 51, 52, 53, 60, 61, 64, 65,
+	62, 63, 54, 55, 56, 57, 58, 59, 143, 218,
+	11, 52, 53, 60, 61, 64, 65, 62, 63, 54,
+	55, 56, 57, 58, 59, 60, 61, 64, 65, 62,
+	63, 54, 55, 56, 57, 58, 59, 56, 57, 58,
+	59, 289, 113, 144, 210, 156, 157, 296, 119, 54,
+	55, 56, 57, 58, 59, 150, 301, 154, 156, 157,
+	269, 162, 225, 18, 160, 268, 265, 167, 224, 18,
+	284, 264, 219, 18, 281, 283, 146, 18, 278, 280,
+	98, 18, 70, 277, 169, 172, 173, 298, 174, 175,
+	176, 177, 178, 179, 180, 181, 182, 183, 184, 185,
+	186, 187, 275, 170, 171, 18, 272, 274, 371, 18,
+	146, 271, 371, 200, 197, 208, 208, 216, 211, 214,
+	215, 212, 213, 343, 297, 140, 209, 392, 296, 267,
+	223, 155, 228, 343, 387, 263, 297, 310, 239, 235,
+	140, 190, 236, 360, 145, 233, 134, 228, 19, 20,
+	374, 114, 244, 350, 19, 20, 190, 380, 19, 20,
+	379, 134, 19, 20, 298, 298, 19, 20, 252, 253,
+	254, 344, 335, 299, 298, 75, 77, 298, 75, 77,
+	256, 89, 90, 72, 73, 74, 72, 73, 74, 378,
+	19, 20, 228, 243, 19, 20, 290, 87, 368, 89,
+	90, 376, 291, 294, 189, 300, 228, 303, 160, 113,
+	306, 292, 307, 119, 234, 320, 295, 305, 191, 189,
+	304, 266, 270, 273, 276, 279, 282, 285, 346, 347,
+	348, 229, 310, 363, 314, 316, 319, 321, 359, 208,
+	299, 322, 328, 324, 353, 75, 77, 76, 140, 333,
+	76, 243, 308, 72, 73, 74, 310, 351, 140, 247,
+	310, 331, 358, 243, 190, 336, 357, 338, 340, 134,
+	342, 113, 243, 318, 140, 243, 352, 341, 337, 134,
+	113, 234, 310, 354, 237, 317, 310, 222, 312, 243,
+	190, 148, 311, 221, 315, 134, 259, 245, 147, 334,
+	159, 126, 127, 125, 330, 135, 137, 301, 365, 366,
+	15, 242, 160, 113, 367, 364, 140, 76, 15, 161,
+	369, 370, 329, 128, 287, 129, 375, 161, 251, 250,
+	249, 136, 138, 139, 231, 18, 248, 134, 220, 75,
+	77, 382, 166, 383, 384, 15, 165, 72, 73, 74,
+	261, 302, 191, 189, 7, 164, 388, 94, 23, 24,
+	25, 38, 47, 48, 39, 41, 42, 40, 43, 44,
+	45, 46, 49, 26, 27, 234, 93, 86, 81, 390,
+	386, 356, 152, 28, 29, 30, 31, 32, 33, 34,
+	257, 309, 262, 35, 36, 37, 50, 21, 151, 231,
+	240, 153, 260, 246, 75, 77, 238, 75, 77, 14,
+	15, 76, 72, 73, 74, 72, 73, 74, 230, 7,
+	19, 20, 258, 23, 24, 25, 38, 47, 48, 39,
+	41, 42, 40, 43, 44, 45, 46, 49, 26, 27,
+	234, 385, 85, 234, 373, 372, 349, 339, 28, 29,
+	30, 31, 32, 33, 34, 83, 326, 327, 35, 36,
+	37, 50, 21, 296, 196, 163, 196, 255, 391, 194,
+	3, 168, 75, 77, 14, 15, 76, 92, 78, 76,
+	72, 73, 74, 91, 7, 19, 20, 389, 23, 24,
+	25, 38, 47, 48, 39, 41, 42, 40, 43, 44,
+	45, 46, 49, 26, 27, 377, 362, 361, 234, 332,
+	323, 149, 313, 28, 29, 30, 31, 32, 33, 34,
+	75, 77, 140, 35, 36, 37, 50, 21, 72, 73,
+	74, 325, 288, 227, 204, 202, 226, 225, 224, 14,
+	201, 199, 198, 134, 76, 95, 381, 355, 207, 196,
+	19, 20, 85, 204, 97, 96, 69, 192, 22, 82,
+	71, 131, 132, 141, 133, 126, 127, 125, 142, 135,
+	137, 17, 345, 16, 68, 124, 123, 122, 121, 120,
+	118, 117, 116, 115, 5, 13, 12, 128, 10, 129,
+	9, 8, 76, 1, 0, 136, 138, 139, 99, 100,
+	101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+	111, 112,
 }
 var syntaxPact = [...]int{
 
-	347, -1000, -59, -1000, -1000, 570, 347, -1000, -1000, -1000,
-	-1000, -1000, -1000, 391, 325, 192, -1000, 428, 427, 324,
-	323, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	358, -1000, -60, -1000, -1000, -1000, 535, 358, -1000, -1000,
+	-1000, -1000, -1000, -1000, 382, 467, 381, 201, -1000, 506,
+	500, 380, 361, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 65,
-	65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
-	65, 65, 65, 65, 570, -1000, 183, 531, -9, 85,
-	-1000, -1000, -1000, -1000, -1000, -1000, 287, 253, -59, 354,
-	-1000, -1000, 72, 306, 473, 322, 321, 319, -1000, -1000,
-	347, 423, 347, 27, 20, -1000, 347, 347, 347, 347,
-	347, 347, 347, 347, 347, 347, 347, 347, 347, 347,
-	-1000, -9, -1000, -1000, -1000, -1000, 128, -1000, -1000, -1000,
-	-1000, -1000, 421, 516, 491, -1000, 486, -1000, -1000, -1000,
-	-1000, 313, 485, -1000, 520, 515, 515, 94, -1000, -1000,
-	74, -1000, 318, -1000, -1000, -1000, -1000, -1000, 519, 483,
-	482, 477, 476, 304, 355, 408, 298, 243, 350, 410,
-	300, 290, 349, 223, -44, 312, 299, 296, 294, -32,
-	-32, -17, -17, -75, -75, -75, -75, -26, -26, -26,
-	-26, -26, -26, 128, 313, 313, 313, 417, 334, -1000,
-	-1000, 386, 334, -1000, -1000, 316, -1000, 344, -1000, 382,
-	340, -1000, 72, -1000, 340, 86, 75, 181, 146, 133,
-	125, 96, -1000, -10, 293, 468, -1000, -1000, -1000, -1000,
-	-1000, -1000, 107, 298, 537, 160, 343, 497, 284, 260,
-	107, 347, 204, 336, 289, -1000, -1000, 258, -1000, 467,
-	-1000, 285, 276, 224, 170, 141, 128, 191, -1000, 334,
-	516, 466, -1000, 479, 415, 515, 193, -1000, -1000, -1000,
-	126, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 74,
-	457, 200, -1000, 112, 471, 38, 471, 392, 2, 313,
-	2, 150, 140, 409, 242, 251, -1000, -1000, 195, -1000,
-	347, 493, -1000, -1000, 331, 256, -1000, 232, -1000, -1000,
-	173, -1000, 168, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	456, 455, -1000, 187, -1000, 107, 38, 471, 38, -1000,
-	-1000, 128, -1000, 2, -1000, 87, -1000, -1000, -1000, 59,
-	401, 400, 231, 107, 186, -1000, 454, -1000, -1000, -1000,
-	-1000, 157, 137, -1000, -1000, 38, -1000, 480, 55, 38,
-	29, 2, 2, 390, -1000, -1000, 309, -1000, -1000, 134,
-	38, -1000, -1000, 2, 452, -1000, -1000, 305, 433, 104,
-	-1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, 63, 63, 63, 63, 63, 63, 63, 63, 63,
+	63, 63, 63, 63, 63, 63, 535, -1000, 190, 547,
+	-45, 67, -1000, -1000, -1000, -1000, -1000, -1000, 301, 294,
+	-60, 358, 410, -1000, -1000, 74, 323, 488, 359, 350,
+	346, -1000, -1000, 358, 494, 358, 59, 39, -1000, 358,
+	358, 358, 358, 358, 358, 358, 358, 358, 358, 358,
+	358, 358, 358, -1000, -45, -1000, -1000, -1000, -1000, 165,
+	-1000, -1000, -1000, -1000, -1000, 491, 574, 566, -1000, 565,
+	-1000, -1000, -1000, -1000, 341, 564, -1000, 578, 573, 573,
+	61, -1000, -1000, 33, -1000, 342, -1000, -1000, -1000, 296,
+	-1000, -1000, -1000, 577, 562, 561, 560, 557, 234, 427,
+	419, 331, 287, 415, 423, 314, 300, 412, 262, -43,
+	340, 334, 333, 332, -31, -31, -27, -27, -77, -77,
+	-77, -77, -13, -13, -13, -13, -13, -13, 165, 341,
+	341, 341, 489, 399, -1000, -1000, 439, 399, -1000, -1000,
+	299, -1000, 411, -1000, 367, 401, -1000, 74, -1000, 401,
+	92, 86, 132, 128, 104, 100, 96, -1000, -62, 328,
+	556, -11, 358, -1000, -1000, -1000, -1000, -1000, -1000, 183,
+	331, 422, 144, 193, 283, 354, 220, 183, 358, 255,
+	400, 295, -1000, -1000, 291, -1000, 536, -1000, 297, 288,
+	276, 218, 273, 165, 150, -1000, 399, 574, 534, -1000,
+	559, 481, 573, 326, -1000, -1000, -1000, 308, -1000, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, 33, 533, 252, 303,
+	-1000, -1000, 175, 487, 66, 487, 468, 6, 341, 6,
+	143, 196, 466, 156, 260, -1000, -1000, 247, -1000, 358,
+	572, -1000, -1000, 390, 269, -1000, 265, -1000, -1000, 241,
+	-1000, 146, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 531,
+	530, -1000, 236, -1000, 331, 183, 66, 487, 66, -1000,
+	-1000, 165, -1000, 6, -1000, 202, -1000, -1000, -1000, 87,
+	465, 464, 153, 183, 204, -1000, 529, -1000, -1000, -1000,
+	-1000, 192, 163, -1000, 160, -1000, 66, -1000, 571, 91,
+	66, 32, 6, 6, 461, -1000, -1000, 389, -1000, -1000,
+	-1000, 137, 66, -1000, -1000, 6, 511, -1000, -1000, 388,
+	492, 130, -1000,
 }
 var syntaxPgo = [...]int{
 
-	0, 602, 18, 457, 3, 600, 599, 598, 597, 596,
-	5, 592, 591, 590, 589, 587, 582, 578, 574, 573,
-	13, 104, 571, 4, 570, 568, 566, 98, 565, 559,
-	558, 6, 555, 554, 548, 7, 544, 15, 543, 12,
-	537, 572, 535, 527, 8, 14, 11, 526, 2, 16,
-	37, 9, 17, 1, 0,
+	0, 623, 18, 500, 3, 621, 620, 618, 616, 615,
+	614, 5, 613, 612, 611, 610, 609, 608, 607, 606,
+	605, 14, 112, 604, 4, 603, 602, 601, 102, 598,
+	594, 593, 8, 592, 591, 590, 6, 589, 7, 588,
+	15, 587, 575, 585, 584, 9, 16, 12, 565, 2,
+	10, 40, 13, 17, 1, 0, 541,
 }
 var syntaxR1 = [...]int{
 
-	0, 1, 2, 2, 3, 3, 3, 4, 4, 4,
-	4, 4, 4, 4, 49, 49, 49, 49, 49, 49,
-	49, 49, 49, 49, 49, 49, 49, 49, 49, 49,
-	49, 49, 49, 49, 49, 49, 49, 49, 49, 49,
-	53, 53, 53, 25, 25, 25, 5, 5, 5, 5,
-	6, 6, 6, 6, 6, 6, 8, 37, 37, 37,
-	36, 36, 35, 35, 35, 35, 20, 20, 10, 10,
-	10, 10, 10, 10, 10, 10, 10, 10, 10, 34,
-	34, 34, 34, 34, 34, 27, 23, 23, 23, 21,
-	21, 21, 22, 22, 40, 40, 11, 11, 12, 12,
-	12, 12, 13, 14, 14, 15, 16, 46, 46, 47,
-	47, 47, 17, 31, 31, 31, 31, 31, 31, 31,
-	31, 31, 51, 51, 52, 52, 33, 33, 32, 32,
-	30, 30, 30, 30, 30, 30, 30, 28, 28, 28,
-	28, 28, 28, 28, 29, 29, 29, 29, 29, 29,
-	29, 44, 44, 45, 45, 18, 19, 7, 7, 7,
+	0, 1, 2, 2, 2, 3, 3, 3, 4, 4,
+	4, 4, 4, 4, 4, 10, 50, 50, 50, 50,
+	50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+	50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+	50, 50, 54, 54, 54, 26, 26, 26, 5, 5,
+	5, 5, 6, 6, 6, 6, 6, 6, 8, 38,
+	38, 38, 37, 37, 36, 36, 36, 36, 21, 21,
+	11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+	11, 35, 35, 35, 35, 35, 35, 28, 24, 24,
+	24, 22, 22, 22, 23, 23, 41, 41, 12, 12,
+	13, 13, 13, 13, 14, 15, 15, 16, 17, 47,
+	47, 48, 48, 48, 18, 32, 32, 32, 32, 32,
+	32, 32, 32, 32, 52, 52, 53, 53, 34, 34,
+	33, 33, 31, 31, 31, 31, 31, 31, 31, 29,
+	29, 29, 29, 29, 29, 29, 30, 30, 30, 30,
+	30, 30, 30, 45, 45, 46, 46, 19, 20, 7,
 	7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 42, 42, 43, 43, 43, 43, 41, 41,
-	41, 41, 41, 41, 41, 41, 50, 50, 50, 9,
-	38, 26, 26, 26, 26, 26, 26, 26, 26, 26,
-	26, 26, 26, 24, 24, 24, 24, 24, 24, 24,
-	24, 24, 24, 24, 24, 24, 24, 24, 54, 39,
-	39, 48, 48, 48, 48,
+	7, 7, 7, 7, 43, 43, 44, 44, 44, 44,
+	42, 42, 42, 42, 42, 42, 42, 42, 51, 51,
+	51, 9, 39, 27, 27, 27, 27, 27, 27, 27,
+	27, 27, 27, 27, 27, 25, 25, 25, 25, 25,
+	25, 25, 25, 25, 25, 25, 25, 25, 25, 25,
+	55, 40, 40, 49, 49, 49, 49, 56, 56,
 }
 var syntaxR2 = [...]int{
 
-	0, 1, 1, 1, 1, 2, 3, 1, 1, 1,
-	1, 1, 1, 3, 2, 3, 4, 5, 3, 4,
-	5, 6, 3, 4, 5, 6, 3, 4, 5, 6,
-	4, 5, 6, 7, 3, 4, 4, 5, 3, 2,
-	3, 6, 3, 1, 1, 1, 4, 6, 5, 7,
-	4, 5, 5, 6, 7, 7, 12, 3, 3, 2,
-	1, 3, 3, 3, 3, 3, 1, 2, 1, 2,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
-	1, 1, 1, 1, 1, 1, 1, 3, 4, 2,
-	5, 3, 1, 2, 1, 2, 1, 2, 1, 2,
-	1, 2, 2, 3, 2, 2, 1, 3, 3, 1,
-	3, 3, 2, 1, 1, 1, 1, 3, 2, 3,
-	3, 3, 3, 1, 1, 3, 6, 6, 1, 1,
+	0, 1, 1, 1, 1, 1, 2, 3, 1, 1,
+	1, 1, 1, 1, 3, 8, 2, 3, 4, 5,
+	3, 4, 5, 6, 3, 4, 5, 6, 3, 4,
+	5, 6, 4, 5, 6, 7, 3, 4, 4, 5,
+	3, 2, 3, 6, 3, 1, 1, 1, 4, 6,
+	5, 7, 4, 5, 5, 6, 7, 7, 12, 3,
+	3, 2, 1, 3, 3, 3, 3, 3, 1, 2,
+	1, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	2, 1, 1, 1, 1, 1, 1, 1, 1, 3,
+	4, 2, 5, 3, 1, 2, 1, 2, 1, 2,
+	1, 2, 1, 2, 2, 3, 2, 2, 1, 3,
+	3, 1, 3, 3, 2, 1, 1, 1, 1, 3,
+	2, 3, 3, 3, 3, 1, 1, 3, 6, 6,
+	1, 1, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 1, 1, 1, 3, 2, 2, 4, 4, 4,
+	3, 3, 3, 1, 1, 1, 3, 2, 2, 4,
 	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 0, 1, 5, 4, 5, 4, 1, 1,
-	2, 4, 5, 2, 4, 5, 1, 2, 2, 4,
+	4, 4, 4, 4, 0, 1, 5, 4, 5, 4,
+	1, 1, 2, 4, 5, 2, 4, 5, 1, 2,
+	2, 4, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1, 1, 2, 1,
-	3, 4, 4, 3, 3,
+	2, 1, 3, 4, 4, 3, 3, 1, 3,
 }
 var syntaxChk = [...]int{
 
-	-1000, -1, -2, -3, -4, -37, 26, -5, -6, -7,
-	-50, -8, -9, 17, -24, -26, 7, 90, 91, 69,
-	-38, 30, 31, 32, 45, 46, 55, 56, 57, 58,
-	59, 60, 61, 65, 66, 67, 33, 36, 39, 37,
-	38, 40, 41, 42, 43, 34, 35, 44, 68, 81,
-	82, 83, 90, 91, 92, 93, 94, 95, 84, 85,
-	88, 89, 86, 87, -20, -10, -22, 51, -21, -34,
-	23, 24, 25, 15, 85, 16, -3, -4, -2, -36,
-	18, -35, 5, 26, 26, -48, 28, 29, 7, 7,
-	26, 26, -41, -42, -43, 47, -41, -41, -41, -41,
-	-41, -41, -41, -41, -41, -41, -41, -41, -41, -41,
-	-10, -21, -11, -12, -13, -14, -31, -15, -16, -17,
-	-18, -19, 50, 48, 49, 70, 72, -35, -33, -32,
-	-29, 26, 52, 78, 53, 79, 80, 5, -30, -28,
-	81, 6, -27, 73, 27, 27, 18, 2, 21, 13,
-	85, 14, 15, -49, 7, -37, 26, -4, 7, 26,
-	26, 26, -4, 7, -2, 74, 75, 76, 77, -2,
-	-2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-	-2, -2, -2, -31, 82, 21, 81, -40, -52, 8,
-	-51, 5, -52, 6, 6, -31, 6, -47, -46, 5,
-	-45, -44, 5, -35, -45, 13, 85, 88, 89, 86,
-	87, 84, -23, 6, -27, 26, -35, 6, 6, 6,
-	6, 2, 27, 21, 10, -53, -20, 51, -37, -49,
-	27, 21, -4, 7, -39, 27, 5, -39, 27, 21,
-	27, 26, 26, 26, 26, -31, -31, -31, 8, -52,
-	21, 13, 27, 21, 13, 21, 73, 9, 4, -50,
-	73, 9, 4, -50, 9, 4, -50, 9, 4, -50,
-	9, 4, -50, 9, 4, -50, 9, 4, -50, 81,
-	26, 6, -48, -49, -54, -53, -20, 71, 10, 51,
-	10, -53, 54, 27, -53, -20, 27, -48, -4, 27,
-	21, 21, 27, 27, 6, -39, 27, -39, 27, 27,
-	-39, 27, -39, -51, 6, -46, 2, 5, 6, -44,
-	26, 26, -23, 6, 27, 27, -53, -20, -53, 9,
-	-54, -31, -54, 10, 5, -25, 62, 63, 64, 10,
-	27, 27, -53, 27, -4, 5, 21, 27, 27, 27,
-	27, 6, 6, 27, -48, -53, -54, 26, -54, -53,
-	51, 10, 10, 27, -48, 27, 6, 27, 27, 5,
-	-53, -54, -54, 10, 21, 27, -54, 6, 21, 6,
-	27,
+	-1000, -1, -2, -3, -4, -10, -38, 26, -5, -6,
+	-7, -51, -8, -9, 81, 17, -25, -27, 7, 92,
+	93, 69, -39, 30, 31, 32, 45, 46, 55, 56,
+	57, 58, 59, 60, 61, 65, 66, 67, 33, 36,
+	39, 37, 38, 40, 41, 42, 43, 34, 35, 44,
+	68, 83, 84, 85, 92, 93, 94, 95, 96, 97,
+	86, 87, 90, 91, 88, 89, -21, -11, -23, 51,
+	-22, -35, 23, 24, 25, 15, 87, 16, -3, -4,
+	-2, 26, -37, 18, -36, 5, 26, 26, -49, 28,
+	29, 7, 7, 26, 26, -42, -43, -44, 47, -42,
+	-42, -42, -42, -42, -42, -42, -42, -42, -42, -42,
+	-42, -42, -42, -11, -22, -12, -13, -14, -15, -32,
+	-16, -17, -18, -19, -20, 50, 48, 49, 70, 72,
+	-36, -34, -33, -30, 26, 52, 78, 53, 79, 80,
+	5, -31, -29, 83, 6, -28, 73, 27, 27, -56,
+	-4, 18, 2, 21, 13, 87, 14, 15, -50, 7,
+	-38, 26, -4, 7, 26, 26, 26, -4, 7, -2,
+	74, 75, 76, 77, -2, -2, -2, -2, -2, -2,
+	-2, -2, -2, -2, -2, -2, -2, -2, -32, 84,
+	21, 83, -41, -53, 8, -52, 5, -53, 6, 6,
+	-32, 6, -48, -47, 5, -46, -45, 5, -36, -46,
+	13, 87, 90, 91, 88, 89, 86, -24, 6, -28,
+	26, 27, 21, -36, 6, 6, 6, 6, 2, 27,
+	21, 10, -54, -21, 51, -38, -50, 27, 21, -4,
+	7, -40, 27, 5, -40, 27, 21, 27, 26, 26,
+	26, 26, -32, -32, -32, 8, -53, 21, 13, 27,
+	21, 13, 21, 73, 9, 4, -51, 73, 9, 4,
+	-51, 9, 4, -51, 9, 4, -51, 9, 4, -51,
+	9, 4, -51, 9, 4, -51, 83, 26, 6, 82,
+	-4, -49, -50, -55, -54, -21, 71, 10, 51, 10,
+	-54, 54, 27, -54, -21, 27, -49, -4, 27, 21,
+	21, 27, 27, 6, -40, 27, -40, 27, 27, -40,
+	27, -40, -52, 6, -47, 2, 5, 6, -45, 26,
+	26, -24, 6, 27, 26, 27, -54, -21, -54, 9,
+	-55, -32, -55, 10, 5, -26, 62, 63, 64, 10,
+	27, 27, -54, 27, -4, 5, 21, 27, 27, 27,
+	27, 6, 6, 27, -50, -49, -54, -55, 26, -55,
+	-54, 51, 10, 10, 27, -49, 27, 6, 27, 27,
+	27, 5, -54, -55, -55, 10, 21, 27, -55, 6,
+	21, 6, 27,
 }
 var syntaxDef = [...]int{
 
-	0, -2, 1, 2, 3, 4, 0, 7, 8, 9,
-	10, 11, 12, 0, 0, 0, 186, 0, 0, 0,
-	0, 203, 204, 205, 206, 207, 208, 209, 210, 211,
-	212, 213, 214, 215, 216, 217, 191, 192, 193, 194,
-	195, 196, 197, 198, 199, 200, 201, 202, 190, 172,
-	172, 172, 172, 172, 172, 172, 172, 172, 172, 172,
-	172, 172, 172, 172, 5, 66, 68, 0, 92, 0,
-	79, 80, 81, 82, 83, 84, 2, 3, 0, 0,
-	59, 60, 0, 0, 0, 0, 0, 0, 187, 188,
-	0, 0, 0, 178, 179, 173, 0, 0, 0, 0,
+	0, -2, 1, 2, 3, 4, 5, 0, 8, 9,
+	10, 11, 12, 13, 0, 0, 0, 0, 188, 0,
+	0, 0, 0, 205, 206, 207, 208, 209, 210, 211,
+	212, 213, 214, 215, 216, 217, 218, 219, 193, 194,
+	195, 196, 197, 198, 199, 200, 201, 202, 203, 204,
+	192, 174, 174, 174, 174, 174, 174, 174, 174, 174,
+	174, 174, 174, 174, 174, 174, 6, 68, 70, 0,
+	94, 0, 81, 82, 83, 84, 85, 86, 2, 3,
+	0, 0, 0, 61, 62, 0, 0, 0, 0, 0,
+	0, 189, 190, 0, 0, 0, 180, 181, 175, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	67, 93, 69, 70, 71, 72, 73, 74, 75, 76,
-	77, 78, 96, 98, 0, 100, 0, 113, 114, 115,
-	116, 0, 0, 106, 0, 0, 0, 0, 128, 129,
-	0, 89, 0, 85, 6, 13, 57, 58, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 3, 186, 0,
-	0, 0, 3, 0, 157, 0, 0, 180, 183, 158,
-	159, 160, 161, 162, 163, 164, 165, 166, 167, 168,
-	169, 170, 171, 118, 0, 0, 0, 97, 104, 94,
-	124, 123, 102, 99, 101, 0, 105, 112, 109, 0,
-	155, 153, 151, 152, 156, 0, 0, 0, 0, 0,
-	0, 0, 91, 86, 0, 0, 61, 62, 63, 64,
-	65, 39, 46, 0, 14, 0, 0, 0, 0, 0,
-	50, 0, 3, 186, 0, 223, 219, 0, 224, 0,
-	189, 0, 0, 0, 0, 119, 120, 121, 95, 103,
-	0, 0, 117, 0, 0, 0, 0, 135, 142, 149,
-	0, 134, 141, 148, 130, 137, 144, 131, 138, 145,
-	132, 139, 146, 133, 140, 147, 136, 143, 150, 0,
-	0, 0, 48, 0, 15, 18, 34, 0, 22, 0,
-	26, 0, 0, 0, 0, 0, 38, 52, 3, 51,
-	0, 0, 221, 222, 0, 0, 175, 0, 177, 181,
-	0, 184, 0, 125, 122, 110, 111, 107, 108, 154,
-	0, 0, 87, 0, 90, 47, 19, 35, 36, 218,
-	23, 42, 27, 30, 40, 0, 43, 44, 45, 16,
-	0, 0, 0, 53, 3, 220, 0, 174, 176, 182,
-	185, 0, 0, 88, 49, 37, 31, 0, 17, 20,
-	0, 24, 28, 0, 54, 55, 0, 126, 127, 0,
-	21, 25, 29, 32, 0, 41, 33, 0, 0, 0,
-	56,
+	0, 0, 0, 69, 95, 71, 72, 73, 74, 75,
+	76, 77, 78, 79, 80, 98, 100, 0, 102, 0,
+	115, 116, 117, 118, 0, 0, 108, 0, 0, 0,
+	0, 130, 131, 0, 91, 0, 87, 7, 14, 0,
+	-2, 59, 60, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 3, 188, 0, 0, 0, 3, 0, 159,
+	0, 0, 182, 185, 160, 161, 162, 163, 164, 165,
+	166, 167, 168, 169, 170, 171, 172, 173, 120, 0,
+	0, 0, 99, 106, 96, 126, 125, 104, 101, 103,
+	0, 107, 114, 111, 0, 157, 155, 153, 154, 158,
+	0, 0, 0, 0, 0, 0, 0, 93, 88, 0,
+	0, 0, 0, 63, 64, 65, 66, 67, 41, 48,
+	0, 16, 0, 0, 0, 0, 0, 52, 0, 3,
+	188, 0, 225, 221, 0, 226, 0, 191, 0, 0,
+	0, 0, 121, 122, 123, 97, 105, 0, 0, 119,
+	0, 0, 0, 0, 137, 144, 151, 0, 136, 143,
+	150, 132, 139, 146, 133, 140, 147, 134, 141, 148,
+	135, 142, 149, 138, 145, 152, 0, 0, 0, 0,
+	-2, 50, 0, 17, 20, 36, 0, 24, 0, 28,
+	0, 0, 0, 0, 0, 40, 54, 3, 53, 0,
+	0, 223, 224, 0, 0, 177, 0, 179, 183, 0,
+	186, 0, 127, 124, 112, 113, 109, 110, 156, 0,
+	0, 89, 0, 92, 0, 49, 21, 37, 38, 220,
+	25, 44, 29, 32, 42, 0, 45, 46, 47, 18,
+	0, 0, 0, 55, 3, 222, 0, 176, 178, 184,
+	187, 0, 0, 90, 0, 51, 39, 33, 0, 19,
+	22, 0, 26, 30, 0, 56, 57, 0, 128, 129,
+	15, 0, 23, 27, 31, 34, 0, 43, 35, 0,
+	0, 0, 58,
 }
 var syntaxTok1 = [...]int{
 
@@ -522,7 +538,7 @@ var syntaxTok2 = [...]int{
 	62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
 	72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
 	82, 83, 84, 85, 86, 87, 88, 89, 90, 91,
-	92, 93, 94, 95,
+	92, 93, 94, 95, 96, 97,
 }
 var syntaxTok3 = [...]int{
 	0,
@@ -881,22 +897,22 @@ syntaxdefault:
 	case 4:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.logExpr = newMatcherExpr(syntaxDollar[1].matchers)
+			syntaxVAL.expr = syntaxDollar[1].variantsExpr
 		}
 	case 5:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.logExpr = newMatcherExpr(syntaxDollar[1].matchers)
+		}
+	case 6:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.logExpr = newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].stages)
 		}
-	case 6:
+	case 7:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logExpr = syntaxDollar[2].logExpr
-		}
-	case 7:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.metricExpr = syntaxDollar[1].metricExpr
 		}
 	case 8:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
@@ -911,12 +927,12 @@ syntaxdefault:
 	case 10:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.metricExpr = syntaxDollar[1].literalExpr
+			syntaxVAL.metricExpr = syntaxDollar[1].metricExpr
 		}
 	case 11:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.metricExpr = syntaxDollar[1].metricExpr
+			syntaxVAL.metricExpr = syntaxDollar[1].literalExpr
 		}
 	case 12:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
@@ -924,288 +940,288 @@ syntaxdefault:
 			syntaxVAL.metricExpr = syntaxDollar[1].metricExpr
 		}
 	case 13:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.metricExpr = syntaxDollar[1].metricExpr
+		}
+	case 14:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = syntaxDollar[2].metricExpr
 		}
-	case 14:
+	case 15:
+		syntaxDollar = syntaxS[syntaxpt-8 : syntaxpt+1]
+		{
+			syntaxVAL.variantsExpr = newVariantsExpr(syntaxDollar[3].metricExprs, syntaxDollar[7].logRangeExpr)
+		}
+	case 16:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].dur, nil, nil)
 		}
-	case 15:
+	case 17:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].dur, nil, syntaxDollar[3].offsetExpr)
 		}
-	case 16:
+	case 18:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[4].dur, nil, nil)
 		}
-	case 17:
+	case 19:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[4].dur, nil, syntaxDollar[5].offsetExpr)
 		}
-	case 18:
+	case 20:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].dur, syntaxDollar[3].unwrapExpr, nil)
 		}
-	case 19:
+	case 21:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].dur, syntaxDollar[4].unwrapExpr, syntaxDollar[3].offsetExpr)
 		}
-	case 20:
+	case 22:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[4].dur, syntaxDollar[5].unwrapExpr, nil)
 		}
-	case 21:
+	case 23:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[4].dur, syntaxDollar[6].unwrapExpr, syntaxDollar[5].offsetExpr)
 		}
-	case 22:
+	case 24:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[3].dur, syntaxDollar[2].unwrapExpr, nil)
 		}
-	case 23:
+	case 25:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[3].dur, syntaxDollar[2].unwrapExpr, syntaxDollar[4].offsetExpr)
 		}
-	case 24:
+	case 26:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[5].dur, syntaxDollar[3].unwrapExpr, nil)
 		}
-	case 25:
+	case 27:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[5].dur, syntaxDollar[3].unwrapExpr, syntaxDollar[6].offsetExpr)
 		}
-	case 26:
+	case 28:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].stages), syntaxDollar[3].dur, nil, nil)
 		}
-	case 27:
+	case 29:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].stages), syntaxDollar[3].dur, nil, syntaxDollar[4].offsetExpr)
 		}
-	case 28:
+	case 30:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[3].stages), syntaxDollar[5].dur, nil, nil)
 		}
-	case 29:
+	case 31:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[3].stages), syntaxDollar[5].dur, nil, syntaxDollar[6].offsetExpr)
 		}
-	case 30:
+	case 32:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].stages), syntaxDollar[4].dur, syntaxDollar[3].unwrapExpr, nil)
 		}
-	case 31:
+	case 33:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[2].stages), syntaxDollar[4].dur, syntaxDollar[3].unwrapExpr, syntaxDollar[5].offsetExpr)
 		}
-	case 32:
+	case 34:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[3].stages), syntaxDollar[6].dur, syntaxDollar[4].unwrapExpr, nil)
 		}
-	case 33:
+	case 35:
 		syntaxDollar = syntaxS[syntaxpt-7 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[2].matchers), syntaxDollar[3].stages), syntaxDollar[6].dur, syntaxDollar[4].unwrapExpr, syntaxDollar[7].offsetExpr)
 		}
-	case 34:
+	case 36:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[3].stages), syntaxDollar[2].dur, nil, nil)
 		}
-	case 35:
+	case 37:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[4].stages), syntaxDollar[2].dur, nil, syntaxDollar[3].offsetExpr)
 		}
-	case 36:
+	case 38:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[3].stages), syntaxDollar[2].dur, syntaxDollar[4].unwrapExpr, nil)
 		}
-	case 37:
+	case 39:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = newLogRange(newPipelineExpr(newMatcherExpr(syntaxDollar[1].matchers), syntaxDollar[4].stages), syntaxDollar[2].dur, syntaxDollar[5].unwrapExpr, syntaxDollar[3].offsetExpr)
 		}
-	case 38:
+	case 40:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.logRangeExpr = syntaxDollar[2].logRangeExpr
 		}
-	case 40:
+	case 42:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.unwrapExpr = newUnwrapExpr(syntaxDollar[3].str, "")
 		}
-	case 41:
+	case 43:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.unwrapExpr = newUnwrapExpr(syntaxDollar[5].str, syntaxDollar[3].op)
 		}
-	case 42:
+	case 44:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.unwrapExpr = syntaxDollar[1].unwrapExpr.addPostFilter(syntaxDollar[3].filterer)
 		}
-	case 43:
+	case 45:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpConvBytes
 		}
-	case 44:
+	case 46:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpConvDuration
 		}
-	case 45:
+	case 47:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpConvDurationSeconds
 		}
-	case 46:
+	case 48:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = newRangeAggregationExpr(syntaxDollar[3].logRangeExpr, syntaxDollar[1].op, nil, nil)
 		}
-	case 47:
+	case 49:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = newRangeAggregationExpr(syntaxDollar[5].logRangeExpr, syntaxDollar[1].op, nil, &syntaxDollar[3].str)
 		}
-	case 48:
+	case 50:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = newRangeAggregationExpr(syntaxDollar[3].logRangeExpr, syntaxDollar[1].op, syntaxDollar[5].grouping, nil)
 		}
-	case 49:
+	case 51:
 		syntaxDollar = syntaxS[syntaxpt-7 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = newRangeAggregationExpr(syntaxDollar[5].logRangeExpr, syntaxDollar[1].op, syntaxDollar[7].grouping, &syntaxDollar[3].str)
 		}
-	case 50:
+	case 52:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[3].metricExpr, syntaxDollar[1].op, nil, nil)
 		}
-	case 51:
+	case 53:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[4].metricExpr, syntaxDollar[1].op, syntaxDollar[2].grouping, nil)
 		}
-	case 52:
+	case 54:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[3].metricExpr, syntaxDollar[1].op, syntaxDollar[5].grouping, nil)
 		}
-	case 53:
+	case 55:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[5].metricExpr, syntaxDollar[1].op, nil, &syntaxDollar[3].str)
 		}
-	case 54:
+	case 56:
 		syntaxDollar = syntaxS[syntaxpt-7 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[5].metricExpr, syntaxDollar[1].op, syntaxDollar[7].grouping, &syntaxDollar[3].str)
 		}
-	case 55:
+	case 57:
 		syntaxDollar = syntaxS[syntaxpt-7 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewVectorAggregationExpr(syntaxDollar[6].metricExpr, syntaxDollar[1].op, syntaxDollar[2].grouping, &syntaxDollar[4].str)
 		}
-	case 56:
+	case 58:
 		syntaxDollar = syntaxS[syntaxpt-12 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewLabelReplaceExpr(syntaxDollar[3].metricExpr, syntaxDollar[5].str, syntaxDollar[7].str, syntaxDollar[9].str, syntaxDollar[11].str)
 		}
-	case 57:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
-		{
-			syntaxVAL.matchers = syntaxDollar[2].matchers
-		}
-	case 58:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
-		{
-			syntaxVAL.matchers = syntaxDollar[2].matchers
-		}
 	case 59:
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		{
+			syntaxVAL.matchers = syntaxDollar[2].matchers
+		}
+	case 60:
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		{
+			syntaxVAL.matchers = syntaxDollar[2].matchers
+		}
+	case 61:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 		}
-	case 60:
+	case 62:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.matchers = []*labels.Matcher{syntaxDollar[1].matcher}
 		}
-	case 61:
+	case 63:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.matchers = append(syntaxDollar[1].matchers, syntaxDollar[3].matcher)
 		}
-	case 62:
+	case 64:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.matcher = mustNewMatcher(labels.MatchEqual, syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 63:
+	case 65:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.matcher = mustNewMatcher(labels.MatchNotEqual, syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 64:
+	case 66:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.matcher = mustNewMatcher(labels.MatchRegexp, syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 65:
+	case 67:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.matcher = mustNewMatcher(labels.MatchNotRegexp, syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 66:
+	case 68:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stages = MultiStageExpr{syntaxDollar[1].stage}
 		}
-	case 67:
+	case 69:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stages = append(syntaxDollar[1].stages, syntaxDollar[2].stage)
 		}
-	case 68:
+	case 70:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stage = syntaxDollar[1].lineFilterExpr
-		}
-	case 69:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
-		{
-			syntaxVAL.stage = syntaxDollar[2].stage
-		}
-	case 70:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
-		{
-			syntaxVAL.stage = syntaxDollar[2].stage
 		}
 	case 71:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
@@ -1220,7 +1236,7 @@ syntaxdefault:
 	case 73:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.stage = &LabelFilterExpr{LabelFilterer: syntaxDollar[2].filterer}
+			syntaxVAL.stage = syntaxDollar[2].stage
 		}
 	case 74:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
@@ -1230,7 +1246,7 @@ syntaxdefault:
 	case 75:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.stage = syntaxDollar[2].stage
+			syntaxVAL.stage = &LabelFilterExpr{LabelFilterer: syntaxDollar[2].filterer}
 		}
 	case 76:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
@@ -1248,184 +1264,184 @@ syntaxdefault:
 			syntaxVAL.stage = syntaxDollar[2].stage
 		}
 	case 79:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchRegexp
+			syntaxVAL.stage = syntaxDollar[2].stage
 		}
 	case 80:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchEqual
+			syntaxVAL.stage = syntaxDollar[2].stage
 		}
 	case 81:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchPattern
+			syntaxVAL.filter = log.LineMatchRegexp
 		}
 	case 82:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchNotRegexp
+			syntaxVAL.filter = log.LineMatchEqual
 		}
 	case 83:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchNotEqual
+			syntaxVAL.filter = log.LineMatchPattern
 		}
 	case 84:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filter = log.LineMatchNotPattern
+			syntaxVAL.filter = log.LineMatchNotRegexp
 		}
 	case 85:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.op = OpFilterIP
+			syntaxVAL.filter = log.LineMatchNotEqual
 		}
 	case 86:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.lineFilterExpr = newLineFilterExpr(log.LineMatchEqual, "", syntaxDollar[1].str)
+			syntaxVAL.filter = log.LineMatchNotPattern
 		}
 	case 87:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.op = OpFilterIP
+		}
+	case 88:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.lineFilterExpr = newLineFilterExpr(log.LineMatchEqual, "", syntaxDollar[1].str)
+		}
+	case 89:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newOrLineFilterExpr(newLineFilterExpr(log.LineMatchEqual, "", syntaxDollar[1].str), syntaxDollar[3].lineFilterExpr)
 		}
-	case 88:
+	case 90:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newLineFilterExpr(log.LineMatchEqual, syntaxDollar[1].op, syntaxDollar[3].str)
 		}
-	case 89:
+	case 91:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newLineFilterExpr(syntaxDollar[1].filter, "", syntaxDollar[2].str)
 		}
-	case 90:
+	case 92:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newLineFilterExpr(syntaxDollar[1].filter, syntaxDollar[2].op, syntaxDollar[4].str)
 		}
-	case 91:
+	case 93:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newOrLineFilterExpr(syntaxDollar[1].lineFilterExpr, syntaxDollar[3].lineFilterExpr)
 		}
-	case 92:
+	case 94:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = syntaxDollar[1].lineFilterExpr
 		}
-	case 93:
+	case 95:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.lineFilterExpr = newNestedLineFilterExpr(syntaxDollar[1].lineFilterExpr, syntaxDollar[2].lineFilterExpr)
 		}
-	case 94:
+	case 96:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.strs = []string{syntaxDollar[1].str}
 		}
-	case 95:
+	case 97:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.strs = append(syntaxDollar[1].strs, syntaxDollar[2].str)
 		}
-	case 96:
+	case 98:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLogfmtParserExpr(nil)
 		}
-	case 97:
+	case 99:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLogfmtParserExpr(syntaxDollar[2].strs)
 		}
-	case 98:
+	case 100:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLabelParserExpr(OpParserTypeJSON, "")
 		}
-	case 99:
+	case 101:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLabelParserExpr(OpParserTypeRegexp, syntaxDollar[2].str)
 		}
-	case 100:
+	case 102:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLabelParserExpr(OpParserTypeUnpack, "")
 		}
-	case 101:
+	case 103:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLabelParserExpr(OpParserTypePattern, syntaxDollar[2].str)
 		}
-	case 102:
+	case 104:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newJSONExpressionParser(syntaxDollar[2].labelExtractionExpressionList)
 		}
-	case 103:
+	case 105:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLogfmtExpressionParser(syntaxDollar[3].labelExtractionExpressionList, syntaxDollar[2].strs)
 		}
-	case 104:
+	case 106:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLogfmtExpressionParser(syntaxDollar[2].labelExtractionExpressionList, nil)
 		}
-	case 105:
+	case 107:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLineFmtExpr(syntaxDollar[2].str)
 		}
-	case 106:
+	case 108:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newDecolorizeExpr()
 		}
-	case 107:
+	case 109:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.labelFormat = log.NewRenameLabelFmt(syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 108:
+	case 110:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.labelFormat = log.NewTemplateLabelFmt(syntaxDollar[1].str, syntaxDollar[3].str)
 		}
-	case 109:
+	case 111:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.labelsFormat = []log.LabelFmt{syntaxDollar[1].labelFormat}
 		}
-	case 110:
+	case 112:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.labelsFormat = append(syntaxDollar[1].labelsFormat, syntaxDollar[3].labelFormat)
 		}
-	case 112:
+	case 114:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newLabelFmtExpr(syntaxDollar[2].labelsFormat)
 		}
-	case 113:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.filterer = log.NewStringLabelFilter(syntaxDollar[1].matcher)
-		}
-	case 114:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.filterer = syntaxDollar[1].filterer
-		}
 	case 115:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = syntaxDollar[1].filterer
+			syntaxVAL.filterer = log.NewStringLabelFilter(syntaxDollar[1].matcher)
 		}
 	case 116:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
@@ -1433,556 +1449,576 @@ syntaxdefault:
 			syntaxVAL.filterer = syntaxDollar[1].filterer
 		}
 	case 117:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = syntaxDollar[2].filterer
+			syntaxVAL.filterer = syntaxDollar[1].filterer
 		}
 	case 118:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[2].filterer)
+			syntaxVAL.filterer = syntaxDollar[1].filterer
 		}
 	case 119:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
+			syntaxVAL.filterer = syntaxDollar[2].filterer
 		}
 	case 120:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
+			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[2].filterer)
 		}
 	case 121:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewOrLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
+			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
 		}
 	case 122:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.labelExtractionExpression = log.NewLabelExtractionExpr(syntaxDollar[1].str, syntaxDollar[3].str)
+			syntaxVAL.filterer = log.NewAndLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
 		}
 	case 123:
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		{
+			syntaxVAL.filterer = log.NewOrLabelFilter(syntaxDollar[1].filterer, syntaxDollar[3].filterer)
+		}
+	case 124:
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		{
+			syntaxVAL.labelExtractionExpression = log.NewLabelExtractionExpr(syntaxDollar[1].str, syntaxDollar[3].str)
+		}
+	case 125:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.labelExtractionExpression = log.NewLabelExtractionExpr(syntaxDollar[1].str, syntaxDollar[1].str)
 		}
-	case 124:
+	case 126:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.labelExtractionExpressionList = []log.LabelExtractionExpr{syntaxDollar[1].labelExtractionExpression}
 		}
-	case 125:
+	case 127:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.labelExtractionExpressionList = append(syntaxDollar[1].labelExtractionExpressionList, syntaxDollar[3].labelExtractionExpression)
 		}
-	case 126:
+	case 128:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.filterer = log.NewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterEqual)
 		}
-	case 127:
+	case 129:
 		syntaxDollar = syntaxS[syntaxpt-6 : syntaxpt+1]
 		{
 			syntaxVAL.filterer = log.NewIPLabelFilter(syntaxDollar[5].str, syntaxDollar[1].str, log.LabelFilterNotEqual)
 		}
-	case 128:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.filterer = syntaxDollar[1].filterer
-		}
-	case 129:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.filterer = syntaxDollar[1].filterer
-		}
 	case 130:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = syntaxDollar[1].filterer
 		}
 	case 131:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = syntaxDollar[1].filterer
 		}
 	case 132:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 133:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 134:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 135:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 136:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 137:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 138:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewDurationLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].dur)
 		}
 	case 139:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 140:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 141:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 142:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 143:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 144:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 145:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewBytesLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].bytes)
 		}
 	case 146:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 147:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 148:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThan, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 149:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 150:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterNotEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 151:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(nil, syntaxDollar[1].str)
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 152:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(syntaxDollar[1].matcher, "")
+			syntaxVAL.filterer = log.NewNumericLabelFilter(log.LabelFilterEqual, syntaxDollar[1].str, syntaxDollar[3].literalExpr.Val)
 		}
 	case 153:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.namedMatchers = []log.NamedLabelMatcher{syntaxDollar[1].namedMatcher}
+			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(nil, syntaxDollar[1].str)
 		}
 	case 154:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(syntaxDollar[1].matcher, "")
+		}
+	case 155:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.namedMatchers = []log.NamedLabelMatcher{syntaxDollar[1].namedMatcher}
+		}
+	case 156:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.namedMatchers = append(syntaxDollar[1].namedMatchers, syntaxDollar[3].namedMatcher)
 		}
-	case 155:
+	case 157:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newDropLabelsExpr(syntaxDollar[2].namedMatchers)
 		}
-	case 156:
+	case 158:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.stage = newKeepLabelsExpr(syntaxDollar[2].namedMatchers)
 		}
-	case 157:
+	case 159:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("or", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 158:
+	case 160:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("and", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 159:
+	case 161:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("unless", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 160:
+	case 162:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("+", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 161:
+	case 163:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("-", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 162:
+	case 164:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("*", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 163:
+	case 165:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("/", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 164:
+	case 166:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("%", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 165:
+	case 167:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("^", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 166:
+	case 168:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("==", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 167:
+	case 169:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("!=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 168:
+	case 170:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr(">", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 169:
+	case 171:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr(">=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 170:
+	case 172:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("<", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 171:
+	case 173:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("<=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 172:
+	case 174:
 		syntaxDollar = syntaxS[syntaxpt-0 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
 		}
-	case 173:
+	case 175:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: true}
-		}
-	case 174:
-		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.On = true
-			syntaxVAL.binOpts.VectorMatching.MatchingLabels = syntaxDollar[4].strs
-		}
-	case 175:
-		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.On = true
 		}
 	case 176:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.On = true
 			syntaxVAL.binOpts.VectorMatching.MatchingLabels = syntaxDollar[4].strs
 		}
 	case 177:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.On = true
 		}
 	case 178:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.MatchingLabels = syntaxDollar[4].strs
 		}
 	case 179:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 		}
 	case 180:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
 		}
 	case 181:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+		}
+	case 182:
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
+		}
+	case 183:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
 		}
-	case 182:
+	case 184:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
 			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
 		}
-	case 183:
+	case 185:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
 		}
-	case 184:
+	case 186:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
 		}
-	case 185:
+	case 187:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
 			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
 		}
-	case 186:
+	case 188:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[1].str, false)
 		}
-	case 187:
+	case 189:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[2].str, false)
 		}
-	case 188:
+	case 190:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[2].str, true)
 		}
-	case 189:
+	case 191:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = NewVectorExpr(syntaxDollar[3].str)
 		}
-	case 190:
+	case 192:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.str = OpTypeVector
 		}
-	case 191:
+	case 193:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSum
 		}
-	case 192:
+	case 194:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeAvg
 		}
-	case 193:
+	case 195:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeCount
 		}
-	case 194:
+	case 196:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeMax
 		}
-	case 195:
+	case 197:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeMin
 		}
-	case 196:
+	case 198:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeStddev
 		}
-	case 197:
+	case 199:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeStdvar
 		}
-	case 198:
+	case 200:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeBottomK
 		}
-	case 199:
+	case 201:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeTopK
 		}
-	case 200:
+	case 202:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSort
 		}
-	case 201:
+	case 203:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSortDesc
 		}
-	case 202:
+	case 204:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeApproxTopK
 		}
-	case 203:
+	case 205:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeCount
 		}
-	case 204:
+	case 206:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeRate
 		}
-	case 205:
+	case 207:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeRateCounter
 		}
-	case 206:
+	case 208:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeBytes
 		}
-	case 207:
+	case 209:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeBytesRate
 		}
-	case 208:
+	case 210:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeAvg
 		}
-	case 209:
+	case 211:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeSum
 		}
-	case 210:
+	case 212:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeMin
 		}
-	case 211:
+	case 213:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeMax
 		}
-	case 212:
+	case 214:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeStdvar
 		}
-	case 213:
+	case 215:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeStddev
 		}
-	case 214:
+	case 216:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeQuantile
 		}
-	case 215:
+	case 217:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeFirst
 		}
-	case 216:
+	case 218:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeLast
 		}
-	case 217:
+	case 219:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeAbsent
 		}
-	case 218:
+	case 220:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.offsetExpr = newOffsetExpr(syntaxDollar[2].dur)
 		}
-	case 219:
+	case 221:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.strs = []string{syntaxDollar[1].str}
 		}
-	case 220:
+	case 222:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.strs = append(syntaxDollar[1].strs, syntaxDollar[3].str)
 		}
-	case 221:
+	case 223:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: false, Groups: syntaxDollar[3].strs}
 		}
-	case 222:
+	case 224:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: true, Groups: syntaxDollar[3].strs}
 		}
-	case 223:
+	case 225:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: false, Groups: nil}
 		}
-	case 224:
+	case 226:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: true, Groups: nil}
+		}
+	case 227:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.metricExprs = []SampleExpr{syntaxDollar[1].metricExpr}
+		}
+	case 228:
+		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
+		{
+			syntaxVAL.metricExprs = append(syntaxDollar[1].metricExprs, syntaxDollar[3].metricExpr)
 		}
 	}
 	goto syntaxstack /* stack new state and value */

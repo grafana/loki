@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -46,6 +47,8 @@ func stringifyValue(w io.Writer, val reflect.Value) {
 		return
 	case reflect.Struct:
 		stringifyStruct(w, v)
+	case reflect.Map:
+		stringifyMap(w, v)
 	default:
 		if v.CanInterface() {
 			fmt.Fprint(w, v.Interface())
@@ -64,6 +67,27 @@ func stringifySlice(w io.Writer, v reflect.Value) {
 	}
 
 	_, _ = w.Write([]byte{']'})
+}
+
+func stringifyMap(w io.Writer, v reflect.Value) {
+	_, _ = w.Write([]byte("map["))
+
+	// Sort the keys so that the output is stable
+	keys := v.MapKeys()
+	sort.Slice(keys, func(i, j int) bool {
+		return fmt.Sprintf("%v", keys[i]) < fmt.Sprintf("%v", keys[j])
+	})
+
+	for i, key := range keys {
+		stringifyValue(w, key)
+		_, _ = w.Write([]byte{':'})
+		stringifyValue(w, v.MapIndex(key))
+		if i < len(keys)-1 {
+			_, _ = w.Write([]byte(", "))
+		}
+	}
+
+	_, _ = w.Write([]byte("]"))
 }
 
 func stringifyStruct(w io.Writer, v reflect.Value) {

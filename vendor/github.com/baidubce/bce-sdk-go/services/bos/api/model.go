@@ -283,6 +283,7 @@ type CopyObjectArgs struct {
 	TrafficLimit      int64
 	CannedAcl         string
 	TaggingDirective  string
+	ObjectTagging     string
 }
 
 type MultiCopyObjectArgs struct {

@@ -1,3 +1,4 @@
+import { absolutePath } from "@/util";
 import { useState, useEffect } from "react";
 
 interface LogLevelResponse {
@@ -32,7 +33,9 @@ export function useLogLevel(nodeName: string | undefined): UseLogLevelResult {
       setError(null);
 
       try {
-        const res = await fetch(`/ui/api/v1/proxy/${nodeName}/log_level`);
+        const res = await fetch(
+          absolutePath(`/api/v1/proxy/${nodeName}/log_level`)
+        );
         if (!res.ok)
           throw new Error(`Failed to fetch log level: ${res.statusText}`);
         const data: LogLevelResponse = await res.json();
@@ -58,7 +61,7 @@ export function useLogLevel(nodeName: string | undefined): UseLogLevelResult {
 
     try {
       const res = await fetch(
-        `/ui/api/v1/proxy/${nodeName}/log_level?log_level=${level}`,
+        absolutePath(`/api/v1/proxy/${nodeName}/log_level?log_level=${level}`),
         { method: "POST" }
       );
       if (!res.ok)

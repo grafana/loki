@@ -52,6 +52,16 @@ const (
 	mtlsMDSKey  = "/run/google-mds-mtls/client.key"
 )
 
+// Type represents the type of transport used.
+type Type int
+
+const (
+	// TransportTypeUnknown represents an unknown transport type and is the default option.
+	TransportTypeUnknown Type = iota
+	// TransportTypeMTLSS2A represents the mTLS transport type using S2A.
+	TransportTypeMTLSS2A
+)
+
 // Options is a struct that is duplicated information from the individual
 // transport packages in order to avoid cyclic deps. It correlates 1:1 with
 // fields on httptransport.Options and grpctransport.Options.
@@ -120,13 +130,20 @@ func fixScheme(baseURL string) string {
 	return baseURL
 }
 
+// GRPCTransportCredentials embeds interface TransportCredentials with additional data.
+type GRPCTransportCredentials struct {
+	credentials.TransportCredentials
+	Endpoint      string
+	TransportType Type
+}
+
 // GetGRPCTransportCredsAndEndpoint returns an instance of
 // [google.golang.org/grpc/credentials.TransportCredentials], and the
-// corresponding endpoint to use for GRPC client.
-func GetGRPCTransportCredsAndEndpoint(opts *Options) (credentials.TransportCredentials, string, error) {
+// corresponding endpoint and transport type to use for GRPC client.
+func GetGRPCTransportCredsAndEndpoint(opts *Options) (*GRPCTransportCredentials, error) {
 	config, err := getTransportConfig(opts)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	defaultTransportCreds := credentials.NewTLS(&tls.Config{
@@ -144,13 +161,13 @@ func GetGRPCTransportCredsAndEndpoint(opts *Options) (credentials.TransportCrede
 			if config.s2aAddress != "" {
 				s2aAddr = config.s2aAddress
 			} else {
-				return defaultTransportCreds, config.endpoint, nil
+				return &GRPCTransportCredentials{defaultTransportCreds, config.endpoint, TransportTypeUnknown}, nil
 			}
 		}
 	} else if config.s2aAddress != "" {
 		s2aAddr = config.s2aAddress
 	} else {
-		return defaultTransportCreds, config.endpoint, nil
+		return &GRPCTransportCredentials{defaultTransportCreds, config.endpoint, TransportTypeUnknown}, nil
 	}
 
 	var fallbackOpts *s2a.FallbackOptions
@@ -168,9 +185,9 @@ func GetGRPCTransportCredsAndEndpoint(opts *Options) (credentials.TransportCrede
 	})
 	if err != nil {
 		// Use default if we cannot initialize S2A client transport credentials.
-		return defaultTransportCreds, config.endpoint, nil
+		return &GRPCTransportCredentials{defaultTransportCreds, config.endpoint, TransportTypeUnknown}, nil
 	}
-	return s2aTransportCreds, config.s2aMTLSEndpoint, nil
+	return &GRPCTransportCredentials{s2aTransportCreds, config.s2aMTLSEndpoint, TransportTypeMTLSS2A}, nil
 }
 
 // GetHTTPTransportConfig returns a client certificate source and a function for

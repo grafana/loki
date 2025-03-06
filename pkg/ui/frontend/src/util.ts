@@ -7,3 +7,8 @@ export function getBasename(): string {
   const match = pathname.match(/(.*\/ui\/)/);
   return match?.[1] || "/ui/";
 }
+
+export function absolutePath(path: string): string {
+  const basename = getBasename();
+  return `${basename}${path.startsWith("/") ? path.slice(1) : path}`;
+}

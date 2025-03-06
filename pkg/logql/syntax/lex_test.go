@@ -204,3 +204,53 @@ func Test_parseDuration(t *testing.T) {
 		require.Equal(t, tc.expected, actual)
 	}
 }
+
+func TestLex_Variants(t *testing.T) {
+	for _, tc := range []struct {
+		input    string
+		expected []int
+	}{
+		{
+			`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
+				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
+		},
+		{
+			`variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, BYTES_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
+				COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS,
+				OF, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
+		},
+		{
+			`variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
+				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
+				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
+		},
+		{
+			`variants(sum by (app) (count_over_time({foo="bar"}[5m])), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, COMMA,
+				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
+				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
+		},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := []int{}
+			l := lexer{
+				Scanner: Scanner{
+					Mode: scanner.SkipComments | scanner.ScanStrings,
+				},
+			}
+			l.Init(strings.NewReader(tc.input))
+			var lval syntaxSymType
+			for {
+				tok := l.Lex(&lval)
+				if tok == 0 {
+					break
+				}
+				actual = append(actual, tok)
+			}
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

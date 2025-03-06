@@ -24,7 +24,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:11.5.1
+    image: grafana/grafana:11.5.2
     ports:
       - "3000:3000"
     environment:
@@ -38,7 +38,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v3.2.0
+    image: prom/prometheus:v3.2.1
     ports:
       - 9090
     volumes:

@@ -3,6 +3,7 @@ package querier
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -74,7 +75,7 @@ func newEntryIterator(ctx context.Context,
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, fmt.Errorf("failed to read log records: %w", err)
 		}
 
 		if n == 0 && err == io.EOF {
@@ -277,7 +278,7 @@ func (s *sliceIterator) Close() error {
 
 func newSampleIterator(ctx context.Context,
 	streams map[int64]dataobj.Stream,
-	extractor syntax.SampleExtractor,
+	extractors []syntax.SampleExtractor,
 	reader *dataobj.LogsReader,
 ) (iter.SampleIterator, error) {
 	bufPtr := recordsPool.Get().(*[]dataobj.Record)
@@ -295,7 +296,7 @@ func newSampleIterator(ctx context.Context,
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, fmt.Errorf("failed to read log records: %w", err)
 		}
 
 		// Handle end of stream or empty read
@@ -311,36 +312,42 @@ func newSampleIterator(ctx context.Context,
 				continue
 			}
 
-			// Handle stream transition
-			if prevStreamID != record.StreamID {
-				iterators = appendIteratorFromSeries(iterators, series)
-				clear(series)
-				streamExtractor = extractor.ForStream(stream.Labels)
-				streamHash = streamExtractor.BaseLabels().Hash()
-				prevStreamID = record.StreamID
-			}
+			for _, extractor := range extractors {
+				// Handle stream transition
+				if prevStreamID != record.StreamID {
+					iterators = appendIteratorFromSeries(iterators, series)
+					clear(series)
+					streamExtractor = extractor.ForStream(stream.Labels)
+					streamHash = streamExtractor.BaseLabels().Hash()
+					prevStreamID = record.StreamID
+				}
 
-			// Process the record
-			timestamp := record.Timestamp.UnixNano()
-			value, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
-			if !ok {
-				continue
-			}
+				// Process the record
+				timestamp := record.Timestamp.UnixNano()
 
-			// Get or create series for the parsed labels
-			labelString := parsedLabels.String()
-			s, exists := series[labelString]
-			if !exists {
-				s = createNewSeries(labelString, streamHash)
-				series[labelString] = s
-			}
+				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
+				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
+				// other filters and processing already done.
+				value, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
+				if !ok {
+					continue
+				}
 
-			// Add sample to the series
-			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: timestamp,
-				Value:     value,
-				Hash:      0,
-			})
+				// Get or create series for the parsed labels
+				labelString := parsedLabels.String()
+				s, exists := series[labelString]
+				if !exists {
+					s = createNewSeries(labelString, streamHash)
+					series[labelString] = s
+				}
+
+				// Add sample to the series
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: timestamp,
+					Value:     value,
+					Hash:      0,
+				})
+			}
 		}
 	}
 

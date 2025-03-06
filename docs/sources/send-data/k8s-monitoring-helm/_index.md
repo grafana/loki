@@ -168,12 +168,12 @@ As before, the command also includes a `values` file that specifies the configur
 
 ## Deploy the Kubernetes Monitoring Helm chart
 
-The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect pod logs and Kubernetes events. 
+The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect pod logs and Kubernetes events.
 
 To deploy the Kubernetes Monitoring Helm chart run the following command:
 
 ```bash
-helm install --values ./k8s-monitoring-values.yml k8s grafana/k8s-monitoring -n meta 
+helm install --values ./k8s-monitoring-values.yml k8s grafana/k8s-monitoring -n meta
 ```
 Within the configuration file `k8s-monitoring-values.yml` we have defined the following:
 
@@ -260,14 +260,14 @@ kubectl --namespace meta port-forward $POD_NAME 3000 --address 0.0.0.0
 This will make your terminal unusable until you stop the port-forwarding process. To stop the process, press `Ctrl + C`.
 {{< /admonition >}}
 
-This command will port-forward the Grafana service to your local machine on port `3000`. 
+This command will port-forward the Grafana service to your local machine on port `3000`.
 
-You can now access Grafana by navigating to [http://localhost:3000](http://localhost:3000) in your browser. The default credentials are `admin` and `adminadminadmin`. 
+You can now access Grafana by navigating to [http://localhost:3000](http://localhost:3000) in your browser. The default credentials are `admin` and `adminadminadmin`.
 
-One of the first places you should visit is Explore Logs which lets you automatically visualize and explore your logs without having to write queries:
+One of the first places you should visit is Logs Drilldown which lets you automatically visualize and explore your logs without having to write queries:
 [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app)
 
-{{< figure max-width="100%" src="/media/docs/loki/k8s-logs-explore-logs.png" caption="Explore Logs view of K8s logs" alt="Explore Logs view of K8s logs" >}}
+{{< figure max-width="100%" src="/media/docs/loki/k8s-logs-explore-logs.png" caption="Logs Drilldown view of K8s logs" alt="Logs Drilldown view of K8s logs" >}}
 
 <!-- INTERACTIVE page step6.md END -->
 

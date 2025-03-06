@@ -23,6 +23,9 @@ type Stream struct {
 	// the stream.
 	MinTime, MaxTime time.Time
 
+	// UncompressedSize is the total size of all the log lines and structured metadata values in the stream
+	UncompressedSize int64
+
 	// Labels of the stream.
 	Labels labels.Labels
 }
@@ -111,10 +114,11 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		}
 
 		s[i] = Stream{
-			ID:      stream.ID,
-			MinTime: stream.MinTimestamp,
-			MaxTime: stream.MaxTimestamp,
-			Labels:  stream.Labels,
+			ID:               stream.ID,
+			MinTime:          stream.MinTimestamp,
+			MaxTime:          stream.MaxTimestamp,
+			UncompressedSize: stream.UncompressedSize,
+			Labels:           stream.Labels,
 		}
 	}
 

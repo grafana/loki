@@ -171,7 +171,7 @@ type LBConfig struct {
 	// time is equal to the base time multiplied by the number of times the host
 	// has been ejected and is capped by MaxEjectionTime. Defaults to 30s.
 	BaseEjectionTime iserviceconfig.Duration `json:"baseEjectionTime,omitempty"`
-	// MaxEjectionTime is the maximum time that an address is ejected for. If
+	// MaxEjectionTime is the maximum time that an endpoint is ejected for. If
 	// not specified, the default value (300s) or the BaseEjectionTime value is
 	// applied, whichever is larger.
 	MaxEjectionTime iserviceconfig.Duration `json:"maxEjectionTime,omitempty"`

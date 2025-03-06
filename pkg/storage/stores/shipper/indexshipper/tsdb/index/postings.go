@@ -853,11 +853,11 @@ type ShardedPostings struct {
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
 func NewShardedPostings(p Postings, fpFilter FingerprintFilter, offsets FingerprintOffsets) *ShardedPostings {
-	min, max := offsets.Range(fpFilter)
+	minVal, maxVal := offsets.Range(fpFilter)
 	return &ShardedPostings{
 		p:         p,
-		minOffset: min,
-		maxOffset: max,
+		minOffset: minVal,
+		maxOffset: maxVal,
 	}
 }
 

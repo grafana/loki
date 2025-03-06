@@ -70,7 +70,7 @@ export function useRing({
   const [ring, setRing] = useState<RingResponse | null>(null);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const abortControllerRef = useRef<AbortController>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   const isTokenBased = useMemo(() => needsTokens(ringName), [ringName]);
 

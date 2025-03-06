@@ -29,6 +29,7 @@ type IndexMapping interface {
 	// MaxIndexableValue returns the maximum positive value that can be mapped to an index.
 	MaxIndexableValue() float64
 	ToProto() *sketchpb.IndexMapping
+	EncodeProto(builder *sketchpb.IndexMappingBuilder)
 	// Encode encodes a mapping and appends its content to the provided []byte.
 	Encode(b *[]byte)
 }

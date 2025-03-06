@@ -46,3 +46,27 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 	expr.Accept(visitor)
 	require.Equal(t, expected, visited)
 }
+
+func TestDepthFirstTraversalVisitor_Variants(t *testing.T) {
+	visited := [][2]string{}
+
+	visitor := &DepthFirstTraversal{
+		VisitVariantsFn: func(_ RootVisitor, e *MultiVariantExpr) {
+			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
+		},
+	}
+
+	// Only expressions that have a Visit function defined are added to the list
+	expected := [][2]string{
+		{
+			"*syntax.MultiVariantExpr",
+			`variants(count_over_time({env="prod"}[1m])) of ({env="prod"}[1m])`,
+		},
+	}
+
+	query := `variants(count_over_time({env="prod"}[1m])) of ({env="prod"}[1m])`
+	expr, err := ParseExpr(query)
+	require.NoError(t, err)
+	expr.Accept(visitor)
+	require.Equal(t, expected, visited)
+}

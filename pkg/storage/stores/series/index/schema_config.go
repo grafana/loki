@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -89,8 +88,8 @@ func dailyBuckets(cfg config.PeriodConfig) schemaBucketsFunc {
 			// include in the range keys - we use a uint32 - as we then have to base 32
 			// encode it.
 
-			relativeFrom := math.Max64(0, int64(from)-(i*millisecondsInDay))
-			relativeThrough := math.Min64(millisecondsInDay, int64(through)-(i*millisecondsInDay))
+			relativeFrom := max(0, int64(from)-(i*millisecondsInDay))
+			relativeThrough := min(millisecondsInDay, int64(through)-(i*millisecondsInDay))
 			result = append(result, Bucket{
 				from:       uint32(relativeFrom),
 				through:    uint32(relativeThrough),

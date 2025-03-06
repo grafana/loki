@@ -1,6 +1,9 @@
 package dataset
 
 import (
+	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -49,10 +52,20 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	t.Log("Pages: ", len(col.Pages))
 
 	var actual []string
-	for result := range iterMemColumn(col) {
-		val, err := result.Value()
-		require.NoError(t, err)
 
+	r := newColumnReader(col)
+	for {
+		var values [1]Value
+		n, err := r.Read(context.Background(), values[:])
+		if err != nil && !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
+		} else if n == 0 && errors.Is(err, io.EOF) {
+			break
+		} else if n == 0 {
+			continue
+		}
+
+		val := values[0]
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, "")
 		} else {
@@ -60,6 +73,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 			actual = append(actual, val.String())
 		}
 	}
+
 	require.Equal(t, in, actual)
 }
 
@@ -184,7 +198,7 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 	require.Equal(t, uint64(3), col.Info.Statistics.CardinalityCount)
 }
 
-func getMinMax(t *testing.T, stats *datasetmd.Statistics) (min, max Value) {
+func getMinMax(t *testing.T, stats *datasetmd.Statistics) (minVal, maxVal Value) {
 	t.Helper()
 	require.NotNil(t, stats)
 

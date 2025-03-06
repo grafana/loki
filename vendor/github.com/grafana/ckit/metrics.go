@@ -25,12 +25,13 @@ const clusterNameLabel = "cluster_name"
 type metrics struct {
 	metricsutil.Container
 
-	gossipEventsTotal  *prometheus.CounterVec
-	nodePeers          *prometheus.GaugeVec
-	nodeUpdating       prometheus.Gauge
-	nodeUpdateDuration prometheus.Histogram
-	nodeObservers      prometheus.Gauge
-	nodeInfo           *metricsutil.InfoCollector
+	gossipEventsTotal     *prometheus.CounterVec
+	gossipBroadcastsTotal *prometheus.CounterVec
+	nodePeers             *prometheus.GaugeVec
+	nodeUpdating          prometheus.Gauge
+	nodeUpdateDuration    prometheus.Histogram
+	nodeObservers         prometheus.Gauge
+	nodeInfo              *metricsutil.InfoCollector
 }
 
 var _ prometheus.Collector = (*metrics)(nil)
@@ -41,6 +42,14 @@ func newMetrics(clusterName string) *metrics {
 	m.gossipEventsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "cluster_node_gossip_received_events_total",
 		Help: "Total number of gossip messages handled by the node.",
+		ConstLabels: prometheus.Labels{
+			clusterNameLabel: clusterName,
+		},
+	}, []string{"event"})
+
+	m.gossipBroadcastsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cluster_node_gossip_broadcasts_total",
+		Help: "Total number of gossip messages broadcasted by the node.",
 		ConstLabels: prometheus.Labels{
 			clusterNameLabel: clusterName,
 		},
@@ -89,6 +98,7 @@ func newMetrics(clusterName string) *metrics {
 
 	m.Add(
 		m.gossipEventsTotal,
+		m.gossipBroadcastsTotal,
 		m.nodePeers,
 		m.nodeUpdating,
 		m.nodeUpdateDuration,

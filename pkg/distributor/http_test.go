@@ -125,10 +125,9 @@ func newFakeParser() *fakeParser {
 func (p *fakeParser) parseRequest(
 	_ string,
 	_ *http.Request,
-	_ push.TenantsRetention,
 	_ push.Limits,
 	_ push.UsageTracker,
-	_ push.PolicyResolver,
+	_ push.StreamResolver,
 	_ bool,
 	_ log.Logger,
 ) (*logproto.PushRequest, *push.Stats, error) {

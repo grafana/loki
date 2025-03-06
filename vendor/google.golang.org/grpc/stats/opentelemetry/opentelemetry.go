@@ -27,35 +27,50 @@ import (
 	"strings"
 	"time"
 
+	otelattribute "go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	experimental "google.golang.org/grpc/experimental/opentelemetry"
 	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/stats"
 	otelinternal "google.golang.org/grpc/stats/opentelemetry/internal"
-
-	otelattribute "go.opentelemetry.io/otel/attribute"
-	otelmetric "go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func init() {
 	otelinternal.SetPluginOption = func(o *Options, po otelinternal.PluginOption) {
 		o.MetricsOptions.pluginOption = po
+		// Log an error if one of the options is missing.
+		if (o.TraceOptions.TextMapPropagator == nil) != (o.TraceOptions.TracerProvider == nil) {
+			logger.Warning("Tracing will not be recorded because traceOptions are not set properly: one of TextMapPropagator or TracerProvider is missing")
+		}
 	}
 }
 
-var logger = grpclog.Component("otel-plugin")
-
-var canonicalString = internal.CanonicalString.(func(codes.Code) string)
-
-var joinDialOptions = internal.JoinDialOptions.(func(...grpc.DialOption) grpc.DialOption)
+var (
+	logger          = grpclog.Component("otel-plugin")
+	canonicalString = internal.CanonicalString.(func(codes.Code) string)
+	joinDialOptions = internal.JoinDialOptions.(func(...grpc.DialOption) grpc.DialOption)
+)
 
 // Options are the options for OpenTelemetry instrumentation.
 type Options struct {
 	// MetricsOptions are the metrics options for OpenTelemetry instrumentation.
 	MetricsOptions MetricsOptions
+	// TraceOptions are the tracing options for OpenTelemetry instrumentation.
+	TraceOptions experimental.TraceOptions
+}
+
+func (o *Options) isMetricsEnabled() bool {
+	return o.MetricsOptions.MeterProvider != nil
+}
+
+func (o *Options) isTracingEnabled() bool {
+	return o.TraceOptions.TracerProvider != nil
 }
 
 // MetricsOptions are the metrics options for OpenTelemetry instrumentation.
@@ -187,6 +202,15 @@ type attemptInfo struct {
 
 	pluginOptionLabels map[string]string // pluginOptionLabels to attach to metrics emitted
 	xdsLabels          map[string]string
+
+	// traceSpan is data used for recording traces.
+	traceSpan trace.Span
+	// message counters for sent and received messages (used for
+	// generating message IDs), and the number of previous RPC attempts for the
+	// associated call.
+	countSentMsg        uint32
+	countRecvMsg        uint32
+	previousRPCAttempts uint32
 }
 
 type clientMetrics struct {

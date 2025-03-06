@@ -63,7 +63,7 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 
 	c, err := NewCompactor(cfg, objectClients, objectClients[periodConfigs[len(periodConfigs)-1].From], config.SchemaConfig{
 		Configs: periodConfigs,
-	}, overrides, prometheus.NewPedanticRegistry(), constants.Loki)
+	}, overrides, 0, prometheus.NewPedanticRegistry(), constants.Loki)
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor("dummy", testIndexCompactor{})

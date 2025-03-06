@@ -28,10 +28,17 @@ var (
 	bufferedLogger *dslog.BufferedLogger
 
 	plogger *prometheusLogger
+	// initialize log level to info, but it is set in the InitLogger function
+	logLevel = func() dslog.Level {
+		var l dslog.Level
+		_ = l.Set("info")
+		return l
+	}()
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and returns that logger.
 func InitLogger(cfg *server.Config, reg prometheus.Registerer, sync bool) log.Logger {
+	logLevel = cfg.LogLevel
 	logger := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, sync)
 	// when using util_log.Logger, skip 3 stack frames.
 	Logger = log.With(logger, "caller", log.Caller(3))

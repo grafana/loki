@@ -30,7 +30,7 @@ A label is a key-value pair, for example all of the following are labels:
 A set of log messages which shares all the labels above would be called a log stream. When Loki performs searches, it first looks for all messages in your chosen stream, and then iterates through the logs in the stream to perform your query.
 
 Labeling will affect your queries, which in turn will affect your dashboards.
-It’s worth spending the time to think about your labeling strategy before you begin ingesting logs to Loki.  
+It’s worth spending the time to think about your labeling strategy before you begin ingesting logs to Loki.
 
 ## Default labels for all users
 
@@ -40,7 +40,7 @@ Loki does not parse or process your log messages on ingestion. However, dependin
 
 Loki automatically tries to populate a default `service_name` label while ingesting logs. The service name label is used to find and explore logs in the following Grafana and Grafana Cloud features:
 
-- Explore Logs
+- Logs Drilldown
 - Grafana Cloud Application Observability
 
 {{< admonition type="note" >}}

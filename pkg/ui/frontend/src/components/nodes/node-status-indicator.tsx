@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { absolutePath } from "@/util";
 
 interface NodeStatusIndicatorProps {
   nodeName: string;
@@ -24,7 +25,9 @@ export function NodeStatusIndicator({
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch(`/ui/api/v1/proxy/${nodeName}/ready`);
+        const response = await fetch(
+          absolutePath(`/api/v1/proxy/${nodeName}/ready`)
+        );
         const text = await response.text();
         setStatus({
           isReady: response.ok && text.includes("ready"),

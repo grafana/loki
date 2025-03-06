@@ -116,6 +116,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -376,6 +377,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -804,6 +806,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1164,6 +1167,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1525,6 +1529,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1925,6 +1930,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2257,6 +2263,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2698,6 +2705,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3024,6 +3032,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3523,6 +3532,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3786,6 +3796,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4050,6 +4061,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4315,6 +4327,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4616,6 +4629,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -5764,6 +5778,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -6156,6 +6171,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: true
   otlp_config:
     resource_attributes:

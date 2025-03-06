@@ -1,3 +1,4 @@
+import { absolutePath } from "@/util";
 import { useState, useEffect } from "react";
 
 interface UseNodeMetricsResult {
@@ -33,9 +34,12 @@ export function useNodeMetrics(
       setError(null);
 
       try {
-        const response = await fetch(`/ui/api/v1/proxy/${nodeName}/metrics`, {
-          signal: abortController.signal,
-        });
+        const response = await fetch(
+          absolutePath(`/api/v1/proxy/${nodeName}/metrics`),
+          {
+            signal: abortController.signal,
+          }
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch metrics: ${response.statusText}`);

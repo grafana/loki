@@ -90,6 +90,9 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return e, 0, nil
 	case *syntax.VectorExpr:
 		return e, 0, nil
+	case *syntax.MultiVariantExpr:
+		// TODO(twhitney): this should be possible to support but hasn't been implemented yet
+		return e, 0, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:

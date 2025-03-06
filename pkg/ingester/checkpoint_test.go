@@ -332,18 +332,18 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 }
 
-func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Duration) {
+func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, maxVal time.Duration) {
 	once := make(chan struct{}, 1)
 	once <- struct{}{}
 
-	deadline := time.After(max)
+	deadline := time.After(maxVal)
 	for {
 		select {
 		case <-deadline:
 			require.Fail(t, "timeout while waiting for checkpoint existence:", shouldExist)
 		case <-once: // Trick to ensure we check immediately before deferring to ticker.
 		default:
-			<-time.After(max / 10) // check 10x over the duration
+			<-time.After(maxVal / 10) // check 10x over the duration
 		}
 
 		fs, err := os.ReadDir(walDir)
