@@ -17,9 +17,6 @@ const router = createBrowserRouter(
   ],
   {
     basename,
-    future: {
-      v7_relativeSplatPath: true,
-    },
   }
 );
 
