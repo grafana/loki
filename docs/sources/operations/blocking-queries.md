@@ -63,4 +63,4 @@ Blocked queries are logged, as well as counted in the `loki_blocked_queries` met
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules]({{< relref "../alert" >}}) will be blocked.
+Queries received via the API and executed as [alerting/recording rules](../../alert/) will be blocked.
