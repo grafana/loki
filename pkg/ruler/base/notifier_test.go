@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -393,6 +394,52 @@ func TestBuildNotifierConfig(t *testing.T) {
 				GlobalConfig: config.GlobalConfig{
 					ExternalLabels: []labels.Label{
 						{Name: "region", Value: "us-east-1"},
+					},
+				},
+			},
+		},
+		{
+			name: "with proxy",
+			cfg: &Config{
+				AlertManagerConfig: ruler_config.AlertManagerConfig{
+					AlertmanagerURL: "http://alertmanager.default.svc.cluster.local/alertmanager",
+					Notifier: ruler_config.NotifierConfig{
+						Proxy: config_util.ProxyConfig{
+							ProxyURL: config_util.URL{
+								URL: &url.URL{},
+							},
+							NoProxy:              "127.0.0.1/8",
+							ProxyFromEnvironment: false,
+							ProxyConnectHeader:   config_util.ProxyHeader{},
+						},
+					},
+				},
+			},
+			ncfg: &config.Config{
+				AlertingConfig: config.AlertingConfig{
+					AlertmanagerConfigs: []*config.AlertmanagerConfig{
+						{
+							APIVersion: "v1",
+							Scheme:     "http",
+							PathPrefix: "/alertmanager",
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager.default.svc.cluster.local"}},
+									},
+								},
+							},
+							HTTPClientConfig: config_util.HTTPClientConfig{
+								ProxyConfig: config_util.ProxyConfig{
+									ProxyURL: config_util.URL{
+										URL: &url.URL{},
+									},
+									NoProxy:              "127.0.0.1/8",
+									ProxyFromEnvironment: false,
+									ProxyConnectHeader:   config_util.ProxyHeader{},
+								},
+							},
+						},
 					},
 				},
 			},
