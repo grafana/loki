@@ -18,7 +18,7 @@ To get started easily, run Grafana Loki in "single binary" mode with all compone
 
 Grafana Loki is designed to easily redeploy a cluster under a different mode as your needs change, with no configuration changes or minimal configuration changes.
 
-For more information, refer to [Deployment modes]({{< relref "./deployment-modes" >}}) and [Components]({{< relref "./components" >}}).
+For more information, refer to [Deployment modes](../deployment-modes/) and [Components](../components/).
 
 ![Loki components](../loki_architecture_components.svg "Loki components")
 
@@ -28,7 +28,7 @@ Loki stores all data in a single object storage backend, such as Amazon Simple S
 This mode uses an adapter called **index shipper** (or short **shipper**) to store index (TSDB or BoltDB) files the same way we store chunk files in object storage.
 This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple. It is where all current and future development lies.
 
-Prior to 2.0, Loki had different storage backends for indexes and chunks. For more information, refer to [Legacy storage]({{< relref "../operations/storage/legacy-storage" >}}).
+Prior to 2.0, Loki had different storage backends for indexes and chunks. For more information, refer to [Legacy storage](../../operations/storage/legacy-storage/).
 
 ### Data format
 
@@ -45,14 +45,14 @@ The diagram above shows the high-level overview of the data that is stored in th
 
 There are two index formats that are currently supported as single store with index shipper:
 
-- [TSDB]({{< relref "../operations/storage/tsdb" >}}) (recommended)
+- [TSDB](../../operations/storage/tsdb/) (recommended)
 
   Time Series Database (or short TSDB) is an [index format](https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/index.md) originally developed by the maintainers of [Prometheus](https://github.com/prometheus/prometheus) for time series (metric) data.
 
   It is extensible and has many advantages over the deprecated BoltDB index.
   New storage features in Loki are solely available when using TSDB.
 
-- [BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}) (deprecated)
+- [BoltDB](../../operations/storage/boltdb-shipper/) (deprecated)
 
   [Bolt](https://github.com/boltdb/bolt) is a low-level, transactional key-value store written in Go.
 
@@ -106,7 +106,7 @@ The following ASCII diagram describes the chunk format in detail.
 respectively.
 
 The `structuredMetadata` section stores non-repeated strings. It is used to store label names and label values from
-[structured metadata]({{< relref "./labels/structured-metadata" >}}).
+[structured metadata](../labels/structured-metadata/).
 Note that the labels strings and lengths within the `structuredMetadata` section are stored compressed.
 
 #### Block format
@@ -147,7 +147,7 @@ On a high level, the write path in Loki works as follows:
 1. The distributor responds with a success (2xx status code) in case it received at least a quorum of acknowledged writes.
    or with an error (4xx or 5xx status code) in case write operations failed.
 
-Refer to [Components]({{< relref "./components" >}}) for a more detailed description of the components involved in the write path.
+Refer to [Components](../components/) for a more detailed description of the components involved in the write path.
 
 
 ## Read path
@@ -164,7 +164,7 @@ On a high level, the read path in Loki works as follows:
 1. The query frontend waits for all sub-queries of a query to be finished and returned by the queriers.
 1. The query frontend merges the indvidual results into a final result and return it to the client.
 
-Refer to [Components]({{< relref "./components" >}}) for a more detailed description of the components involved in the read path.
+Refer to [Components](../components/) for a more detailed description of the components involved in the read path.
 
 
 ## Multi-tenancy
