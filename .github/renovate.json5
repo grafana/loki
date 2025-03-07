@@ -43,6 +43,14 @@
       "enabled": false
     },
     {
+      // Auto-merge the rest of the npm updates
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["!tailwindcss"],
+      "enabled": true,
+      "autoApprove": true,
+      "automerge": true
+    },
+    {
       // Don't automatically merge GitHub Actions updates
       "matchManagers": ["github-actions"],
       "enabled": true,
@@ -95,11 +103,11 @@
     "addLabels": [
       "area/security"
     ],
-    "automerge": true, 
-    "autoApprove": true
+    "automerge": false, 
+    "autoApprove": false
   },
   "osvVulnerabilityAlerts": true,
-  "prConcurrentLimit": 10,
+  "prConcurrentLimit": 15,
   "rebaseWhen": "auto",
   "branchPrefix": "deps-update/",
   "postUpdateOptions": [

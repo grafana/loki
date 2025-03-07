@@ -2598,13 +2598,19 @@ func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
 
 func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
 	extractors := make([]log.SampleExtractor, 0, len(m.variants))
+	// TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
+	idx := 0
+
 	for _, v := range m.variants {
-		e, err := v.Extractors()
+		es, err := v.Extractors()
 		if err != nil {
 			return nil, err
 		}
 
-		extractors = append(extractors, e...)
+		for _, e := range es {
+			extractors = append(extractors, log.NewVariantsSampleExtractorWrapper(idx, e))
+			idx++
+		}
 	}
 
 	return extractors, nil

@@ -3,7 +3,9 @@ package logs
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"time"
 
@@ -63,21 +65,27 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			return err
 		}
 
-		for result := range dataset.Iter(ctx, columns) {
-			row, err := result.Value()
-			if err != nil {
-				return err
-			}
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+		})
 
-			record, err := decodeRecord(streamsColumns, row)
-			if err != nil {
+		var rows [1]dataset.Row
+		for {
+			n, err := r.Read(ctx, rows[:])
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
-			} else if !yield(record) {
+			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-		}
 
-		return nil
+			for _, row := range rows[:n] {
+				record, err := decodeRecord(streamsColumns, row)
+				if err != nil || !yield(record) {
+					return err
+				}
+			}
+		}
 	})
 }
 
