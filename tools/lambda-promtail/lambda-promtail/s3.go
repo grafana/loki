@@ -324,7 +324,7 @@ func processSNSEvent(ctx context.Context, evt *events.SNSEvent, handler func(ctx
 	return nil
 }
 
-func processSQSEvent(ctx context.Context, evt *events.SQSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
+func processSQSS3Event(ctx context.Context, evt *events.SQSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
 	for _, record := range evt.Records {
 		// retrieve nested
 		event, err := stringToRawEvent(record.Body)
