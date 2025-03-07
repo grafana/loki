@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -23,13 +24,13 @@ func getGzipReader(src io.Reader) (io.Reader, error) {
 		reader := r.(*gzip.Reader)
 		err := reader.Reset(src)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("couldn't reset gzip reader: %w", err)
 		}
 		return reader, nil
 	}
 	reader, err := gzip.NewReader(src)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't instantiate new gzip reader: %w", err)
 	}
 	return reader, nil
 }
@@ -46,7 +47,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	start := time.Now()
 	readCloser, err := getFileFunc()
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't get file: %w", err)
 	}
 
 	defer func() {
@@ -59,7 +60,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 
 	ftmp, err := os.Create(tmpName)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't create temporary file: %w", err)
 	}
 	defer func() {
 		err := os.Remove(tmpName)
@@ -70,7 +71,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 
 	_, err = io.Copy(ftmp, readCloser)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't copy content to temporary file: %w", err)
 	}
 
 	dlTime := time.Since(start)
@@ -79,29 +80,29 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 
 	tmpReader, err := os.Open(tmpName)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't open temporary file: %w", err)
 	}
 	defer func() {
 		if err := tmpReader.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination+"-tmp")
+			level.Warn(logger).Log("msg", "failed to close file", "file", destination+"-tmp", "err", err)
 		}
 	}()
 
 	f, err := os.Create(destination)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't create final destination file: %w", err)
 	}
 
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
+			level.Warn(logger).Log("msg", "failed to close file", "file", destination, "err", err)
 		}
 	}()
 	var objectReader io.Reader = tmpReader
 	if decompressFile {
 		decompressedReader, err := getGzipReader(tmpReader)
 		if err != nil {
-			return err
+			return fmt.Errorf("couldn't get gzip reader from temporary reader: %w", err)
 		}
 		defer putGzipReader(decompressedReader)
 
@@ -110,7 +111,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 
 	_, err = io.Copy(f, objectReader)
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't copy from reader to final destination file: %w", err)
 	}
 
 	fStat, err := f.Stat()
