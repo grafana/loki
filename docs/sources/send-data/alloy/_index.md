@@ -58,7 +58,7 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 
 To learn more about how to configure Alloy to send logs to Loki within different scenarios, follow these interactive tutorials:
 
-- [Sending OpenTelemetry logs to Loki using Alloy]({{< relref "./examples/alloy-otel-logs" >}})
-- [Sending logs over Kafka to Loki using Alloy]({{< relref "./examples/alloy-kafka-logs" >}})
+- [Sending OpenTelemetry logs to Loki using Alloy](examples/alloy-otel-logs/)
+- [Sending logs over Kafka to Loki using Alloy](examples/alloy-kafka-logs/)
 
 

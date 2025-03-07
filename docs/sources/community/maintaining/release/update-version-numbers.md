@@ -8,7 +8,7 @@ Upgrade the Loki version to the new release version in documents, examples, json
 
 ## Before you begin
 
-1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
+1. Determine the [VERSION_PREFIX](../concepts/version/).
 
 2. Skip this step if you are doing a patch release on old release branch.
 

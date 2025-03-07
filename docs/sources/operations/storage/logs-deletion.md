@@ -15,7 +15,7 @@ The compactor component exposes REST [endpoints](https://grafana.com/docs/loki/<
 Hitting the endpoint specifies the streams and the time window.
 The deletion of the log entries takes place after a configurable cancellation time period expires.
 
-Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor]({{< relref "./retention#compactor" >}}). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
+Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor](../retention/#compactor). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
 
 ## Configuration
 

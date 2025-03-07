@@ -12,7 +12,7 @@ aliases:
 
 Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
-For more information see [Deployment modes]({{< relref "./deployment-modes" >}}).
+For more information see [Deployment modes](../deployment-modes/).
 
 | Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
 |----------------------------------------------------|--------------| - | - | - | - |
@@ -133,7 +133,7 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
    another ingester that is `LEAVING`. This only applies for legacy deployment modes.
 
    {{< admonition type="note" >}}
-   Handoff is a deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
+   Handoff is a deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](../../operations/storage/wal/).
    {{< /admonition >}}
 
 1. `JOINING` is an Ingester's state when it is currently inserting its tokens
@@ -190,7 +190,7 @@ Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
-been flushed could be lost. Loki is usually configured with a [Write Ahead Log]({{< relref "../operations/storage/wal" >}}) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../../operations/storage/wal/) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
 When not configured to accept out-of-order writes,
 all lines pushed to Loki for a given stream (unique combination of
@@ -209,7 +209,7 @@ nanosecond timestamps:
 ### Handoff
 
 {{< admonition type="warning" >}}
-Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
+Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](../../operations/storage/wal/).
 {{< /admonition >}}
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
@@ -280,7 +280,7 @@ This cache is only applicable when using single store TSDB.
 
 ## Query scheduler
 
-The **query scheduler** is an **optional service** providing more [advanced queuing functionality]({{< relref "../operations/query-fairness" >}}) than the [query frontend](#query-frontend).
+The **query scheduler** is an **optional service** providing more [advanced queuing functionality](../../operations/query-fairness/) than the [query frontend](#query-frontend).
 When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
 The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag) in order to allow them to connect to the query scheduler.
@@ -290,7 +290,7 @@ Query schedulers are **stateless**. However, due to the in-memory queue, it's re
 
 ## Querier
 
-The **querier** service is responsible for executing [Log Query Language (LogQL)]({{< relref "../query" >}}) queries.
+The **querier** service is responsible for executing [Log Query Language (LogQL)](../../query/) queries.
 The querier can handle HTTP requests from the client directly (in "single binary" mode, or as part of the read path in "simple scalable deployment")
 or pull subqueries from the query frontend or query scheduler (in "microservice" mode).
 
@@ -306,7 +306,7 @@ timestamp, label set, and log message.
 
 The **index gateway** service is responsible for handling and serving metadata queries.
 Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
-such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}}) or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}).
+such as [single store TSDB](../../operations/storage/tsdb/) or [single store BoltDB](../../operations/storage/boltdb-shipper/).
 
 The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
 The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
@@ -317,14 +317,14 @@ In `ring` mode, index gateways use a consistent hash ring to distribute and shar
 
 ## Compactor
 
-The **compactor** service is used by "shipper stores", such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}})
-or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}), to compact the multiple index files produced by the ingesters
+The **compactor** service is used by "shipper stores", such as [single store TSDB](../../operations/storage/tsdb/)
+or [single store BoltDB](../../operations/storage/boltdb-shipper/), to compact the multiple index files produced by the ingesters
 and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
 
 To do so, the compactor downloads the files from object storage in a regular interval, merges them into a single one,
 uploads the newly created index, and cleans up the old files.
 
-Additionally, the compactor is also responsible for [log retention]({{< relref "../operations/storage/retention" >}}) and [log deletion]({{< relref "../operations/storage/logs-deletion" >}}).
+Additionally, the compactor is also responsible for [log retention](../../operations/storage/retention/) and [log deletion](../../operations/storage/logs-deletion/).
 
 In a Loki deployment, the compactor service is usually run as a single instance.
 
