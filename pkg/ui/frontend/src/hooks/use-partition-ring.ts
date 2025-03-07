@@ -50,7 +50,7 @@ export function usePartitionRing({
     error: "",
     isLoading: false,
   });
-  const abortControllerRef = useRef<AbortController>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   const ringProxyPath = useCallback(() => {
     return getRingProxyPath(cluster?.members, RingTypes.PARTITION_INGESTER);

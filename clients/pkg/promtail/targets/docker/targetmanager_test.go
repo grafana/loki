@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
@@ -33,10 +32,10 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "/containers/json"):
 			// Serve container list
 			w.Header().Set("Content-Type", "application/json")
-			containerResponse := []types.Container{{
+			containerResponse := []container.Summary{{
 				ID:    "1234",
 				Names: []string{"flog"},
-				NetworkSettings: &types.SummaryNetworkSettings{
+				NetworkSettings: &container.NetworkSettingsSummary{
 					Networks: map[string]*network.EndpointSettings{
 						"foo": {
 							NetworkID: "my_network",
@@ -54,11 +53,11 @@ func Test_TargetManager(t *testing.T) {
 			require.NoError(t, err)
 		case strings.HasSuffix(path, "json"):
 			w.Header().Set("Content-Type", "application/json")
-			info := types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{},
-				Mounts:            []types.MountPoint{},
+			info := container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{},
+				Mounts:            []container.MountPoint{},
 				Config:            &container.Config{Tty: false},
-				NetworkSettings:   &types.NetworkSettings{},
+				NetworkSettings:   &container.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)

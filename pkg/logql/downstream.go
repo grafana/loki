@@ -695,6 +695,15 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	}
 }
 
+func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
+	_ context.Context,
+	_ syntax.VariantsExpr,
+	_ Params,
+) (StepEvaluator, error) {
+	// TODO(twhitney): does the downstream evaluator need to handle variants?
+	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
+}
+
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr
 func (ev *DownstreamEvaluator) NewIterator(
 	ctx context.Context,

@@ -601,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.0
+    tag: 3.4.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -3197,7 +3197,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.0
+    tag: v0.15.1
     pullPolicy: IfNotPresent
   resources:
     requests: {}
