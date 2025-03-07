@@ -16,7 +16,7 @@ This feature is an [experimental feature](/docs/release-life-cycle/). Engineerin
 Loki 3.0 leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the 
 amount of data Loki needs to load from the store and iterate through. Loki is often used to run “needle in a haystack” 
 queries; these are queries where a large number of log lines are searched, but only a few log lines match the [filtering 
-expressions]({{< relref "../query/log_queries#line-filter-expression" >}}) of the query. 
+expressions](../../query/log_queries/#line-filter-expression) of the query. 
 Some common use cases are needing to find a specific text pattern in a message, or all logs tied to a specific customer ID.
 
 An example of such queries would be looking for a trace ID on a whole cluster for the past 24 hours:
