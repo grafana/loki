@@ -49,11 +49,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -91,11 +91,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -306,11 +306,11 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				require.NoError(t, ds.MarkShardAsProcessed(context.Background(), req))
 			}
 
-			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1)
+			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 			require.NoError(t, err)
 
 			require.NoError(t, ds.MergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1)
+			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 			require.NoError(t, err)
 
 			if tc.requestsShouldBeMerged {

@@ -4,6 +4,8 @@ menuTitle: Sending OpenTelemetry logs to Loki using Alloy
 description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
 weight: 250
 killercoda:
+  comment: |
+    This file is used to generate the interactive tutorial for sending logs to Loki via otel using Alloy. Please do not change url's with placeholders from the code snippets. This tutorial is assumes they remain static.
   title: Sending OpenTelemetry logs to Loki using Alloy
   description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
   backend:
@@ -181,7 +183,7 @@ Now add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
-    endpoint = "http://<loki-addr>:3100/otlp/v1/logs"
+    endpoint = "http://loki:3100/otlp"
   }
 }
 ```

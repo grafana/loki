@@ -44,11 +44,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -71,13 +71,18 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	_, err = tc.store.GetDeleteRequest(context.Background(), "user3", "na")
 	require.ErrorIs(t, err, ErrDeleteRequestNotFound)
 
+	var user1UnprocessedRequests []DeleteRequest
+	var user2UnprocessedRequests []DeleteRequest
+
 	// update some of the delete requests for both the users to processed
 	for i := 0; i < len(tc.user1Requests); i++ {
 		var request DeleteRequest
 		if i%2 != 0 {
+			user2UnprocessedRequests = append(user2UnprocessedRequests, tc.user2Requests[i])
 			tc.user1Requests[i].Status = StatusProcessed
 			request = tc.user1Requests[i]
 		} else {
+			user1UnprocessedRequests = append(user1UnprocessedRequests, tc.user1Requests[i])
 			tc.user2Requests[i].Status = StatusProcessed
 			request = tc.user2Requests[i]
 		}
@@ -86,13 +91,25 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
+
+	// see if listing user requests for query time filtering eliminates processed requests
+	tc.store.(*deleteRequestsStoreSQLite).indexUpdatePropagationMaxDelay = 0 // set the index propagation max delay to 0
+	time.Sleep(time.Microsecond)                                             // sleep for a microsecond to avoid flaky tests
+
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true)
+	require.NoError(t, err)
+	compareRequests(t, user1UnprocessedRequests, user1Requests)
+
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, true)
+	require.NoError(t, err)
+	compareRequests(t, user2UnprocessedRequests, user2Requests)
 
 	// caches should not be invalidated when we mark delete request as processed
 	updateGenNumber, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
@@ -157,7 +174,7 @@ func TestBatchCreateGetSQLite(t *testing.T) {
 		}
 	})
 
-	t.Run("mark a single request as processed", func(t *testing.T) {
+	t.Run("mark a single shard as processed", func(t *testing.T) {
 		tc := setupStoreType(t, DeleteRequestsStoreDBTypeSQLite)
 		defer tc.store.Stop()
 

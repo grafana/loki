@@ -39,7 +39,8 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -192,7 +193,8 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -424,7 +426,7 @@ type testDataBuilder struct {
 
 	tenantID string
 	builder  *dataobj.Builder
-	meta     *metastore.Manager
+	meta     *metastore.Updater
 	uploader *uploader.Uploader
 }
 
@@ -445,7 +447,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	})
 	require.NoError(t, err)
 
-	meta := metastore.NewManager(bucket, tenantID, log.NewLogfmtLogger(os.Stdout))
+	meta := metastore.NewUpdater(bucket, tenantID, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
@@ -480,7 +482,7 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.UpdateMetastore(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()

@@ -43,6 +43,14 @@
       "enabled": false
     },
     {
+      // Auto-merge the rest of the npm updates
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["!tailwindcss"],
+      "enabled": true,
+      "autoApprove": true,
+      "automerge": true
+    },
+    {
       // Don't automatically merge GitHub Actions updates
       "matchManagers": ["github-actions"],
       "enabled": true,

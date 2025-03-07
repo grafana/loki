@@ -137,3 +137,15 @@ func (c *deleteRequestsClient) currentUserIDs() []string {
 
 	return userIDs
 }
+
+func NewNoOpDeleteRequestsClient() DeleteRequestsClient {
+	return &noOpDeleteRequestsClient{}
+}
+
+type noOpDeleteRequestsClient struct{}
+
+func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+	return nil, nil
+}
+
+func (n noOpDeleteRequestsClient) Stop() {}

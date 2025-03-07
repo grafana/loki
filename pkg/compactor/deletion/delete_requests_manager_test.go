@@ -1040,9 +1040,10 @@ type mockDeleteRequestsStore struct {
 	getResult []DeleteRequest
 	getErr    error
 
-	getAllUser   string
-	getAllResult []DeleteRequest
-	getAllErr    error
+	getAllUser                           string
+	getAllResult                         []DeleteRequest
+	getAllErr                            error
+	getAllRequestedForQuerytimeFiltering bool
 
 	genNumber string
 }
@@ -1093,8 +1094,9 @@ func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, re
 	return m.getResult[0], m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
 	m.getAllUser = userID
+	m.getAllRequestedForQuerytimeFiltering = forQuerytimeFiltering
 	return m.getAllResult, m.getAllErr
 }
 

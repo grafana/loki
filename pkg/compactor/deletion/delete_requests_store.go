@@ -26,7 +26,7 @@ type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
 	addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error
 	GetAllRequests(ctx context.Context) ([]DeleteRequest, error)
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error)
 	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
@@ -39,13 +39,31 @@ type DeleteRequestsStore interface {
 	Stop()
 }
 
-func NewDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
-	return newDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, backupDeleteRequestStoreDBType)
+func NewDeleteRequestsStore(
+	deleteRequestsStoreDBType DeleteRequestsStoreDBType,
+	workingDirectory string,
+	indexStorageClient storage.Client,
+	backupDeleteRequestStoreDBType DeleteRequestsStoreDBType,
+	indexUpdatePropagationMaxDelay time.Duration,
+) (DeleteRequestsStore, error) {
+	return newDeleteRequestsStore(
+		deleteRequestsStoreDBType,
+		workingDirectory,
+		indexStorageClient,
+		backupDeleteRequestStoreDBType,
+		indexUpdatePropagationMaxDelay,
+	)
 }
 
-func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client, backupDeleteRequestStoreDBType DeleteRequestsStoreDBType) (DeleteRequestsStore, error) {
+func newDeleteRequestsStore(
+	deleteRequestsStoreDBType DeleteRequestsStoreDBType,
+	workingDirectory string,
+	indexStorageClient storage.Client,
+	backupDeleteRequestStoreDBType DeleteRequestsStoreDBType,
+	indexUpdatePropagationMaxDelay time.Duration,
+) (DeleteRequestsStore, error) {
 	workingDirectory = filepath.Join(workingDirectory, deleteRequestsWorkingDirName)
-	store, err := createDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient)
+	store, err := createDeleteRequestsStore(deleteRequestsStoreDBType, workingDirectory, indexStorageClient, indexUpdatePropagationMaxDelay)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +103,7 @@ func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	}
 
 	if backupDeleteRequestStoreDBType != "" && deleteRequestsStoreDBType != backupDeleteRequestStoreDBType {
-		backupStore, err := createDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient)
+		backupStore, err := createDeleteRequestsStore(backupDeleteRequestStoreDBType, workingDirectory, indexStorageClient, indexUpdatePropagationMaxDelay)
 		if err != nil {
 			return nil, err
 		}
@@ -96,12 +114,17 @@ func newDeleteRequestsStore(deleteRequestsStoreDBType DeleteRequestsStoreDBType,
 	return store, nil
 }
 
-func createDeleteRequestsStore(DeleteRequestsStoreDBType DeleteRequestsStoreDBType, workingDirectory string, indexStorageClient storage.Client) (DeleteRequestsStore, error) {
+func createDeleteRequestsStore(
+	DeleteRequestsStoreDBType DeleteRequestsStoreDBType,
+	workingDirectory string,
+	indexStorageClient storage.Client,
+	indexUpdatePropagationMaxDelay time.Duration,
+) (DeleteRequestsStore, error) {
 	switch DeleteRequestsStoreDBType {
 	case DeleteRequestsStoreDBTypeBoltDB:
 		return newDeleteRequestsStoreBoltDB(workingDirectory, indexStorageClient)
 	case DeleteRequestsStoreDBTypeSQLite:
-		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient)
+		return newDeleteRequestsStoreSQLite(workingDirectory, indexStorageClient, indexUpdatePropagationMaxDelay)
 	default:
 		return nil, fmt.Errorf("unexpected delete requests store DB type %s. Supported types: (%s, %s)", DeleteRequestsStoreDBType, DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite)
 	}
@@ -144,8 +167,8 @@ func (d deleteRequestsStoreTee) GetAllRequests(ctx context.Context) ([]DeleteReq
 	return d.primaryStore.GetAllRequests(ctx)
 }
 
-func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID)
+func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
+	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
 }
 
 func (d deleteRequestsStoreTee) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
