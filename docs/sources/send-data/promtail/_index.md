@@ -44,7 +44,7 @@ Kubernetes API server while `static` usually covers all other use cases.
 Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 `relabel_configs` allows for fine-grained control of what to ingest, what to
 drop, and the final metadata to attach to the log line. Refer to the docs for
-[configuring Promtail]({{< relref "./configuration" >}}) for more details.
+[configuring Promtail](configuration/) for more details.
 
 ### Support for compressed files
 
@@ -118,12 +118,12 @@ There are a few instances where this might be helpful:
 
 ## Receiving logs From Syslog
 
-When the [Syslog Target]({{< relref "./configuration#syslog" >}}) is being used, logs
+When the [Syslog Target](configuration/#syslog) is being used, logs
 can be written with the syslog protocol to the configured port.
 
 ## AWS
 
-If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial]({{< relref "./cloud/ec2" >}}).
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial](cloud/ec2/).
 
 ## Labeling and parsing
 
@@ -136,7 +136,7 @@ To allow more sophisticated filtering afterwards, Promtail allows to set labels
 not only from service discovery, but also based on the contents of each log
 line. The `pipeline_stages` can be used to add or update labels, correct the
 timestamp, or re-write log lines entirely. Refer to the documentation for
-[pipelines]({{< relref "./pipelines" >}}) for more details.
+[pipelines](pipelines/) for more details.
 
 ## Shipping
 
@@ -162,7 +162,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki]({{< relref "../../operations/meta-monitoring" >}}) for the list
+[Observing Grafana Loki](../../operations/meta-monitoring/) for the list
 of exported metrics.
 
 ### Promtail web server config
