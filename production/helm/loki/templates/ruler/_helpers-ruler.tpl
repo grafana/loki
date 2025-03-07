@@ -45,3 +45,14 @@ ruler priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create the name of the service account to use
+*/}}
+{{- define "loki.rulerServiceAccountName" -}}
+{{- if .Values.ruler.serviceAccount.create -}}
+    {{ .Values.ruler.serviceAccount.name | default printf "%s-ruler" (include "loki.serviceAccountName" .) }}
+{{- else -}}
+    {{ default (include "loki.serviceAccountName" .) }}
+{{- end -}}
+{{- end -}}
