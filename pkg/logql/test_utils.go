@@ -140,26 +140,31 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	return streams
 }
 
-func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Series, error) {
+func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.Series, error) {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
-		exs := ex.ForStream(mustParseLabels(stream.Labels))
-		for _, e := range stream.Entries {
-			if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
-				var s *logproto.Series
-				var found bool
-				s, found = resBySeries[lbs.String()]
-				if !found {
-					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
-					resBySeries[lbs.String()] = s
-				}
+		for _, extractor := range ex {
+			exs := extractor.ForStream(mustParseLabels(stream.Labels))
+			for _, e := range stream.Entries {
+				if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
+					var s *logproto.Series
+					var found bool
+					s, found = resBySeries[lbs.String()]
+					if !found {
+						s = &logproto.Series{
+							Labels:     lbs.String(),
+							StreamHash: exs.BaseLabels().Hash(),
+						}
+						resBySeries[lbs.String()] = s
+					}
 
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.Timestamp.UnixNano(),
-					Value:     f,
-					Hash:      xxhash.Sum64([]byte(e.Line)),
-				})
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: e.Timestamp.UnixNano(),
+						Value:     f,
+						Hash:      xxhash.Sum64([]byte(e.Line)),
+					})
+				}
 			}
 		}
 	}
@@ -183,7 +188,7 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 		return nil, err
 	}
 
-	extractor, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +222,7 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	filtered, err := processSeries(matched, extractor)
+	filtered, err := processSeries(matched, extractors)
 	if err != nil {
 		return nil, err
 	}

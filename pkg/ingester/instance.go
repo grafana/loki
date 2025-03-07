@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -46,7 +47,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	mathutil "github.com/grafana/loki/v3/pkg/util/math"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -298,9 +298,25 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
 	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
-	policy := mapping.PolicyFor(labels)
+	policies := mapping.PolicyFor(labels)
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
+	}
+
+	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
+	// As on distributors, we use the first policy by alphabetical order.
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(util_log.Logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", i.instanceID,
+				"stream", pushReqStream.Labels,
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+			)
+		}
 	}
 
 	if err != nil {
@@ -522,23 +538,28 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	extractor, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	if err != nil {
 		return nil, err
 	}
 
-	extractor, err = deletion.SetupExtractor(req, extractor)
-	if err != nil {
-		return nil, err
-	}
-
-	if i.extractorWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-		userID, err := tenant.TenantID(ctx)
+	for j, extractor := range extractors {
+		extractor, err = deletion.SetupExtractor(req, extractor)
 		if err != nil {
 			return nil, err
 		}
 
-		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		if i.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[j] = extractor
 	}
 
 	stats := stats.FromContext(ctx)
@@ -558,7 +579,18 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
+			streamExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
+			for _, extractor := range extractors {
+				streamExtractors = append(streamExtractors, extractor.ForStream(stream.labels))
+			}
+
+			iter, err := stream.SampleIterator(
+				ctx,
+				stats,
+				req.Start,
+				req.End,
+				streamExtractors...,
+			)
 			if err != nil {
 				return err
 			}
@@ -1066,7 +1098,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	for limit != 0 && !isDone(ctx) {
 		fetchSize := uint32(queryBatchSize)
 		if limit > 0 {
-			fetchSize = mathutil.MinUint32(queryBatchSize, uint32(limit))
+			fetchSize = min(queryBatchSize, uint32(limit))
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {

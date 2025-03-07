@@ -403,23 +403,23 @@ func avgOverTime(samples []promql.FPoint) float64 {
 }
 
 func maxOverTime(samples []promql.FPoint) float64 {
-	max := samples[0].F
+	maxVal := samples[0].F
 	for _, v := range samples {
-		if v.F > max || math.IsNaN(max) {
-			max = v.F
+		if v.F > maxVal || math.IsNaN(maxVal) {
+			maxVal = v.F
 		}
 	}
-	return max
+	return maxVal
 }
 
 func minOverTime(samples []promql.FPoint) float64 {
-	min := samples[0].F
+	minVal := samples[0].F
 	for _, v := range samples {
-		if v.F < min || math.IsNaN(min) {
-			min = v.F
+		if v.F < minVal || math.IsNaN(minVal) {
+			minVal = v.F
 		}
 	}
-	return min
+	return minVal
 }
 
 // stdvarOverTime calculates the variance using Welford's online algorithm.

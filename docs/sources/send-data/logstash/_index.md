@@ -239,7 +239,7 @@ An array of fields which will be mapped to labels and sent to Loki, when this li
 
 #### metadata_fields
 
-An array of fields which will be mapped to [structured metadata]({{< relref "../../get-started/labels/structured-metadata.md" >}}) and sent to Loki for each log line
+An array of fields which will be mapped to [structured metadata](../../get-started/labels/structured-metadata/) and sent to Loki for each log line
 
 #### batch_wait
 

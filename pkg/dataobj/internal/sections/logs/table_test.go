@@ -2,6 +2,8 @@ package logs
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -68,13 +70,27 @@ func Test_mergeTables(t *testing.T) {
 
 	var actual []string
 
-	for result := range dataset.Iter(context.Background(), mergedColumns) {
-		row, err := result.Value()
-		require.NoError(t, err)
-		require.Len(t, row.Values, 3)
-		require.Equal(t, datasetmd.VALUE_TYPE_STRING, row.Values[2].Type())
+	r := dataset.NewReader(dataset.ReaderOptions{
+		Dataset: mergedTable,
+		Columns: mergedColumns,
+	})
 
-		actual = append(actual, row.Values[2].String())
+	rows := make([]dataset.Row, 1024)
+
+	for {
+		n, err := r.Read(context.Background(), rows)
+		if err != nil && !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
+		} else if n == 0 && errors.Is(err, io.EOF) {
+			break
+		}
+
+		for _, row := range rows[:n] {
+			require.Len(t, row.Values, 3)
+			require.Equal(t, datasetmd.VALUE_TYPE_STRING, row.Values[2].Type())
+
+			actual = append(actual, row.Values[2].String())
+		}
 	}
 
 	require.Equal(t, "hello world how are you doing? goodbye", strings.Join(actual, " "))

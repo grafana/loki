@@ -1,0 +1,5 @@
+**/*.swp
+.idea
+.vscode
+testing_*.coverprofile
+/cover.out
