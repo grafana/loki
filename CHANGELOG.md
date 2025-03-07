@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.3](https://github.com/grafana/loki/compare/v3.4.2...v3.4.3) (2025-03-07)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.35.0 [security] (release-3.4.x) ([#16588](https://github.com/grafana/loki/issues/16588)) ([184fe1a](https://github.com/grafana/loki/commit/184fe1ac64c9e519bd173edf91eb0e408dbc0a39))
+* **deps:** update module golang.org/x/oauth2 to v0.27.0 [security] (release-3.4.x) ([#16589](https://github.com/grafana/loki/issues/16589)) ([bead91e](https://github.com/grafana/loki/commit/bead91ef11934a73a7722a03bebd2d8875428cbc))
+
 ## [3.4.2](https://github.com/grafana/loki/compare/v3.4.1...v3.4.2) (2025-02-14)
 
 
