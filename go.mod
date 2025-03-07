@@ -131,7 +131,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.3
 	github.com/parquet-go/parquet-go v0.25.0
-	github.com/prometheus/alertmanager v0.28.0
+	github.com/prometheus/alertmanager v0.28.1
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/prometheus/sigv4 v0.1.2
 	github.com/richardartoul/molecule v1.0.0
