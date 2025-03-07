@@ -1,11 +1,27 @@
 package magic
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/csv"
 	"errors"
 	"io"
+	"sync"
 )
+
+// A bufio.Reader pool to alleviate problems with memory allocations.
+var readerPool = sync.Pool{
+	New: func() any {
+		// Initiate with empty source reader.
+		return bufio.NewReader(nil)
+	},
+}
+
+func newReader(r io.Reader) *bufio.Reader {
+	br := readerPool.Get().(*bufio.Reader)
+	br.Reset(r)
+	return br
+}
 
 // Csv matches a comma-separated values file.
 func Csv(raw []byte, limit uint32) bool {
@@ -18,7 +34,11 @@ func Tsv(raw []byte, limit uint32) bool {
 }
 
 func sv(in []byte, comma rune, limit uint32) bool {
-	r := csv.NewReader(bytes.NewReader(dropLastLine(in, limit)))
+	in = dropLastLine(in, limit)
+
+	br := newReader(bytes.NewReader(in))
+	defer readerPool.Put(br)
+	r := csv.NewReader(br)
 	r.Comma = comma
 	r.ReuseRecord = true
 	r.LazyQuotes = true
