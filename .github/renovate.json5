@@ -46,6 +46,7 @@
       // Auto-merge the rest of the npm updates
       "matchManagers": ["npm"],
       "matchPackageNames": ["!tailwindcss"],
+      "matchBaseBranches": ["main"],
       "enabled": true,
       "autoApprove": true,
       "automerge": true
