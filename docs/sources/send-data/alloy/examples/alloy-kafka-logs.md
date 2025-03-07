@@ -4,8 +4,6 @@ menuTitle: Sending Logs to Loki via Kafka using Alloy
 description: Configuring Grafana Alloy to receive logs via Kafka and send them to Loki.
 weight: 250
 killercoda:
-  comment: |
-    This file is used to generate the interactive tutorial for sending logs to Loki via Kafka using Alloy. Please do not change url's with placeholders from the code snippets. This tutorial is assumes they remain static.
   title: Sending Logs to Loki via Kafka using Alloy
   description: Configuring Grafana Alloy to receive logs via Kafka and send them to Loki.
   backend:
@@ -197,7 +195,7 @@ And finally, add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+    url = "http://<loki-addr>:3100/otlp/v1/logs"
   }
 }
 ```
@@ -301,7 +299,7 @@ Finally, add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
-    endpoint = "http://loki:3100/otlp"
+    endpoint = "http://<loki-addr>:3100/otlp/v1/logs"
   }
 }
 ```
