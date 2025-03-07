@@ -1,6 +1,6 @@
 package core
 
-// (C) Copyright IBM Corp. 2021, 2024.
+// (C) Copyright IBM Corp. 2021, 2025.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import (
 )
 
 // ContainerAuthenticator implements an IAM-based authentication schema whereby it
-// retrieves a "compute resource token" from the local compute resource (VM)
+// retrieves a "compute resource token" from the local compute resource (IKS pod, or Code Engine application, function, or job)
 // and uses that to obtain an IAM access token by invoking the IAM "get token" operation with grant-type=cr-token.
 // The resulting IAM access token is then added to outbound requests in an Authorization header
 // of the form:
@@ -37,8 +37,8 @@ import (
 //	Authorization: Bearer <access-token>
 type ContainerAuthenticator struct {
 	// [optional] The name of the file containing the injected CR token value (applies to
-	// IKS-managed compute resources).
-	// Default value: (1) "/var/run/secrets/tokens/vault-token" or (2) "/var/run/secrets/tokens/sa-token",
+	// IKS-managed compute resources, a Code Engine compute resource always uses the third default from below).
+	// Default value: (1) "/var/run/secrets/tokens/vault-token" or (2) "/var/run/secrets/tokens/sa-token" or (3) "/var/run/secrets/codeengine.cloud.ibm.com/compute-resource-token/token",
 	// whichever is found first.
 	CRTokenFilename string
 
@@ -98,9 +98,10 @@ type ContainerAuthenticator struct {
 }
 
 const (
-	defaultCRTokenFilename1 = "/var/run/secrets/tokens/vault-token"      // #nosec G101
-	defaultCRTokenFilename2 = "/var/run/secrets/tokens/sa-token"         // #nosec G101
-	iamGrantTypeCRToken     = "urn:ibm:params:oauth:grant-type:cr-token" // #nosec G101
+	defaultCRTokenFilename1 = "/var/run/secrets/tokens/vault-token"                                    // #nosec G101
+	defaultCRTokenFilename2 = "/var/run/secrets/tokens/sa-token"                                       // #nosec G101
+	defaultCRTokenFilename3 = "/var/run/secrets/codeengine.cloud.ibm.com/compute-resource-token/token" // #nosec G101
+	iamGrantTypeCRToken     = "urn:ibm:params:oauth:grant-type:cr-token"                               // #nosec G101
 )
 
 var craRequestTokenMutex sync.Mutex
@@ -504,6 +505,9 @@ func (authenticator *ContainerAuthenticator) retrieveCRToken() (crToken string, 
 		crToken, err = authenticator.readFile(defaultCRTokenFilename1)
 		if err != nil {
 			crToken, err = authenticator.readFile(defaultCRTokenFilename2)
+			if err != nil {
+				crToken, err = authenticator.readFile(defaultCRTokenFilename3)
+			}
 		}
 	}
 

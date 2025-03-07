@@ -218,8 +218,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.49.0
 ## explicit; go 1.22
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
-# github.com/IBM/go-sdk-core/v5 v5.18.5
-## explicit; go 1.21
+# github.com/IBM/go-sdk-core/v5 v5.19.0
+## explicit; go 1.23.0
 github.com/IBM/go-sdk-core/v5/core
 # github.com/IBM/ibm-cos-sdk-go v1.12.1
 ## explicit; go 1.21
@@ -760,7 +760,7 @@ github.com/fsouza/fake-gcs-server/internal/notification
 # github.com/fxamacker/cbor/v2 v2.7.0
 ## explicit; go 1.17
 github.com/fxamacker/cbor/v2
-# github.com/gabriel-vasile/mimetype v1.4.4
+# github.com/gabriel-vasile/mimetype v1.4.8
 ## explicit; go 1.20
 github.com/gabriel-vasile/mimetype
 github.com/gabriel-vasile/mimetype/internal/charset
@@ -832,8 +832,8 @@ github.com/go-playground/locales/currency
 # github.com/go-playground/universal-translator v0.18.1
 ## explicit; go 1.18
 github.com/go-playground/universal-translator
-# github.com/go-playground/validator/v10 v10.19.0
-## explicit; go 1.18
+# github.com/go-playground/validator/v10 v10.24.0
+## explicit; go 1.20
 github.com/go-playground/validator/v10
 # github.com/go-redsync/redsync/v4 v4.13.0
 ## explicit; go 1.22
@@ -1814,7 +1814,7 @@ go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials
 go.etcd.io/etcd/client/v3/internal/endpoint
 go.etcd.io/etcd/client/v3/internal/resolver
-# go.mongodb.org/mongo-driver v1.17.0
+# go.mongodb.org/mongo-driver v1.17.2
 ## explicit; go 1.18
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
