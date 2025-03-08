@@ -119,6 +119,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.1
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/buger/jsonparser v1.1.1
+	github.com/coder/quartz v0.1.3
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.3
