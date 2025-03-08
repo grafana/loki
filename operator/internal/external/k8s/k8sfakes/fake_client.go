@@ -9,7 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -53,11 +52,11 @@ type FakeClient struct {
 	deleteAllOfReturnsOnCall map[int]struct {
 		result1 error
 	}
-	GetStub        func(context.Context, types.NamespacedName, client.Object, ...client.GetOption) error
+	GetStub        func(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error
 	getMutex       sync.RWMutex
 	getArgsForCall []struct {
 		arg1 context.Context
-		arg2 types.NamespacedName
+		arg2 client.ObjectKey
 		arg3 client.Object
 		arg4 []client.GetOption
 	}
@@ -140,15 +139,15 @@ type FakeClient struct {
 	schemeReturnsOnCall map[int]struct {
 		result1 *runtime.Scheme
 	}
-	StatusStub        func() client.SubResourceWriter
+	StatusStub        func() client.StatusWriter
 	statusMutex       sync.RWMutex
 	statusArgsForCall []struct {
 	}
 	statusReturns struct {
-		result1 client.SubResourceWriter
+		result1 client.StatusWriter
 	}
 	statusReturnsOnCall map[int]struct {
-		result1 client.SubResourceWriter
+		result1 client.StatusWriter
 	}
 	SubResourceStub        func(string) client.SubResourceClient
 	subResourceMutex       sync.RWMutex
@@ -367,12 +366,12 @@ func (fake *FakeClient) DeleteAllOfReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakeClient) Get(arg1 context.Context, arg2 types.NamespacedName, arg3 client.Object, arg4 ...client.GetOption) error {
+func (fake *FakeClient) Get(arg1 context.Context, arg2 client.ObjectKey, arg3 client.Object, arg4 ...client.GetOption) error {
 	fake.getMutex.Lock()
 	ret, specificReturn := fake.getReturnsOnCall[len(fake.getArgsForCall)]
 	fake.getArgsForCall = append(fake.getArgsForCall, struct {
 		arg1 context.Context
-		arg2 types.NamespacedName
+		arg2 client.ObjectKey
 		arg3 client.Object
 		arg4 []client.GetOption
 	}{arg1, arg2, arg3, arg4})
@@ -395,13 +394,13 @@ func (fake *FakeClient) GetCallCount() int {
 	return len(fake.getArgsForCall)
 }
 
-func (fake *FakeClient) GetCalls(stub func(context.Context, types.NamespacedName, client.Object, ...client.GetOption) error) {
+func (fake *FakeClient) GetCalls(stub func(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error) {
 	fake.getMutex.Lock()
 	defer fake.getMutex.Unlock()
 	fake.GetStub = stub
 }
 
-func (fake *FakeClient) GetArgsForCall(i int) (context.Context, types.NamespacedName, client.Object, []client.GetOption) {
+func (fake *FakeClient) GetArgsForCall(i int) (context.Context, client.ObjectKey, client.Object, []client.GetOption) {
 	fake.getMutex.RLock()
 	defer fake.getMutex.RUnlock()
 	argsForCall := fake.getArgsForCall[i]
@@ -792,7 +791,7 @@ func (fake *FakeClient) SchemeReturnsOnCall(i int, result1 *runtime.Scheme) {
 	}{result1}
 }
 
-func (fake *FakeClient) Status() client.SubResourceWriter {
+func (fake *FakeClient) Status() client.StatusWriter {
 	fake.statusMutex.Lock()
 	ret, specificReturn := fake.statusReturnsOnCall[len(fake.statusArgsForCall)]
 	fake.statusArgsForCall = append(fake.statusArgsForCall, struct {
@@ -816,32 +815,32 @@ func (fake *FakeClient) StatusCallCount() int {
 	return len(fake.statusArgsForCall)
 }
 
-func (fake *FakeClient) StatusCalls(stub func() client.SubResourceWriter) {
+func (fake *FakeClient) StatusCalls(stub func() client.StatusWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = stub
 }
 
-func (fake *FakeClient) StatusReturns(result1 client.SubResourceWriter) {
+func (fake *FakeClient) StatusReturns(result1 client.StatusWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = nil
 	fake.statusReturns = struct {
-		result1 client.SubResourceWriter
+		result1 client.StatusWriter
 	}{result1}
 }
 
-func (fake *FakeClient) StatusReturnsOnCall(i int, result1 client.SubResourceWriter) {
+func (fake *FakeClient) StatusReturnsOnCall(i int, result1 client.StatusWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = nil
 	if fake.statusReturnsOnCall == nil {
 		fake.statusReturnsOnCall = make(map[int]struct {
-			result1 client.SubResourceWriter
+			result1 client.StatusWriter
 		})
 	}
 	fake.statusReturnsOnCall[i] = struct {
-		result1 client.SubResourceWriter
+		result1 client.StatusWriter
 	}{result1}
 }
 
