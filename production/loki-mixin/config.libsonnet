@@ -79,7 +79,7 @@
     },
 
     sb: {
-      // Support Loki sible binary mode on dashboards
+      // Support Loki single binary mode on dashboards
       enabled: false,
 
       // The matcher used to match the pod in single binary mode.
