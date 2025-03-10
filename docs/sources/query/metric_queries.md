@@ -166,7 +166,9 @@ approx_topk(k, <vector expression>)
 
 `approx_topk` is only supported for instant queries. Grouping is also not supported and should be handled by an inner `sum by` or `sum without` even though this might not be the same behavior as `topk by`.
 
-Under the hood, `approx_topk` is implemented using sharding. The expression `approx_topk(k,inner)` becomes
+Under the hood, `approx_topk` is implemented using sharding. The [count-min sketch](https://en.wikipedia.org/wiki/Count%E2%80%93min_sketch) algorithm and a heap are used to approximate the counts for each shard. The accuracy of the approximation depends on the size of the heap, which is defined by Loki's`max_count_min_sketch_heap_size` parameter. Accuracy decreases as `k` approaches the size of the heap (which has a default size of `10,000`). 
+
+The expression `approx_topk(k,inner)` becomes
 
 ```
 topk(
