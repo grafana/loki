@@ -1629,8 +1629,11 @@ func (col *fixedLenByteArrayColumnBuffer) Write(b []byte) (int, error) {
 }
 
 func (col *fixedLenByteArrayColumnBuffer) WriteFixedLenByteArrays(values []byte) (int, error) {
+	if len(values) == 0 {
+		return 0, nil
+	}
 	d, m := len(values)/col.size, len(values)%col.size
-	if m != 0 {
+	if d == 0 || m != 0 {
 		return 0, fmt.Errorf("cannot write FIXED_LEN_BYTE_ARRAY values of size %d from input of size %d", col.size, len(values))
 	}
 	col.data = append(col.data, values...)
@@ -1638,7 +1641,10 @@ func (col *fixedLenByteArrayColumnBuffer) WriteFixedLenByteArrays(values []byte)
 }
 
 func (col *fixedLenByteArrayColumnBuffer) WriteValues(values []Value) (int, error) {
-	for _, v := range values {
+	for i, v := range values {
+		if n := len(v.byteArray()); n != col.size {
+			return i, fmt.Errorf("cannot write FIXED_LEN_BYTE_ARRAY values of size %d from input of size %d", col.size, n)
+		}
 		col.data = append(col.data, v.byteArray()...)
 	}
 	return len(values), nil
@@ -2024,7 +2030,7 @@ func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath) writeRowsF
 
 	case reflect.Array:
 		if t.Elem().Kind() == reflect.Uint8 {
-			return writeRowsFuncOfRequired(t, schema, path)
+			return writeRowsFuncOfArray(t, schema, path)
 		}
 
 	case reflect.Pointer:
@@ -2041,7 +2047,7 @@ func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath) writeRowsF
 }
 
 func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
-	column := schema.mapping.lookup(path)
+	column := schema.lazyLoadState().mapping.lookup(path)
 	columnIndex := column.columnIndex
 	return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
 		columns[columnIndex].writeValues(rows, levels)
@@ -2050,6 +2056,15 @@ func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) wr
 }
 
 func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, writeRows writeRowsFunc) writeRowsFunc {
+	if t.Kind() == reflect.Slice { // assume nested list
+		return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
+			if rows.Len() == 0 {
+				return writeRows(columns, rows, levels)
+			}
+			levels.definitionLevel++
+			return writeRows(columns, rows, levels)
+		}
+	}
 	nullIndex := nullIndexFuncOf(t)
 	return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
 		if rows.Len() == 0 {
@@ -2146,6 +2161,16 @@ func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, wr
 
 		return nil
 	}
+}
+
+func writeRowsFuncOfArray(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
+	column := schema.lazyLoadState().mapping.lookup(path)
+	arrayLen := t.Len()
+	columnLen := column.node.Type().Length()
+	if arrayLen != columnLen {
+		panic(fmt.Sprintf("cannot convert Go values of type "+typeNameOf(t)+" to FIXED_LEN_BYTE_ARRAY(%d)", columnLen))
+	}
+	return writeRowsFuncOfRequired(t, schema, path)
 }
 
 func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
@@ -2258,11 +2283,12 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath) writ
 	columns := make([]column, len(fields))
 
 	for i, f := range fields {
-		optional := false
+		list, optional := false, false
 		columnPath := path.append(f.Name)
 		forEachStructTagOption(f, func(_ reflect.Type, option, _ string) {
 			switch option {
 			case "list":
+				list = true
 				columnPath = columnPath.append("list", "element")
 			case "optional":
 				optional = true
@@ -2271,8 +2297,10 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath) writ
 
 		writeRows := writeRowsFuncOf(f.Type, schema, columnPath)
 		if optional {
-			switch f.Type.Kind() {
-			case reflect.Pointer, reflect.Slice:
+			kind := f.Type.Kind()
+			switch {
+			case kind == reflect.Pointer:
+			case kind == reflect.Slice && !list:
 			default:
 				writeRows = writeRowsFuncOfOptional(f.Type, schema, columnPath, writeRows)
 			}

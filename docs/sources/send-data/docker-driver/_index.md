@@ -31,7 +31,7 @@ docker plugin install grafana/loki-docker-driver:3.3.2-arm64 --alias loki --gran
 ```
 
 {{< admonition type="note" >}}
-Add `-arm64` to the image tag for AMR64 hosts.
+Add `-arm64` to the image tag for ARM64 hosts.
 {{< /admonition >}}
 
 To check installed plugins, use the `docker plugin ls` command.
@@ -48,7 +48,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION/configure/) it.
+Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/configuration/) it.
 
 ## Upgrade the Docker driver client
 
@@ -80,5 +80,7 @@ docker plugin rm loki
 The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the driver will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
 
 The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
+
+Also you can use non-blocking mode by setting `services.logger.logging.options.mode=non-blocking` in your `docker-compose` file. Non-blocking means that the process of writing logs to Loki will not block the main flow of an application or service if Loki is temporarily unavailable or unable to process log messages. In non-blocking mode, log messages will be buffered and sent to Loki asynchronously, which allows the main thread to continue working without delay. If Loki is unavailable, log messages will be stored in a buffer and sent when Loki becomes available again. However, this setting is useful to prevent blocking the main flow of an application or service due to logging issues, but it can also lead to loss of log messages if the buffer overflows or if Loki is unavailable for a long time.
 
 To avoid this issue, use the Promtail [Docker target](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#docker) or [Docker service discovery](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#docker_sd_configs).

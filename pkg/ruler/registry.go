@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/sigv4"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
@@ -312,7 +313,12 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		}
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
-			clt.SigV4Config = v
+			clt.SigV4Config = &sigv4.SigV4Config{}
+			clt.SigV4Config.Region = v.Region
+			clt.SigV4Config.AccessKey = v.AccessKey
+			clt.SigV4Config.SecretKey = v.SecretKey
+			clt.SigV4Config.Profile = v.Profile
+			clt.SigV4Config.RoleARN = v.RoleARN
 		}
 
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
@@ -388,8 +394,12 @@ func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, 
 func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
-func (n notReadyAppender) Commit() error   { return errNotReady }
-func (n notReadyAppender) Rollback() error { return errNotReady }
+func (n notReadyAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
+func (n notReadyAppender) SetOptions(_ *storage.AppendOptions) {}
+func (n notReadyAppender) Commit() error                       { return errNotReady }
+func (n notReadyAppender) Rollback() error                     { return errNotReady }
 
 type discardingAppender struct{}
 
@@ -408,8 +418,12 @@ func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels
 func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
-func (n discardingAppender) Commit() error   { return nil }
-func (n discardingAppender) Rollback() error { return nil }
+func (n discardingAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) SetOptions(_ *storage.AppendOptions) {}
+func (n discardingAppender) Commit() error                       { return nil }
+func (n discardingAppender) Rollback() error                     { return nil }
 
 type readyChecker interface {
 	isReady(tenant string) bool

@@ -45,6 +45,7 @@ type LoadBalancer struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 	IP   string `json:"ip,omitempty"`
+	IPv6 string `json:"ipv6,omitempty"`
 	// SizeSlug is mutually exclusive with SizeUnit. Only one should be specified
 	SizeSlug string `json:"size,omitempty"`
 	// SizeUnit is mutually exclusive with SizeSlug. Only one should be specified

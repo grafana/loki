@@ -185,6 +185,15 @@ func newQuantileSketchIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
 ) RangeVectorIterator {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
+
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -302,23 +311,20 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch
 // vectors, ie t-digest or DDSketch structures per time step.
 type QuantileSketchMatrixStepEvaluator struct {
-	start, end, ts time.Time
-	step           time.Duration
-	m              ProbabilisticQuantileMatrix
+	end, ts time.Time
+	step    time.Duration
+	m       ProbabilisticQuantileMatrix
 }
 
 func NewQuantileSketchMatrixStepEvaluator(m ProbabilisticQuantileMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
 	var (
-		start = params.Start()
-		end   = params.End()
-		step  = params.Step()
+		step = params.Step()
 	)
 	return &QuantileSketchMatrixStepEvaluator{
-		start: start,
-		end:   end,
-		ts:    start.Add(-step), // will be corrected on first Next() call
-		step:  step,
-		m:     m,
+		end:  params.End(),
+		ts:   params.Start().Add(-step), // will be corrected on first Next() call
+		step: step,
+		m:    m,
 	}
 }
 

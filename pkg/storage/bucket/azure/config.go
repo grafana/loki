@@ -16,6 +16,7 @@ type Config struct {
 	Endpoint                string         `yaml:"endpoint_suffix"`
 	MaxRetries              int            `yaml:"max_retries"`
 	UserAssignedID          string         `yaml:"user_assigned_id"`
+	ChunkDelimiter          string         `yaml:"chunk_delimiter"`
 
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
@@ -35,4 +36,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN. If set to empty string, default endpoint suffix is used.")
 	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
 	f.StringVar(&cfg.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned managed identity. If empty, then System assigned identity is used.")
+	f.StringVar(&cfg.ChunkDelimiter, prefix+"azure.chunk-delimiter", "-", "Delimiter used to replace ':' in chunk IDs when storing chunks")
 }

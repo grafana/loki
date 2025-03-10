@@ -81,8 +81,8 @@ type RouteConfigResourceData struct {
 	Resource RouteConfigUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (r *RouteConfigResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (r *RouteConfigResourceData) RawEqual(other ResourceData) bool {
 	if r == nil && other == nil {
 		return true
 	}

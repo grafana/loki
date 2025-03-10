@@ -160,7 +160,7 @@ var (
 	ElectionNotNeeded                  = &Error{"ELECTION_NOT_NEEDED", 84, true, "Leader election not needed for topic partition"}
 	NoReassignmentInProgress           = &Error{"NO_REASSIGNMENT_IN_PROGRESS", 85, false, "No partition reassignment is in progress."}
 	GroupSubscribedToTopic             = &Error{"GROUP_SUBSCRIBED_TO_TOPIC", 86, false, "Deleting offsets of a topic is forbidden while the consumer group is actively subscribed to it."}
-	InvalidRecord                      = &Error{"INVALID_RECORD", 87, false, "This record has failed the validation on broker and hence be rejected."}
+	InvalidRecord                      = &Error{"INVALID_RECORD", 87, false, "This record has failed the validation on the broker and hence been rejected."}
 	UnstableOffsetCommit               = &Error{"UNSTABLE_OFFSET_COMMIT", 88, true, "There are unstable offsets that need to be cleared."}
 	ThrottlingQuotaExceeded            = &Error{"THROTTLING_QUOTA_EXCEEDED", 89, true, "The throttling quota has been exceeded."}
 	ProducerFenced                     = &Error{"PRODUCER_FENCED", 90, false, "There is a newer producer with the same transactionalId which fences the current one."}

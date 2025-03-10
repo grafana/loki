@@ -59,6 +59,10 @@ var (
 	// cannot be done because there are no rules to translate between their
 	// physical types.
 	ErrInvalidConversion = errors.New("invalid conversion between parquet values")
+
+	// ErrMalformedRepetitionLevel is returned when a page reader encounters
+	// a repetition level which does not start at the beginning of a row.
+	ErrMalformedRepetitionLevel = errors.New("parquet-go encountered a malformed data page which does not start at the beginning of a row")
 )
 
 type errno int

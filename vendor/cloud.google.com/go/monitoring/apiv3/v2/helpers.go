@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,9 +18,15 @@ package monitoring
 
 import (
 	"context"
+	"log/slog"
 
+	"github.com/googleapis/gax-go/v2/internallog/grpclog"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
+
+const serviceName = "monitoring.googleapis.com"
 
 // For more information on implementing a client constructor hook, see
 // https://github.com/googleapis/google-cloud-go/wiki/Customizing-constructors.
@@ -44,4 +50,15 @@ func DefaultAuthScopes() []string {
 		"https://www.googleapis.com/auth/monitoring.read",
 		"https://www.googleapis.com/auth/monitoring.write",
 	}
+}
+
+func executeRPC[I proto.Message, O proto.Message](ctx context.Context, fn func(context.Context, I, ...grpc.CallOption) (O, error), req I, opts []grpc.CallOption, logger *slog.Logger, rpc string) (O, error) {
+	var zero O
+	logger.DebugContext(ctx, "api request", "serviceName", serviceName, "rpcName", rpc, "request", grpclog.ProtoMessageRequest(ctx, req))
+	resp, err := fn(ctx, req, opts...)
+	if err != nil {
+		return zero, err
+	}
+	logger.DebugContext(ctx, "api response", "serviceName", serviceName, "rpcName", rpc, "response", grpclog.ProtoMessageResponse(resp))
+	return resp, err
 }

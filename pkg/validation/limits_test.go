@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -226,7 +227,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                defaultOTLPConfig,
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -245,7 +250,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                defaultOTLPConfig,
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -267,8 +276,12 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
-				OTLPConfig:              defaultOTLPConfig,
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				OTLPConfig:                defaultOTLPConfig,
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -290,7 +303,11 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                defaultOTLPConfig,
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -313,7 +330,11 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                defaultOTLPConfig,
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 	} {

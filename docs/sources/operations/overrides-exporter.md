@@ -1,11 +1,11 @@
 ---
-title: Overrides exporter
-menuTitle:  
-description: Describes how the Overrides Exporter module exposes tenant limits as Prometheus metrics.
+title: Monitor tenant limits using the Overrides Exporter
+menuTitle: Overrides Exporter
+description: Describes how the Overrides Exporter exposes tenant limits as Prometheus metrics.
 weight: 
 ---
 
-# Overrides exporter
+# Monitor tenant limits using the Overrides Exporter
 
 Loki is a multi-tenant system that supports applying limits to each tenant as a mechanism for resource management. The `overrides-exporter` module exposes these limits as Prometheus metrics in order to help operators better understand tenant behavior.
 

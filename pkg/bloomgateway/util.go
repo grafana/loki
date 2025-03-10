@@ -57,20 +57,20 @@ func partitionTasksByBlock(tasks []Task, blocks []bloomshipper.BlockRef) []block
 
 		for _, task := range tasks {
 			refs := task.series
-			min := sort.Search(len(refs), func(i int) bool {
+			minVal := sort.Search(len(refs), func(i int) bool {
 				return block.Cmp(refs[i].Fingerprint) > v1.Before
 			})
 
-			max := sort.Search(len(refs), func(i int) bool {
+			maxVal := sort.Search(len(refs), func(i int) bool {
 				return block.Cmp(refs[i].Fingerprint) == v1.After
 			})
 
 			// All fingerprints fall outside of the consumer's range
-			if min == len(refs) || max == 0 || min == max {
+			if minVal == len(refs) || maxVal == 0 || minVal == maxVal {
 				continue
 			}
 
-			bounded.tasks = append(bounded.tasks, task.Copy(refs[min:max]))
+			bounded.tasks = append(bounded.tasks, task.Copy(refs[minVal:maxVal]))
 		}
 
 		if len(bounded.tasks) > 0 {

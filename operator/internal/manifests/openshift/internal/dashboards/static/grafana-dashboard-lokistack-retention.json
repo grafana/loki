@@ -105,26 +105,20 @@
                   {
                      "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{ namespace=~\"$namespace\", container=~\".+-compactor\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{pod}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "min(kube_pod_container_resource_requests{ namespace=~\"$namespace\", container=~\".+-compactor\", resource=\"cpu\"} > 0)",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "request",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "min(container_spec_cpu_quota{ namespace=~\"$namespace\", container=~\".+-compactor\"} / container_spec_cpu_period{ namespace=~\"$namespace\", container=~\".+-compactor\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "limit",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "CPU",
@@ -212,26 +206,20 @@
                   {
                      "expr": "max by(pod) (container_memory_working_set_bytes{ namespace=~\"$namespace\", container=~\".+-compactor\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{pod}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "min(kube_pod_container_resource_requests{ namespace=~\"$namespace\", container=~\".+-compactor\", resource=\"memory\"} > 0)",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "request",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "min(container_spec_memory_limit_bytes{ namespace=~\"$namespace\", container=~\".+-compactor\"} > 0)",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "limit",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Memory (workingset)",
@@ -280,10 +268,8 @@
                   {
                      "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{ namespace=\"$namespace\", job=~\".+-compactor-http\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{pod}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Memory (go heap inuse)",
@@ -452,10 +438,8 @@
                   {
                      "expr": "loki_boltdb_shipper_compact_tables_operation_duration_seconds{ namespace=~\"$namespace\"}",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "duration",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Compact Tables Operations Duration",
@@ -513,10 +497,8 @@
                   {
                      "expr": "sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{success}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Compact Tables Operations Per Status",
@@ -574,10 +556,8 @@
                   {
                      "expr": "count by(action)(loki_boltdb_shipper_retention_marker_table_processed_total{ namespace=~\"$namespace\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{action}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Processed Tables Per Action",
@@ -623,10 +603,8 @@
                   {
                      "expr": "count by(table,action)(loki_boltdb_shipper_retention_marker_table_processed_total{ namespace=~\"$namespace\" , action=~\"modified|deleted\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{table}}-{{action}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Modified Tables",
@@ -672,10 +650,8 @@
                   {
                      "expr": "sum by (table)(rate(loki_boltdb_shipper_retention_marker_count_total{ namespace=~\"$namespace\"}[$__rate_interval])) >0",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{table}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Marks Creation Rate Per Table",
@@ -735,7 +711,6 @@
                      "expr": "sum (increase(loki_boltdb_shipper_retention_marker_count_total{ namespace=~\"$namespace\"}[24h]))",
                      "format": "time_series",
                      "instant": true,
-                     "intervalFactor": 2,
                      "refId": "A"
                   }
                ],
@@ -784,26 +759,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_sum{ namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Mark Table Latency",
@@ -881,7 +850,6 @@
                      "expr": "sum (increase(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[24h]))",
                      "format": "time_series",
                      "instant": true,
-                     "intervalFactor": 2,
                      "refId": "A"
                   }
                ],
@@ -930,26 +898,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_sum{ namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Delete Latency",
@@ -1025,10 +987,8 @@
                   {
                      "expr": "time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{ namespace=~\"$namespace\"} > 0)",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "lag",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Sweeper Lag",
@@ -1074,10 +1034,8 @@
                   {
                      "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{ namespace=~\"$namespace\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "count",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Marks Files to Process",
@@ -1123,10 +1081,8 @@
                   {
                      "expr": "sum by (status)(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{status}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Delete Rate Per Status",
@@ -1157,7 +1113,7 @@
                "value": "default"
             },
             "hide": 0,
-            "label": "Data Source",
+            "label": "Data source",
             "name": "datasource",
             "options": [ ],
             "query": "prometheus",

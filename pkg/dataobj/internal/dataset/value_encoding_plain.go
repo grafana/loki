@@ -2,7 +2,9 @@ package dataset
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -55,7 +57,10 @@ func (enc *plainEncoder) Encode(v Value) error {
 	// This saves a few allocations by avoiding a copy of the string.
 	// Implementations of io.Writer are not supposed to modifiy the slice passed
 	// to Write, so this is generally safe.
-	_, err := enc.w.Write(unsafe.Slice(unsafe.StringData(sv), len(sv)))
+	n, err := enc.w.Write(unsafe.Slice(unsafe.StringData(sv), len(sv)))
+	if n != len(sv) {
+		return fmt.Errorf("short write; expected %d bytes, wrote %d", len(sv), n)
+	}
 	return err
 }
 
@@ -91,20 +96,43 @@ func (dec *plainDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_PLAIN
 }
 
-// Decode decodes a string.
-func (dec *plainDecoder) Decode() (Value, error) {
+// Decode decodes up to len(s) values, storing the results into s. The
+// number of decoded values is returned, followed by an error (if any).
+// At the end of the stream, Decode returns 0, [io.EOF].
+func (dec *plainDecoder) Decode(s []Value) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+
+	var err error
+	var v Value
+
+	for i := range s {
+		v, err = dec.decode()
+		if errors.Is(err, io.EOF) {
+			if i == 0 {
+				return 0, io.EOF
+			}
+			return i, nil
+		} else if err != nil {
+			return i, err
+		}
+		s[i] = v
+	}
+	return len(s), nil
+}
+
+// decode decodes a string.
+func (dec *plainDecoder) decode() (Value, error) {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
 		return StringValue(""), err
 	}
 
 	dst := make([]byte, int(sz))
-	if _, err := dec.r.Read(dst); err != nil {
+	if _, err := io.ReadFull(dec.r, dst); err != nil {
 		return StringValue(""), err
-	} else if len(dst) != int(sz) {
-		return StringValue(""), fmt.Errorf("short read; expected %d bytes, got %d", sz, len(dst))
 	}
-
 	return StringValue(string(dst)), nil
 }
 

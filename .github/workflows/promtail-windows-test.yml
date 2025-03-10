@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        go-version: [ '1.22.2', '1.23.1' ]
+        go-version: [ '1.22.12', '1.23.6', '1.24.0' ]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go ${{ matrix.go-version }}

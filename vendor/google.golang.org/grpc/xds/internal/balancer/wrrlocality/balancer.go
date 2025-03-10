@@ -120,6 +120,13 @@ func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 	return addr
 }
 
+// SetAddrInfoInEndpoint returns a copy of endpoint in which the Attributes
+// field is updated with AddrInfo.
+func SetAddrInfoInEndpoint(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(attributeKey{}, addrInfo)
+	return endpoint
+}
+
 func (a AddrInfo) String() string {
 	return fmt.Sprintf("Locality Weight: %d", a.LocalityWeight)
 }

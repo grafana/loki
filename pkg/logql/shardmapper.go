@@ -90,6 +90,9 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return e, 0, nil
 	case *syntax.VectorExpr:
 		return e, 0, nil
+	case *syntax.MultiVariantExpr:
+		// TODO(twhitney): this should be possible to support but hasn't been implemented yet
+		return e, 0, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
 	case *syntax.VectorAggregationExpr:
@@ -293,66 +296,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations")
 			}
 
-			// TODO(owen-d): integrate bounded sharding with approx_topk
-			// I'm not doing this now because it uses a separate code path and may not handle
-			// bounded shards in the same way
-			shards, bytesPerShard, err := m.shards.Resolver().Shards(expr)
-			if err != nil {
-				return nil, 0, err
-			}
-
-			// approx_topk(k, inner) ->
-			// topk(
-			//   k,
-			//   eval_cms(
-			//     __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
-			//   )
-			// )
-
-			countMinSketchExpr := syntax.MustClone(expr)
-			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
-			countMinSketchExpr.Params = 0
-
-			// Even if this query is not sharded the user wants an approximation. This is helpful if some
-			// inferred label has a very high cardinality. Note that the querier does not support CountMinSketchEvalExpr
-			// which is why it's evaluated on the front end.
-			if shards == 0 {
-				return &syntax.VectorAggregationExpr{
-					Left: &CountMinSketchEvalExpr{
-						downstreams: []DownstreamSampleExpr{{
-							SampleExpr: countMinSketchExpr,
-						}},
-					},
-					Grouping:  expr.Grouping,
-					Operation: syntax.OpTypeTopK,
-					Params:    expr.Params,
-				}, bytesPerShard, nil
-			}
-
-			downstreams := make([]DownstreamSampleExpr, 0, shards)
-			for shard := 0; shard < shards; shard++ {
-				s := NewPowerOfTwoShard(index.ShardAnnotation{
-					Shard: uint32(shard),
-					Of:    uint32(shards),
-				})
-				downstreams = append(downstreams, DownstreamSampleExpr{
-					shard: &ShardWithChunkRefs{
-						Shard: s,
-					},
-					SampleExpr: countMinSketchExpr,
-				})
-			}
-
-			sharded := &CountMinSketchEvalExpr{
-				downstreams: downstreams,
-			}
-
-			return &syntax.VectorAggregationExpr{
-				Left:      sharded,
-				Grouping:  expr.Grouping,
-				Operation: syntax.OpTypeTopK,
-				Params:    expr.Params,
-			}, bytesPerShard, nil
+			return m.mapApproxTopk(expr, false)
 		default:
 			// this should not be reachable. If an operation is shardable it should
 			// have an optimization listed. Nonetheless, we log this as a warning
@@ -366,6 +310,16 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				return nil, 0, err
 			}
 			return expr, exprStats.Bytes, nil
+		}
+	} else {
+		// if this AST contains unshardable operations, we still need to rewrite some operations (e.g. approx_topk) as if it had 0 shards as they are not supported on the querier
+		switch expr.Operation {
+		case syntax.OpTypeApproxTopK:
+			level.Error(util_log.Logger).Log(
+				"msg", "encountered unshardable approx_topk operation",
+				"operation", expr.Operation,
+			)
+			return m.mapApproxTopk(expr, true)
 		}
 	}
 
@@ -385,6 +339,69 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		Grouping:  expr.Grouping,
 		Params:    expr.Params,
 		Operation: expr.Operation,
+	}, bytesPerShard, nil
+}
+
+func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoShard bool) (*syntax.VectorAggregationExpr, uint64, error) {
+	// TODO(owen-d): integrate bounded sharding with approx_topk
+	// I'm not doing this now because it uses a separate code path and may not handle
+	// bounded shards in the same way
+	shards, bytesPerShard, err := m.shards.Resolver().Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// approx_topk(k, inner) ->
+	// topk(
+	//   k,
+	//   eval_cms(
+	//     __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
+	//   )
+	// )
+
+	countMinSketchExpr := syntax.MustClone(expr)
+	countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
+	countMinSketchExpr.Params = 0
+
+	// Even if this query is not sharded the user wants an approximation. This is helpful if some
+	// inferred label has a very high cardinality. Note that the querier does not support CountMinSketchEvalExpr
+	// which is why it's evaluated on the front end.
+	if shards == 0 || forceNoShard {
+		return &syntax.VectorAggregationExpr{
+			Left: &CountMinSketchEvalExpr{
+				downstreams: []DownstreamSampleExpr{{
+					SampleExpr: countMinSketchExpr,
+				}},
+			},
+			Grouping:  expr.Grouping,
+			Operation: syntax.OpTypeTopK,
+			Params:    expr.Params,
+		}, bytesPerShard, nil
+	}
+
+	downstreams := make([]DownstreamSampleExpr, 0, shards)
+	for shard := 0; shard < shards; shard++ {
+		s := NewPowerOfTwoShard(index.ShardAnnotation{
+			Shard: uint32(shard),
+			Of:    uint32(shards),
+		})
+		downstreams = append(downstreams, DownstreamSampleExpr{
+			shard: &ShardWithChunkRefs{
+				Shard: s,
+			},
+			SampleExpr: countMinSketchExpr,
+		})
+	}
+
+	sharded := &CountMinSketchEvalExpr{
+		downstreams: downstreams,
+	}
+
+	return &syntax.VectorAggregationExpr{
+		Left:      sharded,
+		Grouping:  expr.Grouping,
+		Operation: syntax.OpTypeTopK,
+		Params:    expr.Params,
 	}, bytesPerShard, nil
 }
 
@@ -593,6 +610,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 		return &MergeFirstOverTimeExpr{
 			downstreams: downstreams,
+			offset:      expr.Left.Offset,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
 		if !m.lastOverTimeSharding {
@@ -623,6 +641,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 		return &MergeLastOverTimeExpr{
 			downstreams: downstreams,
+			offset:      expr.Left.Offset,
 		}, bytesPerShard, nil
 	default:
 		// don't shard if there's not an appropriate optimization

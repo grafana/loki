@@ -60,6 +60,14 @@ type Page interface {
 	// like parquet.Int32Reader. Applications should use type assertions on
 	// the returned reader to determine whether those optimizations are
 	// available.
+	//
+	// In the data page format version 1, it wasn't specified whether pages
+	// must start with a new row. Legacy writers have produced parquet files
+	// where row values were overlapping between two consecutive pages.
+	// As a result, the values read must not be assumed to start at the
+	// beginning of a row, unless the program knows that it is only working
+	// with parquet files that used the data page format version 2 (which is
+	// the default behavior for parquet-go).
 	Values() ValueReader
 
 	// Returns a new page which is as slice of the receiver between row indexes
@@ -113,8 +121,20 @@ type Pages interface {
 // be reading pages from a high latency backend, and the last
 // page read may be processed while initiating reading of the next page.
 func AsyncPages(pages Pages) Pages {
-	p := new(asyncPages)
-	p.init(pages, nil)
+	read := make(chan asyncPage)
+	seek := make(chan asyncSeek, 1)
+	init := make(chan struct{})
+	done := make(chan struct{})
+
+	go readPages(pages, read, seek, init, done)
+
+	p := &asyncPages{
+		read: read,
+		seek: seek,
+		init: init,
+		done: done,
+	}
+
 	// If the pages object gets garbage collected without Close being called,
 	// this finalizer would ensure that the goroutine is stopped and doesn't
 	// leak.
@@ -123,9 +143,10 @@ func AsyncPages(pages Pages) Pages {
 }
 
 type asyncPages struct {
-	read    <-chan asyncPage
-	seek    chan<- int64
-	done    chan<- struct{}
+	read    chan asyncPage
+	seek    chan asyncSeek
+	init    chan struct{}
+	done    chan struct{}
 	version int64
 }
 
@@ -135,22 +156,16 @@ type asyncPage struct {
 	version int64
 }
 
-func (pages *asyncPages) init(base Pages, done chan struct{}) {
-	read := make(chan asyncPage)
-	seek := make(chan int64, 1)
-
-	pages.read = read
-	pages.seek = seek
-
-	if done == nil {
-		done = make(chan struct{})
-		pages.done = done
-	}
-
-	go readPages(base, read, seek, done)
+type asyncSeek struct {
+	rowIndex int64
+	version  int64
 }
 
 func (pages *asyncPages) Close() (err error) {
+	if pages.init != nil {
+		close(pages.init)
+		pages.init = nil
+	}
 	if pages.done != nil {
 		close(pages.done)
 		pages.done = nil
@@ -165,6 +180,7 @@ func (pages *asyncPages) Close() (err error) {
 }
 
 func (pages *asyncPages) ReadPage() (Page, error) {
+	pages.start()
 	for {
 		p, ok := <-pages.read
 		if !ok {
@@ -187,42 +203,83 @@ func (pages *asyncPages) SeekToRow(rowIndex int64) error {
 	if pages.seek == nil {
 		return io.ErrClosedPipe
 	}
+	// First flush the channel in case SeekToRow is called twice or more in a
+	// row, otherwise we would block if readPages had already exited.
+	select {
+	case <-pages.seek:
+	default:
+		pages.version++
+	}
 	// The seek channel has a capacity of 1 to allow the first SeekToRow call to
 	// be non-blocking.
 	//
 	// If SeekToRow calls are performed faster than they can be handled by the
 	// goroutine reading pages, this path might become a contention point.
-	pages.seek <- rowIndex
-	pages.version++
+	pages.seek <- asyncSeek{rowIndex: rowIndex, version: pages.version}
+	pages.start()
 	return nil
 }
 
-func readPages(pages Pages, read chan<- asyncPage, seek <-chan int64, done <-chan struct{}) {
+func (pages *asyncPages) start() {
+	if pages.init != nil {
+		close(pages.init)
+		pages.init = nil
+	}
+}
+
+func readPages(pages Pages, read chan<- asyncPage, seek <-chan asyncSeek, init, done <-chan struct{}) {
 	defer func() {
 		read <- asyncPage{err: pages.Close(), version: -1}
 		close(read)
 	}()
 
-	version := int64(0)
-	for {
-		page, err := pages.ReadPage()
+	// To avoid reading pages before the first SeekToRow call, we wait for the
+	// reader to be initialized, which means it either received a call to
+	// ReadPage, SeekToRow, or Close.
+	select {
+	case <-init:
+	case <-done:
+		return
+	}
 
-		for {
-			select {
-			case <-done:
-				return
-			case read <- asyncPage{
-				page:    page,
-				err:     err,
-				version: version,
-			}:
-			case rowIndex := <-seek:
-				version++
-				err = pages.SeekToRow(rowIndex)
-			}
+	// If SeekToRow was invoked before ReadPage, the seek channel contains the
+	// new position of the reader.
+	//
+	// Note that we have a default case in this select because we don't want to
+	// block if the first call was ReadPage and no values were ever produced to
+	// the seek channel.
+	var seekTo asyncSeek
+	select {
+	case seekTo = <-seek:
+	default:
+		seekTo.rowIndex = -1
+	}
+
+	for {
+		var page Page
+		var err error
+
+		if seekTo.rowIndex >= 0 {
+			err = pages.SeekToRow(seekTo.rowIndex)
 			if err == nil {
-				break
+				seekTo.rowIndex = -1
+				continue
 			}
+		} else {
+			page, err = pages.ReadPage()
+		}
+
+		select {
+		case read <- asyncPage{
+			page:    page,
+			err:     err,
+			version: seekTo.version,
+		}:
+		case seekTo = <-seek:
+			Release(page)
+		case <-done:
+			Release(page)
+			return
 		}
 	}
 }

@@ -11,6 +11,8 @@ weight: 100
 
 [ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Grafana Loki instance.
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 After this tutorial you will able to query all your logs in one place using Grafana.
 
 ## Requirements

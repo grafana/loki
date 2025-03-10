@@ -67,7 +67,7 @@ func (s *compactorGRPCClient) Stop() {
 
 func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &deletion_grpc.GetDeleteRequestsRequest{})
+	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &deletion_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
 	if err != nil {
 		return nil, err
 	}

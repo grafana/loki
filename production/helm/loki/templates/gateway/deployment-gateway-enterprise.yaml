@@ -70,10 +70,10 @@ spec:
             {{- if .Values.minio.enabled }}
             - -admin.client.backend-type=s3
             - -admin.client.s3.endpoint={{ template "loki.minio" . }}
-            - -admin.client.s3.bucket-name=enterprise-logs-admin
-            - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
-            - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
-            - -admin.client.s3.insecure=true
+            - -admin.client.s3.bucket-name={{ .Values.loki.storage.bucketNames.admin }}
+            - -admin.client.s3.access-key-id={{ (index .Values.minio.users 0).accessKey }}
+            - -admin.client.s3.secret-access-key={{ (index .Values.minio.users 0).secretKey }}
+            - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
             {{- end }}
             {{- if and $isDistributed .Values.enterpriseGateway.useDefaultProxyURLs }}
             - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100

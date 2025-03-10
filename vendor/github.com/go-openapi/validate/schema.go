@@ -43,7 +43,7 @@ func AgainstSchema(schema *spec.Schema, data interface{}, formats strfmt.Registr
 		append(options, WithRecycleValidators(true), withRecycleResults(true))...,
 	).Validate(data)
 	defer func() {
-		poolOfResults.RedeemResult(res)
+		pools.poolOfResults.RedeemResult(res)
 	}()
 
 	if res.HasErrors() {
@@ -88,7 +88,7 @@ func newSchemaValidator(schema *spec.Schema, rootSchema interface{}, root string
 
 	var s *SchemaValidator
 	if opts.recycleValidators {
-		s = poolOfSchemaValidators.BorrowValidator()
+		s = pools.poolOfSchemaValidators.BorrowValidator()
 	} else {
 		s = new(SchemaValidator)
 	}
@@ -133,13 +133,14 @@ func (s *SchemaValidator) Validate(data interface{}) *Result {
 
 	if s.Options.recycleValidators {
 		defer func() {
+			s.redeemChildren()
 			s.redeem() // one-time use validator
 		}()
 	}
 
 	var result *Result
 	if s.Options.recycleResult {
-		result = poolOfResults.BorrowResult()
+		result = pools.poolOfResults.BorrowResult()
 		result.data = data
 	} else {
 		result = &Result{data: data}
@@ -157,7 +158,6 @@ func (s *SchemaValidator) Validate(data interface{}) *Result {
 		if s.Options.recycleValidators {
 			s.validators[0] = nil
 			s.validators[6] = nil
-			s.redeemChildren()
 		}
 
 		return result
@@ -188,6 +188,7 @@ func (s *SchemaValidator) Validate(data interface{}) *Result {
 			if erri != nil {
 				result.AddErrors(invalidTypeConversionMsg(s.Path, erri))
 				result.Inc()
+
 				return result
 			}
 			d = in
@@ -196,6 +197,7 @@ func (s *SchemaValidator) Validate(data interface{}) *Result {
 			if errf != nil {
 				result.AddErrors(invalidTypeConversionMsg(s.Path, errf))
 				result.Inc()
+
 				return result
 			}
 			d = nf
@@ -222,6 +224,9 @@ func (s *SchemaValidator) Validate(data interface{}) *Result {
 		}
 
 		result.Merge(v.Validate(d))
+		if s.Options.recycleValidators {
+			s.validators[idx] = nil // prevents further (unsafe) usage
+		}
 		result.Inc()
 	}
 	result.Inc()
@@ -330,7 +335,7 @@ func (s *SchemaValidator) objectValidator() valueValidator {
 }
 
 func (s *SchemaValidator) redeem() {
-	poolOfSchemaValidators.RedeemValidator(s)
+	pools.poolOfSchemaValidators.RedeemValidator(s)
 }
 
 func (s *SchemaValidator) redeemChildren() {

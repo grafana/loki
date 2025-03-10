@@ -195,7 +195,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 	}
 
 	go func() {
-		watcher := lr.ReadLogs(config)
+		watcher := lr.ReadLogs(context.Background(), config)
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()

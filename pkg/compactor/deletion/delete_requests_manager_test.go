@@ -48,6 +48,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		expectedResp                      resp
 		expectedDeletionRangeByUser       map[string]model.Interval
 		expectedRequestsMarkedAsProcessed []int
+		expectedDuplicateRequestsCount    int
 	}{
 		{
 			name:         "no delete requests",
@@ -895,6 +896,43 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
 		},
+		{
+			name:         "duplicate delete request marked as processed with loaded request",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    1,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					RequestID: "1",
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+					Status:    StatusReceived,
+				},
+				{
+					RequestID: "2",
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+					Status:    StatusReceived,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+					return strings.Contains(s, "fizz")
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
+			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedDuplicateRequestsCount:    1,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDeleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}
@@ -940,13 +978,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			mgr.MarkPhaseFinished()
 
-			processedRequests, err := mockDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusProcessed)
+			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
 			require.NoError(t, err)
 			require.Len(t, processedRequests, len(tc.expectedRequestsMarkedAsProcessed))
 
 			for i, reqIdx := range tc.expectedRequestsMarkedAsProcessed {
 				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], processedRequests[i]))
 			}
+			require.Len(t, mgr.duplicateRequests, tc.expectedDuplicateRequestsCount)
 		})
 	}
 }
@@ -976,14 +1015,24 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 }
 
+type storeAddReqDetails struct {
+	userID, query      string
+	startTime, endTime model.Time
+	shardByInterval    time.Duration
+}
+
+type removeReqDetails struct {
+	userID, reqID string
+}
+
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests           []DeleteRequest
-	addReqs                  []DeleteRequest
+	addReq                   storeAddReqDetails
 	addErr                   error
 	returnZeroDeleteRequests bool
 
-	removeReqs []DeleteRequest
+	removeReqs removeReqDetails
 	removeErr  error
 
 	getUser   string
@@ -991,14 +1040,19 @@ type mockDeleteRequestsStore struct {
 	getResult []DeleteRequest
 	getErr    error
 
-	getAllUser   string
-	getAllResult []DeleteRequest
-	getAllErr    error
+	getAllUser                           string
+	getAllResult                         []DeleteRequest
+	getAllErr                            error
+	getAllRequestedForQuerytimeFiltering bool
 
 	genNumber string
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
+	return m.getDeleteRequestsByStatus(StatusReceived)
+}
+
+func (m *mockDeleteRequestsStore) getDeleteRequestsByStatus(status DeleteRequestStatus) ([]DeleteRequest, error) {
 	reqs := make([]DeleteRequest, 0, len(m.deleteRequests))
 	for i := range m.deleteRequests {
 		if m.deleteRequests[i].Status == status {
@@ -1008,27 +1062,41 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, s
 	return reqs, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
-	m.addReqs = reqs
-	if m.returnZeroDeleteRequests {
-		return []DeleteRequest{}, m.addErr
-	}
-	return m.addReqs, m.addErr
+func (m *mockDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
+	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
-	m.removeReqs = reqs
+func (m *mockDeleteRequestsStore) AddDeleteRequest(_ context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	m.addReq = storeAddReqDetails{
+		userID:          userID,
+		query:           query,
+		startTime:       startTime,
+		endTime:         endTime,
+		shardByInterval: shardByInterval,
+	}
+	return "", m.addErr
+}
+
+func (m *mockDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, userID string, requestID string) error {
+	m.removeReqs = removeReqDetails{
+		userID: userID,
+		reqID:  requestID,
+	}
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, requestID string) (DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
-	return m.getResult, m.getErr
+	if m.getErr != nil {
+		return DeleteRequest{}, m.getErr
+	}
+	return m.getResult[0], m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
 	m.getAllUser = userID
+	m.getAllRequestedForQuerytimeFiltering = forQuerytimeFiltering
 	return m.getAllResult, m.getAllErr
 }
 
@@ -1036,21 +1104,28 @@ func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ 
 	return m.genNumber, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) UpdateStatus(_ context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req DeleteRequest) error {
 	for i := range m.deleteRequests {
 		if requestsAreEqual(m.deleteRequests[i], req) {
-			m.deleteRequests[i].Status = newStatus
+			m.deleteRequests[i].Status = StatusProcessed
 		}
 	}
 
 	return nil
 }
 
+func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
+	return nil
+}
+
 func requestsAreEqual(req1, req2 DeleteRequest) bool {
-	if req1.UserID == req2.UserID &&
+	if req1.RequestID == req2.RequestID &&
+		req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
-		req1.EndTime == req2.EndTime {
+		req1.EndTime == req2.EndTime &&
+		req1.SequenceNum == req2.SequenceNum &&
+		req1.Status == req2.Status {
 		return true
 	}
 

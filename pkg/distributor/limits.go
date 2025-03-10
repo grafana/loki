@@ -26,6 +26,7 @@ type Limits interface {
 	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool
 	LogLevelFields(userID string) []string
+	LogLevelFromJSONMaxDepth(userID string) int
 
 	ShardStreams(userID string) shardstreams.Config
 	IngestionRateStrategy() string
@@ -38,6 +39,9 @@ type Limits interface {
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
+	BlockIngestionPolicyUntil(userID string, policy string) time.Time
+	EnforcedLabels(userID string) []string
+	PolicyEnforcedLabels(userID string, policy string) []string
 
 	IngestionPartitionsTenantShardSize(userID string) int
 }

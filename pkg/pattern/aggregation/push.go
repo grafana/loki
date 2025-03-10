@@ -177,6 +177,9 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	defer sp.Finish()
 
 	entries := p.entries.reset()
+	if len(entries) == 0 {
+		return nil, nil
+	}
 
 	entriesByStream := make(map[string][]logproto.Entry)
 	for _, e := range entries {
@@ -217,6 +220,10 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		if len(services) < serviceLimit {
 			services = append(services, lbls.Get(push.AggregatedMetricLabel))
 		}
+	}
+
+	if len(streams) == 0 {
+		return nil, nil
 	}
 
 	req := &logproto.PushRequest{
@@ -265,6 +272,10 @@ func (p *Push) run(pushPeriod time.Duration) {
 			payload, err := p.buildPayload(ctx)
 			if err != nil {
 				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
+				continue
+			}
+
+			if len(payload) == 0 {
 				continue
 			}
 

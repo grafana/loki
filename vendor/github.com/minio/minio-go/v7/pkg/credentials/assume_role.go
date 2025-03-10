@@ -76,7 +76,8 @@ type AssumeRoleResult struct {
 type STSAssumeRole struct {
 	Expiry
 
-	// Required http Client to use when connecting to MinIO STS service.
+	// Optional http Client to use when connecting to MinIO STS service
+	// (overrides default client in CredContext)
 	Client *http.Client
 
 	// STS endpoint to fetch STS credentials.
@@ -108,16 +109,10 @@ type STSAssumeRoleOptions struct {
 // NewSTSAssumeRole returns a pointer to a new
 // Credentials object wrapping the STSAssumeRole.
 func NewSTSAssumeRole(stsEndpoint string, opts STSAssumeRoleOptions) (*Credentials, error) {
-	if stsEndpoint == "" {
-		return nil, errors.New("STS endpoint cannot be empty")
-	}
 	if opts.AccessKey == "" || opts.SecretKey == "" {
 		return nil, errors.New("AssumeRole credentials access/secretkey is mandatory")
 	}
 	return New(&STSAssumeRole{
-		Client: &http.Client{
-			Transport: http.DefaultTransport,
-		},
 		STSEndpoint: stsEndpoint,
 		Options:     opts,
 	}), nil
@@ -222,10 +217,30 @@ func getAssumeRoleCredentials(clnt *http.Client, endpoint string, opts STSAssume
 	return a, nil
 }
 
-// Retrieve retrieves credentials from the MinIO service.
-// Error will be returned if the request fails.
-func (m *STSAssumeRole) Retrieve() (Value, error) {
-	a, err := getAssumeRoleCredentials(m.Client, m.STSEndpoint, m.Options)
+// RetrieveWithCredContext retrieves credentials from the MinIO service.
+// Error will be returned if the request fails, optional cred context.
+func (m *STSAssumeRole) RetrieveWithCredContext(cc *CredContext) (Value, error) {
+	if cc == nil {
+		cc = defaultCredContext
+	}
+
+	client := m.Client
+	if client == nil {
+		client = cc.Client
+	}
+	if client == nil {
+		client = defaultCredContext.Client
+	}
+
+	stsEndpoint := m.STSEndpoint
+	if stsEndpoint == "" {
+		stsEndpoint = cc.Endpoint
+	}
+	if stsEndpoint == "" {
+		return Value{}, errors.New("STS endpoint unknown")
+	}
+
+	a, err := getAssumeRoleCredentials(client, stsEndpoint, m.Options)
 	if err != nil {
 		return Value{}, err
 	}
@@ -240,4 +255,10 @@ func (m *STSAssumeRole) Retrieve() (Value, error) {
 		Expiration:      a.Result.Credentials.Expiration,
 		SignerType:      SignatureV4,
 	}, nil
+}
+
+// Retrieve retrieves credentials from the MinIO service.
+// Error will be returned if the request fails.
+func (m *STSAssumeRole) Retrieve() (Value, error) {
+	return m.RetrieveWithCredContext(nil)
 }

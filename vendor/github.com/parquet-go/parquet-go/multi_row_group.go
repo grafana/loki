@@ -7,10 +7,6 @@ import (
 // MultiRowGroup wraps multiple row groups to appear as if it was a single
 // RowGroup. RowGroups must have the same schema or it will error.
 func MultiRowGroup(rowGroups ...RowGroup) RowGroup {
-	return newMultiRowGroup(ReadModeSync, rowGroups...)
-}
-
-func newMultiRowGroup(pageReadMode ReadMode, rowGroups ...RowGroup) RowGroup {
 	if len(rowGroups) == 0 {
 		return &emptyRowGroup{}
 	}
@@ -26,9 +22,7 @@ func newMultiRowGroup(pageReadMode ReadMode, rowGroups ...RowGroup) RowGroup {
 	rowGroupsCopy := make([]RowGroup, len(rowGroups))
 	copy(rowGroupsCopy, rowGroups)
 
-	c := &multiRowGroup{
-		pageReadMode: pageReadMode,
-	}
+	c := new(multiRowGroup)
 	c.init(schema, rowGroupsCopy)
 	return c
 }
@@ -81,7 +75,7 @@ func compatibleSchemaOf(rowGroups []RowGroup) (*Schema, error) {
 	// Slow path: The schema pointers are not the same, but they still have to
 	// be compatible.
 	for _, rowGroup := range rowGroups[1:] {
-		if !nodesAreEqual(schema, rowGroup.Schema()) {
+		if !EqualNodes(schema, rowGroup.Schema()) {
 			return nil, ErrRowGroupSchemaMismatch
 		}
 	}
@@ -90,10 +84,9 @@ func compatibleSchemaOf(rowGroups []RowGroup) (*Schema, error) {
 }
 
 type multiRowGroup struct {
-	schema       *Schema
-	rowGroups    []RowGroup
-	columns      []ColumnChunk
-	pageReadMode ReadMode
+	schema    *Schema
+	rowGroups []RowGroup
+	columns   []ColumnChunk
 }
 
 func (c *multiRowGroup) NumRows() (numRows int64) {
@@ -109,7 +102,7 @@ func (c *multiRowGroup) SortingColumns() []SortingColumn { return nil }
 
 func (c *multiRowGroup) Schema() *Schema { return c.schema }
 
-func (c *multiRowGroup) Rows() Rows { return newRowGroupRows(c, c.pageReadMode) }
+func (c *multiRowGroup) Rows() Rows { return NewRowGroupRowReader(c) }
 
 type multiColumnChunk struct {
 	rowGroup *multiRowGroup

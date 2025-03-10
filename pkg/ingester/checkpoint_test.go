@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -331,18 +332,18 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 }
 
-func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, max time.Duration) {
+func expectCheckpoint(t *testing.T, walDir string, shouldExist bool, maxVal time.Duration) {
 	once := make(chan struct{}, 1)
 	once <- struct{}{}
 
-	deadline := time.After(max)
+	deadline := time.After(maxVal)
 	for {
 		select {
 		case <-deadline:
 			require.Fail(t, "timeout while waiting for checkpoint existence:", shouldExist)
 		case <-once: // Trick to ensure we check immediately before deferring to ticker.
 		default:
-			<-time.After(max / 10) // check 10x over the duration
+			<-time.After(maxVal / 10) // check 10x over the duration
 		}
 
 		fs, err := os.ReadDir(walDir)
@@ -460,9 +461,10 @@ func Test_SeriesIterator(t *testing.T) {
 	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
 
 	for i := 0; i < 3; i++ {
-		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 		require.Nil(t, err)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
@@ -508,9 +510,10 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	require.NoError(b, err)
 
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
 
 	for i := range instances {
-		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{

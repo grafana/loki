@@ -324,6 +324,7 @@ This is the generated reference for the Loki Helm Chart values.
   },
   "dnsConfig": {},
   "extraArgs": [],
+  "extraContainers": [],
   "extraEnv": [],
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
@@ -450,6 +451,15 @@ null
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the backend pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3063,7 +3073,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.3.0"
+    "tag": "3.4.1"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3075,6 +3085,7 @@ null
     "enabled": true,
     "env": [],
     "extraVolumeMounts": [],
+    "hookType": "post-install",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3116,7 +3127,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.1.1"
+  "version": "3.4.0"
 }
 </pre>
 </td>
@@ -3236,7 +3247,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.4.1"
 </pre>
 </td>
 		</tr>
@@ -3263,6 +3274,7 @@ null
   "enabled": true,
   "env": [],
   "extraVolumeMounts": [],
+  "hookType": "post-install",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3336,6 +3348,15 @@ true
 			<td>Volume mounts to add to the provisioner pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.hookType</td>
+			<td>string</td>
+			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
+			<td><pre lang="json">
+"post-install"
 </pre>
 </td>
 		</tr>
@@ -4601,6 +4622,51 @@ true
 			<td>configures DNS service name</td>
 			<td><pre lang="json">
 "kube-dns"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraArgs</td>
+			<td>list</td>
+			<td>Common additional CLI arguments for all jobs (that is, -log.level debug, -config.expand-env=true or -log-config-reverse-order) scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraEnv</td>
+			<td>list</td>
+			<td>Common environment variables to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraEnvFrom</td>
+			<td>list</td>
+			<td>Common source of environment injections to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write. For example to inject values from a Secret, use: extraEnvFrom:   - secretRef:       name: mysecret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Common mount points to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.extraVolumes</td>
+			<td>list</td>
+			<td>Common volumes to add to all pods directly managed by this chart. scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -6093,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.3.2"
+"3.4.2"
 </pre>
 </td>
 		</tr>
@@ -6311,7 +6377,7 @@ null
 		<tr>
 			<td>loki.storage</td>
 			<td>object</td>
-			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
+			<td>In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.</td>
 			<td><pre lang="json">
 {
   "azure": {
@@ -6334,6 +6400,27 @@ null
     "chunkBufferSize": 0,
     "enableHttp2": true,
     "requestTimeout": "0s"
+  },
+  "object_store": {
+    "azure": {
+      "account_key": null,
+      "account_name": null
+    },
+    "gcs": {
+      "bucket_name": null,
+      "service_account": null
+    },
+    "s3": {
+      "access_key_id": null,
+      "endpoint": null,
+      "http": {},
+      "insecure": false,
+      "region": null,
+      "secret_access_key": null,
+      "sse": {}
+    },
+    "storage_prefix": null,
+    "type": "s3"
   },
   "s3": {
     "accessKeyId": null,
@@ -6369,7 +6456,8 @@ null
     "user_id": null,
     "username": null
   },
-  "type": "s3"
+  "type": "s3",
+  "use_thanos_objstore": false
 }
 </pre>
 </td>
@@ -6436,6 +6524,20 @@ null
 			<td><pre lang="json">
 {
   "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ui</td>
+			<td>object</td>
+			<td>Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "gateway": {
+    "enabled": true
+  }
 }
 </pre>
 </td>
@@ -6734,7 +6836,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.33-alpine"
+"1.6.37-alpine"
 </pre>
 </td>
 		</tr>
@@ -6819,7 +6921,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.0"
+"v0.15.1"
 </pre>
 </td>
 		</tr>
@@ -6922,8 +7024,15 @@ false
       "memory": "128Mi"
     }
   },
-  "rootPassword": "supersecret",
-  "rootUser": "enterprise-logs"
+  "rootPassword": "supersecretpassword",
+  "rootUser": "root-user",
+  "users": [
+    {
+      "accessKey": "logs-user",
+      "policy": "readwrite",
+      "secretKey": "supersecretpassword"
+    }
+  ]
 }
 </pre>
 </td>
@@ -10799,7 +10908,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.29.0"
+"1.30.1"
 </pre>
 </td>
 		</tr>
@@ -10934,7 +11043,15 @@ null
 			<td>object</td>
 			<td>The SecurityContext for the sidecar.</td>
 			<td><pre lang="json">
-{}
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
 </pre>
 </td>
 		</tr>

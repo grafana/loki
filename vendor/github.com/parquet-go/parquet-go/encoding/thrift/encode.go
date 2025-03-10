@@ -2,10 +2,11 @@ package thrift
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"reflect"
-	"sort"
+	"slices"
 	"sync/atomic"
 )
 
@@ -360,8 +361,8 @@ func encodeFuncStructOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 		}
 	})
 
-	sort.SliceStable(enc.fields, func(i, j int) bool {
-		return enc.fields[i].id < enc.fields[j].id
+	slices.SortStableFunc(enc.fields, func(a, b structEncoderField) int {
+		return cmp.Compare(a.id, b.id)
 	})
 
 	for i := len(enc.fields) - 1; i > 0; i-- {

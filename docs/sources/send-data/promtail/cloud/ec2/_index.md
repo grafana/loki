@@ -9,7 +9,9 @@ weight: 100
 
 # Run the Promtail client on AWS EC2
 
-In this tutorial we're going to setup [Promtail]({{< relref "../../../../send-data/promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
+In this tutorial we're going to setup [Promtail](../../) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
+
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 ## Requirements
 
@@ -42,7 +44,7 @@ aws ec2 create-security-group --group-name promtail-ec2  --description "promtail
 }
 ```
 
-Now let's authorize inbound access for SSH and [Promtail]({{< relref "../../../../send-data/promtail" >}}) server:
+Now let's authorize inbound access for SSH and [Promtail](../../) server:
 
 ```bash
 aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --protocol tcp --port 22 --cidr 0.0.0.0/0
@@ -86,7 +88,7 @@ ssh ec2-user@ec2-13-59-62-37.us-east-2.compute.amazonaws.com
 ## Setting up Promtail
 
 First let's make sure we're running as root by using `sudo -s`.
-Next we'll download, install and give executable right to [Promtail]({{< relref "../../../../send-data/promtail" >}}).
+Next we'll download, install and give executable right to [Promtail](../../).
 
 ```bash
 mkdir /opt/promtail && cd /opt/promtail
@@ -95,7 +97,7 @@ unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
 
-Now we're going to download the [Promtail configuration]({{< relref "../../../../send-data/promtail" >}}) file below and edit it, don't worry we will explain what those means.
+Now we're going to download the [Promtail configuration](../../) file below and edit it, don't worry we will explain what those means.
 The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
@@ -138,11 +140,11 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting]({{< relref "../../../../send-data/promtail/troubleshooting" >}}) service discovery and targets.
+The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../troubleshooting/) service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 
-[Promtail]({{< relref "../../../../send-data/promtail" >}}) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
+[Promtail](../../) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
@@ -234,7 +236,7 @@ Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.6.0, branch=HEAD, revision=12c7eab8)"
 ```
 
-You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL]({{< relref "../../../../query" >}}) query `{zone="us-east-2"}`.
+You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL](../../../../query/) query `{zone="us-east-2"}`.
 
 {{< figure alt="Grafana Loki logs" align="center" src="./promtail-ec2-logs.png" >}}
 
@@ -265,7 +267,7 @@ You can download the final config example from our [GitHub repository][final con
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 
-Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL]({{< relref "../../../../query" >}}) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
+Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL](../../../../query/) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
 
 [promtail]: ../../promtail/README
 [aws cli]: https://aws.amazon.com/cli/

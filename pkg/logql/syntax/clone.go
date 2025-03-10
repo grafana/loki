@@ -66,7 +66,7 @@ func (v *cloneVisitor) VisitVectorAggregation(e *VectorAggregationExpr) {
 
 func (v *cloneVisitor) VisitRangeAggregation(e *RangeAggregationExpr) {
 	copied := &RangeAggregationExpr{
-		Left:      MustClone[*LogRange](e.Left),
+		Left:      MustClone[*LogRangeExpr](e.Left),
 		Operation: e.Operation,
 	}
 
@@ -95,8 +95,8 @@ func (v *cloneVisitor) VisitVector(e *VectorExpr) {
 	v.cloned = &VectorExpr{Val: e.Val}
 }
 
-func (v *cloneVisitor) VisitLogRange(e *LogRange) {
-	copied := &LogRange{
+func (v *cloneVisitor) VisitLogRange(e *LogRangeExpr) {
+	copied := &LogRangeExpr{
 		Left:     MustClone[LogSelectorExpr](e.Left),
 		Interval: e.Interval,
 		Offset:   e.Offset,
@@ -146,21 +146,21 @@ func (v *cloneVisitor) VisitDecolorize(*DecolorizeExpr) {
 
 func (v *cloneVisitor) VisitDropLabels(e *DropLabelsExpr) {
 	copied := &DropLabelsExpr{
-		dropLabels: make([]log.DropLabel, len(e.dropLabels)),
+		dropLabels: make([]log.NamedLabelMatcher, len(e.dropLabels)),
 	}
 	for i, l := range e.dropLabels {
 		var matcher *labels.Matcher
 		if l.Matcher != nil {
 			matcher = labels.MustNewMatcher(l.Matcher.Type, l.Matcher.Name, l.Matcher.Value)
 		}
-		copied.dropLabels[i] = log.NewDropLabel(matcher, l.Name)
+		copied.dropLabels[i] = log.NewNamedLabelMatcher(matcher, l.Name)
 	}
 
 	v.cloned = copied
 }
 
-func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParser) {
-	copied := &JSONExpressionParser{
+func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParserExpr) {
+	copied := &JSONExpressionParserExpr{
 		Expressions: make([]log.LabelExtractionExpr, len(e.Expressions)),
 	}
 	copy(copied.Expressions, e.Expressions)
@@ -170,10 +170,10 @@ func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParser) {
 
 func (v *cloneVisitor) VisitKeepLabel(e *KeepLabelsExpr) {
 	copied := &KeepLabelsExpr{
-		keepLabels: make([]log.KeepLabel, len(e.keepLabels)),
+		keepLabels: make([]log.NamedLabelMatcher, len(e.keepLabels)),
 	}
 	for i, k := range e.keepLabels {
-		copied.keepLabels[i] = log.KeepLabel{
+		copied.keepLabels[i] = log.NamedLabelMatcher{
 			Name: k.Name,
 		}
 		if k.Matcher != nil {
@@ -251,8 +251,8 @@ func (v *cloneVisitor) VisitLabelFmt(e *LabelFmtExpr) {
 	v.cloned = copied
 }
 
-func (v *cloneVisitor) VisitLabelParser(e *LabelParserExpr) {
-	v.cloned = &LabelParserExpr{
+func (v *cloneVisitor) VisitLabelParser(e *LineParserExpr) {
+	v.cloned = &LineParserExpr{
 		Op:    e.Op,
 		Param: e.Param,
 	}
@@ -283,8 +283,8 @@ func (v *cloneVisitor) VisitLineFmt(e *LineFmtExpr) {
 	v.cloned = &LineFmtExpr{Value: e.Value}
 }
 
-func (v *cloneVisitor) VisitLogfmtExpressionParser(e *LogfmtExpressionParser) {
-	copied := &LogfmtExpressionParser{
+func (v *cloneVisitor) VisitLogfmtExpressionParser(e *LogfmtExpressionParserExpr) {
+	copied := &LogfmtExpressionParserExpr{
 		Expressions: make([]log.LabelExtractionExpr, len(e.Expressions)),
 		Strict:      e.Strict,
 		KeepEmpty:   e.KeepEmpty,
@@ -299,4 +299,17 @@ func (v *cloneVisitor) VisitLogfmtParser(e *LogfmtParserExpr) {
 		Strict:    e.Strict,
 		KeepEmpty: e.KeepEmpty,
 	}
+}
+
+func (v *cloneVisitor) VisitVariants(e *MultiVariantExpr) {
+	copied := &MultiVariantExpr{
+		logRange: MustClone[*LogRangeExpr](e.logRange),
+		variants: make([]SampleExpr, len(e.variants)),
+	}
+
+	for i, v := range e.variants {
+		copied.variants[i] = MustClone[SampleExpr](v)
+	}
+
+	v.cloned = copied
 }

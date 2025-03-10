@@ -9,6 +9,8 @@ weight:
 
 # cri
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `cri` stage is a parsing stage that reads the log line using the standard CRI logging format.
 
 ## Schema

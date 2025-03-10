@@ -39,7 +39,7 @@ The configuration runs Loki as a single binary.
 
    Don't download LogCLI or Loki Canary at this time.
    LogCLI allows you to run Loki queries in a command line interface.
-   [Loki Canary]({{< relref "../../operations/loki-canary" >}}) is a tool to audit Loki performance.
+   [Loki Canary](../../../operations/loki-canary/) is a tool to audit Loki performance.
 
 1. Extract the package contents into the same directory. This is where the two programs will run.
 1. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail.
@@ -47,7 +47,7 @@ The configuration runs Loki as a single binary.
    Copy and paste the following commands into your command line to download generic configuration files.
 
    Use the Git references that match your downloaded Loki version to get the correct configuration file.
-   For example, if you are using Loki version 2.9.2, you need to use the `https://raw.githubusercontent.com/grafana/loki/v2.9.2/cmd/loki/loki-local-config.yaml` URL to download the configuration file.
+   For example, if you are using Loki version 3.4.1, you need to use the `https://raw.githubusercontent.com/grafana/loki/v3.4.1/cmd/loki/loki-local-config.yaml` URL to download the configuration file.
 
    ```
    wget https://raw.githubusercontent.com/grafana/loki/main/cmd/loki/loki-local-config.yaml
@@ -71,7 +71,7 @@ The configuration runs Loki as a single binary.
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
 The next step is running an agent to send logs to Loki.
-To do so with Promtail, refer to the [Promtail configuration]({{< relref "../../send-data/promtail" >}}).
+To do so with Promtail, refer to the [Promtail configuration](../../../send-data/promtail/).
 
 ## Release binaries - openSUSE Linux only
 

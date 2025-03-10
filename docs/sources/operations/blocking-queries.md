@@ -1,10 +1,10 @@
 ---
-title: Blocking Queries
-menuTitle:  
-description: Describes how to configure Loki to block expensive queries using per-tenant overrides.
+title: Block unwanted queries
+menuTitle: Unwanted queries
+description: Describes how to configure Grafana Loki to block unwanted or expensive queries using per-tenant overrides.
 weight: 
 ---
-# Blocking Queries
+# Block unwanted queries
 
 In certain situations, you may not be able to control the queries being sent to your Loki installation. These queries
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
@@ -63,4 +63,4 @@ Blocked queries are logged, as well as counted in the `loki_blocked_queries` met
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules]({{< relref "../alert" >}}) will be blocked.
+Queries received via the API and executed as [alerting/recording rules](../../alert/) will be blocked.

@@ -20,6 +20,8 @@ const (
 	credNameAzurePipelines = "AzurePipelinesCredential"
 	oidcAPIVersion         = "7.1"
 	systemOIDCRequestURI   = "SYSTEM_OIDCREQUESTURI"
+	xMsEdgeRef             = "x-msedge-ref"
+	xVssE2eId              = "x-vss-e2eid"
 )
 
 // AzurePipelinesCredential authenticates with workload identity federation in an Azure Pipeline. See
@@ -39,6 +41,11 @@ type AzurePipelinesCredentialOptions struct {
 	// Add the wildcard value "*" to allow the credential to acquire tokens for any tenant in which the
 	// application is registered.
 	AdditionallyAllowedTenants []string
+
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
@@ -81,8 +88,11 @@ func NewAzurePipelinesCredential(tenantID, clientID, serviceConnectionID, system
 	if options == nil {
 		options = &AzurePipelinesCredentialOptions{}
 	}
+	// these headers are useful to the DevOps team when debugging OIDC error responses
+	options.ClientOptions.Logging.AllowedHeaders = append(options.ClientOptions.Logging.AllowedHeaders, xMsEdgeRef, xVssE2eId)
 	caco := ClientAssertionCredentialOptions{
 		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
 		ClientOptions:              options.ClientOptions,
 		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
 	}
@@ -108,33 +118,40 @@ func (a *AzurePipelinesCredential) getAssertion(ctx context.Context) (string, er
 	url := a.oidcURI + "?api-version=" + oidcAPIVersion + "&serviceConnectionId=" + a.connectionID
 	url, err := runtime.EncodeQueryParams(url)
 	if err != nil {
-		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't encode OIDC URL: "+err.Error(), nil, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't encode OIDC URL: "+err.Error(), nil)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
-		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't create OIDC token request: "+err.Error(), nil, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't create OIDC token request: "+err.Error(), nil)
 	}
 	req.Header.Set("Authorization", "Bearer "+a.systemAccessToken)
+	// instruct endpoint to return 401 instead of 302, if the system access token is invalid
+	req.Header.Set("X-TFS-FedAuthRedirect", "Suppress")
 	res, err := doForClient(a.cred.client.azClient, req)
 	if err != nil {
-		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't send OIDC token request: "+err.Error(), nil, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't send OIDC token request: "+err.Error(), nil)
 	}
 	if res.StatusCode != http.StatusOK {
-		msg := res.Status + " response from the OIDC endpoint. Check service connection ID and Pipeline configuration"
+		msg := res.Status + " response from the OIDC endpoint. Check service connection ID and Pipeline configuration."
+		for _, h := range []string{xMsEdgeRef, xVssE2eId} {
+			if v := res.Header.Get(h); v != "" {
+				msg += fmt.Sprintf("\n%s: %s", h, v)
+			}
+		}
 		// include the response because its body, if any, probably contains an error message.
 		// OK responses aren't included with errors because they probably contain secrets
-		return "", newAuthenticationFailedError(credNameAzurePipelines, msg, res, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, msg, res)
 	}
 	b, err := runtime.Payload(res)
 	if err != nil {
-		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't read OIDC response content: "+err.Error(), nil, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, "couldn't read OIDC response content: "+err.Error(), nil)
 	}
 	var r struct {
 		OIDCToken string `json:"oidcToken"`
 	}
 	err = json.Unmarshal(b, &r)
 	if err != nil {
-		return "", newAuthenticationFailedError(credNameAzurePipelines, "unexpected response from OIDC endpoint", nil, nil)
+		return "", newAuthenticationFailedError(credNameAzurePipelines, "unexpected response from OIDC endpoint", nil)
 	}
 	return r.OIDCToken, nil
 }

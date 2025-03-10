@@ -28,8 +28,9 @@ package googledirectpath
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 	"net/url"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/grpclog"
@@ -38,6 +39,7 @@ import (
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/xds/internal/xdsclient"
 
 	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
 )
@@ -46,7 +48,7 @@ const (
 	c2pScheme    = "google-c2p"
 	c2pAuthority = "traffic-director-c2p.xds.googleapis.com"
 
-	tdURL                   = "dns:///directpath-pa.googleapis.com"
+	defaultUniverseDomain   = "googleapis.com"
 	zoneURL                 = "http://metadata.google.internal/computeMetadata/v1/instance/zone"
 	ipv6URL                 = "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ipv6s"
 	ipv6CapableMetadataName = "TRAFFICDIRECTOR_DIRECTPATH_C2P_IPV6_CAPABLE"
@@ -56,15 +58,65 @@ const (
 	dnsName, xdsName = "dns", "xds"
 )
 
-// For overriding in unittests.
 var (
-	onGCE   = googlecloud.OnGCE
-	randInt = rand.Int
-	logger  = internalgrpclog.NewPrefixLogger(grpclog.Component("directpath"), logPrefix)
+	logger           = internalgrpclog.NewPrefixLogger(grpclog.Component("directpath"), logPrefix)
+	universeDomainMu sync.Mutex
+	universeDomain   = ""
+	// For overriding in unittests.
+	onGCE         = googlecloud.OnGCE
+	randInt       = rand.Int
+	xdsClientPool = xdsclient.DefaultPool
 )
 
 func init() {
 	resolver.Register(c2pResolverBuilder{})
+}
+
+// SetUniverseDomain informs the gRPC library of the universe domain
+// in which the process is running (for example, "googleapis.com").
+// It is the caller's responsibility to ensure that the domain is correct.
+//
+// This setting is used by the "google-c2p" resolver (the resolver used
+// for URIs with the "google-c2p" scheme) to configure its dependencies.
+//
+// If a gRPC channel is created with the "google-c2p" URI scheme and this
+// function has NOT been called, then gRPC configures the universe domain as
+// "googleapis.com".
+//
+// Returns nil if either:
+//
+//	a) The universe domain has not yet been configured.
+//	b) The universe domain has been configured and matches the provided value.
+//
+// Otherwise, returns an error.
+func SetUniverseDomain(domain string) error {
+	universeDomainMu.Lock()
+	defer universeDomainMu.Unlock()
+	if domain == "" {
+		return fmt.Errorf("universe domain cannot be empty")
+	}
+	if universeDomain == "" {
+		universeDomain = domain
+		return nil
+	}
+	if universeDomain != domain {
+		return fmt.Errorf("universe domain cannot be set to %s, already set to different value: %s", domain, universeDomain)
+	}
+	return nil
+}
+
+func getXdsServerURI() string {
+	universeDomainMu.Lock()
+	defer universeDomainMu.Unlock()
+	if universeDomain == "" {
+		universeDomain = defaultUniverseDomain
+	}
+	// Put env var override logic after default value logic so
+	// that tests still run the default value logic.
+	if envconfig.C2PResolverTestOnlyTrafficDirectorURI != "" {
+		return envconfig.C2PResolverTestOnlyTrafficDirectorURI
+	}
+	return fmt.Sprintf("dns:///directpath-pa.%s", universeDomain)
 }
 
 type c2pResolverBuilder struct{}
@@ -90,11 +142,7 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	go func() { zoneCh <- getZone(httpReqTimeout) }()
 	go func() { ipv6CapableCh <- getIPv6Capable(httpReqTimeout) }()
 
-	xdsServerURI := envconfig.C2PResolverTestOnlyTrafficDirectorURI
-	if xdsServerURI == "" {
-		xdsServerURI = tdURL
-	}
-
+	xdsServerURI := getXdsServerURI()
 	nodeCfg := newNodeConfig(<-zoneCh, <-ipv6CapableCh)
 	xdsServerCfg := newXdsServerConfig(xdsServerURI)
 	authoritiesCfg := newAuthoritiesConfig(xdsServerCfg)
@@ -109,9 +157,11 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal bootstrap configuration: %v", err)
 	}
-	if err := bootstrap.SetFallbackBootstrapConfig(cfgJSON); err != nil {
-		return nil, fmt.Errorf("failed to set fallback bootstrap configuration: %v", err)
+	config, err := bootstrap.NewConfigFromContents(cfgJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse bootstrap contents: %s, %v", string(cfgJSON), err)
 	}
+	xdsClientPool.SetFallbackBootstrapConfig(config)
 
 	t = resolver.Target{
 		URL: url.URL{

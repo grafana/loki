@@ -22,8 +22,8 @@ import (
 func TestMaxBucketValue(t *testing.T) {
 	b := NewBuckets(10, 2)
 
-	if max := b.MaxBucketValue(); max != 3 {
-		t.Errorf("Expected 3, got %d", max)
+	if maxVal := b.MaxBucketValue(); maxVal != 3 {
+		t.Errorf("Expected 3, got %d", maxVal)
 	}
 }
 

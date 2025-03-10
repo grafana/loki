@@ -7,7 +7,9 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -20,19 +22,24 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+const ForQuerytimeFilteringQueryParam = "for_querytime_filtering"
+
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
 	deleteRequestsStore DeleteRequestsStore
 	metrics             *deleteRequestHandlerMetrics
 	maxInterval         time.Duration
+
+	deleteRequestCancelPeriod time.Duration
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxInterval time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
+func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxInterval, deleteRequestCancelPeriod time.Duration, registerer prometheus.Registerer) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
-		deleteRequestsStore: deleteStore,
-		maxInterval:         maxInterval,
-		metrics:             newDeleteRequestHandlerMetrics(registerer),
+		deleteRequestsStore:       deleteStore,
+		maxInterval:               maxInterval,
+		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
+		metrics:                   newDeleteRequestHandlerMetrics(registerer),
 	}
 
 	return &deleteMgr
@@ -40,6 +47,10 @@ func NewDeleteRequestHandler(deleteStore DeleteRequestsStore, maxInterval time.D
 
 // AddDeleteRequestHandler handles addition of a new delete request
 func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -67,6 +78,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	var shardByInterval time.Duration
+	// shard delete requests only when there are line filters
 	if parsedExpr.HasFilter() {
 		var err error
 		shardByInterval, err = dm.interval(params, startTime, endTime)
@@ -74,27 +86,18 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-	} else {
-		shardByInterval = endTime.Sub(startTime) + time.Minute
 	}
 
-	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, shardByInterval)
-	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
+	requestID, err := dm.deleteRequestsStore.AddDeleteRequest(ctx, userID, query, startTime, endTime, shardByInterval)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if len(createdDeleteRequests) == 0 {
-		level.Error(util_log.Logger).Log("msg", "zero delete requests created", "user", userID, "query", query)
-		http.Error(w, "Zero delete requests were created due to an internal error. Please contact support.", http.StatusInternalServerError)
-		return
-	}
-
 	level.Info(util_log.Logger).Log(
 		"msg", "delete request for user added",
-		"delete_request_id", createdDeleteRequests[0].RequestID,
+		"delete_request_id", requestID,
 		"user", userID,
 		"query", query,
 		"interval", shardByInterval.String(),
@@ -104,29 +107,10 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func shardDeleteRequestsByInterval(startTime, endTime model.Time, query, userID string, interval time.Duration) []DeleteRequest {
-	deleteRequests := make([]DeleteRequest, 0, endTime.Sub(startTime)/interval)
-	for start := startTime; start.Before(endTime); start = start.Add(interval) + 1 {
-		end := start.Add(interval)
-		if end.After(endTime) {
-			end = endTime
-		}
-
-		deleteRequests = append(deleteRequests,
-			DeleteRequest{
-				StartTime: start,
-				EndTime:   end,
-				Query:     query,
-				UserID:    userID,
-			})
-	}
-	return deleteRequests
-}
-
 func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_interval")
 	if qr == "" {
-		return dm.intervalFromStartAndEnd(startTime, endTime)
+		return dm.maxInterval, nil
 	}
 
 	interval, err := time.ParseDuration(qr)
@@ -145,27 +129,12 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	return interval, nil
 }
 
-func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
-	interval := endTime.Sub(startTime)
-	if interval < time.Second {
-		return 0, errors.New("difference between start time and end time must be at least one second")
-	}
-
-	if dm.maxInterval == 0 {
-		return interval, nil
-	}
-	return min(interval, dm.maxInterval), nil
-}
-
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // GetAllDeleteRequestsHandler handles get all delete requests
 func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWriter, r *http.Request) {
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -173,15 +142,15 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return
 	}
 
-	deleteGroups, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
+	forQuerytimeFiltering := r.URL.Query().Get(ForQuerytimeFilteringQueryParam) == "true"
+	deleteGroups, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	deletesPerRequest := partitionByRequestID(deleteGroups)
-	deleteRequests := mergeDeletes(deletesPerRequest)
+	deleteRequests := mergeDeletes(deleteGroups)
 
 	sort.Slice(deleteRequests, func(i, j int) bool {
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt
@@ -194,17 +163,31 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 }
 
-func mergeDeletes(groups map[string][]DeleteRequest) []DeleteRequest {
+func mergeDeletes(reqs []DeleteRequest) []DeleteRequest {
+	if len(reqs) <= 1 {
+		return reqs
+	}
+	slices.SortFunc(reqs, func(a, b DeleteRequest) int {
+		return strings.Compare(a.RequestID, b.RequestID)
+	})
 	mergedRequests := []DeleteRequest{} // Declare this way so the return value is [] rather than null
-	for _, deletes := range groups {
-		startTime, endTime, status := mergeData(deletes)
-		newDelete := deletes[0]
+	// find the start and end of shards of same request and merge them
+	i := 0
+	for j := 0; j < len(reqs); j++ {
+		// if this is not the last request in the list and the next request belongs to same shard then keep looking further
+		if j < len(reqs)-1 && reqs[i].RequestID == reqs[j+1].RequestID {
+			continue
+		}
+		startTime, endTime, status := mergeData(reqs[i : j+1])
+		newDelete := reqs[i]
 		newDelete.StartTime = startTime
 		newDelete.EndTime = endTime
 		newDelete.Status = status
 
 		mergedRequests = append(mergedRequests, newDelete)
+		i = j + 1
 	}
+
 	return mergedRequests
 }
 
@@ -247,6 +230,10 @@ func deleteRequestStatus(processed, total int) DeleteRequestStatus {
 
 // CancelDeleteRequestHandler handles delete request cancellation
 func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -256,7 +243,7 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
-	deleteRequests, err := dm.deleteRequestsStore.GetDeleteRequestGroup(ctx, userID, requestID)
+	deleteRequest, err := dm.deleteRequestsStore.GetDeleteRequest(ctx, userID, requestID)
 	if err != nil {
 		if errors.Is(err, ErrDeleteRequestNotFound) {
 			http.Error(w, "could not find delete request with given id", http.StatusNotFound)
@@ -268,18 +255,17 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	toDelete := filterProcessed(deleteRequests)
-	if len(toDelete) == 0 {
+	if deleteRequest.Status == StatusProcessed {
 		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
 		return
 	}
 
-	if len(toDelete) != len(deleteRequests) && params.Get("force") != "true" {
-		http.Error(w, "Unable to cancel partially completed delete request. To force, use the ?force query parameter", http.StatusBadRequest)
+	if (deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now())) && params.Get("force") != "true" {
+		http.Error(w, fmt.Sprintf("Cancellation of partially completed delete request or delete request past the deadline of %s since its creation is not allowed. To force, use the ?force query parameter", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 
-	if err := dm.deleteRequestsStore.RemoveDeleteRequests(ctx, toDelete); err != nil {
+	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, requestID); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -300,6 +286,10 @@ func filterProcessed(reqs []DeleteRequest) []DeleteRequest {
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
 func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -359,8 +349,8 @@ func endTime(params url.Values, startTime model.Time) (model.Time, error) {
 		return 0, errors.New("deletes in the future are not allowed")
 	}
 
-	if int64(startTime) > endTime {
-		return 0, errors.New("start time can't be greater than end time")
+	if int64(startTime) >= endTime {
+		return 0, errors.New("start time can't be greater than or equal to end time")
 	}
 
 	return model.Time(endTime), nil
@@ -385,4 +375,35 @@ func timeFromInt(in string) (int64, error) {
 	}
 
 	return util.ParseTime(in)
+}
+
+func buildRequests(shardByInterval time.Duration, query, userID string, startTime, endTime model.Time) []DeleteRequest {
+	var deleteRequests []DeleteRequest
+
+	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
+		deleteRequests = []DeleteRequest{
+			{
+				StartTime: startTime,
+				EndTime:   endTime,
+				Query:     query,
+				UserID:    userID,
+			},
+		}
+	} else {
+		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
+		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
+		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
+		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
+			deleteRequests = append(deleteRequests,
+				DeleteRequest{
+					StartTime: model.Time(start.UnixMilli()),
+					EndTime:   model.Time(end.UnixMilli()),
+					Query:     query,
+					UserID:    userID,
+				},
+			)
+		})
+	}
+
+	return deleteRequests
 }

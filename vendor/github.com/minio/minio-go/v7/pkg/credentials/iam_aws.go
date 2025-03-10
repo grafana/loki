@@ -49,7 +49,8 @@ const DefaultExpiryWindow = -1
 type IAM struct {
 	Expiry
 
-	// Required http Client to use when connecting to IAM metadata service.
+	// Optional http Client to use when connecting to IAM metadata service
+	// (overrides default client in CredContext)
 	Client *http.Client
 
 	// Custom endpoint to fetch IAM role credentials.
@@ -90,17 +91,16 @@ const (
 // NewIAM returns a pointer to a new Credentials object wrapping the IAM.
 func NewIAM(endpoint string) *Credentials {
 	return New(&IAM{
-		Client: &http.Client{
-			Transport: http.DefaultTransport,
-		},
 		Endpoint: endpoint,
 	})
 }
 
-// Retrieve retrieves credentials from the EC2 service.
-// Error will be returned if the request fails, or unable to extract
-// the desired
-func (m *IAM) Retrieve() (Value, error) {
+// RetrieveWithCredContext is like Retrieve with Cred Context
+func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
+	if cc == nil {
+		cc = defaultCredContext
+	}
+
 	token := os.Getenv("AWS_CONTAINER_AUTHORIZATION_TOKEN")
 	if token == "" {
 		token = m.Container.AuthorizationToken
@@ -144,7 +144,16 @@ func (m *IAM) Retrieve() (Value, error) {
 	var roleCreds ec2RoleCredRespBody
 	var err error
 
+	client := m.Client
+	if client == nil {
+		client = cc.Client
+	}
+	if client == nil {
+		client = defaultCredContext.Client
+	}
+
 	endpoint := m.Endpoint
+
 	switch {
 	case identityFile != "":
 		if len(endpoint) == 0 {
@@ -160,7 +169,7 @@ func (m *IAM) Retrieve() (Value, error) {
 		}
 
 		creds := &STSWebIdentity{
-			Client:      m.Client,
+			Client:      client,
 			STSEndpoint: endpoint,
 			GetWebIDTokenExpiry: func() (*WebIdentityToken, error) {
 				token, err := os.ReadFile(identityFile)
@@ -174,7 +183,7 @@ func (m *IAM) Retrieve() (Value, error) {
 			roleSessionName: roleSessionName,
 		}
 
-		stsWebIdentityCreds, err := creds.Retrieve()
+		stsWebIdentityCreds, err := creds.RetrieveWithCredContext(cc)
 		if err == nil {
 			m.SetExpiration(creds.Expiration(), DefaultExpiryWindow)
 		}
@@ -185,11 +194,11 @@ func (m *IAM) Retrieve() (Value, error) {
 			endpoint = fmt.Sprintf("%s%s", DefaultECSRoleEndpoint, relativeURI)
 		}
 
-		roleCreds, err = getEcsTaskCredentials(m.Client, endpoint, token)
+		roleCreds, err = getEcsTaskCredentials(client, endpoint, token)
 
 	case tokenFile != "" && fullURI != "":
 		endpoint = fullURI
-		roleCreds, err = getEKSPodIdentityCredentials(m.Client, endpoint, tokenFile)
+		roleCreds, err = getEKSPodIdentityCredentials(client, endpoint, tokenFile)
 
 	case fullURI != "":
 		if len(endpoint) == 0 {
@@ -203,10 +212,10 @@ func (m *IAM) Retrieve() (Value, error) {
 			}
 		}
 
-		roleCreds, err = getEcsTaskCredentials(m.Client, endpoint, token)
+		roleCreds, err = getEcsTaskCredentials(client, endpoint, token)
 
 	default:
-		roleCreds, err = getCredentials(m.Client, endpoint)
+		roleCreds, err = getCredentials(client, endpoint)
 	}
 
 	if err != nil {
@@ -222,6 +231,13 @@ func (m *IAM) Retrieve() (Value, error) {
 		Expiration:      roleCreds.Expiration,
 		SignerType:      SignatureV4,
 	}, nil
+}
+
+// Retrieve retrieves credentials from the EC2 service.
+// Error will be returned if the request fails, or unable to extract
+// the desired
+func (m *IAM) Retrieve() (Value, error) {
+	return m.RetrieveWithCredContext(nil)
 }
 
 // A ec2RoleCredRespBody provides the shape for unmarshaling credential

@@ -1,0 +1,44 @@
+// filemd.proto holds file-level metadata for a data object. Data objects are
+// split into multiple distinct "sections," each of which contains independent
+// data related to storing logs.
+//
+// Each section has its own metadata; the file-level metadata points to the
+// metadata of each section stored within the data object.
+syntax = "proto3";
+
+package dataobj.metadata.file.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd";
+
+// Metadata for the overall data object.
+message Metadata {
+  // Sections within the data object.
+  repeated SectionInfo sections = 1;
+}
+
+// SectionInfo describes a section within the data object.
+message SectionInfo {
+  // Type of the section within the data object.
+  SectionType type = 1;
+
+  // Byte offset of the section's metadata from the start of the data object.
+  uint64 metadata_offset = 2;
+
+  // Size of the section's metadata in bytes.
+  uint64 metadata_size = 3;
+}
+
+enum SectionType {
+  // SECTION_TYPE_UNSPECIFIED is an invalid section type.
+  SECTION_TYPE_UNSPECIFIED = 0;
+
+  // SECTION_TYPE_STREAMS is a section containing references to streams that
+  // exist within the data object. SECTION_TYPE_STREAMS does not contain any
+  // actual log data.
+  SECTION_TYPE_STREAMS = 1;
+
+  // SECTION_TYPE_LOGS is a section containing log records across multiple
+  // streams. Each log record contains a stream ID which refers to a stream
+  // from SECTION_TYPE_STREAMS.
+  SECTION_TYPE_LOGS = 2;
+}

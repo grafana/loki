@@ -1,7 +1,9 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -92,8 +94,34 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_DELTA
 }
 
-// Decode decodes the next value.
-func (dec *deltaDecoder) Decode() (Value, error) {
+// Decode decodes up to len(s) values, storing the results into s. The
+// number of decoded values is returned, followed by an error (if any).
+// At the end of the stream, Decode returns 0, [io.EOF].
+func (dec *deltaDecoder) Decode(s []Value) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+
+	var err error
+	var v Value
+
+	for i := range s {
+		v, err = dec.decode()
+		if errors.Is(err, io.EOF) {
+			if i == 0 {
+				return 0, io.EOF
+			}
+			return i, nil
+		} else if err != nil {
+			return i, err
+		}
+		s[i] = v
+	}
+	return len(s), nil
+}
+
+// decode reads the next uint64 value from the stream.
+func (dec *deltaDecoder) decode() (Value, error) {
 	delta, err := streamio.ReadVarint(dec.r)
 	if err != nil {
 		return Int64Value(dec.prev), err

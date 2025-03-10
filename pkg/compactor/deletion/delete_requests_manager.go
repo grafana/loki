@@ -35,6 +35,7 @@ type DeleteRequestsManager struct {
 
 	deleteRequestsToProcess    map[string]*userDeleteRequests
 	deleteRequestsToProcessMtx sync.Mutex
+	duplicateRequests          []DeleteRequest
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
 	done                       chan struct{}
@@ -54,6 +55,10 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 	}
 
 	go dm.loop()
+
+	if err := dm.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
+	}
 
 	return dm
 }
@@ -83,7 +88,7 @@ func (d *DeleteRequestsManager) Stop() {
 }
 
 func (d *DeleteRequestsManager) updateMetrics() error {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return err
 	}
@@ -92,6 +97,16 @@ func (d *DeleteRequestsManager) updateMetrics() error {
 	oldestPendingRequestCreatedAt := model.Time(0)
 
 	for _, deleteRequest := range deleteRequests {
+		// do not consider requests from users whose delete requests should not be processed as per their config
+		processRequest, err := d.shouldProcessRequest(deleteRequest)
+		if err != nil {
+			return err
+		}
+
+		if !processRequest {
+			continue
+		}
+
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
 		if deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
@@ -143,6 +158,23 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 				continue
 			}
 		}
+		if ur, ok := d.deleteRequestsToProcess[deleteRequest.UserID]; ok {
+			for _, requestLoadedForProcessing := range ur.requests {
+				isDuplicate, err := requestLoadedForProcessing.IsDuplicate(&deleteRequest)
+				if err != nil {
+					return err
+				}
+				if isDuplicate {
+					level.Info(util_log.Logger).Log(
+						"msg", "found duplicate request of one of the requests loaded for processing",
+						"loaded_request_id", requestLoadedForProcessing.RequestID,
+						"duplicate_request_id", deleteRequest.RequestID,
+						"user", deleteRequest.UserID,
+					)
+					d.duplicateRequests = append(d.duplicateRequests, deleteRequest)
+				}
+			}
+		}
 		if reqCount >= d.batchSize {
 			logBatchTruncation(reqCount, len(deleteRequests))
 			break
@@ -171,7 +203,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 }
 
 func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +354,7 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 }
 
 func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
-	if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
+	if err := d.deleteRequestsStore.MarkShardAsProcessed(context.Background(), deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log(
 			"msg", "failed to mark delete request for user as processed",
 			"delete_request_id", deleteRequest.RequestID,
@@ -355,6 +387,19 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		for _, deleteRequest := range userDeleteRequests.requests {
 			d.markRequestAsProcessed(*deleteRequest)
 		}
+	}
+
+	for _, req := range d.duplicateRequests {
+		level.Info(util_log.Logger).Log("msg", "marking duplicate delete request as processed",
+			"delete_request_id", req.RequestID,
+			"sequence_num", req.SequenceNum,
+			"user", req.UserID,
+		)
+		d.markRequestAsProcessed(req)
+	}
+
+	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 }
 

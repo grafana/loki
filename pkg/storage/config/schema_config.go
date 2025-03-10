@@ -210,6 +210,15 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (d *DayTime) Set(value string) error {
+	t, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return err
+	}
+	d.Time = model.TimeFromUnix(t.Unix())
+	return nil
+}
+
 func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
 }
@@ -267,6 +276,13 @@ type SchemaConfig struct {
 	Configs []PeriodConfig `yaml:"configs"`
 
 	fileName string
+}
+
+func (cfg *SchemaConfig) Clone() SchemaConfig {
+	clone := *cfg
+	clone.Configs = make([]PeriodConfig, len(cfg.Configs))
+	copy(clone.Configs, cfg.Configs)
+	return clone
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -560,6 +576,7 @@ func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 
 	return g, nil
 }
+
 func ValidatePathPrefix(prefix string) error {
 	if prefix == "" {
 		return errors.New("prefix must be set")

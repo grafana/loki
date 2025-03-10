@@ -38,6 +38,10 @@ type AlertStatus struct {
 	// Required: true
 	InhibitedBy []string `json:"inhibitedBy"`
 
+	// muted by
+	// Required: true
+	MutedBy []string `json:"mutedBy"`
+
 	// silenced by
 	// Required: true
 	SilencedBy []string `json:"silencedBy"`
@@ -53,6 +57,10 @@ func (m *AlertStatus) Validate(formats strfmt.Registry) error {
 	var res []error
 
 	if err := m.validateInhibitedBy(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateMutedBy(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -73,6 +81,15 @@ func (m *AlertStatus) Validate(formats strfmt.Registry) error {
 func (m *AlertStatus) validateInhibitedBy(formats strfmt.Registry) error {
 
 	if err := validate.Required("inhibitedBy", "body", m.InhibitedBy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *AlertStatus) validateMutedBy(formats strfmt.Registry) error {
+
+	if err := validate.Required("mutedBy", "body", m.MutedBy); err != nil {
 		return err
 	}
 

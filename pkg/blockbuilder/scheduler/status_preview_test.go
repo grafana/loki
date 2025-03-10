@@ -59,7 +59,7 @@ func TestPreview(t *testing.T) {
 		},
 	}
 
-	handler := newStatusPageHandler(mockLister, mockReader, time.Hour)
+	handler := newStatusPageHandler(mockLister, mockReader, int64(time.Hour/time.Millisecond))
 
 	// Start local server
 	server := httptest.NewServer(handler)

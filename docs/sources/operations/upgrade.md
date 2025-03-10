@@ -1,10 +1,10 @@
 ---
-title: Upgrade
-description: Links to Loki upgrade documentation.
+title: Manage version upgrades
+menuTitle: Upgrade
+description: Links to Grafana Loki upgrade documentation.
 weight: 
 ---
-
-# Upgrade
+# Manage version upgrades
 
 - [Upgrade](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/) from one Loki version to a newer version.
 

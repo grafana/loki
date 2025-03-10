@@ -11,8 +11,8 @@ import (
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
 	"go.uber.org/atomic"
-
 	"google.golang.org/grpc/codes"
+	grpc_metadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/grafana/dskit/ring"
@@ -163,7 +163,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				_, err := ingesterQuerier.Tail(context.Background(), new(logproto.TailRequest))
 				return err
 			},
-			retVal: newTailClientMock(),
+			retVal: &mockQuerierTailClient{},
 		},
 	}
 
@@ -542,7 +542,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 			// For this test's purpose, whenever a new ingester client needs to
 			// be created, the factory will always return the same mock instance
 			ingesterClient := newQuerierClientMock()
-			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
+			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(&mockQuerierTailClient{}, nil)
 
 			ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock(testData.ringIngesters, 0), ingesterClient)
 			require.NoError(t, err)
@@ -678,4 +678,37 @@ func newTestPartitionIngesterQuerier(clientFactory client.PoolFactory, instanceR
 		constants.Loki,
 		log.NewNopLogger(),
 	)
+}
+
+var _ logproto.Querier_TailClient = &mockQuerierTailClient{}
+
+// mockQuerierTailClient implements logproto.Querier_TailClient interface
+type mockQuerierTailClient struct{}
+
+func (c *mockQuerierTailClient) Recv() (*logproto.TailResponse, error) {
+	return nil, nil
+}
+
+func (c *mockQuerierTailClient) Header() (grpc_metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *mockQuerierTailClient) Trailer() grpc_metadata.MD {
+	return nil
+}
+
+func (c *mockQuerierTailClient) CloseSend() error {
+	return nil
+}
+
+func (c *mockQuerierTailClient) Context() context.Context {
+	return context.Background()
+}
+
+func (c *mockQuerierTailClient) SendMsg(_ interface{}) error {
+	return nil
+}
+
+func (c *mockQuerierTailClient) RecvMsg(_ interface{}) error {
+	return nil
 }

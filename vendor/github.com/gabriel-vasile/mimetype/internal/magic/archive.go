@@ -3,7 +3,6 @@ package magic
 import (
 	"bytes"
 	"encoding/binary"
-	"strconv"
 )
 
 var (
@@ -53,10 +52,15 @@ func InstallShieldCab(raw []byte, _ uint32) bool {
 }
 
 // Zstd matches a Zstandard archive file.
+// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md
 func Zstd(raw []byte, limit uint32) bool {
-	return len(raw) >= 4 &&
-		(0x22 <= raw[0] && raw[0] <= 0x28 || raw[0] == 0x1E) && // Different Zstandard versions.
-		bytes.HasPrefix(raw[1:], []byte{0xB5, 0x2F, 0xFD})
+	if len(raw) < 4 {
+		return false
+	}
+	sig := binary.LittleEndian.Uint32(raw)
+	// Check for Zstandard frames and skippable frames.
+	return (sig >= 0xFD2FB522 && sig <= 0xFD2FB528) ||
+		(sig >= 0x184D2A50 && sig <= 0x184D2A5F)
 }
 
 // CRX matches a Chrome extension file: a zip archive prepended by a package header.
@@ -110,8 +114,8 @@ func Tar(raw []byte, _ uint32) bool {
 	}
 
 	// Get the checksum recorded into the file.
-	recsum, err := tarParseOctal(raw[148:156])
-	if err != nil {
+	recsum := tarParseOctal(raw[148:156])
+	if recsum == -1 {
 		return false
 	}
 	sum1, sum2 := tarChksum(raw)
@@ -119,28 +123,26 @@ func Tar(raw []byte, _ uint32) bool {
 }
 
 // tarParseOctal converts octal string to decimal int.
-func tarParseOctal(b []byte) (int64, error) {
+func tarParseOctal(b []byte) int64 {
 	// Because unused fields are filled with NULs, we need to skip leading NULs.
 	// Fields may also be padded with spaces or NULs.
 	// So we remove leading and trailing NULs and spaces to be sure.
 	b = bytes.Trim(b, " \x00")
 
 	if len(b) == 0 {
-		return 0, nil
+		return -1
 	}
-	x, err := strconv.ParseUint(tarParseString(b), 8, 64)
-	if err != nil {
-		return 0, err
+	ret := int64(0)
+	for _, b := range b {
+		if b == 0 {
+			break
+		}
+		if !(b >= '0' && b <= '7') {
+			return -1
+		}
+		ret = (ret << 3) | int64(b-'0')
 	}
-	return int64(x), nil
-}
-
-// tarParseString converts a NUL ended bytes slice to a string.
-func tarParseString(b []byte) string {
-	if i := bytes.IndexByte(b, 0); i >= 0 {
-		return string(b[:i])
-	}
-	return string(b)
+	return ret
 }
 
 // tarChksum computes the checksum for the header block b.

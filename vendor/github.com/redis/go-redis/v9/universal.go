@@ -115,6 +115,7 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 
 		DisableIndentity: o.DisableIndentity,
 		IdentitySuffix:   o.IdentitySuffix,
+		UnstableResp3:    o.UnstableResp3,
 	}
 }
 

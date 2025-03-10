@@ -13,8 +13,9 @@ import (
 )
 
 type retentionLimit struct {
-	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	retentionPeriod     time.Duration
+	streamRetention     []validation.StreamRetention
+	policyStreamMapping validation.PolicyStreamMapping
 }
 
 func (r retentionLimit) convertToValidationLimit() *validation.Limits {
@@ -31,6 +32,10 @@ type fakeLimits struct {
 
 func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.perTenant[userID].retentionPeriod
+}
+
+func (f fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
+	return f.perTenant["user0"].policyStreamMapping
 }
 
 func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
@@ -121,6 +126,43 @@ func Test_expirationChecker_Expired(t *testing.T) {
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
 	}
+}
+
+func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
+	sevenDays, err := model.ParseDuration("720h")
+	require.NoError(t, err)
+	oneDay, err := model.ParseDuration("24h")
+	require.NoError(t, err)
+
+	tr := NewTenantsRetention(fakeLimits{
+		defaultLimit: retentionLimit{
+			retentionPeriod: time.Duration(sevenDays),
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: oneDay,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+					},
+				},
+			},
+		},
+		perTenant: map[string]retentionLimit{
+			"1": {
+				retentionPeriod: time.Duration(sevenDays),
+				streamRetention: []validation.StreamRetention{
+					{
+						Period: oneDay,
+						Matchers: []*labels.Matcher{
+							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	require.Equal(t, time.Duration(sevenDays), tr.RetentionPeriodFor("1", nil))
+	require.Equal(t, time.Duration(oneDay), tr.RetentionPeriodFor("1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}))
 }
 
 func Test_expirationChecker_Expired_zeroValue(t *testing.T) {

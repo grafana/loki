@@ -212,7 +212,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	c.setUserAgent(req)
 
 	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.Get()
+	value, err := c.credsProvider.GetWithContext(c.CredContext())
 	if err != nil {
 		return nil, err
 	}

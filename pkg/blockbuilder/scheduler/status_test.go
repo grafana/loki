@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kadm"
-
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type mockQueueLister struct {
@@ -47,25 +46,25 @@ func TestStatusPageHandler_ServeHTTP(t *testing.T) {
 	}
 
 	mockReader := &mockOffsetReader{
-		groupLag: map[int32]kadm.GroupMemberLag{
-			0: {
-				Lag:       10,
-				Partition: 3,
-				End:       kadm.ListedOffset{Offset: 100},
-				Commit:    kadm.Offset{At: 90},
-			},
-			1: {
-				Lag:       0,
-				Partition: 1,
-				End:       kadm.ListedOffset{Offset: 100},
-				Commit:    kadm.Offset{At: 100},
-			},
-			2: {
-				Lag:       233,
-				Partition: 2,
-				End:       kadm.ListedOffset{Offset: 333},
-				Commit:    kadm.Offset{At: 100},
-			},
+		groupLag: map[int32]partition.Lag{
+			0: partition.NewLag(
+				90,  // startOffset (committed offset)
+				100, // endOffset
+				90,  // committedOffset
+				10,  // rawLag (matches original Lag field)
+			),
+			1: partition.NewLag(
+				100, // startOffset (committed offset)
+				100, // endOffset
+				100, // committedOffset
+				0,   // rawLag (matches original Lag field)
+			),
+			2: partition.NewLag(
+				100, // startOffset (committed offset)
+				333, // endOffset
+				100, // committedOffset
+				233, // rawLag (matches original Lag field)
+			),
 		},
 	}
 
