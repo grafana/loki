@@ -72,8 +72,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
-				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
-				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				resAtt := ld.ResourceLogs().AppendEmpty().Resource().Attributes()
+				resAtt.PutStr("service.name", "service-1")
+				resAtt.PutStr("telemetry.sdk.language", "java")
+				scopeLogs := ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty()
+				scopeLogs.Scope().SetName("scope-1")
+				scopeLogs.Scope().SetVersion("v1")
+				scopeLogs.LogRecords().AppendEmpty().Body().SetStr("test body")
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
 				return ld
 			},
@@ -83,9 +88,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						Labels: `{service_name="service-1"}`,
 						Entries: []logproto.Entry{
 							{
-								Timestamp:          now,
-								Line:               "test body",
-								StructuredMetadata: push.LabelsAdapter{},
+								Timestamp: now,
+								Line:      "test body",
+								StructuredMetadata: []push.LabelAdapter{
+									{Name: "telemetry_sdk_language", Value: "java"},
+									{Name: "scope_name", Value: "scope-1"},
+									{Name: "scope_version", Value: "v1"},
+								},
 							},
 						},
 					},
@@ -102,16 +111,27 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"service-1-policy": {
-						time.Hour: 0,
+						time.Hour: 58,
 					},
 				},
 				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
 					"service-1-policy": {
-						time.Hour: nil,
+						time.Hour: []push.LabelAdapter{
+							{Name: "telemetry_sdk_language", Value: "java"},
+							{Name: "scope_name", Value: "scope-1"},
+							{Name: "scope_version", Value: "v1"},
+						},
 					},
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"java": {
+						"scope-1": {
+							"v1": 1,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -159,6 +179,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         27,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"unknown": {
+						"unknown": {
+							"unknown": 1,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -206,6 +233,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"unknown": {
+						"unknown": {
+							"unknown": 1,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -296,6 +330,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"unknown": {
+						"fizz": {
+							"unknown": 2,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -395,6 +436,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"unknown": {
+						"fizz": {
+							"unknown": 2,
+						},
+					},
+				},
 			},
 		},
 		{
@@ -555,6 +603,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         42,
 				MostRecentEntryTimestamp: now,
+				ScopeUsage: map[string]map[string]map[string]int64{
+					"unknown": {
+						"fizz": {
+							"unknown": 2,
+						},
+					},
+				},
 			},
 		},
 	} {
