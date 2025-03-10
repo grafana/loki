@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobjquerier "github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -422,7 +423,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store),
+			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier"), metastore.NewObjectMetastore(store)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -958,20 +959,11 @@ func (t *Loki) setupAsyncStore() error {
 		shipperConfigIdx++
 	}
 
-	// TODO(owen-d): make helper more agnostic between boltdb|tsdb
-	var resyncInterval time.Duration
-	switch t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType {
-	case types.BoltDBShipperType:
-		resyncInterval = t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
-	case types.TSDBType:
-		resyncInterval = t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval
-	}
-
 	minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
 		t.Cfg.Ingester.MaxChunkAge,
 		shipperQuerierIndexUpdateDelay(
 			t.Cfg.StorageConfig.IndexCacheValidity,
-			resyncInterval,
+			shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs),
 		),
 	)
 
@@ -1070,6 +1062,9 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		sort.Slice(schemas.Configs, func(i, j int) bool {
 			return schemas.Configs[i].From.UnixNano() < schemas.Configs[j].From.UnixNano()
 		})
+		for _, cfg := range schemas.Configs {
+			level.Debug(util_log.Logger).Log("msg", "schema config", "from", cfg.From, "row_shards", cfg.RowShards, "index_type", cfg.IndexType, "object_store", cfg.ObjectType, "schema", cfg.Schema)
+		}
 	}
 
 	middleware, stopper, err := queryrange.NewMiddleware(
@@ -1531,7 +1526,17 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		}
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, deleteRequestStoreClient, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
+	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs))
+	t.compactor, err = compactor.NewCompactor(
+		t.Cfg.CompactorConfig,
+		objectClients,
+		deleteRequestStoreClient,
+		t.Cfg.SchemaConfig,
+		t.Overrides,
+		indexUpdatePropagationMaxDelay,
+		prometheus.DefaultRegisterer,
+		t.Cfg.MetricsNamespace,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1951,7 +1956,7 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 
 func (t *Loki) initUI() (services.Service, error) {
 	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
-	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"))
+	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -2003,7 +2008,7 @@ func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
 	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
+		return deletion.NewNoOpDeleteRequestsClient(), nil
 	}
 
 	compactorAddress, isGRPCAddress, err := t.compactorAddress()
@@ -2094,6 +2099,25 @@ func shipperIngesterIndexUploadDelay() time.Duration {
 // avoid missing any logs or chunk ids due to async nature of shipper.
 func shipperMinIngesterQueryStoreDuration(maxChunkAge, querierUpdateDelay time.Duration) time.Duration {
 	return maxChunkAge + shipperIngesterIndexUploadDelay() + querierUpdateDelay + 5*time.Minute
+}
+
+// shipperResyncInterval returns the resync interval for the active shipper index type i.e boltdb-shipper | tsdb
+func shipperResyncInterval(storageConfig storage.Config, schemaConfigs []config.PeriodConfig) time.Duration {
+	shipperConfigIdx := config.ActivePeriodConfig(schemaConfigs)
+	iTy := schemaConfigs[shipperConfigIdx].IndexType
+	if iTy != types.BoltDBShipperType && iTy != types.TSDBType {
+		shipperConfigIdx++
+	}
+
+	var resyncInterval time.Duration
+	switch schemaConfigs[shipperConfigIdx].IndexType {
+	case types.BoltDBShipperType:
+		resyncInterval = storageConfig.BoltDBShipperConfig.ResyncInterval
+	case types.TSDBType:
+		resyncInterval = storageConfig.TSDBShipperConfig.ResyncInterval
+	}
+
+	return resyncInterval
 }
 
 // NewServerService constructs service from Server component.

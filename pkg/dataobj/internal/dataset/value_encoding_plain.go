@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"unsafe"
@@ -95,8 +96,34 @@ func (dec *plainDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_PLAIN
 }
 
-// Decode decodes a string.
-func (dec *plainDecoder) Decode() (Value, error) {
+// Decode decodes up to len(s) values, storing the results into s. The
+// number of decoded values is returned, followed by an error (if any).
+// At the end of the stream, Decode returns 0, [io.EOF].
+func (dec *plainDecoder) Decode(s []Value) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+
+	var err error
+	var v Value
+
+	for i := range s {
+		v, err = dec.decode()
+		if errors.Is(err, io.EOF) {
+			if i == 0 {
+				return 0, io.EOF
+			}
+			return i, nil
+		} else if err != nil {
+			return i, err
+		}
+		s[i] = v
+	}
+	return len(s), nil
+}
+
+// decode decodes a string.
+func (dec *plainDecoder) decode() (Value, error) {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
 		return StringValue(""), err

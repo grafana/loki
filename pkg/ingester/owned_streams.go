@@ -43,7 +43,7 @@ func (s *ownedStreamService) getOwnedStreamCount() int {
 	return int(s.ownedStreamCount.Load())
 }
 
-func (s *ownedStreamService) updateFixedLimit() (old, new int32) {
+func (s *ownedStreamService) updateFixedLimit() (old, newVal int32) {
 	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
 	return s.fixedLimit.Swap(int32(newLimit)), int32(newLimit)
 

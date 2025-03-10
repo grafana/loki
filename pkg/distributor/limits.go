@@ -39,6 +39,7 @@ type Limits interface {
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
+	BlockIngestionPolicyUntil(userID string, policy string) time.Time
 	EnforcedLabels(userID string) []string
 	PolicyEnforcedLabels(userID string, policy string) []string
 

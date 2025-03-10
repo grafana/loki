@@ -3,6 +3,7 @@ import { ExplorerData, ExplorerFile } from "@/types/explorer";
 import { useCluster } from "@/contexts/use-cluster";
 import { useMemo } from "react";
 import { findNodeName } from "@/lib/utils";
+import { absolutePath } from "@/util";
 
 // mux.HandleFunc("/api/v1/dataobj/list", s.handleList)
 // mux.HandleFunc("/api/v1/dataobj/inspect", s.handleInspect)
@@ -23,9 +24,11 @@ export function useExplorerData(path: string) {
         throw new Error("Node name not found");
       }
       const response = await fetch(
-        `/ui/api/v1/proxy/${nodeName}/dataobj/api/v1/list?path=${encodeURIComponent(
-          path
-        )}`
+        absolutePath(
+          `/api/v1/proxy/${nodeName}/dataobj/api/v1/list?path=${encodeURIComponent(
+            path
+          )}`
+        )
       );
       if (!response.ok) {
         throw new Error("Failed to fetch explorer data");
@@ -35,9 +38,11 @@ export function useExplorerData(path: string) {
         ...data,
         files: sortFilesByDate(data.files).map((file) => ({
           ...file,
-          downloadUrl: `/api/v1/proxy/${nodeName}/dataobj/api/v1/download?file=${encodeURIComponent(
-            path ? `${path}/${file.name}` : file.name
-          )}`,
+          downloadUrl: absolutePath(
+            `/api/v1/proxy/${nodeName}/dataobj/api/v1/download?file=${encodeURIComponent(
+              path ? `${path}/${file.name}` : file.name
+            )}`
+          ),
         })),
       };
     },

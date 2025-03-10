@@ -4,6 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { absolutePath } from "@/util";
 
 interface PprofControlsProps {
   nodeName: string;
@@ -70,7 +71,10 @@ const pprofTypes = [
 
 export function PprofControls({ nodeName }: PprofControlsProps) {
   const downloadPprof = (type: string) => {
-    window.open(`/ui/api/v1/proxy/${nodeName}/debug/pprof/${type}`, "_blank");
+    window.open(
+      absolutePath(`/api/v1/proxy/${nodeName}/debug/pprof/${type}`),
+      "_blank"
+    );
   };
 
   return (

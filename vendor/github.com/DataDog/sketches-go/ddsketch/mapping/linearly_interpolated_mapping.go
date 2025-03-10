@@ -119,6 +119,12 @@ func (m *LinearlyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
+func (m *LinearlyInterpolatedMapping) EncodeProto(builder *sketchpb.IndexMappingBuilder) {
+	builder.SetGamma(m.gamma)
+	builder.SetIndexOffset(m.indexOffset)
+	builder.SetInterpolation(uint64(sketchpb.IndexMapping_LINEAR))
+}
+
 func (m *LinearlyInterpolatedMapping) Encode(b *[]byte) {
 	enc.EncodeFlag(b, enc.FlagIndexMappingBaseLinear)
 	enc.EncodeFloat64LE(b, m.gamma)

@@ -88,7 +88,7 @@ func PublicSuffix(domain string) (publicSuffix string, icann bool) {
 	s, suffix, icannNode, wildcard := domain, len(domain), false, false
 loop:
 	for {
-		dot := strings.LastIndex(s, ".")
+		dot := strings.LastIndexByte(s, '.')
 		if wildcard {
 			icann = icannNode
 			suffix = 1 + dot
@@ -129,7 +129,7 @@ loop:
 	}
 	if suffix == len(domain) {
 		// If no rules match, the prevailing rule is "*".
-		return domain[1+strings.LastIndex(domain, "."):], icann
+		return domain[1+strings.LastIndexByte(domain, '.'):], icann
 	}
 	return domain[suffix:], icann
 }
@@ -178,26 +178,28 @@ func EffectiveTLDPlusOne(domain string) (string, error) {
 	if domain[i] != '.' {
 		return "", fmt.Errorf("publicsuffix: invalid public suffix %q for domain %q", suffix, domain)
 	}
-	return domain[1+strings.LastIndex(domain[:i], "."):], nil
+	return domain[1+strings.LastIndexByte(domain[:i], '.'):], nil
 }
 
 type uint32String string
 
 func (u uint32String) get(i uint32) uint32 {
 	off := i * 4
-	return (uint32(u[off])<<24 |
-		uint32(u[off+1])<<16 |
-		uint32(u[off+2])<<8 |
-		uint32(u[off+3]))
+	u = u[off:] // help the compiler reduce bounds checks
+	return uint32(u[3]) |
+		uint32(u[2])<<8 |
+		uint32(u[1])<<16 |
+		uint32(u[0])<<24
 }
 
 type uint40String string
 
 func (u uint40String) get(i uint32) uint64 {
 	off := uint64(i * (nodesBits / 8))
-	return uint64(u[off])<<32 |
-		uint64(u[off+1])<<24 |
-		uint64(u[off+2])<<16 |
-		uint64(u[off+3])<<8 |
-		uint64(u[off+4])
+	u = u[off:] // help the compiler reduce bounds checks
+	return uint64(u[4]) |
+		uint64(u[3])<<8 |
+		uint64(u[2])<<16 |
+		uint64(u[1])<<24 |
+		uint64(u[0])<<32
 }
