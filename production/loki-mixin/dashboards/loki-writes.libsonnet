@@ -19,13 +19,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                             distributor: if $._config.meta_monitoring.enabled
                             then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'distributor'))],
                             ingester: if $._config.meta_monitoring.enabled
                             then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(ingester.*|partition-ingester.*)'))],
                             ingester_zone: if $._config.meta_monitoring.enabled
                             then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
                           },
 
                           local selector(matcherId) =

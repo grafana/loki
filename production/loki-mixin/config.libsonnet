@@ -78,6 +78,14 @@
       pod_prefix_matcher: '(loki.*|enterprise-logs)',
     },
 
+    sb: {
+      // Support Loki sible binary mode on dashboards
+      enabled: false,
+
+      // The matcher used to match the pod in single binary mode.
+      pod_matcher: 'loki',
+    },
+
     // Meta-monitoring related configuration
     meta_monitoring: {
       enabled: false,

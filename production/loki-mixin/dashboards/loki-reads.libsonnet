@@ -69,25 +69,25 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                            queryFrontend: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'query-frontend'))],
                            querier: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'querier'))],
                            ingester: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(ingester.*|partition-ingester.*)'))],
                            ingesterZoneAware: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(partition-ingester-.*|ingester-zone.*)'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(partition-ingester-.*|ingester-zone.*)'))],
                            querierOrIndexGateway: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(querier|index-gateway|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(querier|index-gateway)'))],
                            indexGateway: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(index-gateway|%s-backend|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'index-gateway'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'index-gateway'))],
                            bloomGateway: if $._config.meta_monitoring.enabled
                            then [utils.selector.re('job', '($namespace)/(bloom-gateway|%s-backend|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
+                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'bloom-gateway'))],
                          },
 
                          local selector(matcherId) =

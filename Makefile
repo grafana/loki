@@ -298,6 +298,7 @@ clients/cmd/promtail/promtail-debug:
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
 MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
+MIXIN_OUT_PATH_SB := production/loki-mixin-compiled-sb
 
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
@@ -310,6 +311,10 @@ else
 	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
+
+	@rm -rf $(MIXIN_OUT_PATH_SB) && mkdir $(MIXIN_OUT_PATH_SB)
+	@cd $(MIXIN_PATH) && jb install
+	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SB)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SB)/rules.yaml --directory $(MIXIN_OUT_PATH_SB)/dashboards ${MIXIN_PATH}/mixin-sb.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
