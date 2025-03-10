@@ -22,19 +22,43 @@ app.kubernetes.io/component: pattern-ingester
 {{- end }}
 
 {{/*
+pattern ingester livenessProbe
+*/}}
+{{- define "loki.patternIngester.livenessProbe" }}
+{{- if .Values.patternIngester.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.patternIngester.livenessProbe | nindent 2 }}
+{{- else if .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.loki.livenessProbe | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 pattern ingester readinessProbe
 */}}
-{{- define "loki.patternIngester.readinessProbe" -}}
-{{- with .Values.patternIngester.readinessProbe }}
+{{- define "loki.patternIngester.readinessProbe" }}
+{{- if .Values.patternIngester.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.patternIngester.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
+
+{{/*
+pattern ingester startupProbe
+*/}}
+{{- define "loki.patternIngester.startupProbe" }}
+{{- if .Values.patternIngester.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.patternIngester.startupProbe | nindent 2 }}
+{{- else if .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.loki.startupProbe | nindent 2 }}
+{{- end }}
+{{- end }}
 
 {{/*
 pattern ingester priority class name
