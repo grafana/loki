@@ -55,6 +55,10 @@ Parameters:
     Description: The S3 bucket to listen event notifications from.
     Type: String
     Default: ""
+  IAMRoleName:
+    Description: Name of the LambdaPromtailRole IAM Role.
+    Type: String
+    Default: "iam_for_lambda"
 
 Resources:
   LambdaPromtailRole:
@@ -89,7 +93,7 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource: !Sub 'arn:aws:s3:::${EventSourceS3Bucket}/*'
-      RoleName: iam_for_lambda
+      RoleName: !Ref IAMRoleName
   LambdaPromtailFunction:
     Type: AWS::Lambda::Function
     Properties:
