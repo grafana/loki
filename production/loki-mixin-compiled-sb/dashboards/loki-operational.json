@@ -1844,7 +1844,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -1940,7 +1940,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki.*\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
@@ -2537,7 +2537,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -2633,7 +2633,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki.*\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
@@ -3482,7 +3482,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"loki.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -3578,7 +3578,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"loki.*\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",

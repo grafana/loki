@@ -51,13 +51,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
                                  distributor: if $._config.meta_monitoring.enabled
                                  then [utils.selector.re('pod', '(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'distributor.*'))],
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s.*' % $._config.sb.pod_matcher else 'distributor.*'))],
                                  ingester: if $._config.meta_monitoring.enabled
                                  then [utils.selector.re('pod', '(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else '(ingester.*|partition-ingester.*)'))],
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s.*' % $._config.sb.pod_matcher else '(ingester.*|partition-ingester.*)'))],
                                  querier: if $._config.meta_monitoring.enabled
                                  then [utils.selector.re('pod', '(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s' % $._config.sb.pod_matcher else 'querier.*'))],
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else if $._config.sb.enabled then '%s.*' % $._config.sb.pod_matcher else 'querier.*'))],
                                  backend: [utils.selector.re('pod', '%s' % (if $._config.sb.enabled then '%s.*' % $._config.sb.pod_matcher else '%s-backend.*' % $._config.ssd.pod_prefix_matcher))],
                                },
                              }
