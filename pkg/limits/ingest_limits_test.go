@@ -11,31 +11,31 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestIngestLimits_GetStreamUsage(t *testing.T) {
 	tests := []struct {
-		name                   string
-		tenant                 string
-		partitions             []int32
-		streamHashes           []uint64
-		setupMetadata          map[string]map[int32][]streamMetadata
-		windowSize             time.Duration
+		name string
+
+		// Setup data.
+		assignedPartitionIDs []int32
+		metadata             map[string]map[int32][]streamMetadata
+		windowSize           time.Duration
+
+		// Request data for GetStreamUsage.
+		tenantID     string
+		partitionIDs []int32
+		streamHashes []uint64
+
+		// Expectations.
 		expectedActive         uint64
 		expectedUnknownStreams []uint64
-		assignedPartitions     map[int32]int64
 	}{
 		{
-			name:       "tenant not found",
-			tenant:     "tenant1",
-			partitions: []int32{0},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{4, 5},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "tenant not found",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant2": {
 					0: []streamMetadata{
 						{hash: 4, lastSeenAt: time.Now().UnixNano()},
@@ -43,18 +43,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					},
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 0,
+			windowSize:   time.Hour,
+			tenantID:     "tenant1",
+			partitionIDs: []int32{0},
+			streamHashes: []uint64{4, 5},
 		},
 		{
-			name:       "all streams active",
-			tenant:     "tenant1",
-			partitions: []int32{0},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{1, 2, 3, 4},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "all streams active",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -65,17 +62,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				},
 			},
 			windowSize:     time.Hour,
+			tenantID:       "tenant1",
+			partitionIDs:   []int32{0},
+			streamHashes:   []uint64{1, 2, 3, 4},
 			expectedActive: 4,
 		},
 		{
-			name:       "mixed active and expired streams",
-			tenant:     "tenant1",
-			partitions: []int32{0},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{1, 3, 5},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "mixed active and expired streams",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -87,15 +82,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				},
 			},
 			windowSize:     time.Hour,
+			tenantID:       "tenant1",
+			partitionIDs:   []int32{0},
+			streamHashes:   []uint64{1, 3, 5},
 			expectedActive: 3,
 		},
 		{
-			name:   "all streams expired",
-			tenant: "tenant1",
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "all streams expired",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()},
@@ -103,18 +98,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					},
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 0,
+			windowSize: time.Hour,
+			tenantID:   "tenant1",
 		},
 		{
-			name:       "empty stream hashes",
-			tenant:     "tenant1",
-			partitions: []int32{0},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "empty stream hashes",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -123,17 +113,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				},
 			},
 			windowSize:     time.Hour,
+			tenantID:       "tenant1",
+			partitionIDs:   []int32{0},
+			streamHashes:   []uint64{},
 			expectedActive: 2,
 		},
 		{
-			name:       "unknown streams requested",
-			tenant:     "tenant1",
-			partitions: []int32{0},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{6, 7, 8},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "unknown streams requested",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -145,19 +133,16 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				},
 			},
 			windowSize:             time.Hour,
+			tenantID:               "tenant1",
+			partitionIDs:           []int32{0},
+			streamHashes:           []uint64{6, 7, 8},
 			expectedActive:         5,
 			expectedUnknownStreams: []uint64{6, 7, 8},
 		},
 		{
-			name:       "multiple assigned partitions",
-			tenant:     "tenant1",
-			partitions: []int32{0, 1},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-				1: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{1, 2, 3, 4, 5},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "multiple assigned partitions",
+			assignedPartitionIDs: []int32{0, 1},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -170,18 +155,16 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					},
 				},
 			},
+			tenantID:       "tenant1",
+			partitionIDs:   []int32{0, 1},
+			streamHashes:   []uint64{1, 2, 3, 4, 5},
 			windowSize:     time.Hour,
 			expectedActive: 5,
 		},
 		{
-			name:       "multiple partitions with unasigned partitions",
-			tenant:     "tenant1",
-			partitions: []int32{0, 1},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			streamHashes: []uint64{1, 2, 3, 4, 5},
-			setupMetadata: map[string]map[int32][]streamMetadata{
+			name:                 "multiple partitions with unasigned partitions",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
 						{hash: 1, lastSeenAt: time.Now().UnixNano()},
@@ -190,6 +173,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				},
 			},
 			windowSize:             time.Hour,
+			tenantID:               "tenant1",
+			partitionIDs:           []int32{0, 1},
+			streamHashes:           []uint64{1, 2, 3, 4, 5},
 			expectedActive:         2,
 			expectedUnknownStreams: []uint64{3, 4, 5},
 		},
@@ -197,7 +183,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create IngestLimits instance with mock data
 			s := &IngestLimits{
 				cfg: Config{
 					WindowSize: tt.windowSize,
@@ -216,24 +201,28 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 						ObservePeriod:   100 * time.Millisecond,
 					},
 				},
-				logger:             log.NewNopLogger(),
-				metrics:            newMetrics(prometheus.NewRegistry()),
-				metadata:           tt.setupMetadata,
-				assignedPartitions: tt.assignedPartitions,
+				logger:           log.NewNopLogger(),
+				metrics:          newMetrics(prometheus.NewRegistry()),
+				metadata:         tt.metadata,
+				partitionManager: NewPartitionManager(log.NewNopLogger()),
 			}
-
-			// Create request
+			// Assign the Partition IDs.
+			partitions := make(map[string][]int32)
+			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
+			for _, partitionID := range tt.assignedPartitionIDs {
+				partitions["test"] = append(partitions["test"], partitionID)
+			}
+			s.partitionManager.Assign(context.Background(), nil, partitions)
+			// Call GetStreamUsage.
 			req := &logproto.GetStreamUsageRequest{
-				Tenant:       tt.tenant,
-				Partitions:   tt.partitions,
+				Tenant:       tt.tenantID,
+				Partitions:   tt.partitionIDs,
 				StreamHashes: tt.streamHashes,
 			}
-
-			// Call GetStreamUsage
 			resp, err := s.GetStreamUsage(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, tt.tenant, resp.Tenant)
+			require.Equal(t, tt.tenantID, resp.Tenant)
 			require.Equal(t, tt.expectedActive, resp.ActiveStreams)
 			require.Len(t, resp.UnknownStreams, len(tt.expectedUnknownStreams))
 		})
@@ -307,28 +296,32 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 
 func TestIngestLimits_UpdateMetadata(t *testing.T) {
 	tests := []struct {
-		name               string
-		tenant             string
-		partition          int32
-		metadata           *logproto.StreamMetadata
-		assignedPartitions map[int32]int64
-		lastSeenAt         time.Time
-		existingData       map[string]map[int32][]streamMetadata
-		expectedData       map[string]map[int32][]streamMetadata
+		name string
+
+		// Setup data.
+		assignedPartitionIDs []int32
+		metadata             map[string]map[int32][]streamMetadata
+
+		// The test case.
+		tenantID       string
+		partitionID    int32
+		lastSeenAt     time.Time
+		updateMetadata *logproto.StreamMetadata
+
+		// Expectations.
+		expected map[string]map[int32][]streamMetadata
 	}{
 		{
-			name:      "new tenant, new partition",
-			tenant:    "tenant1",
-			partition: 0,
-			metadata: &logproto.StreamMetadata{
+			name:                 "new tenant, new partition",
+			assignedPartitionIDs: []int32{0},
+			metadata:             map[string]map[int32][]streamMetadata{},
+			tenantID:             "tenant1",
+			partitionID:          0,
+			lastSeenAt:           time.Unix(100, 0),
+			updateMetadata: &logproto.StreamMetadata{
 				StreamHash: 123,
 			},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			lastSeenAt:   time.Unix(100, 0),
-			existingData: map[string]map[int32][]streamMetadata{},
-			expectedData: map[string]map[int32][]streamMetadata{
+			expected: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(100, 0).UnixNano()},
@@ -337,25 +330,22 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:      "existing tenant, new partition",
-			tenant:    "tenant1",
-			partition: 1,
-			metadata: &logproto.StreamMetadata{
-				StreamHash: 456,
-			},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-				1: time.Now().UnixNano(),
-			},
-			lastSeenAt: time.Unix(200, 0),
-			existingData: map[string]map[int32][]streamMetadata{
+			name:                 "existing tenant, new partition",
+			assignedPartitionIDs: []int32{0, 1},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(100, 0).UnixNano()},
 					},
 				},
 			},
-			expectedData: map[string]map[int32][]streamMetadata{
+			tenantID:    "tenant1",
+			partitionID: 1,
+			updateMetadata: &logproto.StreamMetadata{
+				StreamHash: 456,
+			},
+			lastSeenAt: time.Unix(200, 0),
+			expected: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(100, 0).UnixNano()},
@@ -367,24 +357,22 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:      "update existing stream",
-			tenant:    "tenant1",
-			partition: 0,
-			metadata: &logproto.StreamMetadata{
-				StreamHash: 123,
-			},
-			assignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-			lastSeenAt: time.Unix(300, 0),
-			existingData: map[string]map[int32][]streamMetadata{
+			name:                 "update existing stream",
+			assignedPartitionIDs: []int32{0},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(100, 0).UnixNano()},
 					},
 				},
 			},
-			expectedData: map[string]map[int32][]streamMetadata{
+			tenantID:    "tenant1",
+			partitionID: 0,
+			updateMetadata: &logproto.StreamMetadata{
+				StreamHash: 123,
+			},
+			lastSeenAt: time.Unix(300, 0),
+			expected: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(300, 0).UnixNano()},
@@ -393,17 +381,9 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			},
 		},
 		{
-			name:      "evict stream from partition",
-			tenant:    "tenant1",
-			partition: 0,
-			metadata: &logproto.StreamMetadata{
-				StreamHash: 123,
-			},
-			assignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
-			},
-			lastSeenAt: time.Unix(400, 0),
-			existingData: map[string]map[int32][]streamMetadata{
+			name:                 "evict stream from partition",
+			assignedPartitionIDs: []int32{1},
+			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 123, lastSeenAt: time.Unix(100, 0).UnixNano()},
@@ -411,7 +391,13 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 					},
 				},
 			},
-			expectedData: map[string]map[int32][]streamMetadata{
+			tenantID:    "tenant1",
+			partitionID: 0,
+			updateMetadata: &logproto.StreamMetadata{
+				StreamHash: 123,
+			},
+			lastSeenAt: time.Unix(400, 0),
+			expected: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: {
 						{hash: 456, lastSeenAt: time.Unix(200, 0).UnixNano()},
@@ -424,45 +410,21 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &IngestLimits{
-				assignedPartitions: tt.assignedPartitions,
-				metadata:           tt.existingData,
-				metrics:            newMetrics(prometheus.NewRegistry()),
+				metadata:         tt.metadata,
+				metrics:          newMetrics(prometheus.NewRegistry()),
+				partitionManager: NewPartitionManager(log.NewNopLogger()),
 			}
+			// Assign the Partition IDs.
+			partitions := make(map[string][]int32)
+			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
+			for _, partitionID := range tt.assignedPartitionIDs {
+				partitions["test"] = append(partitions["test"], partitionID)
+			}
+			s.partitionManager.Assign(context.Background(), nil, partitions)
 
-			s.updateMetadata(tt.metadata, tt.tenant, tt.partition, tt.lastSeenAt)
+			s.updateMetadata(tt.updateMetadata, tt.tenantID, tt.partitionID, tt.lastSeenAt)
 
-			require.Equal(t, tt.expectedData, s.metadata)
+			require.Equal(t, tt.expected, s.metadata)
 		})
 	}
-}
-
-func TestNewIngestLimits(t *testing.T) {
-	cfg := Config{
-		KafkaConfig: kafka.Config{
-			Topic: "test-topic",
-		},
-		WindowSize: time.Hour,
-		LifecyclerConfig: ring.LifecyclerConfig{
-			RingConfig: ring.Config{
-				KVStore: kv.Config{
-					Store: "inmemory",
-				},
-				ReplicationFactor: 1,
-			},
-			NumTokens:       1,
-			ID:              "test",
-			Zone:            "test",
-			FinalSleep:      0,
-			HeartbeatPeriod: 100 * time.Millisecond,
-			ObservePeriod:   100 * time.Millisecond,
-		},
-	}
-
-	s, err := NewIngestLimits(cfg, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
-	require.NotNil(t, s)
-	require.NotNil(t, s.client)
-	require.Equal(t, cfg, s.cfg)
-	require.NotNil(t, s.metadata)
-	require.NotNil(t, s.lifecycler)
 }
