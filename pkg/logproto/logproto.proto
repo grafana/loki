@@ -57,6 +57,27 @@ message StreamRatesResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
+  uint64 lineSize = 2;
+  uint64 structuredMetadataSize = 3;
+}
+
+service IngestLimitsFrontend {
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
+}
+
+message ExceedsLimitsRequest {
+  string tenant = 1;
+  repeated StreamMetadata streams = 2;
+}
+
+message ExceedsLimitsResponse {
+  string tenant = 1;
+  repeated RejectedStream rejectedStreams = 2;
+}
+
+message RejectedStream {
+  uint64 streamHash = 1;
+  string reason = 2;
 }
 
 service IngestLimits {
