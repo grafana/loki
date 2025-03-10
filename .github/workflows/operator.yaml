@@ -14,8 +14,6 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
@@ -31,8 +29,6 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
@@ -52,8 +48,6 @@ jobs:
     name: Build Manager
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
@@ -69,8 +63,6 @@ jobs:
     name: Build Broker
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
@@ -85,8 +77,6 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5

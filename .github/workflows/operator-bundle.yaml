@@ -14,8 +14,6 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-    - name: Install make
-      run: sudo apt-get install make
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
