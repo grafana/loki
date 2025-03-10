@@ -32,3 +32,5 @@ storage_config:
  aws:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
+   # when running MinIO on a Windows machine, you must override the default ":" chunk object key delimiter with for example a dash or underscore. Only required in this specific scenario
+   chunk_delimiter: "-"
