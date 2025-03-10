@@ -342,18 +342,15 @@ This guide assumes a provisioned EKS cluster.
    export AWS_REGION=<region of EKS cluster>
    ```
 
-4. Save the OIDC provider in an environment variable:
+4. Apply the Terraform module:
 
-   ```bash
-   oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+   ```sh
+   terraform apply \
+     -var=region="$AWS_REGION" \
+     -var=cluster_name=<EKS cluster> \
+     -var=namespace=<service account namespace>
+     -var=bucket_name=<s3 bucket name>
    ```
-
-   See the [IAM OIDC provider guide](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) for a guide for creating a provider.
-
-5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS cluster> -var oidc_id="$oidc_provider"`
-
-   Note, the bucket name defaults to `loki-data` but can be changed via the
-   `bucket_name` variable.
 
 ### Azure deployment (Azure Blob Storage Single Store)
 
