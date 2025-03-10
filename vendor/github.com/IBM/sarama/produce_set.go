@@ -164,9 +164,13 @@ func (ps *produceSet) buildRequest() *ProduceRequest {
 				rb := set.recordsToSend.RecordBatch
 				if len(rb.Records) > 0 {
 					rb.LastOffsetDelta = int32(len(rb.Records) - 1)
+					var maxTimestampDelta time.Duration
 					for i, record := range rb.Records {
 						record.OffsetDelta = int64(i)
+						maxTimestampDelta = max(maxTimestampDelta, record.TimestampDelta)
 					}
+					// Also set the MaxTimestamp similar to other clients.
+					rb.MaxTimestamp = rb.FirstTimestamp.Add(maxTimestampDelta)
 				}
 
 				// Set the batch as transactional when a transactionalID is set

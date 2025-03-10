@@ -290,7 +290,7 @@ func (e *engine) doAuditLogging(rpcData *rpcData, rule string, authorized bool) 
 		}
 	}
 
-	//TODO(gtcooke94) check if we need to log before creating the event
+	// TODO(gtcooke94) check if we need to log before creating the event
 	event := &audit.Event{
 		FullMethodName: rpcData.fullMethod,
 		Principal:      principal,

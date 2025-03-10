@@ -22,6 +22,18 @@ func (e *ProtoMarshaler) LogsSize(ld Logs) int {
 	return pb.Size()
 }
 
+func (e *ProtoMarshaler) ResourceLogsSize(rl ResourceLogs) int {
+	return rl.orig.Size()
+}
+
+func (e *ProtoMarshaler) ScopeLogsSize(sl ScopeLogs) int {
+	return sl.orig.Size()
+}
+
+func (e *ProtoMarshaler) LogRecordSize(lr LogRecord) int {
+	return lr.orig.Size()
+}
+
 var _ Unmarshaler = (*ProtoUnmarshaler)(nil)
 
 type ProtoUnmarshaler struct{}

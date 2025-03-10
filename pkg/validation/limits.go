@@ -227,11 +227,12 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time  `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                 `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string            `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	PolicyEnforcedLabels     map[string][]string `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4"`
-	PolicyStreamMapping      PolicyStreamMapping `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
+	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
+	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
+	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -515,14 +516,8 @@ func (l *Limits) Validate() error {
 	}
 
 	if l.PolicyStreamMapping != nil {
-		for policyName, policyStreams := range l.PolicyStreamMapping {
-			for idx, policyStream := range policyStreams {
-				matchers, err := syntax.ParseMatchers(policyStream.Selector, true)
-				if err != nil {
-					return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
-				}
-				l.PolicyStreamMapping[policyName][idx].Matchers = matchers
-			}
+		if err := l.PolicyStreamMapping.Validate(); err != nil {
+			return err
 		}
 	}
 
@@ -1122,12 +1117,35 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
+// BlockIngestionPolicyUntil returns the time until the ingestion policy is blocked for a given user.
+// Order of priority is: named policy block > global policy block. The global policy block is enforced
+// only if the policy is empty.
+func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time.Time {
+	limits := o.getOverridesForUser(userID)
+
+	if forPolicy, ok := limits.BlockIngestionPolicyUntil[policy]; ok {
+		return time.Time(forPolicy)
+	}
+
+	// We enforce the global policy on streams not matching any policy
+	if policy == "" {
+		if forPolicy, ok := limits.BlockIngestionPolicyUntil[GlobalPolicy]; ok {
+			return time.Time(forPolicy)
+		}
+	}
+
+	return time.Time{} // Zero time means no blocking
+}
+
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
 }
 
+// PolicyEnforcedLabels returns the labels enforced by the policy for a given user.
+// The output is the union of the global and policy specific labels.
 func (o *Overrides) PolicyEnforcedLabels(userID string, policy string) []string {
-	return o.getOverridesForUser(userID).PolicyEnforcedLabels[policy]
+	limits := o.getOverridesForUser(userID)
+	return append(limits.PolicyEnforcedLabels[GlobalPolicy], limits.PolicyEnforcedLabels[policy]...)
 }
 
 func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {

@@ -877,6 +877,12 @@ http {
     {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
 
+    {{- if .Values.loki.ui.gateway.enabled }}
+    location ^~ /ui {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
+    {{- end }}
+
     # Distributor
     location = /api/prom/push {
       proxy_pass       {{ $distributorUrl }}$request_uri;
@@ -1179,6 +1185,6 @@ azure:
   account_key: {{ .account_key }}
   {{- end }}
 {{- end }}
-prefix: {{ .prefix }}
+storage_prefix: {{ .storage_prefix }}
 {{- end }}
 {{- end }}

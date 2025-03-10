@@ -34,6 +34,7 @@ export interface ColumnInfo {
   metadata_size: number;
   values_count: number;
   pages: PageInfo[];
+  statistics?: ColumnStatistics;
 }
 
 export interface SectionMetadata {
@@ -48,4 +49,8 @@ export interface FileMetadataResponse {
   sections: SectionMetadata[];
   error?: string;
   lastModified: string;
+}
+
+interface ColumnStatistics {
+  cardinality_count?: number;
 }
