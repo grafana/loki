@@ -114,7 +114,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Chunk delimiter for blob ID to be used")
+	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Delimiter used to replace the default delimiter ':' in chunk IDs when storing chunks. This is mainly intended when you run a MinIO instance on a Windows machine. You should not change this value inflight.")
 	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
