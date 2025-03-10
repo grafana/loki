@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -23,8 +24,8 @@ func TestStore_SelectSeries(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -166,8 +167,8 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -234,8 +235,8 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
