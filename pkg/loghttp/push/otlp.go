@@ -153,6 +153,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
 		}
 
+		// this must be pushed to the end after log lines are also evaluated
 		if logPushRequestStreams {
 			var sb strings.Builder
 			sb.WriteString("{")
@@ -179,13 +180,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		lbs := modelLabelsSetToLabelsList(streamLabels)
 		totalBytesReceived := int64(0)
 
-		if _, ok := pushRequestsByStream[labelsStr]; !ok {
-			pushRequestsByStream[labelsStr] = logproto.Stream{
-				Labels: labelsStr,
+		// Create a stream with the resource labels if there are any
+		if len(streamLabels) > 0 {
+			if _, ok := pushRequestsByStream[labelsStr]; !ok {
+				pushRequestsByStream[labelsStr] = logproto.Stream{
+					Labels: labelsStr,
+				}
+				stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 			}
-			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
+		// Calculate resource attributes metadata size for stats
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
@@ -258,7 +263,41 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
-				entry := otlpLogToPushEntry(log, otlpConfig)
+				// Use the existing function that already handles log attributes properly
+				logLabels, entry := otlpLogToPushEntry(log, otlpConfig, logPushRequestStreams, pushedLabels)
+
+				// Combine resource labels with log labels if any log attributes were indexed
+				var entryLabelsStr string
+				var entryLbs labels.Labels
+
+				if len(logLabels) > 0 {
+					// Combine resource labels with log attributes
+					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
+					for k, v := range streamLabels {
+						combinedLabels[k] = v
+					}
+					for k, v := range logLabels {
+						combinedLabels[k] = v
+					}
+
+					if err := combinedLabels.Validate(); err != nil {
+						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
+						continue
+					}
+
+					entryLabelsStr = combinedLabels.String()
+					entryLbs = modelLabelsSetToLabelsList(combinedLabels)
+
+					if _, ok := pushRequestsByStream[entryLabelsStr]; !ok {
+						pushRequestsByStream[entryLabelsStr] = logproto.Stream{
+							Labels: entryLabelsStr,
+						}
+						stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(entryLbs)))
+					}
+				} else {
+					entryLabelsStr = labelsStr
+					entryLbs = lbs
+				}
 
 				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
 				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
@@ -270,22 +309,35 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
 				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
-				stream := pushRequestsByStream[labelsStr]
+				stream := pushRequestsByStream[entryLabelsStr]
 				stream.Entries = append(stream.Entries, entry)
-				pushRequestsByStream[labelsStr] = stream
+				pushRequestsByStream[entryLabelsStr] = stream
+
+				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
+				entryPolicy := streamResolver.PolicyFor(entryLbs)
 
 				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += metadataSize
-				if _, ok := stats.LogLinesBytes[policy]; !ok {
-					stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+
+				if _, ok := stats.StructuredMetadataBytes[entryPolicy]; !ok {
+					stats.StructuredMetadataBytes[entryPolicy] = make(map[time.Duration]int64)
 				}
-				stats.LogLinesBytes[policy][retentionPeriodForUser] += int64(len(entry.Line))
+				stats.StructuredMetadataBytes[entryPolicy][entryRetentionPeriod] += metadataSize
+
+				if _, ok := stats.LogLinesBytes[entryPolicy]; !ok {
+					stats.LogLinesBytes[entryPolicy] = make(map[time.Duration]int64)
+				}
+				stats.LogLinesBytes[entryPolicy][entryRetentionPeriod] += int64(len(entry.Line))
+
 				totalBytesReceived += metadataSize
 				totalBytesReceived += int64(len(entry.Line))
 
-				stats.PolicyNumLines[policy]++
+				stats.PolicyNumLines[entryPolicy]++
 				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
 					stats.MostRecentEntryTimestamp = entry.Timestamp
+				}
+
+				if tracker != nil && len(logLabels) > 0 {
+					tracker.ReceivedBytesAdd(ctx, userID, entryRetentionPeriod, entryLbs, float64(totalBytesReceived))
 				}
 			}
 
@@ -299,18 +351,23 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		Streams: make([]push.Stream, 0, len(pushRequestsByStream)),
 	}
 
+	// Include all streams that have entries or have labels
 	for _, stream := range pushRequestsByStream {
-		pr.Streams = append(pr.Streams, stream)
+		if len(stream.Entries) > 0 || len(stream.Labels) > 0 {
+			pr.Streams = append(pr.Streams, stream)
+		}
 	}
 
 	return pr
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
-func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig) push.Entry {
+func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushRequestStreams bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
 	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
+	logLabels := make(model.LabelSet)
+
 	logAttrs.Range(func(k string, v pcommon.Value) bool {
 		action := otlpConfig.ActionForLogAttribute(k)
 		if action == Drop {
@@ -320,6 +377,15 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig) push.Entry {
 		attributeAsLabels := attributeToLabels(k, v, "")
 		if action == StructuredMetadata {
 			structuredMetadata = append(structuredMetadata, attributeAsLabels...)
+		}
+
+		if action == IndexLabel {
+			for _, lbl := range attributeAsLabels {
+				logLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+				if logPushRequestStreams && pushedLabels != nil {
+					pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+				}
+			}
 		}
 
 		return true
@@ -372,7 +438,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig) push.Entry {
 		})
 	}
 
-	return push.Entry{
+	return logLabels, push.Entry{
 		Timestamp:          timestampFromLogRecord(log),
 		Line:               log.Body().AsString(),
 		StructuredMetadata: structuredMetadata,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -680,7 +681,8 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig)))
+			_, res := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			require.Equal(t, tc.expectedResp, res)
 		})
 	}
 }
@@ -834,4 +836,138 @@ func TestOtlpError(t *testing.T) {
 			require.EqualValues(t, 0, respStatus.Code)
 		})
 	}
+}
+
+func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config that indexes log attributes
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Override the LogAttributes to include IndexLabel action
+	customOTLPConfig.LogAttributes = []AttributesConfig{
+		{
+			// Index detected_level and log.level as labels
+			Action:     IndexLabel,
+			Attributes: []string{"detected_level", "log.level"},
+		},
+		{
+			// Keep other attributes as structured metadata
+			Action:     StructuredMetadata,
+			Attributes: []string{"trace_id", "error_code", "component"},
+		},
+	}
+
+	// Generate logs with different log.level attributes
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "info" level
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.Attributes().PutStr("detected_level", "info")
+		infoLog.Attributes().PutStr("trace_id", "abc123")
+
+		// Add log with "error" level
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.Attributes().PutStr("detected_level", "error")
+		errorLog.Attributes().PutStr("error_code", "500")
+
+		// Add log with "debug" level using log.level instead
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.Attributes().PutStr("log.level", "debug")
+		debugLog.Attributes().PutStr("component", "database")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(lbs labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each log level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected log level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for labels, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", labels)
+
+		if strings.Contains(labels, "detected_level=\"info\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(labels, "detected_level=\"error\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(labels, "log_level=\"debug\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	require.True(t, infoStreamFound, "Stream with info level not found")
+	require.True(t, errorStreamFound, "Stream with error level not found")
+	require.True(t, debugStreamFound, "Stream with debug level not found")
+
+	// Verify stats
+	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
 }

@@ -120,11 +120,11 @@ func (c *OTLPConfig) Validate() error {
 		}
 	}
 
-	for _, ac := range c.LogAttributes {
-		if ac.Action == IndexLabel {
-			return fmt.Errorf("%s action is only supported for resource_attributes", IndexLabel)
-		}
-	}
+	//for _, ac := range c.LogAttributes {
+	//	if ac.Action == IndexLabel {
+	//		return fmt.Errorf("%s action is only supported for resource_attributes", IndexLabel)
+	//	}
+	//}
 
 	return nil
 }
