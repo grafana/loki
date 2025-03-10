@@ -1735,6 +1735,8 @@ backend:
   extraEnvFrom: []
   # -- Init containers to add to the backend pods
   initContainers: []
+  # -- Containers to add to the backend pods
+  extraContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods

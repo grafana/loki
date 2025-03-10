@@ -1,9 +1,13 @@
 ---
 title: Query frontend example
-menuTitle:  
+menuTitle:
 description: Kubernetes query frontend example.
-weight:  200
+weight: 200
+aliases:
+  - ../../configuration/query-frontend/
+  - ../../configure/query-frontend/
 ---
+
 # Query frontend example
 
 ## Disclaimer
@@ -68,6 +72,7 @@ data:
 ```
 
 ### Frontend Service
+
 ```yaml
 apiVersion: v1
 kind: Service
@@ -79,10 +84,10 @@ metadata:
   namespace: <namespace>
 spec:
   ports:
-  - name: query-frontend-http
-    port: 3100
-    protocol: TCP
-    targetPort: 3100
+    - name: query-frontend-http
+      port: 3100
+      protocol: TCP
+      targetPort: 3100
   selector:
     name: query-frontend
   sessionAffinity: None
@@ -113,33 +118,33 @@ spec:
         name: query-frontend
     spec:
       containers:
-      - args:
-        - -config.file=/etc/loki/config.yaml
-        - -log.level=debug
-        - -target=query-frontend
-        image: grafana/loki:latest
-        imagePullPolicy: Always
-        name: query-frontend
-        ports:
-        - containerPort: 3100
-          name: http
-          protocol: TCP
-        resources:
-          limits:
-            memory: 1200Mi
-          requests:
-            cpu: "2"
-            memory: 600Mi
-        volumeMounts:
-        - mountPath: /etc/loki
-          name: loki-frontend
+        - args:
+            - -config.file=/etc/loki/config.yaml
+            - -log.level=debug
+            - -target=query-frontend
+          image: grafana/loki:latest
+          imagePullPolicy: Always
+          name: query-frontend
+          ports:
+            - containerPort: 3100
+              name: http
+              protocol: TCP
+          resources:
+            limits:
+              memory: 1200Mi
+            requests:
+              cpu: '2'
+              memory: 600Mi
+          volumeMounts:
+            - mountPath: /etc/loki
+              name: loki-frontend
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
       volumes:
-      - configMap:
-          defaultMode: 420
+        - configMap:
+            defaultMode: 420
+            name: loki-frontend
           name: loki-frontend
-        name: loki-frontend
 ```
 
 ### Grafana
@@ -151,13 +156,13 @@ Once you've deployed these, point your Grafana data source to the new frontend s
 The query frontend operates in one of two ways:
 
 - Specify `--frontend.downstream-url` or its YAML equivalent, `frontend.downstream_url`. This proxies requests over HTTP to the specified URL.
--  Without `--frontend.downstream-url` or its yaml equivalent `frontend.downstream_url`, the query frontend defaults to a pull service. As a pull service, the frontend instantiates per-tenant queues that downstream queriers pull queries from via GRPC. To act as a pull service, queriers need to specify `-querier.frontend-address` or its YAML equivalent `frontend_worker.frontend_address`.
+- Without `--frontend.downstream-url` or its yaml equivalent `frontend.downstream_url`, the query frontend defaults to a pull service. As a pull service, the frontend instantiates per-tenant queues that downstream queriers pull queries from via GRPC. To act as a pull service, queriers need to specify `-querier.frontend-address` or its YAML equivalent `frontend_worker.frontend_address`.
 
-    Set `ClusterIP=None` for the query frontend pull service.
-    This causes DNS resolution of each query frontend pod IP address.
-    It avoids wrongly resolving to the service IP.
+  Set `ClusterIP=None` for the query frontend pull service.
+  This causes DNS resolution of each query frontend pod IP address.
+  It avoids wrongly resolving to the service IP.
 
-    Enable `publishNotReadyAddresses=true` on the query frontend pull service.
-    Doing so eliminates a race condition in which the query frontend address
-    is needed before the query frontend becomes ready
-    when at least one querier connects.
+  Enable `publishNotReadyAddresses=true` on the query frontend pull service.
+  Doing so eliminates a race condition in which the query frontend address
+  is needed before the query frontend becomes ready
+  when at least one querier connects.

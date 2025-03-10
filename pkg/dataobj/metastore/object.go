@@ -276,7 +276,7 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate dataob
 		}
 		for {
 			num, err := reader.Read(ctx, streams)
-			if err != io.EOF {
+			if err != nil && err != io.EOF {
 				return err
 			}
 			if num == 0 && err == io.EOF {

@@ -24,9 +24,9 @@ A typical Loki-based logging stack consists of 3 components:
 
 - **Agent** - An agent or client, for example Grafana Alloy, or Promtail, which is distributed with Loki. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
 
-- **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]({{< relref "../get-started/deployment-modes" >}}).
+- **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes](../deployment-modes/).
   
-- **[Grafana](https://github.com/grafana/grafana)** for querying and displaying log data. You can also query logs from the command line, using [LogCLI]({{< relref "../query/logcli" >}}) or using the Loki API directly.
+- **[Grafana](https://github.com/grafana/grafana)** for querying and displaying log data. You can also query logs from the command line, using [LogCLI](../../query/logcli/) or using the Loki API directly.
 
 ## Loki features
 
@@ -35,7 +35,7 @@ In its most common deployment, “simple scalable mode”, Loki decouples reques
 If needed, each of the Loki components can also be run as microservices designed to run natively within Kubernetes.
 
 - **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
-Multi-tenancy is [configured]({{< relref "../operations/multi-tenancy" >}}) by assigning a tenant ID in the agent.
+Multi-tenancy is [configured](../../operations/multi-tenancy/) by assigning a tenant ID in the agent.
 
 - **Third-party integrations** - Several third-party agents (clients) have support for Loki, via plugins. This lets you keep your existing observability setup while also shipping logs to Loki.
 
@@ -44,10 +44,10 @@ Similarly, the Loki index, because it indexes only the set of labels, is signifi
 By leveraging object storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying object store. It also capitalizes on both the cost efficiency and operational simplicity of object storage over other storage mechanisms like locally attached solid state drives (SSD) and hard disk drives (HDD).  
 The compressed chunks, smaller index, and use of low-cost object storage, make Loki less expensive to operate.
 
-- **LogQL, the Loki query language** - [LogQL]({{< relref "../query" >}}) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.
+- **LogQL, the Loki query language** - [LogQL](../../query/) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.
 The language also facilitates the generation of metrics from log data,
 a powerful feature that goes well beyond log aggregation.
 
-- **Alerting** - Loki includes a component called the [ruler]({{< relref "../alert" >}}), which can continually evaluate queries against your logs, and perform an action based on the result. This allows you to monitor your logs for anomalies or events. Loki integrates with [Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/), or the [alert manager](/docs/grafana/latest/alerting) within Grafana.
+- **Alerting** - Loki includes a component called the [ruler](../../alert/), which can continually evaluate queries against your logs, and perform an action based on the result. This allows you to monitor your logs for anomalies or events. Loki integrates with [Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/), or the [alert manager](/docs/grafana/latest/alerting) within Grafana.
 
 - **Grafana integration** - Loki integrates with Grafana, Mimir, and Tempo, providing a complete observability stack, and seamless correlation between logs, metrics and traces.

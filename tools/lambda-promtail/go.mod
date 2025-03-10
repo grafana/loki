@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.1
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/snappy v0.0.4
+	github.com/golang/snappy v1.0.0
 	github.com/grafana/dskit v0.0.0-20241007172036-53283a0f6b41
 	github.com/grafana/loki/v3 v3.4.2
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc

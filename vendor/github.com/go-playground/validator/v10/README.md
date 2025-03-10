@@ -1,7 +1,7 @@
 Package validator
 =================
 <img align="right" src="logo.png">[![Join the chat at https://gitter.im/go-playground/validator](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/go-playground/validator?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-![Project status](https://img.shields.io/badge/version-10.19.0-green.svg)
+![Project status](https://img.shields.io/badge/version-10.24.0-green.svg)
 [![Build Status](https://travis-ci.org/go-playground/validator.svg?branch=master)](https://travis-ci.org/go-playground/validator)
 [![Coverage Status](https://coveralls.io/repos/go-playground/validator/badge.svg?branch=master&service=github)](https://coveralls.io/github/go-playground/validator?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-playground/validator)](https://goreportcard.com/report/github.com/go-playground/validator)
@@ -21,6 +21,11 @@ It has the following **unique** features:
 -   Extraction of custom defined Field Name e.g. can specify to extract the JSON name while validating and have it available in the resulting FieldError
 -   Customizable i18n aware error messages.
 -   Default validator for the [gin](https://github.com/gin-gonic/gin) web framework; upgrading from v8 to v9 in gin see [here](https://github.com/go-playground/validator/tree/master/_examples/gin-upgrading-overriding)
+
+A Call for Maintainers
+----------------------
+
+Please read the discussiong started [here](https://github.com/go-playground/validator/discussions/1330) if you are interested in contributing/helping maintain this package.
 
 Installation
 ------------
@@ -163,6 +168,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | btc_addr_bech32 | Bitcoin Bech32 Address (segwit) |
 | credit_card | Credit Card Number |
 | mongodb | MongoDB ObjectID |
+| mongodb_connection_string | MongoDB Connection String |
 | cron | Cron |
 | spicedb | SpiceDb ObjectID/Permission/Type |
 | datetime | Datetime |
@@ -265,74 +271,75 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 
 Benchmarks
 ------
-###### Run on MacBook Pro (15-inch, 2017) go version go1.10.2 darwin/amd64
+###### Run on MacBook Pro Max M3
 ```go
-go version go1.21.0 darwin/arm64
+go version go1.23.3 darwin/arm64
 goos: darwin
 goarch: arm64
+cpu: Apple M3 Max
 pkg: github.com/go-playground/validator/v10
-BenchmarkFieldSuccess-8                                         33142266                35.94 ns/op            0 B/op          0 allocs/op
-BenchmarkFieldSuccessParallel-8                                 200816191                6.568 ns/op           0 B/op          0 allocs/op
-BenchmarkFieldFailure-8                                          6779707               175.1 ns/op           200 B/op          4 allocs/op
-BenchmarkFieldFailureParallel-8                                 11044147               108.4 ns/op           200 B/op          4 allocs/op
-BenchmarkFieldArrayDiveSuccess-8                                 6054232               194.4 ns/op            97 B/op          5 allocs/op
-BenchmarkFieldArrayDiveSuccessParallel-8                        12523388                94.07 ns/op           97 B/op          5 allocs/op
-BenchmarkFieldArrayDiveFailure-8                                 3587043               334.3 ns/op           300 B/op         10 allocs/op
-BenchmarkFieldArrayDiveFailureParallel-8                         5816665               200.8 ns/op           300 B/op         10 allocs/op
-BenchmarkFieldMapDiveSuccess-8                                   2217910               540.1 ns/op           288 B/op         14 allocs/op
-BenchmarkFieldMapDiveSuccessParallel-8                           4446698               258.7 ns/op           288 B/op         14 allocs/op
-BenchmarkFieldMapDiveFailure-8                                   2392759               504.6 ns/op           376 B/op         13 allocs/op
-BenchmarkFieldMapDiveFailureParallel-8                           4244199               286.9 ns/op           376 B/op         13 allocs/op
-BenchmarkFieldMapDiveWithKeysSuccess-8                           2005857               592.1 ns/op           288 B/op         14 allocs/op
-BenchmarkFieldMapDiveWithKeysSuccessParallel-8                   4400850               296.9 ns/op           288 B/op         14 allocs/op
-BenchmarkFieldMapDiveWithKeysFailure-8                           1850227               643.8 ns/op           553 B/op         16 allocs/op
-BenchmarkFieldMapDiveWithKeysFailureParallel-8                   3293233               375.1 ns/op           553 B/op         16 allocs/op
-BenchmarkFieldCustomTypeSuccess-8                               12174412                98.25 ns/op           32 B/op          2 allocs/op
-BenchmarkFieldCustomTypeSuccessParallel-8                       34389907                35.49 ns/op           32 B/op          2 allocs/op
-BenchmarkFieldCustomTypeFailure-8                                7582524               156.6 ns/op           184 B/op          3 allocs/op
-BenchmarkFieldCustomTypeFailureParallel-8                       13019902                92.79 ns/op          184 B/op          3 allocs/op
-BenchmarkFieldOrTagSuccess-8                                     3427260               349.4 ns/op            16 B/op          1 allocs/op
-BenchmarkFieldOrTagSuccessParallel-8                            15144128                81.25 ns/op           16 B/op          1 allocs/op
-BenchmarkFieldOrTagFailure-8                                     5913546               201.9 ns/op           216 B/op          5 allocs/op
-BenchmarkFieldOrTagFailureParallel-8                             9810212               113.7 ns/op           216 B/op          5 allocs/op
-BenchmarkStructLevelValidationSuccess-8                         13456327                87.66 ns/op           16 B/op          1 allocs/op
-BenchmarkStructLevelValidationSuccessParallel-8                 41818888                27.77 ns/op           16 B/op          1 allocs/op
-BenchmarkStructLevelValidationFailure-8                          4166284               272.6 ns/op           264 B/op          7 allocs/op
-BenchmarkStructLevelValidationFailureParallel-8                  7594581               152.1 ns/op           264 B/op          7 allocs/op
-BenchmarkStructSimpleCustomTypeSuccess-8                         6508082               182.6 ns/op            32 B/op          2 allocs/op
-BenchmarkStructSimpleCustomTypeSuccessParallel-8                23078605                54.78 ns/op           32 B/op          2 allocs/op
-BenchmarkStructSimpleCustomTypeFailure-8                         3118352               381.0 ns/op           416 B/op          9 allocs/op
-BenchmarkStructSimpleCustomTypeFailureParallel-8                 5300738               224.1 ns/op           432 B/op         10 allocs/op
-BenchmarkStructFilteredSuccess-8                                 4761807               251.1 ns/op           216 B/op          5 allocs/op
-BenchmarkStructFilteredSuccessParallel-8                         8792598               128.6 ns/op           216 B/op          5 allocs/op
-BenchmarkStructFilteredFailure-8                                 5202573               232.1 ns/op           216 B/op          5 allocs/op
-BenchmarkStructFilteredFailureParallel-8                         9591267               121.4 ns/op           216 B/op          5 allocs/op
-BenchmarkStructPartialSuccess-8                                  5188512               231.6 ns/op           224 B/op          4 allocs/op
-BenchmarkStructPartialSuccessParallel-8                          9179776               123.1 ns/op           224 B/op          4 allocs/op
-BenchmarkStructPartialFailure-8                                  3071212               392.5 ns/op           440 B/op          9 allocs/op
-BenchmarkStructPartialFailureParallel-8                          5344261               223.7 ns/op           440 B/op          9 allocs/op
-BenchmarkStructExceptSuccess-8                                   3184230               375.0 ns/op           424 B/op          8 allocs/op
-BenchmarkStructExceptSuccessParallel-8                          10090130               108.9 ns/op           208 B/op          3 allocs/op
-BenchmarkStructExceptFailure-8                                   3347226               357.7 ns/op           424 B/op          8 allocs/op
-BenchmarkStructExceptFailureParallel-8                           5654923               209.5 ns/op           424 B/op          8 allocs/op
-BenchmarkStructSimpleCrossFieldSuccess-8                         5232265               229.1 ns/op            56 B/op          3 allocs/op
-BenchmarkStructSimpleCrossFieldSuccessParallel-8                17436674                64.75 ns/op           56 B/op          3 allocs/op
-BenchmarkStructSimpleCrossFieldFailure-8                         3128613               383.6 ns/op           272 B/op          8 allocs/op
-BenchmarkStructSimpleCrossFieldFailureParallel-8                 6994113               168.8 ns/op           272 B/op          8 allocs/op
-BenchmarkStructSimpleCrossStructCrossFieldSuccess-8              3506487               340.9 ns/op            64 B/op          4 allocs/op
-BenchmarkStructSimpleCrossStructCrossFieldSuccessParallel-8     13431300                91.77 ns/op           64 B/op          4 allocs/op
-BenchmarkStructSimpleCrossStructCrossFieldFailure-8              2410566               500.9 ns/op           288 B/op          9 allocs/op
-BenchmarkStructSimpleCrossStructCrossFieldFailureParallel-8      6344510               188.2 ns/op           288 B/op          9 allocs/op
-BenchmarkStructSimpleSuccess-8                                   8922726               133.8 ns/op             0 B/op          0 allocs/op
-BenchmarkStructSimpleSuccessParallel-8                          55291153                23.63 ns/op            0 B/op          0 allocs/op
-BenchmarkStructSimpleFailure-8                                   3171553               378.4 ns/op           416 B/op          9 allocs/op
-BenchmarkStructSimpleFailureParallel-8                           5571692               212.0 ns/op           416 B/op          9 allocs/op
-BenchmarkStructComplexSuccess-8                                  1683750               714.5 ns/op           224 B/op          5 allocs/op
-BenchmarkStructComplexSuccessParallel-8                          4578046               257.0 ns/op           224 B/op          5 allocs/op
-BenchmarkStructComplexFailure-8                                   481585              2547 ns/op            3041 B/op         48 allocs/op
-BenchmarkStructComplexFailureParallel-8                           965764              1577 ns/op            3040 B/op         48 allocs/op
-BenchmarkOneof-8                                                17380881                68.50 ns/op            0 B/op          0 allocs/op
-BenchmarkOneofParallel-8                                         8084733               153.5 ns/op             0 B/op          0 allocs/op
+BenchmarkFieldSuccess-16                                                42461943                27.88 ns/op            0 B/op          0 allocs/op
+BenchmarkFieldSuccessParallel-16                                        486632887                2.289 ns/op           0 B/op          0 allocs/op
+BenchmarkFieldFailure-16                                                 9566167               121.3 ns/op           200 B/op          4 allocs/op
+BenchmarkFieldFailureParallel-16                                        17551471                83.68 ns/op          200 B/op          4 allocs/op
+BenchmarkFieldArrayDiveSuccess-16                                        7602306               155.6 ns/op            97 B/op          5 allocs/op
+BenchmarkFieldArrayDiveSuccessParallel-16                               20664610                59.80 ns/op           97 B/op          5 allocs/op
+BenchmarkFieldArrayDiveFailure-16                                        4659756               252.9 ns/op           301 B/op         10 allocs/op
+BenchmarkFieldArrayDiveFailureParallel-16                                8010116               152.9 ns/op           301 B/op         10 allocs/op
+BenchmarkFieldMapDiveSuccess-16                                          2834575               421.2 ns/op           288 B/op         14 allocs/op
+BenchmarkFieldMapDiveSuccessParallel-16                                  7179700               171.8 ns/op           288 B/op         14 allocs/op
+BenchmarkFieldMapDiveFailure-16                                          3081728               384.4 ns/op           376 B/op         13 allocs/op
+BenchmarkFieldMapDiveFailureParallel-16                                  6058137               204.0 ns/op           377 B/op         13 allocs/op
+BenchmarkFieldMapDiveWithKeysSuccess-16                                  2544975               464.8 ns/op           288 B/op         14 allocs/op
+BenchmarkFieldMapDiveWithKeysSuccessParallel-16                          6661954               181.4 ns/op           288 B/op         14 allocs/op
+BenchmarkFieldMapDiveWithKeysFailure-16                                  2435484               490.7 ns/op           553 B/op         16 allocs/op
+BenchmarkFieldMapDiveWithKeysFailureParallel-16                          4249617               282.0 ns/op           554 B/op         16 allocs/op
+BenchmarkFieldCustomTypeSuccess-16                                      14943525                77.35 ns/op           32 B/op          2 allocs/op
+BenchmarkFieldCustomTypeSuccessParallel-16                              64051954                20.61 ns/op           32 B/op          2 allocs/op
+BenchmarkFieldCustomTypeFailure-16                                      10721384               107.1 ns/op           184 B/op          3 allocs/op
+BenchmarkFieldCustomTypeFailureParallel-16                              18714495                69.77 ns/op          184 B/op          3 allocs/op
+BenchmarkFieldOrTagSuccess-16                                            4063124               294.3 ns/op            16 B/op          1 allocs/op
+BenchmarkFieldOrTagSuccessParallel-16                                   31903756                41.22 ns/op           18 B/op          1 allocs/op
+BenchmarkFieldOrTagFailure-16                                            7748558               146.8 ns/op           216 B/op          5 allocs/op
+BenchmarkFieldOrTagFailureParallel-16                                   13139854                92.05 ns/op          216 B/op          5 allocs/op
+BenchmarkStructLevelValidationSuccess-16                                16808389                70.25 ns/op           16 B/op          1 allocs/op
+BenchmarkStructLevelValidationSuccessParallel-16                        90686955                14.47 ns/op           16 B/op          1 allocs/op
+BenchmarkStructLevelValidationFailure-16                                 5818791               200.2 ns/op           264 B/op          7 allocs/op
+BenchmarkStructLevelValidationFailureParallel-16                        11115874               107.5 ns/op           264 B/op          7 allocs/op
+BenchmarkStructSimpleCustomTypeSuccess-16                                7764956               151.9 ns/op            32 B/op          2 allocs/op
+BenchmarkStructSimpleCustomTypeSuccessParallel-16                       52316265                30.37 ns/op           32 B/op          2 allocs/op
+BenchmarkStructSimpleCustomTypeFailure-16                                4195429               277.2 ns/op           416 B/op          9 allocs/op
+BenchmarkStructSimpleCustomTypeFailureParallel-16                        7305661               164.6 ns/op           432 B/op         10 allocs/op
+BenchmarkStructFilteredSuccess-16                                        6312625               186.1 ns/op           216 B/op          5 allocs/op
+BenchmarkStructFilteredSuccessParallel-16                               13684459                93.42 ns/op          216 B/op          5 allocs/op
+BenchmarkStructFilteredFailure-16                                        6751482               171.2 ns/op           216 B/op          5 allocs/op
+BenchmarkStructFilteredFailureParallel-16                               14146070                86.93 ns/op          216 B/op          5 allocs/op
+BenchmarkStructPartialSuccess-16                                         6544448               177.3 ns/op           224 B/op          4 allocs/op
+BenchmarkStructPartialSuccessParallel-16                                13951946                88.73 ns/op          224 B/op          4 allocs/op
+BenchmarkStructPartialFailure-16                                         4075833               287.5 ns/op           440 B/op          9 allocs/op
+BenchmarkStructPartialFailureParallel-16                                 7490805               161.3 ns/op           440 B/op          9 allocs/op
+BenchmarkStructExceptSuccess-16                                          4107187               281.4 ns/op           424 B/op          8 allocs/op
+BenchmarkStructExceptSuccessParallel-16                                 15979173                80.86 ns/op          208 B/op          3 allocs/op
+BenchmarkStructExceptFailure-16                                          4434372               264.3 ns/op           424 B/op          8 allocs/op
+BenchmarkStructExceptFailureParallel-16                                  8081367               154.1 ns/op           424 B/op          8 allocs/op
+BenchmarkStructSimpleCrossFieldSuccess-16                                6459542               183.4 ns/op            56 B/op          3 allocs/op
+BenchmarkStructSimpleCrossFieldSuccessParallel-16                       41013781                37.95 ns/op           56 B/op          3 allocs/op
+BenchmarkStructSimpleCrossFieldFailure-16                                4034998               292.1 ns/op           272 B/op          8 allocs/op
+BenchmarkStructSimpleCrossFieldFailureParallel-16                       11348446               115.3 ns/op           272 B/op          8 allocs/op
+BenchmarkStructSimpleCrossStructCrossFieldSuccess-16                     4448528               267.7 ns/op            64 B/op          4 allocs/op
+BenchmarkStructSimpleCrossStructCrossFieldSuccessParallel-16            26813619                48.33 ns/op           64 B/op          4 allocs/op
+BenchmarkStructSimpleCrossStructCrossFieldFailure-16                     3090646               384.5 ns/op           288 B/op          9 allocs/op
+BenchmarkStructSimpleCrossStructCrossFieldFailureParallel-16             9870906               129.5 ns/op           288 B/op          9 allocs/op
+BenchmarkStructSimpleSuccess-16                                         10675562               109.5 ns/op             0 B/op          0 allocs/op
+BenchmarkStructSimpleSuccessParallel-16                                 131159784                8.932 ns/op           0 B/op          0 allocs/op
+BenchmarkStructSimpleFailure-16                                          4094979               286.6 ns/op           416 B/op          9 allocs/op
+BenchmarkStructSimpleFailureParallel-16                                  7606663               157.9 ns/op           416 B/op          9 allocs/op
+BenchmarkStructComplexSuccess-16                                         2073470               576.0 ns/op           224 B/op          5 allocs/op
+BenchmarkStructComplexSuccessParallel-16                                 7821831               161.3 ns/op           224 B/op          5 allocs/op
+BenchmarkStructComplexFailure-16                                          576358              2001 ns/op            3042 B/op         48 allocs/op
+BenchmarkStructComplexFailureParallel-16                                 1000000              1171 ns/op            3041 B/op         48 allocs/op
+BenchmarkOneof-16                                                       22503973                52.82 ns/op            0 B/op          0 allocs/op
+BenchmarkOneofParallel-16                                                8538474               140.4 ns/op             0 B/op          0 allocs/op
 ```
 
 Complementary Software
@@ -347,6 +354,20 @@ How to Contribute
 ------
 
 Make a pull request...
+
+Maintenance and support for SDK major versions
+----------------------------------------------
+
+See prior discussion [here](https://github.com/go-playground/validator/discussions/1342) for more details.
+
+This package is aligned with the [Go release policy](https://go.dev/doc/devel/release) in that support is guaranteed for 
+the two most recent major versions.
+
+This does not mean the package will not work with older versions of Go, only that we reserve the right to increase the 
+MSGV(Minimum Supported Go Version) when the need arises to address Security issues/patches, OS issues & support or newly 
+introduced functionality that would greatly benefit the maintenance and/or usage of this package.
+
+If and when the MSGV is increased it will be done so in a minimum of a `Minor` release bump.
 
 License
 -------

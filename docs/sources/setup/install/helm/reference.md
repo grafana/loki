@@ -324,6 +324,7 @@ This is the generated reference for the Loki Helm Chart values.
   },
   "dnsConfig": {},
   "extraArgs": [],
+  "extraContainers": [],
   "extraEnv": [],
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
@@ -450,6 +451,15 @@ null
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the backend pods</td>
 			<td><pre lang="json">
 []
 </pre>

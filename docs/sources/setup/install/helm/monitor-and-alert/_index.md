@@ -15,5 +15,5 @@ keywords:
 
 There are two common ways to monitor Loki:
 
-- [Monitor using Grafana Cloud (recommended)]({{< relref "./with-grafana-cloud" >}})
-- [Monitor using Local Monitoring]({{< relref "./with-local-monitoring" >}})
+- [Monitor using Grafana Cloud (recommended)](with-grafana-cloud/)
+- [Monitor using Local Monitoring](with-local-monitoring/)
