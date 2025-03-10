@@ -868,8 +868,20 @@ type ReplQNodeStats struct {
 	XferStats    map[MetricName]XferStats            `json:"transferSummary"`
 	TgtXferStats map[string]map[MetricName]XferStats `json:"tgtTransferStats"`
 
-	QStats   InQueueMetric `json:"queueStats"`
-	MRFStats ReplMRFStats  `json:"mrfStats"`
+	QStats   InQueueMetric  `json:"queueStats"`
+	MRFStats ReplMRFStats   `json:"mrfStats"`
+	Retries  CounterSummary `json:"retries"`
+	Errors   CounterSummary `json:"errors"`
+}
+
+// CounterSummary denotes the stats counter summary
+type CounterSummary struct {
+	// Counted last 1hr
+	Last1hr uint64 `json:"last1hr"`
+	// Counted last 1m
+	Last1m uint64 `json:"last1m"`
+	// Total counted since uptime
+	Total uint64 `json:"total"`
 }
 
 // ReplQueueStats holds stats for replication queue across nodes
@@ -914,8 +926,10 @@ type ReplQStats struct {
 	XferStats    map[MetricName]XferStats            `json:"xferStats"`
 	TgtXferStats map[string]map[MetricName]XferStats `json:"tgtXferStats"`
 
-	QStats   InQueueMetric `json:"qStats"`
-	MRFStats ReplMRFStats  `json:"mrfStats"`
+	QStats   InQueueMetric  `json:"qStats"`
+	MRFStats ReplMRFStats   `json:"mrfStats"`
+	Retries  CounterSummary `json:"retries"`
+	Errors   CounterSummary `json:"errors"`
 }
 
 // QStats returns cluster level stats for objects in replication queue
@@ -958,6 +972,12 @@ func (q ReplQueueStats) QStats() (r ReplQStats) {
 		r.MRFStats.LastFailedCount += node.MRFStats.LastFailedCount
 		r.MRFStats.TotalDroppedCount += node.MRFStats.TotalDroppedCount
 		r.MRFStats.TotalDroppedBytes += node.MRFStats.TotalDroppedBytes
+		r.Retries.Last1hr += node.Retries.Last1hr
+		r.Retries.Last1m += node.Retries.Last1m
+		r.Retries.Total += node.Retries.Total
+		r.Errors.Last1hr += node.Errors.Last1hr
+		r.Errors.Last1m += node.Errors.Last1m
+		r.Errors.Total += node.Errors.Total
 		r.Uptime += node.Uptime
 	}
 	if len(q.Nodes) > 0 {
@@ -971,4 +991,18 @@ type MetricsV2 struct {
 	Uptime       int64          `json:"uptime"`
 	CurrentStats Metrics        `json:"currStats"`
 	QueueStats   ReplQueueStats `json:"queueStats"`
+	DowntimeInfo DowntimeInfo   `json:"downtimeInfo"`
+}
+
+// DowntimeInfo represents the downtime info
+type DowntimeInfo struct {
+	Duration Stat `json:"duration"`
+	Count    Stat `json:"count"`
+}
+
+// Stat represents the aggregates
+type Stat struct {
+	Total int64 `json:"total"`
+	Avg   int64 `json:"avg"`
+	Max   int64 `json:"max"`
 }
