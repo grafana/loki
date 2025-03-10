@@ -34,15 +34,20 @@ type LogOutput interface {
 
 // LogOutputOptions defines options supported by LogOutput
 type LogOutputOptions struct {
-	Timezone      *time.Location
-	NoLabels      bool
-	ColoredOutput bool
+	Timezone        *time.Location
+	NoLabels        bool
+	ColoredOutput   bool
+	TimestampFormat string
 }
 
 // NewLogOutput creates a log output based on the input mode and options
 func NewLogOutput(w io.Writer, mode string, options *LogOutputOptions) (LogOutput, error) {
 	if options.Timezone == nil {
 		options.Timezone = time.Local
+	}
+	// in case TimestampFormat is not set, default to RFC3339
+	if options.TimestampFormat == "" {
+		options.TimestampFormat = time.RFC3339
 	}
 
 	switch mode {
