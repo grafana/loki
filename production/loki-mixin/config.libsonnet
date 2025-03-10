@@ -17,6 +17,9 @@
     per_namespace_label: 'namespace',
     per_job_label: 'job',
 
+    // The Log Formater that is used within the Dashboards (logfmt,json)
+    log_format: 'json',
+
     // Grouping labels, to uniquely identify and group by {jobs, clusters}
     job_labels: [$._config.per_cluster_label, $._config.per_namespace_label, $._config.per_job_label],
     cluster_labels: [$._config.per_cluster_label, $._config.per_namespace_label],
