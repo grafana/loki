@@ -983,11 +983,17 @@ http {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
+      {{- if .Values.loki.tenants }}
+      proxy_set_header X-Scope-OrgID $remote_user;
+      {{- end }}
     }
     location = /loki/api/v1/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
+      {{- if .Values.loki.tenants }}
+      proxy_set_header X-Scope-OrgID $remote_user;
+      {{- end }}
     }
     location ^~ /api/prom/ {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
