@@ -1,7 +1,12 @@
 The Snappy compression format in the Go programming language.
 
-To download and install from source:
+To use as a library:
 $ go get github.com/golang/snappy
+
+To use as a binary:
+$ go install github.com/golang/snappy/cmd/snappytool@latest
+$ cat decoded | ~/go/bin/snappytool -e > encoded
+$ cat encoded | ~/go/bin/snappytool -d > decoded
 
 Unless otherwise noted, the Snappy-Go source files are distributed
 under the BSD-style license found in the LICENSE file.

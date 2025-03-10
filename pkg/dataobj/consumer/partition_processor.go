@@ -31,7 +31,7 @@ type partitionProcessor struct {
 	builder          *dataobj.Builder
 	decoder          *kafka.Decoder
 	uploader         *uploader.Uploader
-	metastoreManager *metastore.Manager
+	metastoreUpdater *metastore.Updater
 
 	// Builder initialization
 	builderOnce sync.Once
@@ -92,9 +92,9 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreManager := metastore.NewManager(bucket, tenantID, logger)
-	if err := metastoreManager.RegisterMetrics(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
+	metastoreUpdater := metastore.NewUpdater(bucket, tenantID, logger)
+	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
 
 	return &partitionProcessor{
@@ -112,7 +112,7 @@ func newPartitionProcessor(
 		tenantID:         []byte(tenantID),
 		metrics:          metrics,
 		uploader:         uploader,
-		metastoreManager: metastoreManager,
+		metastoreUpdater: metastoreUpdater,
 		bufPool:          bufPool,
 		idleFlushTimeout: idleFlushTimeout,
 		lastFlush:        time.Now(),
@@ -201,7 +201,7 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 		return err
 	}
 
-	if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
+	if err := p.metastoreUpdater.Update(p.ctx, objectPath, flushedDataobjStats); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}

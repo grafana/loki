@@ -52,11 +52,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 			// get user specific requests and see if they have expected values
-			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -94,11 +94,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			}
 
 			// see if requests in the store have right values
-			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1)
+			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2)
+			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -224,7 +224,7 @@ func TestCopyData(t *testing.T) {
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
 	// First create and populate a boltdb store
-	boltdbStore, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
+	boltdbStore, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "", time.Hour)
 	require.NoError(t, err)
 
 	// Add some test data to boltdb
@@ -264,11 +264,11 @@ func TestCopyData(t *testing.T) {
 	boltdbStore.Stop()
 
 	// Create sqlite store which should automatically copy data from boltdb
-	sqliteStore, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, "")
+	sqliteStore, err := NewDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, "", time.Hour)
 	require.NoError(t, err)
 	defer sqliteStore.Stop()
 
-	boltdbStore, err = NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
+	boltdbStore, err = NewDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "", time.Hour)
 	require.NoError(t, err)
 	defer boltdbStore.Stop()
 
@@ -343,7 +343,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, "")
 
-	deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB)
+	deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, time.Hour)
 	require.NoError(t, err)
 	storeTee := deleteRequestsStore.(deleteRequestsStoreTee)
 
@@ -424,7 +424,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 	})
 
 	t.Run("initializing stores should get dbs from storage", func(t *testing.T) {
-		deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB)
+		deleteRequestsStore, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeSQLite, workingDir, indexStorageClient, DeleteRequestsStoreDBTypeBoltDB, time.Hour)
 		require.NoError(t, err)
 		storeTee = deleteRequestsStore.(deleteRequestsStoreTee)
 
@@ -445,7 +445,7 @@ func TestNewDeleteRequestsStoreTee(t *testing.T) {
 	t.Run("rollback to boltdb should cleanup sqlite db", func(t *testing.T) {
 		storeTee.Stop()
 
-		_, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "")
+		_, err := newDeleteRequestsStore(DeleteRequestsStoreDBTypeBoltDB, workingDir, indexStorageClient, "", time.Hour)
 		require.NoError(t, err)
 
 		require.NoFileExists(t, filepath.Join(workingDir, deleteRequestsWorkingDirName, deleteRequestsDBSQLiteFileName))
@@ -506,7 +506,7 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 		require.NoError(t, err)
 	} else {
 		var err error
-		tc.store, err = newDeleteRequestsStoreSQLite(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+		tc.store, err = newDeleteRequestsStoreSQLite(workingDir, storage.NewIndexStorageClient(objectClient, ""), time.Hour)
 		require.NoError(t, err)
 	}
 

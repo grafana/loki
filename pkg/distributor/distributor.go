@@ -180,7 +180,6 @@ type Distributor struct {
 	streamShardCount                      prometheus.Counter
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
-	policyResolver push.PolicyResolver
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -223,11 +222,6 @@ func New(
 		internalCfg.Internal = true
 		return client.New(internalCfg, addr)
 	}
-
-	policyResolver := push.PolicyResolver(func(userID string, lbs labels.Labels) string {
-		mappings := overrides.PoliciesStreamMapping(userID)
-		return getPolicy(userID, lbs, mappings, logger)
-	})
 
 	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
@@ -286,7 +280,6 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
-		policyResolver:        policyResolver,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -460,9 +453,17 @@ func (p *pushTracker) doneWithResult(err error) {
 	}
 }
 
+func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
+}
+
 // Push a set of streams.
 // The returned error is the last one seen.
-func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -538,13 +539,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 				continue
 			}
 
@@ -553,14 +553,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(validation.MissingEnforcedLabels, validationContext, retentionHours, policy, discardedBytes, len(stream.Entries))
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 				continue
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(reason, validationContext, retentionHours, policy, discardedBytes, len(stream.Entries))
+				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 
 				// If the status code is 200, return no error.
 				// Note that we still log the error and increment the metrics.
@@ -661,7 +661,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -810,6 +810,7 @@ func (d *Distributor) trackDiscardedData(
 	tenantID string,
 	validationMetrics validationMetrics,
 	reason string,
+	streamResolver push.StreamResolver,
 ) {
 	for policy, retentionToStats := range validationMetrics.policyPushStats {
 		for retentionHours, stats := range retentionToStats {
@@ -820,7 +821,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver)
 			if err != nil {
 				continue
 			}
@@ -1199,11 +1200,11 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
-	mapping := d.validator.Limits.PoliciesStreamMapping(vContext.userID)
+// parseStreamLabels parses stream labels using a request-scoped policy resolver
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
-		policy := getPolicy(vContext.userID, val.ls, mapping, d.logger)
+		retentionHours := streamResolver.RetentionHoursFor(val.ls)
+		policy := streamResolver.PolicyFor(val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1214,7 +1215,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := getPolicy(vContext.userID, ls, mapping, d.logger)
+	policy := streamResolver.PolicyFor(ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
@@ -1311,16 +1312,41 @@ func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
 }
 
-func getPolicy(userID string, lbs labels.Labels, mapping validation.PolicyStreamMapping, logger log.Logger) string {
-	policies := mapping.PolicyFor(lbs)
+type requestScopedStreamResolver struct {
+	userID               string
+	policyStreamMappings validation.PolicyStreamMapping
+	retention            *retention.TenantRetentionSnapshot
+
+	logger log.Logger
+}
+
+func newRequestScopedStreamResolver(userID string, overrides Limits, logger log.Logger) *requestScopedStreamResolver {
+	return &requestScopedStreamResolver{
+		userID:               userID,
+		policyStreamMappings: overrides.PoliciesStreamMapping(userID),
+		retention:            retention.NewTenantRetentionSnapshot(overrides, userID),
+		logger:               logger,
+	}
+}
+
+func (r requestScopedStreamResolver) RetentionPeriodFor(lbs labels.Labels) time.Duration {
+	return r.retention.RetentionPeriodFor(lbs)
+}
+
+func (r requestScopedStreamResolver) RetentionHoursFor(lbs labels.Labels) string {
+	return r.retention.RetentionHoursFor(lbs)
+}
+
+func (r requestScopedStreamResolver) PolicyFor(lbs labels.Labels) string {
+	policies := r.policyStreamMappings.PolicyFor(lbs)
 
 	var policy string
 	if len(policies) > 0 {
 		policy = policies[0]
 		if len(policies) > 1 {
-			level.Warn(logger).Log(
+			level.Warn(r.logger).Log(
 				"msg", "multiple policies matched for the same stream",
-				"org_id", userID,
+				"org_id", r.userID,
 				"stream", lbs.String(),
 				"policy", policy,
 				"policies", strings.Join(policies, ","),

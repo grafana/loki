@@ -64,8 +64,8 @@ const (
 	FORBID_OVERWRITE_FALSE = "false"
 	FORBID_OVERWRITE_TRUE  = "true"
 
-	NAMESPACE_BUCKET  = "namespace"
-	BOS_CONFIG_PREFIX = "bos://"
+	NAMESPACE_BUCKET   = "namespace"
+	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 )
 
@@ -423,6 +423,9 @@ func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, end
 		} else {
 			req.SetEndpoint(endpoint)
 		}
+	} else {
+		// user define custom endpoint
+		req.SetEndpoint(endpoint)
 	}
 	req.SetProtocol(protocol)
 }

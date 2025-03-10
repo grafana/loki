@@ -24,13 +24,13 @@ func TsdbID(n int) tsdb.SingleTenantTSDBIdentifier {
 	}
 }
 
-func GenMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.BlockRef) bloomshipper.Meta {
+func GenMeta(minVal, maxVal model.Fingerprint, sources []int, blocks []bloomshipper.BlockRef) bloomshipper.Meta {
 	m := bloomshipper.Meta{
 		MetaRef: bloomshipper.MetaRef{
 			Ref: bloomshipper.Ref{
 				TenantID:  "fakeTenant",
 				TableName: TestTable.Addr(),
-				Bounds:    v1.NewBounds(min, max),
+				Bounds:    v1.NewBounds(minVal, maxVal),
 			},
 		},
 		Blocks: blocks,
@@ -41,13 +41,13 @@ func GenMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.Bl
 	return m
 }
 
-func GenBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
+func GenBlockRef(minVal, maxVal model.Fingerprint) bloomshipper.BlockRef {
 	startTS, endTS := TestDay.Bounds()
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
 			TenantID:       "fakeTenant",
 			TableName:      TestTable.Addr(),
-			Bounds:         v1.NewBounds(min, max),
+			Bounds:         v1.NewBounds(minVal, maxVal),
 			StartTimestamp: startTS,
 			EndTimestamp:   endTS,
 			Checksum:       0,

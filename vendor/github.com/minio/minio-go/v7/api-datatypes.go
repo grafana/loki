@@ -212,6 +212,8 @@ type ObjectInfo struct {
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time
 	ExpirationRuleID string
+	// NumVersions is the number of versions of the object.
+	NumVersions int
 
 	Restore *RestoreInfo
 
