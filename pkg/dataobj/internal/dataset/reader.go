@@ -196,6 +196,12 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 	case OrPredicate:
 		return checkPredicate(p.Left, lookup, row) || checkPredicate(p.Right, lookup, row)
 
+	case NotPredicate:
+		return !checkPredicate(p.Inner, lookup, row)
+
+	case FalsePredicate:
+		return false
+
 	case EqualPredicate:
 		columnIndex, ok := lookup[p.Column]
 		if !ok {
@@ -350,7 +356,7 @@ func (r *Reader) validatePredicate() error {
 			err = process(p.Column)
 		case FuncPredicate:
 			err = process(p.Column)
-		case AndPredicate, OrPredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
@@ -422,7 +428,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 			process(p.Column)
 		case FuncPredicate:
 			process(p.Column)
-		case AndPredicate, OrPredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
@@ -462,6 +468,24 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 			return nil, err
 		}
 		return unionRanges(nil, left, right), nil
+
+	case NotPredicate:
+		// TODO(rfratto): Efficient NotPredicate handling.
+		//
+		// Initially, NotPredicates were handled as subtracting the range of
+		// p.Inner from the full range. This is incorrect, as it would eliminate
+		// the entire dataset if p.Inner is a FuncPredicate, and seemed to
+		// eliminate other expected rows.
+		//
+		// For now, we permit the full range.
+		var rowsCount uint64
+		for _, column := range r.dl.AllColumns() {
+			rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+		}
+		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+
+	case FalsePredicate:
+		return nil, nil // No valid ranges.
 
 	case EqualPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
