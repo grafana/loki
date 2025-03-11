@@ -279,6 +279,8 @@ func TestParseRequest(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
+			streamResolver := newMockStreamResolver("fake", test.fakeLimits)
+
 			structuredMetadataBytesIngested.Reset()
 			bytesIngested.Reset()
 			linesIngested.Reset()
@@ -299,11 +301,10 @@ func TestParseRequest(t *testing.T) {
 				util_log.Logger,
 				"fake",
 				request,
-				nil,
 				test.fakeLimits,
 				ParseLokiRequest,
 				tracker,
-				test.fakeLimits.PolicyFor,
+				streamResolver,
 				false,
 			)
 
@@ -341,7 +342,7 @@ func TestParseRequest(t *testing.T) {
 					require.Equal(
 						t,
 						float64(bytes),
-						testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policyName)),
+						testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policyName)),
 					)
 				}
 
@@ -352,7 +353,7 @@ func TestParseRequest(t *testing.T) {
 						testutil.ToFloat64(
 							bytesIngested.WithLabelValues(
 								"fake",
-								"",
+								"1", // We use "1" here because fakeLimits.RetentionHoursFor returns "1"
 								fmt.Sprintf("%t", test.aggregatedMetric),
 								policyName,
 							),
@@ -388,8 +389,8 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, 0, bytesReceived)
 				require.Equal(t, 0, linesReceived)
 				policy := ""
-				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
-				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
+				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy)))
+				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy)))
 				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
 			}
 		})
@@ -431,7 +432,8 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
-		data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker, limits.PolicyFor, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseLokiRequest, tracker, streamResolver, false)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -442,7 +444,8 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{enabled: true}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -456,7 +459,8 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{"special"},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -470,10 +474,98 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, limits.PolicyFor, false)
+		streamResolver := newMockStreamResolver("fake", limits)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
+}
+
+func BenchmarkRetentionPeriodToString(b *testing.B) {
+	testCases := []struct {
+		name            string
+		retentionPeriod time.Duration
+	}{
+		{
+			name:            "744h",
+			retentionPeriod: 744 * time.Hour,
+		},
+		{
+			name:            "840h",
+			retentionPeriod: 840 * time.Hour,
+		},
+		{
+			name:            "2232h",
+			retentionPeriod: 2232 * time.Hour,
+		},
+		{
+			name:            "8784h",
+			retentionPeriod: 8784 * time.Hour,
+		},
+		{
+			name:            "1000h",
+			retentionPeriod: 1000 * time.Hour,
+		},
+		{
+			name:            "zero retention period",
+			retentionPeriod: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+				RetentionPeriodToString(tc.retentionPeriod)
+			}
+		})
+	}
+}
+
+func TestRetentionPeriodToString(t *testing.T) {
+	testCases := []struct {
+		name            string
+		retentionPeriod time.Duration
+		expected        string
+	}{
+		{
+			name:            "744h",
+			retentionPeriod: 744 * time.Hour,
+			expected:        "744",
+		},
+		{
+			name:            "840h",
+			retentionPeriod: 840 * time.Hour,
+			expected:        "840",
+		},
+		{
+			name:            "2232h",
+			retentionPeriod: 2232 * time.Hour,
+			expected:        "2232",
+		},
+		{
+			name:            "8784h",
+			retentionPeriod: 8784 * time.Hour,
+			expected:        "8784",
+		},
+		{
+			name:            "1000h",
+			retentionPeriod: 1000 * time.Hour,
+			expected:        "1000",
+		},
+		{
+			name:            "zero retention period",
+			retentionPeriod: 0,
+			expected:        "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := RetentionPeriodToString(tc.retentionPeriod)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
 }
 
 type fakeLimits struct {
@@ -484,6 +576,10 @@ type fakeLimits struct {
 
 func (f *fakeLimits) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
 	return time.Hour
+}
+
+func (f *fakeLimits) RetentionHoursFor(_ string, _ labels.Labels) string {
+	return "1"
 }
 
 func (f *fakeLimits) OTLPConfig(_ string) OTLPConfig {
@@ -532,6 +628,36 @@ func (f *fakeLimits) DiscoverServiceName(_ string) []string {
 		"job",
 		"k8s_job_name",
 	}
+}
+
+type mockStreamResolver struct {
+	tenant string
+	limits *fakeLimits
+
+	policyForOverride func(lbs labels.Labels) string
+}
+
+func newMockStreamResolver(tenant string, limits *fakeLimits) *mockStreamResolver {
+	return &mockStreamResolver{
+		tenant: tenant,
+		limits: limits,
+	}
+}
+
+func (m mockStreamResolver) RetentionPeriodFor(lbs labels.Labels) time.Duration {
+	return m.limits.RetentionPeriodFor(m.tenant, lbs)
+}
+
+func (m mockStreamResolver) RetentionHoursFor(lbs labels.Labels) string {
+	return m.limits.RetentionHoursFor(m.tenant, lbs)
+}
+
+func (m mockStreamResolver) PolicyFor(lbs labels.Labels) string {
+	if m.policyForOverride != nil {
+		return m.policyForOverride(lbs)
+	}
+
+	return m.limits.PolicyFor(m.tenant, lbs)
 }
 
 type MockCustomTracker struct {

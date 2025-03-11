@@ -13,4 +13,4 @@ This section includes the following topics for managing and tuning Loki:
 
 {{< section >}}
 
-- [Upgrade Loki]({{< relref "../setup/upgrade" >}})
+- [Upgrade Loki](../setup/upgrade/)

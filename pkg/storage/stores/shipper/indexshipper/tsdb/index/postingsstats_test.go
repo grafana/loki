@@ -20,10 +20,10 @@ import (
 
 func TestPostingsStats(t *testing.T) {
 	stats := &maxHeap{}
-	max := 3000000
+	maxVal := 3000000
 	heapLength := 10
 	stats.init(heapLength)
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxVal; i++ {
 		item := Stat{
 			Name:  "Label-da",
 			Count: uint64(i),
@@ -35,7 +35,7 @@ func TestPostingsStats(t *testing.T) {
 	data := stats.get()
 	require.Equal(t, 10, len(data))
 	for i := 0; i < heapLength; i++ {
-		require.Equal(t, uint64(max-i), data[i].Count)
+		require.Equal(t, uint64(maxVal-i), data[i].Count)
 	}
 }
 
@@ -57,12 +57,12 @@ func TestPostingsStats2(t *testing.T) {
 
 func BenchmarkPostingStatsMaxHep(b *testing.B) {
 	stats := &maxHeap{}
-	max := 9000000
+	maxVal := 9000000
 	heapLength := 10
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		stats.init(heapLength)
-		for i := 0; i < max; i++ {
+		for i := 0; i < maxVal; i++ {
 			item := Stat{
 				Name:  "Label-da",
 				Count: uint64(i),

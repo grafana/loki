@@ -460,9 +460,9 @@ type SemaphoreWithTiming struct {
 	sem *semaphore.Weighted
 }
 
-func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
+func NewSemaphoreWithTiming(maxVal int64) *SemaphoreWithTiming {
 	return &SemaphoreWithTiming{
-		sem: semaphore.NewWeighted(max),
+		sem: semaphore.NewWeighted(maxVal),
 	}
 }
 
@@ -649,7 +649,7 @@ func WeightedParallelism(
 	return 0
 }
 
-func minMaxModelTime(a, b model.Time) (min, max model.Time) {
+func minMaxModelTime(a, b model.Time) (model.Time, model.Time) {
 	if a.Before(b) {
 		return a, b
 	}

@@ -53,4 +53,4 @@ Inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](
 
 Google Docs were considered for this, but they are less useful because:
 - they would need to be owned by the Grafana Labs organisation, so that they remain viewable even if the author closes their account
-- we already have previous [design documents]({{< relref "../design-documents" >}}) in our documentation and, in a recent ([5th Jan 2023](https://docs.google.com/document/d/1MNjiHQxwFukm2J4NJRWyRgRIiK7VpokYyATzJ5ce-O8/edit#heading=h.78vexgrrtw5a)) community call, the community expressed a preference for this type of approach
+- we already have previous [design documents](../../design-documents/) in our documentation and, in a recent ([5th Jan 2023](https://docs.google.com/document/d/1MNjiHQxwFukm2J4NJRWyRgRIiK7VpokYyATzJ5ce-O8/edit#heading=h.78vexgrrtw5a)) community call, the community expressed a preference for this type of approach

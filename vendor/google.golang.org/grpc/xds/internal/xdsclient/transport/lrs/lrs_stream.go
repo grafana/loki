@@ -29,7 +29,6 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/internal/backoff"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
@@ -107,7 +106,7 @@ func (lrs *StreamImpl) ReportLoad() (*load.Store, func()) {
 	lrs.mu.Lock()
 	defer lrs.mu.Unlock()
 
-	cleanup := grpcsync.OnceFunc(func() {
+	cleanup := sync.OnceFunc(func() {
 		lrs.mu.Lock()
 		defer lrs.mu.Unlock()
 

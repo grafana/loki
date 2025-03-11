@@ -263,7 +263,7 @@ func (m Map) CopyTo(dest Map) {
 
 // AsRaw returns a standard go map representation of this Map.
 func (m Map) AsRaw() map[string]any {
-	rawMap := make(map[string]any)
+	rawMap := make(map[string]any, m.Len())
 	m.Range(func(k string, v Value) bool {
 		rawMap[k] = v.AsRaw()
 		return true

@@ -25,6 +25,7 @@ type Column struct {
 	schema      *format.SchemaElement
 	order       *format.ColumnOrder
 	path        columnPath
+	fields      []Field
 	columns     []*Column
 	chunks      []*format.ColumnChunk
 	columnIndex []*format.ColumnIndex
@@ -56,13 +57,7 @@ func (c *Column) Required() bool { return schemaRepetitionTypeOf(c.schema) == fo
 func (c *Column) Leaf() bool { return c.index >= 0 }
 
 // Fields returns the list of fields on the column.
-func (c *Column) Fields() []Field {
-	fields := make([]Field, len(c.columns))
-	for i, column := range c.columns {
-		fields[i] = column
-	}
-	return fields
-}
+func (c *Column) Fields() []Field { return c.fields }
 
 // Encoding returns the encodings used by this column.
 func (c *Column) Encoding() encoding.Encoding { return c.encoding }
@@ -97,20 +92,27 @@ func (c *Column) Column(name string) *Column {
 
 // Pages returns a reader exposing all pages in this column, across row groups.
 func (c *Column) Pages() Pages {
-	if c.index < 0 {
+	if c.file == nil {
+		return emptyPages{}
+	}
+	return c.PagesFrom(c.file.reader)
+}
+
+func (c *Column) PagesFrom(reader io.ReaderAt) Pages {
+	if c.index < 0 || c.file == nil {
 		return emptyPages{}
 	}
 	r := &columnPages{
-		pages: make([]filePages, len(c.file.rowGroups)),
+		pages: make([]FilePages, len(c.file.rowGroups)),
 	}
 	for i := range r.pages {
-		r.pages[i].init(c.file.rowGroups[i].(*fileRowGroup).columns[c.index].(*fileColumnChunk))
+		r.pages[i].init(c.file.rowGroups[i].(*FileRowGroup).columns[c.index].(*FileColumnChunk), reader)
 	}
 	return r
 }
 
 type columnPages struct {
-	pages []filePages
+	pages []FilePages
 	index int
 }
 
@@ -200,10 +202,10 @@ func (c *Column) forEachLeaf(do func(*Column)) {
 	}
 }
 
-func openColumns(file *File) (*Column, error) {
+func openColumns(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex) (*Column, error) {
 	cl := columnLoader{}
 
-	c, err := cl.open(file, nil)
+	c, err := cl.open(file, metadata, columnIndexes, offsetIndexes, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +213,7 @@ func openColumns(file *File) (*Column, error) {
 	// Validate that there aren't extra entries in the row group columns,
 	// which would otherwise indicate that there are dangling data pages
 	// in the file.
-	for index, rowGroup := range file.metadata.RowGroups {
+	for index, rowGroup := range metadata.RowGroups {
 		if cl.rowGroupColumnIndex != len(rowGroup.Columns) {
 			return nil, fmt.Errorf("row group at index %d contains %d columns but %d were referenced by the column schemas",
 				index, len(rowGroup.Columns), cl.rowGroupColumnIndex)
@@ -271,10 +273,10 @@ type columnLoader struct {
 	rowGroupColumnIndex int
 }
 
-func (cl *columnLoader) open(file *File, path []string) (*Column, error) {
+func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex, path []string) (*Column, error) {
 	c := &Column{
 		file:   file,
-		schema: &file.metadata.Schema[cl.schemaIndex],
+		schema: &metadata.Schema[cl.schemaIndex],
 	}
 	c.path = columnPath(path).append(c.schema.Name)
 
@@ -284,12 +286,12 @@ func (cl *columnLoader) open(file *File, path []string) (*Column, error) {
 	if numChildren == 0 {
 		c.typ = schemaElementTypeOf(c.schema)
 
-		if cl.columnOrderIndex < len(file.metadata.ColumnOrders) {
-			c.order = &file.metadata.ColumnOrders[cl.columnOrderIndex]
+		if cl.columnOrderIndex < len(metadata.ColumnOrders) {
+			c.order = &metadata.ColumnOrders[cl.columnOrderIndex]
 			cl.columnOrderIndex++
 		}
 
-		rowGroups := file.metadata.RowGroups
+		rowGroups := metadata.RowGroups
 		rowGroupColumnIndex := cl.rowGroupColumnIndex
 		cl.rowGroupColumnIndex++
 
@@ -304,21 +306,21 @@ func (cl *columnLoader) open(file *File, path []string) (*Column, error) {
 			c.chunks = append(c.chunks, &rowGroup.Columns[rowGroupColumnIndex])
 		}
 
-		if len(file.columnIndexes) > 0 {
+		if len(columnIndexes) > 0 {
 			for i := range rowGroups {
-				if rowGroupColumnIndex >= len(file.columnIndexes) {
+				if rowGroupColumnIndex >= len(columnIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough column index pages", i)
 				}
-				c.columnIndex = append(c.columnIndex, &file.columnIndexes[rowGroupColumnIndex])
+				c.columnIndex = append(c.columnIndex, &columnIndexes[rowGroupColumnIndex])
 			}
 		}
 
-		if len(file.offsetIndexes) > 0 {
+		if len(offsetIndexes) > 0 {
 			for i := range rowGroups {
-				if rowGroupColumnIndex >= len(file.offsetIndexes) {
+				if rowGroupColumnIndex >= len(offsetIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough offset index pages", i)
 				}
-				c.offsetIndex = append(c.offsetIndex, &file.offsetIndexes[rowGroupColumnIndex])
+				c.offsetIndex = append(c.offsetIndex, &offsetIndexes[rowGroupColumnIndex])
 			}
 		}
 
@@ -354,22 +356,28 @@ func (cl *columnLoader) open(file *File, path []string) (*Column, error) {
 		c.typ = &mapType{}
 	} else if lt != nil && lt.List != nil {
 		c.typ = &listType{}
+	} else if lt != nil && lt.Variant != nil {
+		c.typ = &variantType{}
 	}
 	c.columns = make([]*Column, numChildren)
 
 	for i := range c.columns {
-		if cl.schemaIndex >= len(file.metadata.Schema) {
+		if cl.schemaIndex >= len(metadata.Schema) {
 			return nil, fmt.Errorf("column %q has more children than there are schemas in the file: %d > %d",
-				c.schema.Name, cl.schemaIndex+1, len(file.metadata.Schema))
+				c.schema.Name, cl.schemaIndex+1, len(metadata.Schema))
 		}
 
 		var err error
-		c.columns[i], err = cl.open(file, c.path)
+		c.columns[i], err = cl.open(file, metadata, columnIndexes, offsetIndexes, c.path)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", c.schema.Name, err)
 		}
 	}
 
+	c.fields = make([]Field, len(c.columns))
+	for i, column := range c.columns {
+		c.fields[i] = column
+	}
 	return c, nil
 }
 
@@ -633,6 +641,11 @@ func (c *Column) decodeDataPageV2(header DataPageHeaderV2, page *buffer, dict Di
 		}
 		if repetitionLevels != nil {
 			defer repetitionLevels.unref()
+
+			if len(repetitionLevels.data) != 0 && repetitionLevels.data[0] != 0 {
+				return nil, fmt.Errorf("%w: first repetition level for column %d (%s) is %d instead of zero, indicating that the page contains trailing values from the previous page (this is forbidden for data pages v2)",
+					ErrMalformedRepetitionLevel, c.Index(), c.Name(), repetitionLevels.data[0])
+			}
 		}
 	}
 

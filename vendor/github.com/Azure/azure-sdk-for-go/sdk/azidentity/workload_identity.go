@@ -39,15 +39,24 @@ type WorkloadIdentityCredentialOptions struct {
 	// Add the wildcard value "*" to allow the credential to acquire tokens for any tenant in which the
 	// application is registered.
 	AdditionallyAllowedTenants []string
+
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
+
 	// ClientID of the service principal. Defaults to the value of the environment variable AZURE_CLIENT_ID.
 	ClientID string
+
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
+
 	// TenantID of the service principal. Defaults to the value of the environment variable AZURE_TENANT_ID.
 	TenantID string
+
 	// TokenFilePath is the path of a file containing a Kubernetes service account token. Defaults to the value of the
 	// environment variable AZURE_FEDERATED_TOKEN_FILE.
 	TokenFilePath string
@@ -81,6 +90,7 @@ func NewWorkloadIdentityCredential(options *WorkloadIdentityCredentialOptions) (
 	w := WorkloadIdentityCredential{file: file, mtx: &sync.RWMutex{}}
 	caco := ClientAssertionCredentialOptions{
 		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
 		ClientOptions:              options.ClientOptions,
 		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
 	}

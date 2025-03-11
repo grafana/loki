@@ -89,17 +89,30 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 				},
 			},
 		},
+		"policy8": []*PriorityStream{
+			{
+				Selector: `{env=~"prod|test"}`,
+				Priority: 3,
+				Matchers: []*labels.Matcher{
+					labels.MustNewMatcher(labels.MatchRegexp, "env", "prod|test"),
+				},
+			},
+		},
 	}
 
-	require.Equal(t, "policy1", mapping.PolicyFor(labels.FromStrings("foo", "bar")))
-	// matches both policy2 and policy1 but policy1 has higher priority.
-	require.Equal(t, "policy1", mapping.PolicyFor(labels.FromStrings("foo", "bar", "daz", "baz")))
-	// matches policy3 and policy4 but policy3 has higher priority..
-	require.Equal(t, "policy3", mapping.PolicyFor(labels.FromStrings("qyx", "qzx", "qox", "qox")))
-	// matches no policy.
-	require.Equal(t, "", mapping.PolicyFor(labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge")))
-	// matches policy5 through regex.
-	require.Equal(t, "policy5", mapping.PolicyFor(labels.FromStrings("qab", "qzxqox")))
+	require.NoError(t, mapping.Validate())
 
-	require.Equal(t, "policy6", mapping.PolicyFor(labels.FromStrings("env", "prod", "team", "finance")))
+	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar")))
+	// matches both policy2 and policy1 but policy1 has higher priority.
+	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar", "daz", "baz")))
+	// matches policy3 and policy4 but policy3 has higher priority..
+	require.Equal(t, []string{"policy3"}, mapping.PolicyFor(labels.FromStrings("qyx", "qzx", "qox", "qox")))
+	// matches no policy.
+	require.Empty(t, mapping.PolicyFor(labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge")))
+	// matches policy5 through regex.
+	require.Equal(t, []string{"policy5"}, mapping.PolicyFor(labels.FromStrings("qab", "qzxqox")))
+
+	require.Equal(t, []string{"policy6"}, mapping.PolicyFor(labels.FromStrings("env", "prod", "team", "finance")))
+	// Matches policy7 and policy8 which have the same priority.
+	require.Equal(t, []string{"policy7", "policy8"}, mapping.PolicyFor(labels.FromStrings("env", "prod")))
 }

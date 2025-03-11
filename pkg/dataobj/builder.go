@@ -141,9 +141,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
 
-	var (
-		metrics = newMetrics()
-	)
+	metrics := newMetrics()
 	metrics.ObserveConfig(cfg)
 
 	return &Builder{
@@ -187,7 +185,12 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	defer timer.ObserveDuration()
 
 	for _, entry := range stream.Entries {
-		streamID := b.streams.Record(ls, entry.Timestamp)
+		sz := int64(len(entry.Line))
+		for _, md := range entry.StructuredMetadata {
+			sz += int64(len(md.Value))
+		}
+
+		streamID := b.streams.Record(ls, entry.Timestamp, sz)
 
 		b.logs.Append(logs.Record{
 			StreamID:  streamID,
