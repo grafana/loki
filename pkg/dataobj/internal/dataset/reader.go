@@ -126,6 +126,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
+	} else if count == 0 && errors.Is(err, io.EOF) {
+		return 0, io.EOF
 	}
 
 	var passCount int // passCount tracks how many rows pass the predicate.
