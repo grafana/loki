@@ -901,7 +901,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(lbs labels.Labels) string {
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -947,18 +947,18 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	errorStreamFound := false
 	debugStreamFound := false
 
-	for labels, stream := range streamsByLabels {
-		t.Logf("Checking stream with labels: %s", labels)
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
 
-		if strings.Contains(labels, "detected_level=\"info\"") {
+		if strings.Contains(lbs, "detected_level=\"info\"") {
 			infoStreamFound = true
 			require.Equal(t, "This is an info message", stream.Entries[0].Line)
 		}
-		if strings.Contains(labels, "detected_level=\"error\"") {
+		if strings.Contains(lbs, "detected_level=\"error\"") {
 			errorStreamFound = true
 			require.Equal(t, "This is an error message", stream.Entries[0].Line)
 		}
-		if strings.Contains(labels, "log_level=\"debug\"") {
+		if strings.Contains(lbs, "log_level=\"debug\"") {
 			debugStreamFound = true
 			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
 		}
@@ -1021,7 +1021,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(lbs labels.Labels) string {
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -1067,18 +1067,18 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	errorStreamFound := false
 	debugStreamFound := false
 
-	for labels, stream := range streamsByLabels {
-		t.Logf("Checking stream with labels: %s", labels)
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
 
-		if strings.Contains(labels, "severity_text=\"INFO\"") {
+		if strings.Contains(lbs, "severity_text=\"INFO\"") {
 			infoStreamFound = true
 			require.Equal(t, "This is an info message", stream.Entries[0].Line)
 		}
-		if strings.Contains(labels, "severity_text=\"ERROR\"") {
+		if strings.Contains(lbs, "severity_text=\"ERROR\"") {
 			errorStreamFound = true
 			require.Equal(t, "This is an error message", stream.Entries[0].Line)
 		}
-		if strings.Contains(labels, "severity_text=\"DEBUG\"") {
+		if strings.Contains(lbs, "severity_text=\"DEBUG\"") {
 			debugStreamFound = true
 			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
 		}
