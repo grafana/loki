@@ -1577,7 +1577,7 @@ common:
 
 		assert.Equal(t, "/loki/toookens", config.Ingester.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/limits/toookens", config.IngestLimits.LifecyclerConfig.TokensFilePath)
-		assert.Equal(t, "/limitsfrontned/toookens", config.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/limitsfrontend/toookens", config.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/foo/tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "/looki/tookens", config.IndexGateway.Ring.TokensFilePath)
@@ -2172,7 +2172,7 @@ ingest_limits:
   lifecycler:
     interface_names:
     - myingestlimits
-ingest_limits:
+ingest_limits_frontend:
   lifecycler:
     interface_names:
     - myingestlimitsfrontend
