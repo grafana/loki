@@ -38,7 +38,7 @@ BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make release-workflows` after changing this
 BUILD_IMAGE_VERSION ?= 0.34.3
-GO_VERSION := 1.23.1
+GO_VERSION := 1.23.7
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
