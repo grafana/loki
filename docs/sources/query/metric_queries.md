@@ -156,11 +156,27 @@ Examples:
 
 ## Probabilistic aggregation
 
-The `topk` keyword lets you find the largest 1,000 elements in a data stream by sample size. When  `topk` hits the maximum series limit, LogQL also supports using a probable approximation; `approx_topk`  is a drop-in replacement when `topk` hits the maximum series limit.
+LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
+
+The function is of the form: 
 
 ```logql
 approx_topk(k, <vector expression>)
 ```
 
-It is only supported for instant queries and does not support grouping. It is useful when the cardinality of the inner
-vector is too high, for example, when it uses an aggregation by a structured metadata label.
+`approx_topk` is only supported for instant queries. Grouping is also not supported and should be handled by an inner `sum by` or `sum without` even though this might not be the same behavior as `topk by`.
+
+Under the hood, `approx_topk` is implemented using sharding. The [count-min sketch](https://en.wikipedia.org/wiki/Count%E2%80%93min_sketch) algorithm and a heap are used to approximate the counts for each shard. The accuracy of the approximation depends on the size of the heap, which is defined by Loki's`max_count_min_sketch_heap_size` parameter. Accuracy decreases as `k` approaches the size of the heap (which has a default size of `10,000`). 
+
+The expression `approx_topk(k,inner)` becomes
+
+```
+topk(
+  k,
+  eval_cms(
+    __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
+  )
+)
+```
+
+`__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
