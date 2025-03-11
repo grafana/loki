@@ -149,6 +149,7 @@ common:
 		// * distributor
 		// * ruler
 		// * ingest limits
+		// * ingest limits frontend
 
 		t.Run("does not automatically configure memberlist when no top-level memberlist config is provided", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
