@@ -143,7 +143,7 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	return nil
 }
 
-func (v Validator) isAggregatedMetricStream(ls labels.Labels) bool {
+func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
 	return ls.Has(push.AggregatedMetricLabel)
 }
 
@@ -156,7 +156,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 	}
 
 	// Skip validation for aggregated metric streams, as we create those for internal use
-	if v.isAggregatedMetricStream(ls) {
+	if v.IsAggregatedMetricStream(ls) {
 		return nil
 	}
 

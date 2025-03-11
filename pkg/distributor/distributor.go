@@ -548,7 +548,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			if isAgg := d.validator.isAggregatedMetricStream(lbs); !isAgg {
+			if !d.validator.IsAggregatedMetricStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
 					d.writeFailuresManager.Log(tenantID, err)
