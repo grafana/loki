@@ -278,14 +278,14 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 	return mode == deletionmode.FilterAndDelete, nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, filter.Func) {
+func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, _ model.Time) (bool, filter.Func) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	userIDStr := unsafeGetString(ref.UserID)
+	userIDStr := unsafeGetString(userID)
 	if d.deleteRequestsToProcess[userIDStr] == nil || !intervalsOverlap(d.deleteRequestsToProcess[userIDStr].requestsInterval, model.Interval{
-		Start: ref.From,
-		End:   ref.Through,
+		Start: chk.From,
+		End:   chk.Through,
 	}) {
 		return false, nil
 	}
@@ -293,7 +293,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	var filterFuncs []filter.Func
 
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
-		isDeleted, ff := deleteRequest.IsDeleted(ref)
+		isDeleted, ff := deleteRequest.IsDeleted(userID, lbls, chk)
 		if !isDeleted {
 			continue
 		}
@@ -304,9 +304,9 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 				"delete_request_id", deleteRequest.RequestID,
 				"sequence_num", deleteRequest.SequenceNum,
 				"user", deleteRequest.UserID,
-				"chunkID", string(ref.ChunkID),
+				"chunkID", string(chk.ChunkID),
 			)
-			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
+			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(userID)).Inc()
 			return true, nil
 		}
 		filterFuncs = append(filterFuncs, ff)
@@ -316,7 +316,7 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
+	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(userID)).Inc()
 	return true, func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 		for _, ff := range filterFuncs {
 			if ff(ts, s, structuredMetadata...) {
@@ -417,7 +417,7 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 	return len(d.deleteRequestsToProcess) != 0
 }
 
-func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
+func (d *DeleteRequestsManager) DropFromIndex(_ []byte, _ retention.Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
 }
 

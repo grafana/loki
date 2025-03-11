@@ -575,7 +575,11 @@ func TestChunkRewriter(t *testing.T) {
 			for _, indexTable := range indexTables {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
-				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
+				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
+					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					From:    tt.chunk.From,
+					Through: tt.chunk.Through,
+				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustDeleteLines, linesDeleted)
 				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustRewriteChunk, wroteChunks)
@@ -667,15 +671,15 @@ func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirati
 	return &mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m *mockExpirationChecker) Expired(ref ChunkEntry, _ model.Time) (bool, filter.Func) {
+func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ model.Time) (bool, filter.Func) {
 	time.Sleep(m.delay)
 	m.calls++
 
-	ce := m.chunksExpiry[string(ref.ChunkID)]
+	ce := m.chunksExpiry[string(chk.ChunkID)]
 	return ce.isExpired, ce.filterFunc
 }
 
-func (m *mockExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
+func (m *mockExpirationChecker) DropFromIndex(_ []byte, _ Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
 }
 

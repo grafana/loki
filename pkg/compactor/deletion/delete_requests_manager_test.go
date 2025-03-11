@@ -31,13 +31,9 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	streamSelectorWithStructuredMetadataFilters := lblFoo.String() + `| ping="pong"`
 	streamSelectorWithLineAndStructuredMetadataFilters := lblFoo.String() + `| ping="pong" |= "fizz"`
 
-	chunkEntry := retention.ChunkEntry{
-		ChunkRef: retention.ChunkRef{
-			UserID:  []byte(testUserID),
-			From:    now.Add(-12 * time.Hour),
-			Through: now.Add(-time.Hour),
-		},
-		Labels: lblFoo,
+	chunkEntry := retention.Chunk{
+		From:    now.Add(-12 * time.Hour),
+		Through: now.Add(-time.Hour),
 	}
 
 	for _, tc := range []struct {
@@ -948,7 +944,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := mgr.Expired(chunkEntry, model.Now())
+			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
