@@ -406,6 +406,15 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushReques
 		})
 	}
 	if severityText := log.SeverityText(); severityText != "" {
+		// Add severity_text as an index label if configured
+		if otlpConfig.SeverityTextAsLabel {
+			logLabels[model.LabelName("severity_text")] = model.LabelValue(severityText)
+			if logPushRequestStreams && pushedLabels != nil {
+				pushedLabels[model.LabelName("severity_text")] = model.LabelValue(severityText)
+			}
+		}
+
+		// Always add severity_text as structured metadata
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  "severity_text",
 			Value: severityText,

@@ -971,3 +971,188 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	// Verify stats
 	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
 }
+
+func TestOTLPSeverityTextAsLabel(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config with severity_text as label enabled
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+	customOTLPConfig.SeverityTextAsLabel = true
+
+	// Generate logs with different severity_text values
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "INFO" severity
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.SetSeverityText("INFO")
+
+		// Add log with "ERROR" severity
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.SetSeverityText("ERROR")
+
+		// Add log with "DEBUG" severity
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.SetSeverityText("DEBUG")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(lbs labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each severity level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected severity level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for labels, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", labels)
+
+		if strings.Contains(labels, "severity_text=\"INFO\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(labels, "severity_text=\"ERROR\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(labels, "severity_text=\"DEBUG\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	// Verify all expected streams were found
+	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
+	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
+	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
+}
+
+func TestOTLPSeverityTextAsLabelDefault(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config with default severity_text configuration
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Generate logs with different severity_text values
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "INFO" severity
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.SetSeverityText("INFO")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(lbs labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 1, len(nonEmptyStreams), "Should have 1 non-empty stream")
+
+	// Verify the stream has the severity_text label
+	stream := nonEmptyStreams[0]
+	require.Contains(t, stream.Labels, "severity_text=\"INFO\"", "Stream should have severity_text label")
+	require.Equal(t, "This is an info message", stream.Entries[0].Line)
+}
