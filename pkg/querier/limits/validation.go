@@ -84,7 +84,6 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 		}
 
 		if current == "source" && strings.EqualFold(next, logsDrilldownAppName) {
-			isAggregatedMetricQuery = true
 			return nil
 		}
 	}

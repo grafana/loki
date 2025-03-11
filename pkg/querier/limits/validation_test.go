@@ -113,19 +113,19 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			desc:          "aggregated metric query from explore, multipe selectors, no error",
+			desc:          "aggregated metric query from explore, multiple selectors, no error",
 			req:           makeReqAndAST(`{app="service-name", __aggregated_metric__="true"}`),
 			queryTags:     "source=" + logsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
-			desc:          "aggregated metric query from explore, multipe selectors, filter, no error",
+			desc:          "aggregated metric query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`{app="service-name", __aggregated_metric__="true"} |= "test"`),
 			queryTags:     "source=" + logsDrilldownAppName,
 			expectedError: nil,
 		},
 		{
-			desc:          "aggregated metrics metric query from explore, multipe selectors, filter, no error",
+			desc:          "aggregated metrics metric query from explore, multiple selectors, filter, no error",
 			req:           makeReqAndAST(`sum by (service_name)(count_over_time({app="service-name", __aggregated_metric__="true"} |= "test" [5m]))`),
 			queryTags:     "source=" + logsDrilldownAppName,
 			expectedError: nil,
@@ -143,13 +143,13 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 			expectedError: ErrAggMetricsDrilldownOnly,
 		},
 		{
-			desc:          "aggregated metric query with no source, multipe selectors, blocked",
+			desc:          "aggregated metric query with no source, multiple selectors, blocked",
 			req:           makeReqAndAST(`{app="service-name", __aggregated_metric__="true"}`),
 			queryTags:     "",
 			expectedError: ErrAggMetricsDrilldownOnly,
 		},
 		{
-			desc:          "aggregated metrics metric query with no source, multipe selectors, filter, blocked",
+			desc:          "aggregated metrics metric query with no source, multiple selectors, filter, blocked",
 			req:           makeReqAndAST(`sum by (service_name)(count_over_time({app="service-name", __aggregated_metric__="true"} |= "test" [5m]))`),
 			queryTags:     "",
 			expectedError: ErrAggMetricsDrilldownOnly,

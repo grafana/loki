@@ -158,9 +158,8 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if err != nil {
 		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
 			return iter.NoopEntryIterator, nil
-		} else {
-			return nil, err
 		}
+		return nil, err
 	}
 
 	params.QueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
