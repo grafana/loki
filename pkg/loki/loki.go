@@ -700,6 +700,15 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		// Ingest Limits Frontend has a special check that makes sure that it was able to register into
+		// the ring
+		if t.ingestLimitsFrontend != nil {
+			if err := t.ingestLimitsFrontend.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingest Limits Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		http.Error(w, "ready", http.StatusOK)
 	}
 }
