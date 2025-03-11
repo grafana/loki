@@ -33,6 +33,7 @@ type LogOutput interface {
 }
 
 // LogOutputOptions defines options supported by LogOutput
+// TimestampFormat can be one of RFC3339 (default), RFC822Z, RFC1123Z, StampMicro, StampMilli, StampNano or RFC3339Nano
 type LogOutputOptions struct {
 	Timezone        *time.Location
 	NoLabels        bool

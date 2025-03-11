@@ -370,7 +370,6 @@ func main() {
 			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
-		// setup timestamp flag for RFC3339Nano
 		switch *timestamp {
 		case "nanos":
 			outputOptions.TimestampFormat = time.RFC3339Nano
