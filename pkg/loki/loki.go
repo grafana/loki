@@ -290,8 +290,14 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
+	if err := c.IngestLimits.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits config"))
+	}
 	if err := c.IngestLimitsFrontend.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_frontend config"))
+	}
+	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_frontend_client config"))
 	}
 	if err := c.Worker.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
