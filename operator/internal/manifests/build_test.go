@@ -107,6 +107,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -136,6 +139,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -152,9 +158,11 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
-				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
-				// (Read this and weep: https://github.com/golang/go/issues/29349)
-				Ciphers: []string{},
+				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
+				},
 			},
 		},
 		{
