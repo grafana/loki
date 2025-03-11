@@ -979,6 +979,8 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
 		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
 	})
+
+	// Explicitly set SeverityTextAsLabel to true for this test
 	customOTLPConfig.SeverityTextAsLabel = true
 
 	// Generate logs with different severity_text values
@@ -1086,73 +1088,4 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
 	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
 	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
-}
-
-func TestOTLPSeverityTextAsLabelDefault(t *testing.T) {
-	now := time.Unix(0, time.Now().UnixNano())
-
-	// Create a custom OTLP config with default severity_text configuration
-	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
-		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
-	})
-
-	// Generate logs with different severity_text values
-	generateLogs := func() plog.Logs {
-		ld := plog.NewLogs()
-
-		// Create resource with service name
-		rl := ld.ResourceLogs().AppendEmpty()
-		rl.Resource().Attributes().PutStr("service.name", "test-service")
-
-		// Create scope logs
-		sl := rl.ScopeLogs().AppendEmpty()
-
-		// Add log with "INFO" severity
-		infoLog := sl.LogRecords().AppendEmpty()
-		infoLog.Body().SetStr("This is an info message")
-		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
-		infoLog.SetSeverityText("INFO")
-
-		return ld
-	}
-
-	// Run the test
-	stats := NewPushStats()
-	tracker := NewMockTracker()
-	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-
-	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(lbs labels.Labels) string {
-		return "test-policy"
-	}
-
-	// Convert OTLP logs to Loki push request
-	pushReq := otlpToLokiPushRequest(
-		context.Background(),
-		generateLogs(),
-		"test-user",
-		customOTLPConfig,
-		[]string{}, // No service name discovery needed
-		tracker,
-		stats,
-		false,
-		log.NewNopLogger(),
-		streamResolver,
-	)
-
-	// Filter out empty streams
-	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
-	for _, stream := range pushReq.Streams {
-		if len(stream.Entries) > 0 {
-			nonEmptyStreams = append(nonEmptyStreams, stream)
-		}
-	}
-
-	// Verify the streams were created with the correct labels
-	require.Equal(t, 1, len(nonEmptyStreams), "Should have 1 non-empty stream")
-
-	// Verify the stream has the severity_text label
-	stream := nonEmptyStreams[0]
-	require.Contains(t, stream.Labels, "severity_text=\"INFO\"", "Stream should have severity_text label")
-	require.Equal(t, "This is an info message", stream.Entries[0].Line)
 }

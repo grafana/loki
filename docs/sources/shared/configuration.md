@@ -3664,6 +3664,11 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
+  # When true, the severity_text field from log records will be stored as an
+  # index label. It is recommended not to use this option unless absolutely
+  # necessary
+  [severity_text_as_label: <boolean> | default = false]
+
 # Block ingestion for policy until the configured date. The policy '*' is the
 # global policy, which is applied to all streams not matching a policy and can
 # be overridden by other policies. The time should be in RFC3339 format. The
