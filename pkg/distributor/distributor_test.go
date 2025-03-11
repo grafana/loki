@@ -507,6 +507,18 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// Metrics should remain unchanged
 	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
 	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
+
+	// enforced labels are configured but the stream is an aggregated metric, so no errors.
+	limits.EnforcedLabels = []string{"app", "env"}
+	distributors, _ = prepare(t, 1, 3, limits, nil)
+
+	req = makeWriteRequestWithLabels(100, 100, []string{`{__aggregated_metric__="foo"}`}, false, false, false)
+	_, err = distributors[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Metrics should remain unchanged
+	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
+	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 }
 
 func TestDistributorPushConcurrently(t *testing.T) {

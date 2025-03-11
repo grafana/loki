@@ -548,13 +548,15 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
-				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
-				continue
+			if isAgg := d.validator.isAggregatedMetricStream(lbs); !isAgg {
+				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
+					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
+					d.writeFailuresManager.Log(tenantID, err)
+					validationErrors.Add(err)
+					discardedBytes := util.EntriesTotalSize(stream.Entries)
+					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
+					continue
+				}
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
