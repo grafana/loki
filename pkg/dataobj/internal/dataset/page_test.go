@@ -1,10 +1,14 @@
 package dataset
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
 	"math/rand"
+	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,99 +18,111 @@ import (
 )
 
 func Benchmark_page_Decode(b *testing.B) {
-	in := []string{
-		"hello, world!",
-		"",
-		"this is a test of the emergency broadcast system",
-		"this is only a test",
-		"if this were a real emergency, you would be instructed to panic",
-		"but it's not, so don't",
-		"",
-		"this concludes the test",
-		"thank you for your cooperation",
-		"goodbye",
-	}
-
-	opts := BuilderOptions{
-		PageSizeHint: 1 << 30, // 1GiB
-		Value:        datasetmd.VALUE_TYPE_STRING,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-	}
-	builder, err := newPageBuilder(opts)
-	require.NoError(b, err)
-
-	for i := range 1_000_000 {
-		s := in[i%len(in)]
-		require.True(b, builder.Append(StringValue(s)))
-	}
-
-	page, err := builder.Flush()
-	require.NoError(b, err)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for range b.N {
-		_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
-		if err != nil {
-			b.Fatal()
-		}
-		if _, err := io.Copy(io.Discard, values); err != nil {
-			b.Fatal(err)
-		} else if err := values.Close(); err != nil {
-			b.Fatal(err)
-		}
-	}
-
+	b.Run("workers=1", func(b *testing.B) { benchmarkPageDecodeParallel(b, 1) })
+	b.Run("workers=2", func(b *testing.B) { benchmarkPageDecodeParallel(b, 2) })
+	b.Run("workers=5", func(b *testing.B) { benchmarkPageDecodeParallel(b, 5) })
+	b.Run("workers=10", func(b *testing.B) { benchmarkPageDecodeParallel(b, 10) })
 }
 
-func Benchmark_pageBuilder_WriteRead(b *testing.B) {
-	in := []string{
-		"hello, world!",
-		"",
-		"this is a test of the emergency broadcast system",
-		"this is only a test",
-		"if this were a real emergency, you would be instructed to panic",
-		"but it's not, so don't",
-		"",
-		"this concludes the test",
-		"thank you for your cooperation",
-		"goodbye",
+func benchmarkPageDecodeParallel(b *testing.B, workers int) {
+	page := logsTestPage(b)
+
+	// Warm up one page reader per worker to avoid benchmarking the cost of
+	// initializing zstd.
+	{
+		var wg sync.WaitGroup
+
+		readers := make([]io.ReadCloser, workers)
+
+		for worker := range workers {
+			wg.Add(1)
+
+			go func(worker int) {
+				defer wg.Done()
+
+				_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+				if err != nil {
+					b.Error(err)
+				} else if _, err := io.Copy(io.Discard, values); err != nil {
+					b.Error(err)
+				}
+
+				readers[worker] = values
+			}(worker)
+		}
+
+		wg.Wait()
+
+		// Close all the readers at once; closing a reader releases it back to the
+		// pool so we only do this after the workers are done to guarantee that
+		// there is exactly one zstd reader in the pool per worker.
+		for worker := range workers {
+			require.NoError(b, readers[worker].Close())
+		}
 	}
 
+	b.ResetTimer()
+
+	var totalRead int
+	for b.Loop() {
+		var wg sync.WaitGroup
+
+		for range workers {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+				if err != nil {
+					b.Error(err)
+				} else if _, err := io.Copy(io.Discard, values); err != nil {
+					b.Error(err)
+				} else if err := values.Close(); err != nil {
+					b.Error(err)
+				}
+			}()
+		}
+
+		wg.Wait()
+
+		totalRead += page.Info.UncompressedSize
+	}
+
+	b.ReportMetric(float64(totalRead)/1_000_000/b.Elapsed().Seconds(), "MBps/op")
+}
+
+func logsTestPage(t testing.TB) *MemPage {
+	t.Helper()
+
+	f, err := os.Open("testdata/access_logs.gz")
+	require.NoError(t, err)
+	defer f.Close()
+
+	r, err := gzip.NewReader(f)
+	require.NoError(t, err)
+
+	var sb strings.Builder
+	_, err = io.Copy(&sb, r)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+
 	opts := BuilderOptions{
-		PageSizeHint: 1024,
+		PageSizeHint: sb.Len() * 2,
 		Value:        datasetmd.VALUE_TYPE_STRING,
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 	builder, err := newPageBuilder(opts)
-	require.NoError(b, err)
+	require.NoError(t, err)
 
-	for _, s := range in {
-		require.True(b, builder.Append(StringValue(s)))
+	for line := range strings.Lines(sb.String()) {
+		require.True(t, builder.Append(StringValue(line)))
 	}
 
 	page, err := builder.Flush()
-	require.NoError(b, err)
-	require.Equal(b, len(in), page.Info.RowCount)
-	require.Equal(b, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
-		if err != nil {
-			b.Fatal()
-		}
-
-		if _, err := io.Copy(io.Discard, values); err != nil {
-			b.Fatal(err)
-		} else if err := values.Close(); err != nil {
-			b.Fatal(err)
-		}
-	}
+	require.NoError(t, err)
+	return page
 }
 
 func Test_pageBuilder_WriteRead(t *testing.T) {
