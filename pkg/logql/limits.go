@@ -9,8 +9,9 @@ import (
 )
 
 var NoLimits = &fakeLimits{
-	maxSeries: math.MaxInt32,
-	timeout:   time.Hour,
+	maxSeries:               math.MaxInt32,
+	timeout:                 time.Hour,
+	multiVariantQueryEnable: false, // Multi-variant queries disabled by default
 }
 
 // Limits allow the engine to fetch limits for a given users.
