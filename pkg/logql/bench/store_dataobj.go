@@ -27,7 +27,7 @@ type DataObjStore struct {
 	builder  *dataobj.Builder
 	buf      *bytes.Buffer
 	uploader *uploader.Uploader
-	meta     *metastore.Manager
+	meta     *metastore.Updater
 
 	bucket objstore.Bucket
 
@@ -65,7 +65,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewManager(bucket, tenantID, logger)
+	meta := metastore.NewUpdater(bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
 
 	return &DataObjStore{
@@ -100,7 +100,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket)), nil
 }
 
 func (s *DataObjStore) flush() error {
@@ -120,7 +120,7 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update metastore with the new data object
-	err = s.meta.UpdateMetastore(context.Background(), path, stats)
+	err = s.meta.Update(context.Background(), path, stats)
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
