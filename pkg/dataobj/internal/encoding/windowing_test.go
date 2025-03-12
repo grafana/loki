@@ -5,8 +5,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 func Test_windowPages(t *testing.T) {
