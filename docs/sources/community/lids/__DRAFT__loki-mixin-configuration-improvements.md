@@ -1,10 +1,10 @@
 ---
-title: "005: Loki mixin configuration improvements"
+title: "0005: Loki mixin configuration improvements"
 description: "Improve Loki mixin configurations"
 draft: false
 ---
 
-# 005: Loki mixin configuration improvements
+# 0005: Loki mixin configuration improvements
 
 **Author:** Alexandre Chouinard (Daazku@gmail.com)
 
