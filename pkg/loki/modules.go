@@ -2193,5 +2193,5 @@ func GetInstanceAddr(addr string, netInterfaces []string, logger log.Logger) (st
 		return addr, nil
 	}
 
-	return netutil.GetFirstAddressOf(netInterfaces, logger, false)
+	return netutil.GetFirstAddressOf(netInterfaces, logger, true)
 }
