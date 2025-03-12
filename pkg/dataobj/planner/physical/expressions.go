@@ -5,21 +5,21 @@ import "fmt"
 type ExpressionType uint32
 
 const (
-	EXPR_TYPE_UNARY ExpressionType = iota
-	EXPR_TYPE_BINARY
-	EXPR_TYPE_LITERAL
-	EXPR_TYPE_COLUMN
+	ExprTypeUnary ExpressionType = iota
+	ExprTypeBinary
+	ExprTypeLiteral
+	ExprTypeColumn
 )
 
 func (t ExpressionType) String() string {
 	switch t {
-	case EXPR_TYPE_UNARY:
+	case ExprTypeUnary:
 		return "UnaryExpression"
-	case EXPR_TYPE_BINARY:
+	case ExprTypeBinary:
 		return "BinaryExpression"
-	case EXPR_TYPE_LITERAL:
+	case ExprTypeLiteral:
 		return "LiteralExpression"
-	case EXPR_TYPE_COLUMN:
+	case ExprTypeColumn:
 		return "ColumnExpression"
 	default:
 		return fmt.Sprintf("unknown expression type %d", t)
@@ -29,15 +29,15 @@ func (t ExpressionType) String() string {
 type UnaryOpType uint32
 
 const (
-	UNARY_OP_NOT UnaryOpType = iota
-	UNARY_OP_ABS
+	UnaryOpNot UnaryOpType = iota
+	UnaryOpAbs
 )
 
 func (t UnaryOpType) String() string {
 	switch t {
-	case UNARY_OP_NOT:
+	case UnaryOpNot:
 		return "NOT"
-	case UNARY_OP_ABS:
+	case UnaryOpAbs:
 		return "ABS"
 	default:
 		return fmt.Sprintf("unknown unary operator type %d", t)
@@ -47,66 +47,66 @@ func (t UnaryOpType) String() string {
 type BinaryOpType uint32
 
 const (
-	BINARY_OP_EQ BinaryOpType = iota
-	BINARY_OP_NEQ
-	BINARY_OP_GT
-	BINARY_OP_GTE
-	BINARY_OP_LT
-	BINARY_OP_LTE
-	BINARY_OP_AND
-	BINARY_OP_OR
-	BINARY_OP_XOR
-	BINARY_OP_NOT
-	BINARY_OP_ADD
-	BINARY_OP_SUB
-	BINARY_OP_MUL
-	BINARY_OP_DIV
-	BINARY_OP_MOD
-	BINARY_OP_MATCH_STR
-	BINARY_OP_NMATCH_STR
-	BINARY_OP_MATCH_RE
-	BINARY_OP_NMATCH_RE
+	BinaryOpEq BinaryOpType = iota
+	BinaryOpNeq
+	BinaryOpGt
+	BinaryOpGte
+	BinaryOpLt
+	BinaryOpLte
+	BinaryOpAnd
+	BinaryOpOr
+	BinaryOpXor
+	BinaryOpNot
+	BinaryOpAdd
+	BinaryOpSub
+	BinaryOpMul
+	BinaryOpDiv
+	BinaryOpMod
+	BinaryOpMatchStr
+	BinaryOpNmatchStr
+	BinaryOpMatchRe
+	BinaryOpNmatchRe
 )
 
 func (t BinaryOpType) String() string {
 	switch t {
-	case BINARY_OP_EQ:
+	case BinaryOpEq:
 		return "EQ"
-	case BINARY_OP_NEQ:
+	case BinaryOpNeq:
 		return "NEQ" // convenience for NOT(EQ(expr))
-	case BINARY_OP_GT:
+	case BinaryOpGt:
 		return "GT"
-	case BINARY_OP_GTE:
+	case BinaryOpGte:
 		return "GTE"
-	case BINARY_OP_LT:
+	case BinaryOpLt:
 		return "LT" // convenience for NOT(GTE(expr))
-	case BINARY_OP_LTE:
+	case BinaryOpLte:
 		return "LTE" // convenience for NOT(GT(expr))
-	case BINARY_OP_AND:
+	case BinaryOpAnd:
 		return "AND"
-	case BINARY_OP_OR:
+	case BinaryOpOr:
 		return "OR"
-	case BINARY_OP_XOR:
+	case BinaryOpXor:
 		return "XOR"
-	case BINARY_OP_NOT:
+	case BinaryOpNot:
 		return "NOT"
-	case BINARY_OP_ADD:
+	case BinaryOpAdd:
 		return "ADD"
-	case BINARY_OP_SUB:
+	case BinaryOpSub:
 		return "SUB"
-	case BINARY_OP_MUL:
+	case BinaryOpMul:
 		return "MUL"
-	case BINARY_OP_DIV:
+	case BinaryOpDiv:
 		return "DIV"
-	case BINARY_OP_MOD:
+	case BinaryOpMod:
 		return "MOD"
-	case BINARY_OP_MATCH_STR:
+	case BinaryOpMatchStr:
 		return "MATCH_STR"
-	case BINARY_OP_NMATCH_STR:
+	case BinaryOpNmatchStr:
 		return "NMATCH_STR" // convenience for NOT(MATCH_STR(...))
-	case BINARY_OP_MATCH_RE:
+	case BinaryOpMatchRe:
 		return "MATCH_RE"
-	case BINARY_OP_NMATCH_RE:
+	case BinaryOpNmatchRe:
 		return "NMATCH_RE" // convenience for NOT(MATCH_RE(...))
 	default:
 		return fmt.Sprintf("unknown binary operator type %d", t)
@@ -146,7 +146,7 @@ type UnaryExpr[T UnaryOpType] struct {
 func (*UnaryExpr[T]) isExpr()      {}
 func (*UnaryExpr[T]) isUnaryExpr() {}
 func (*UnaryExpr[T]) ID() ExpressionType {
-	return EXPR_TYPE_UNARY
+	return ExprTypeUnary
 }
 
 type BinaryExpr[T BinaryOpType] struct {
@@ -157,7 +157,7 @@ type BinaryExpr[T BinaryOpType] struct {
 func (*BinaryExpr[T]) isExpr()       {}
 func (*BinaryExpr[T]) isBinaryExpr() {}
 func (*BinaryExpr[T]) ID() ExpressionType {
-	return EXPR_TYPE_BINARY
+	return ExprTypeBinary
 }
 
 type LiteralExpr[T any] struct {
@@ -167,7 +167,7 @@ type LiteralExpr[T any] struct {
 func (*LiteralExpr[T]) isExpr()        {}
 func (*LiteralExpr[T]) isLiteralExpr() {}
 func (*LiteralExpr[T]) ID() ExpressionType {
-	return EXPR_TYPE_LITERAL
+	return ExprTypeLiteral
 }
 
 type ColumnExpr struct {
@@ -177,5 +177,5 @@ type ColumnExpr struct {
 func (e *ColumnExpr) isExpr()       {}
 func (e *ColumnExpr) isColumnExpr() {}
 func (e *ColumnExpr) ID() ExpressionType {
-	return EXPR_TYPE_COLUMN
+	return ExprTypeColumn
 }
