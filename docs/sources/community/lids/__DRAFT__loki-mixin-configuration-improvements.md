@@ -1,7 +1,7 @@
 ---
 title: "XXXX: Loki mixin configuration improvements"
 description: "Improve Loki mixin configurations"
-draft: true
+draft: false
 ---
 
 # XXXX: Loki mixin configuration improvements
