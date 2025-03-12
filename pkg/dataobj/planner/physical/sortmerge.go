@@ -8,6 +8,17 @@ const (
 	ASC
 )
 
+func (o SortOrder) String() string {
+	switch o {
+	case DESC:
+		return "DESC"
+	case ASC:
+		return "ASC"
+	default:
+		return "UNDEFINED"
+	}
+}
+
 // SortMerge represents a sort+merge operation in the physical plan. It
 // performs sorting of data based on the specified Column and Order direction.
 type SortMerge struct {

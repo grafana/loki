@@ -16,12 +16,12 @@ const (
 type DataObjScan struct {
 	id string
 
-	Location   DataObjLocation
-	StreamIDs  []int64
-	Projection []ColumnExpression
-	Predicates []Expression
-	Direction  Direction
-	Limit      uint32
+	Location    DataObjLocation
+	StreamIDs   []int64
+	Projections []ColumnExpression
+	Predicates  []Expression
+	Direction   Direction
+	Limit       uint32
 }
 
 func (s *DataObjScan) ID() string {
