@@ -253,7 +253,7 @@ func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, col
 		}
 		return dataset.FuncPredicate{
 			Column: metadataColumn,
-			Keep: func(column dataset.Column, value dataset.Value) bool {
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				return p.Keep(p.Name, valueToString(value))
 			},
 		}

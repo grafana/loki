@@ -310,9 +310,8 @@ func evaluateStreamsPredicate(p dataset.Predicate, s streams.Stream) bool {
 			return s.MinTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
 		} else if p.Column == fakeMaxColumn {
 			return s.MaxTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
-		} else {
-			panic("unexpected column")
 		}
+		panic("unexpected column")
 
 	default:
 		panic("unexpected predicate")

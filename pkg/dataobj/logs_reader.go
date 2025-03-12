@@ -317,7 +317,7 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		}
 		return dataset.FuncPredicate{
 			Column: metadataColumn,
-			Keep: func(column dataset.Column, value dataset.Value) bool {
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				return p.Keep(p.Key, valueToString(value))
 			},
 		}
