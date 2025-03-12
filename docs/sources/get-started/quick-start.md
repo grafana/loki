@@ -89,11 +89,11 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
        ✔ Container loki-fundamentals-alloy-1    Started  0.4s
       ```
 
-With the Loki stack running, you can now verify each component is up and running:
+1. With the Loki stack running, you can now verify each component is up and running:
 
-* **Alloy**: Open a browser and navigate to [http://localhost:12345/graph](http://localhost:12345/graph). You should see the Alloy UI.
-* **Grafana**: Open a browser and navigate to [http://localhost:3000](http://localhost:3000). You should see the Grafana home page.
-* **Loki**: Open a browser and navigate to [http://localhost:3100/metrics](http://localhost:3100/metrics). You should see the Loki metrics page.
+   * **Alloy**: Open a browser and navigate to [http://localhost:12345/graph](http://localhost:12345/graph). You should see the Alloy UI.
+   * **Grafana**: Open a browser and navigate to [http://localhost:3000](http://localhost:3000). You should see the Grafana home page.
+   * **Loki**: Open a browser and navigate to [http://localhost:3100/metrics](http://localhost:3100/metrics). You should see the Loki metrics page.
 
 <!-- INTERACTIVE page step1.md END -->
 
@@ -107,7 +107,7 @@ If you have only the getting started demo deployed in your docker environment, y
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Grafana Drilldown Service View" alt="Grafana Drilldown Service View" >}}
 
-We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [the getting started page](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
+We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [the Logs Drilldown getting started page](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
 
 <!-- INTERACTIVE page step2.md END -->
 
@@ -288,7 +288,7 @@ topk(10,sum(rate({level="error"} | logfmt [5m])) by (service_name))
 ```
 <!-- INTERACTIVE copy END -->
 {{< admonition type="note" >}}
-`service_name` is a label created by Loki when no service name is provided in the log line. It will use the container name as the service name. A list of all labels can be found in [Labels](https://grafana.com/docs/loki/latest/get-started/labels/#default-labels-for-all-users).
+`service_name` is a label created by Loki when no service name is provided in the log line. It will use the container name as the service name. A list of all automatically generated labels can be found in [Labels](https://grafana.com/docs/loki/latest/get-started/labels/#default-labels-for-all-users).
 {{< /admonition >}}
 
 Finally, lets take a look at the total log throughput of each container in our production environment:
@@ -367,7 +367,7 @@ This configuration file can be viewed visually via the Alloy UI at [http://local
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-alloy-ui.png" caption="Alloy UI" alt="Alloy UI" >}}
 
 In this view you can see the components of the Alloy configuration file and how they are connected:
-* **discovery.docker**: This component queries the metadata of the docker enviroment via the docker socket and discovers new containers, aswell as providing metdata about the containers.
+* **discovery.docker**: This component queries the metadata of the docker environment via the docker socket and discovers new containers, as well as providing metadata about the containers.
 * **discovery.relabel**: This component converts a metadata (`__meta_docker_container_name`) label into a Loki label (`container`).
 * **loki.source.docker**: This component collects logs from the discovered containers and forwards them to the next component. It requests the metadata from the `discovery.docker` component and applies the relabeling rules from the `discovery.relabel` component.
 * **loki.process**: This component provides stages for log transformation and extraction. In this case it adds a static label `env=production` to all logs.
@@ -375,7 +375,7 @@ In this view you can see the components of the Alloy configuration file and how 
 
 ### View Logs in realtime
 
-Grafana Alloy provides inbuilt realtime log viewer. This allows you to view current log entries and how they are being transformed via specific components of the pipeline. 
+Grafana Alloy provides a built-in real time log viewer. This allows you to view current log entries and how they are being transformed via specific components of the pipeline. 
 To view live debugging mode open a browser tab and navigate to: [http://localhost:12345/debug/loki.process.getting_started](http://localhost:12345/debug/loki.process.getting_started).
 <!-- INTERACTIVE page step6.md END -->
 <!-- INTERACTIVE page step7.md START -->
@@ -449,7 +449,7 @@ To summarize the configuration file:
 * **auth_enabled**: This is set to false, meaning Loki does not need a [tenant ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for ingest or query.
 * **server**: Defines the ports Loki listens on, the log level, and the maximum number of concurrent gRPC streams.
 * **common**:  Defines the common configuration for Loki. This includes the instance address, storage configuration, replication factor, and ring configuration.
-* **query_range**: This is defined to tell Loki to use inbuilt caching for query results. In production environments of Loki this is handled by a seperate cache service such as memcached.
+* **query_range**: This is configured to tell Loki to use inbuilt caching for query results. In production environments of Loki this is handled by a separate cache service such as memcached.
 * **limits_config**: Defines the global limits for all Loki tenants. This includes enabling specific features such as metric aggregation and structured metadata. Limits can be defined on a per tenant basis, however this is considered an advanced configuration and for most use cases the global limits are sufficient.
 * **schema_config**: Defines the schema configuration for Loki. This includes the schema version, the object store, and the index configuration.
 * **pattern_ingester**: Enables pattern ingesters which are used to discover log patterns. Mostly used by Grafana Logs Drilldown.
