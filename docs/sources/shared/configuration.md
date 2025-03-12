@@ -2539,6 +2539,10 @@ otlp_config:
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
 
+# Enable checking limits against the ingest-limits service. Defaults to false.
+# CLI flag: -distributor.ingest-limits-enabled
+[ingest_limits_enabled: <boolean> | default = false]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
