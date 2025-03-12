@@ -506,17 +506,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
-	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, req.Streams)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if len(exceedsLimits.RejectedStreams) > 0 {
-			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-		} else {
-			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
-		}
-	}
-
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -704,6 +693,17 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
+	}
+
+	if d.cfg.IngestLimitsEnabled {
+		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, streams)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
+		} else if len(exceedsLimits.RejectedStreams) > 0 {
+			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+		} else {
+			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
+		}
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
@@ -1152,7 +1152,7 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	}
 }
 
-func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []logproto.Stream) (*logproto.ExceedsLimitsResponse, error) {
+func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -1165,11 +1165,11 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	for _, stream := range streams {
 		// Add the stream hash to FNV-1.
 		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.Hash)
+		binary.PutUvarint(buf, stream.HashKeyNoShard)
 		_, _ = h.Write(buf)
 		// Add the stream hash to the request. This is sent to limits-frontend.
 		streamHashes = append(streamHashes, &logproto.StreamMetadata{
-			StreamHash: stream.Hash,
+			StreamHash: stream.HashKeyNoShard,
 		})
 	}
 
