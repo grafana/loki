@@ -49,6 +49,7 @@ import (
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -358,7 +359,7 @@ func New(
 		partitionRing:        partitionRing,
 		limitsFrontendRing:   limitsFrontendRing,
 		limitsFrontends: limits_frontend_client.NewPool(
-			"ingest-limits-frontend",
+			limits_frontend.RingName,
 			limitsFrontendCfg.PoolConfig,
 			limitsFrontendRing,
 			limitsFrontendClientFactory,
