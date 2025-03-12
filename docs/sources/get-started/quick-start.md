@@ -520,7 +520,7 @@ Head back to where you started from to continue with the Loki documentation: [Lo
 
 You have completed the Loki Quickstart demo. So where to go next? Here are a few suggestions:
 * **Deploy:** Loki can be deployed in multiple ways. For production usecases we recommend deploying Loki via the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/).
-* **Send Logs:** In this example we used Grafana Alloy to collect and send logs to Loki. However there are many other methods you can use depending upon your needs. For more information see [send data](https://grafana.com/docs/loki/next/send-data/).
+* **Send Logs:** In this example we used Grafana Alloy to collect and send logs to Loki. However there are many other methods you can use depending upon your needs. For more information see [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
 * **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 * **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information see [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).
 
