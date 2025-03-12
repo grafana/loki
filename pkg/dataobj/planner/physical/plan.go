@@ -123,8 +123,8 @@ func (s nodeSet) sorted() []Node {
 // retrieving nodes by ID, retrieving parents and children of nodes, and
 // walking the graph in different orders using the depth-first-search algorithm.
 type Plan struct {
-	// nodesById maps node IDs to their corresponding Node instances for quick lookups
-	nodesById map[string]Node
+	// nodesByID maps node IDs to their corresponding Node instances for quick lookups
+	nodesByID map[string]Node
 	// nodes is a set containing all nodes in the plan
 	nodes nodeSet
 	// parents maps each node to a set of its parent nodes in the execution graph
@@ -134,8 +134,8 @@ type Plan struct {
 }
 
 func (p *Plan) init() {
-	if p.nodesById == nil {
-		p.nodesById = make(map[string]Node)
+	if p.nodesByID == nil {
+		p.nodesByID = make(map[string]Node)
 	}
 	if p.nodes == nil {
 		p.nodes = make(nodeSet)
@@ -159,7 +159,7 @@ func (p *Plan) AddNode(n Node) Node {
 		return n
 	}
 	p.nodes.add(n)
-	p.nodesById[n.ID()] = n
+	p.nodesByID[n.ID()] = n
 
 	if _, ok := p.parents[n]; !ok {
 		p.parents[n] = make(nodeSet)
@@ -199,7 +199,7 @@ func (p *Plan) Len() int {
 
 // NodeByID returns the node with the given identifier
 func (p *Plan) NodeByID(id string) Node {
-	return p.nodesById[id]
+	return p.nodesByID[id]
 }
 
 // Parents returns all parent nodes of the given node

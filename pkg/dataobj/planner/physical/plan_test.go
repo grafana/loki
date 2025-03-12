@@ -49,8 +49,8 @@ func TestPlan(t *testing.T) {
 		merge := p.AddNode(&SortMerge{
 			id: "merge",
 		})
-		p.AddEdge(Edge{Parent: merge, Child: scan1})
-		p.AddEdge(Edge{Parent: merge, Child: scan2})
+		_ = p.AddEdge(Edge{Parent: merge, Child: scan1})
+		_ = p.AddEdge(Edge{Parent: merge, Child: scan2})
 
 		require.Equal(t, p.Len(), 3)
 		require.Len(t, p.Roots(), 1)
@@ -68,8 +68,8 @@ func TestPlan(t *testing.T) {
 		merge := p.AddNode(&SortMerge{
 			id: "merge",
 		})
-		p.AddEdge(Edge{Parent: merge, Child: scan1})
-		p.AddEdge(Edge{Parent: merge, Child: scan2})
+		_ = p.AddEdge(Edge{Parent: merge, Child: scan1})
+		_ = p.AddEdge(Edge{Parent: merge, Child: scan2})
 
 		n := p.NodeByID("merge")
 		require.Len(t, p.Parents(n), 0)  // no parents
@@ -89,16 +89,16 @@ func TestPlan(t *testing.T) {
 		proj3 := p.AddNode(&Projection{id: "projection3"})
 		scan1 := p.AddNode(&DataObjScan{id: "scan1"})
 
-		p.AddEdge(Edge{Parent: limit1, Child: merge1})
-		p.AddEdge(Edge{Parent: merge1, Child: filter1})
-		p.AddEdge(Edge{Parent: merge1, Child: merge2})
-		p.AddEdge(Edge{Parent: merge1, Child: proj3})
-		p.AddEdge(Edge{Parent: filter1, Child: proj1})
-		p.AddEdge(Edge{Parent: merge2, Child: proj1})
-		p.AddEdge(Edge{Parent: merge2, Child: proj2})
-		p.AddEdge(Edge{Parent: proj1, Child: scan1})
-		p.AddEdge(Edge{Parent: proj2, Child: scan1})
-		p.AddEdge(Edge{Parent: proj3, Child: scan1})
+		_ = p.AddEdge(Edge{Parent: limit1, Child: merge1})
+		_ = p.AddEdge(Edge{Parent: merge1, Child: filter1})
+		_ = p.AddEdge(Edge{Parent: merge1, Child: merge2})
+		_ = p.AddEdge(Edge{Parent: merge1, Child: proj3})
+		_ = p.AddEdge(Edge{Parent: filter1, Child: proj1})
+		_ = p.AddEdge(Edge{Parent: merge2, Child: proj1})
+		_ = p.AddEdge(Edge{Parent: merge2, Child: proj2})
+		_ = p.AddEdge(Edge{Parent: proj1, Child: scan1})
+		_ = p.AddEdge(Edge{Parent: proj2, Child: scan1})
+		_ = p.AddEdge(Edge{Parent: proj3, Child: scan1})
 
 		roots := p.Roots()
 		require.Len(t, roots, 1)
