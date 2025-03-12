@@ -146,10 +146,8 @@ func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.C
 			if err != nil {
 				return fmt.Errorf("reading column data: %w", err)
 			}
-			defer rc.Close()
-
-			data := make([]byte, windowSize)
-			if _, err := io.ReadFull(rc, data); err != nil {
+			data, err := readAndClose(rc, windowSize)
+			if err != nil {
 				return fmt.Errorf("read column data: %w", err)
 			}
 
@@ -183,6 +181,17 @@ func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.C
 	})
 }
 
+// readAndClose reads exactly size bytes from rc and then closes it.
+func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
+	defer rc.Close()
+
+	data := make([]byte, size)
+	if _, err := io.ReadFull(rc, data); err != nil {
+		return nil, fmt.Errorf("read column data: %w", err)
+	}
+	return data, nil
+}
+
 func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		results := make([]dataset.PageData, len(pages))
@@ -207,10 +216,8 @@ func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}
-			defer rc.Close()
-
-			data := make([]byte, windowSize)
-			if _, err := io.ReadFull(rc, data); err != nil {
+			data, err := readAndClose(rc, windowSize)
+			if err != nil {
 				return fmt.Errorf("read page data: %w", err)
 			}
 
@@ -283,11 +290,9 @@ func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnD
 			if err != nil {
 				return fmt.Errorf("reading column data: %w", err)
 			}
-			defer rc.Close()
-
-			data := make([]byte, windowSize)
-			if _, err := io.ReadFull(rc, data); err != nil {
-				return fmt.Errorf("read column data: %w", err)
+			data, err := readAndClose(rc, windowSize)
+			if err != nil {
+				return fmt.Errorf("read page data: %w", err)
 			}
 
 			for _, wp := range window {
@@ -344,10 +349,8 @@ func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageD
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}
-			defer rc.Close()
-
-			data := make([]byte, windowSize)
-			if _, err := io.ReadFull(rc, data); err != nil {
+			data, err := readAndClose(rc, windowSize)
+			if err != nil {
 				return fmt.Errorf("read page data: %w", err)
 			}
 
