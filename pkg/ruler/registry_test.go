@@ -168,11 +168,11 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteQueueCapacity: 987,
-				RulerEnableWALReplay: true,
+				RulerEnableWALReplay:          true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay: false,
+				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
@@ -237,7 +237,7 @@ func newFakeLimits() fakeLimits {
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay: false,
+				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{

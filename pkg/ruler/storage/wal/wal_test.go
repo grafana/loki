@@ -332,27 +332,27 @@ func TestStorage_DisableReplay(t *testing.T) {
 	require.NoError(t, err)
 
 	app := s.Appender(context.Background())
-	
+
 	// Write some samples
 	payload := buildSeries([]string{"foo", "bar", "baz"})
 	for _, metric := range payload {
 		metric.Write(t, app)
 	}
-	
+
 	require.NoError(t, app.Commit())
 	require.NoError(t, s.Close())
 
 	// Create a new WAL with replay disabled
 	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, false)
 	require.NoError(t, err)
-	
+
 	// Verify that no series were loaded (replay didn't happen)
 	count := 0
 	for range s.series.iterator().Channel() {
 		count++
 	}
 	require.Equal(t, 0, count, "no series should have been loaded with replay disabled")
-	
+
 	require.NoError(t, s.Close())
 
 	// Create a new WAL with replay enabled
@@ -361,7 +361,7 @@ func TestStorage_DisableReplay(t *testing.T) {
 	defer func() {
 		require.NoError(t, s.Close())
 	}()
-	
+
 	// Verify that series were loaded (replay happened)
 	count = 0
 	for range s.series.iterator().Channel() {
