@@ -90,7 +90,7 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 // Fill does not advance the offset of the basicReader.
 func (pr *basicReader) Fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
 	if len(columns) == 0 {
-		return 0, fmt.Errorf("no columns to read")
+		return 0, fmt.Errorf("no columns to fill")
 	}
 
 	for partition := range partitionRows(s) {

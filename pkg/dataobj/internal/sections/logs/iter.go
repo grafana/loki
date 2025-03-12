@@ -80,7 +80,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			}
 
 			for _, row := range rows[:n] {
-				record, err := decodeRecord(streamsColumns, row)
+				record, err := Decode(streamsColumns, row)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -89,7 +89,10 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 	})
 }
 
-func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
+// Decode decodes a record from a [dataset.Row], using the provided columns to
+// determine the column type. The list of columns must match the columns used
+// to create the row.
+func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 	record := Record{
 		// Preallocate metadata to exact number of metadata columns to avoid
 		// oversizing.
