@@ -19,14 +19,16 @@ type Limits interface {
 	MaxQueryRange(ctx context.Context, userID string) time.Duration
 	QueryTimeout(context.Context, string) time.Duration
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
+	EnableMultiVariantQueries(string) bool
 }
 
 type fakeLimits struct {
-	maxSeries      int
-	timeout        time.Duration
-	blockedQueries []*validation.BlockedQuery
-	rangeLimit     time.Duration
-	requiredLabels []string
+	maxSeries               int
+	timeout                 time.Duration
+	blockedQueries          []*validation.BlockedQuery
+	rangeLimit              time.Duration
+	requiredLabels          []string
+	multiVariantQueryEnable bool
 }
 
 func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
@@ -47,4 +49,8 @@ func (f fakeLimits) BlockedQueries(_ context.Context, _ string) []*validation.Bl
 
 func (f fakeLimits) RequiredLabels(_ context.Context, _ string) []string {
 	return f.requiredLabels
+}
+
+func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
+	return f.multiVariantQueryEnable
 }
