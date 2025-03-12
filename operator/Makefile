@@ -117,7 +117,7 @@ OCI_RUNTIME ?= $(shell which podman || which docker)
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-### Development
+##@ Development
 
 .PHONY: deps
 deps: go.mod go.sum
@@ -313,6 +313,7 @@ oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
 
 ##@ Website
+
 TYPES_TARGET := $(shell find api/loki -type f -iname "*_types.go")
 docs/operator/api.md: $(TYPES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
 	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/api/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
@@ -331,7 +332,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 	sed -i 's/+newline/\n/' $@
 
 .PHONY: web-pre
-web-pre: docs/operator/api.md docs/operator/feature-gates.md
+web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
 	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
