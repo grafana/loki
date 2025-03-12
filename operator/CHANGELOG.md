@@ -1,6 +1,6 @@
 ## Main
 
-## Release 6.1.3
+## Release 6.1.4
 
 - [16360](https://github.com/grafana/loki/pull/16360) **xperimental**: Update Loki operator to v3.4.2
 
