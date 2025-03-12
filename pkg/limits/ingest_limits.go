@@ -85,6 +85,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
 }
 
+func (cfg *Config) Validate() error {
+	return nil
+}
+
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
 
