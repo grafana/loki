@@ -3750,6 +3750,11 @@ discover_generic_fields:
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
 
+# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
+# startup at the cost of not recovering in-memory WAL metrics on restart.
+# CLI flag: -ruler.enable-wal-replay
+[ruler_enable_wal_replay: <boolean> | default = true]
+
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
 
