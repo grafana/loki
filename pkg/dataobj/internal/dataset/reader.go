@@ -472,19 +472,20 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		return unionRanges(nil, left, right), nil
 
 	case NotPredicate:
-		// TODO(rfratto): Efficient NotPredicate handling.
+		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
+		// predicates that can be applied to pages.
 		//
-		// Initially, NotPredicates were handled as subtracting the range of
-		// p.Inner from the full range. This is incorrect, as it would eliminate
-		// the entire dataset if p.Inner is a FuncPredicate, and seemed to
-		// eliminate other expected rows.
-		//
-		// For now, we permit the full range.
-		var rowsCount uint64
-		for _, column := range r.dl.AllColumns() {
-			rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+		// See comment on [simplifyNotPredicate] for more information.
+		simplified, err := simplifyNotPredicate(p)
+		if err != nil {
+			// Predicate can't be simplfied, so we permit the full range.
+			var rowsCount uint64
+			for _, column := range r.dl.AllColumns() {
+				rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+			}
+			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
 		}
-		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+		return r.buildPredicateRanges(ctx, simplified)
 
 	case FalsePredicate:
 		return nil, nil // No valid ranges.
@@ -512,6 +513,67 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+// simplifyNotPredicate applies De Morgan's laws to a NotPredicate to permit
+// page filtering.
+//
+// While during evaluation, a NotPredicate inverts the result of the inner
+// predicate, the same can't be done for page filtering. For example, imagine
+// that a page is included from a rule "a > 10." If we inverted that inclusion,
+// we may be incorrectly filtering out that page, as that page may also have
+// values less than 10.
+//
+// To correctly apply page filtering to a NotPredicate, we reduce the
+// NotPredicate to a set of predicates that can be applied to pages. This may
+// result in other NotPredicates that also need to be simplified.
+//
+// If the NotPredicate can't be simplified, simplifyNotPredicate returns an
+// error.
+func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
+	switch inner := p.Inner.(type) {
+	case AndPredicate: // De Morgan's law: !(A && B) == !A || !B
+		return OrPredicate{
+			Left:  NotPredicate{Inner: inner.Left},
+			Right: NotPredicate{Inner: inner.Right},
+		}, nil
+
+	case OrPredicate: // De Morgan's law: !(A || B) == !A && !B
+		return AndPredicate{
+			Left:  NotPredicate{Inner: inner.Left},
+			Right: NotPredicate{Inner: inner.Right},
+		}, nil
+
+	case NotPredicate: // De Morgan's law: !!A == A
+		return inner.Inner, nil
+
+	case FalsePredicate:
+		return nil, fmt.Errorf("can't simplify FalsePredicate")
+
+	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
+		return OrPredicate{
+			Left:  LessThanPredicate(inner),
+			Right: GreaterThanPredicate(inner),
+		}, nil
+
+	case GreaterThanPredicate: // De Morgan's law: !(A > B) == A <= B
+		return OrPredicate{
+			Left:  EqualPredicate(inner),
+			Right: LessThanPredicate(inner),
+		}, nil
+
+	case LessThanPredicate: // De Morgan's law: !(A < B) == A >= B
+		return OrPredicate{
+			Left:  EqualPredicate(inner),
+			Right: GreaterThanPredicate(inner),
+		}, nil
+
+	case FuncPredicate:
+		return nil, fmt.Errorf("can't simplify FuncPredicate")
+
+	default:
+		panic(fmt.Sprintf("unsupported predicate type %T", inner))
 	}
 }
 
