@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -227,4 +230,160 @@ func readDataset(br *Reader, batchSize int) ([]Row, error) {
 			return all, err
 		}
 	}
+}
+
+func Test_BuildPredicateRanges(t *testing.T) {
+	ds, cols := buildMemDatasetWithStats(t)
+	tt := []struct {
+		name      string
+		predicate Predicate
+		want      rowRanges
+	}{
+		{
+			name:      "nil predicate returns full range",
+			predicate: nil,
+			want:      rowRanges{{Start: 0, End: 999}}, // Full dataset range
+		},
+		{
+			name:      "equal predicate in range",
+			predicate: EqualPredicate{Column: cols[1], Value: Int64Value(50)},
+			want:      rowRanges{{Start: 0, End: 249}}, // Page 1 of Timestamp column
+		},
+		{
+			name:      "equal predicate not in any range",
+			predicate: EqualPredicate{Column: cols[1], Value: Int64Value(1500)},
+			want:      nil, // No ranges should match
+		},
+		{
+			name:      "greater than predicate",
+			predicate: GreaterThanPredicate{Column: cols[1], Value: Int64Value(400)},
+			want:      rowRanges{{Start: 250, End: 749}, {Start: 750, End: 999}}, // Pages 2 and 3 of Timestamp column
+		},
+		{
+			name:      "less than predicate",
+			predicate: LessThanPredicate{Column: cols[1], Value: Int64Value(300)},
+			want:      rowRanges{{Start: 0, End: 249}, {Start: 250, End: 749}}, // Pages 1 and 2 of Timestamp column
+		},
+		{
+			name: "and predicate",
+			predicate: AndPredicate{
+				Left:  EqualPredicate{Column: cols[0], Value: Int64Value(1)},      // Rows 0 - 299 of stream column
+				Right: LessThanPredicate{Column: cols[1], Value: Int64Value(600)}, // Rows 0 - 249, 250 - 749 of timestamp column
+			},
+			want: rowRanges{{Start: 0, End: 249}, {Start: 250, End: 299}},
+		},
+		{
+			name: "or predicate",
+			predicate: OrPredicate{
+				Left:  EqualPredicate{Column: cols[0], Value: Int64Value(1)},         // Rows 0 - 299 of stream column
+				Right: GreaterThanPredicate{Column: cols[1], Value: Int64Value(800)}, // Rows 750 - 999 of timestamp column
+			},
+			want: rowRanges{{Start: 0, End: 299}, {Start: 750, End: 999}}, // Rows 0 - 299, 750 - 999
+		},
+	}
+
+	ctx := context.Background()
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewReader(ReaderOptions{
+				Dataset:   ds,
+				Columns:   cols,
+				Predicate: tc.predicate,
+			})
+			defer r.Close()
+
+			// Initialize downloader
+			require.NoError(t, r.initDownloader(ctx))
+
+			got, err := r.buildPredicateRanges(ctx, tc.predicate)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.want, got, "row ranges should match expected ranges")
+		})
+	}
+}
+
+// buildMemDatasetWithStats creates a test dataset with only column and page stats.
+func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
+	t.Helper()
+
+	dset := FromMemory([]*MemColumn{
+		{
+			Info: ColumnInfo{
+				Name:      "stream",
+				Type:      datasetmd.VALUE_TYPE_INT64,
+				RowsCount: 1000, // 0 - 999
+			},
+			Pages: []*MemPage{
+				{
+					Info: PageInfo{
+						RowCount: 300, // 0 - 299
+						Stats: &datasetmd.Statistics{
+							MinValue: encodeInt64Value(t, 1),
+							MaxValue: encodeInt64Value(t, 2),
+						},
+					},
+				},
+				{
+					Info: PageInfo{
+						RowCount: 700, // 300 - 999
+						Stats: &datasetmd.Statistics{
+							MinValue: encodeInt64Value(t, 2),
+							MaxValue: encodeInt64Value(t, 2),
+						},
+					},
+				},
+			},
+		},
+		{
+			Info: ColumnInfo{
+				Name:      "timestamp",
+				Type:      datasetmd.VALUE_TYPE_INT64,
+				RowsCount: 1000, // 0 - 999
+			},
+			Pages: []*MemPage{
+				{
+					Info: PageInfo{
+						RowCount: 250, // 0 - 249
+						Stats: &datasetmd.Statistics{
+							MinValue: encodeInt64Value(t, 0),
+							MaxValue: encodeInt64Value(t, 100),
+						},
+					},
+				},
+				{
+					Info: PageInfo{
+						RowCount: 500, // 249 - 749
+						Stats: &datasetmd.Statistics{
+							MinValue: encodeInt64Value(t, 200),
+							MaxValue: encodeInt64Value(t, 500),
+						},
+					},
+				},
+				{
+					Info: PageInfo{
+						RowCount: 250, // 750 - 999
+						Stats: &datasetmd.Statistics{
+							MinValue: encodeInt64Value(t, 800),
+							MaxValue: encodeInt64Value(t, 1000),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	cols, err := result.Collect(dset.ListColumns(context.Background()))
+	require.NoError(t, err)
+
+	return dset, cols
+}
+
+// Helper function to encode an integer value for statistics
+func encodeInt64Value(t *testing.T, v int64) []byte {
+	t.Helper()
+
+	data, err := Int64Value(v).MarshalBinary()
+	require.NoError(t, err)
+	return data
 }

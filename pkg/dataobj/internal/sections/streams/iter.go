@@ -78,7 +78,7 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 			}
 
 			for _, row := range rows[:n] {
-				stream, err := decodeRow(streamsColumns, row)
+				stream, err := Decode(streamsColumns, row)
 				if err != nil || !yield(stream) {
 					return err
 				}
@@ -87,7 +87,10 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 	})
 }
 
-func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
+// Decode decodes a stream from a [dataset.Row], using the provided columns to
+// determine the column type. The list of columns must match the columns used
+// to create the row.
+func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
 	var stream Stream
 
 	for columnIndex, columnValue := range row.Values {
