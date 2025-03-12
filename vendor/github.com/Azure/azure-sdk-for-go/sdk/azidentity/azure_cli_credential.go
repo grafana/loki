@@ -70,7 +70,11 @@ func NewAzureCLICredential(options *AzureCLICredentialOptions) (*AzureCLICredent
 	}
 	for _, r := range cp.Subscription {
 		if !(alphanumeric(r) || r == '-' || r == '_' || r == ' ' || r == '.') {
-			return nil, fmt.Errorf("%s: invalid Subscription %q", credNameAzureCLI, cp.Subscription)
+			return nil, fmt.Errorf(
+				"%s: Subscription %q contains invalid characters. If this is the name of a subscription, use its ID instead",
+				credNameAzureCLI,
+				cp.Subscription,
+			)
 		}
 	}
 	if cp.TenantID != "" && !validTenantID(cp.TenantID) {

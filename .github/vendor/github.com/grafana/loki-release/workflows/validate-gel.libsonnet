@@ -10,10 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.withRun(|||
-      apt update
-      apt install -qy tar xz-utils
-    |||),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh'),
     step.new('install shellcheck', './lib/actions/install-binary')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.with({
@@ -36,7 +33,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(true);
+local validationJob = _validationJob(false);
 
 
 {

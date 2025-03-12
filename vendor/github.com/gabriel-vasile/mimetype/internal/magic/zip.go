@@ -3,7 +3,6 @@ package magic
 import (
 	"bytes"
 	"encoding/binary"
-	"strings"
 )
 
 var (
@@ -43,48 +42,88 @@ func Zip(raw []byte, limit uint32) bool {
 
 // Jar matches a Java archive file.
 func Jar(raw []byte, limit uint32) bool {
-	return zipContains(raw, "META-INF/MANIFEST.MF")
+	return zipContains(raw, []byte("META-INF/MANIFEST.MF"), false)
 }
 
-// zipTokenizer holds the source zip file and scanned index.
-type zipTokenizer struct {
-	in []byte
-	i  int // current index
-}
-
-// next returns the next file name from the zip headers.
-// https://web.archive.org/web/20191129114319/https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html
-func (t *zipTokenizer) next() (fileName string) {
-	if t.i > len(t.in) {
-		return
-	}
-	in := t.in[t.i:]
-	// pkSig is the signature of the zip local file header.
-	pkSig := []byte("PK\003\004")
-	pkIndex := bytes.Index(in, pkSig)
-	// 30 is the offset of the file name in the header.
-	fNameOffset := pkIndex + 30
-	// end if signature not found or file name offset outside of file.
-	if pkIndex == -1 || fNameOffset > len(in) {
-		return
+func zipContains(raw, sig []byte, msoCheck bool) bool {
+	b := readBuf(raw)
+	pk := []byte("PK\003\004")
+	if len(b) < 0x1E {
+		return false
 	}
 
-	fNameLen := int(binary.LittleEndian.Uint16(in[pkIndex+26 : pkIndex+28]))
-	if fNameLen <= 0 || fNameOffset+fNameLen > len(in) {
-		return
+	if !b.advance(0x1E) {
+		return false
 	}
-	t.i += fNameOffset + fNameLen
-	return string(in[fNameOffset : fNameOffset+fNameLen])
-}
+	if bytes.HasPrefix(b, sig) {
+		return true
+	}
 
-// zipContains returns true if the zip file headers from in contain any of the paths.
-func zipContains(in []byte, paths ...string) bool {
-	t := zipTokenizer{in: in}
-	for i, tok := 0, t.next(); tok != ""; i, tok = i+1, t.next() {
-		for p := range paths {
-			if strings.HasPrefix(tok, paths[p]) {
-				return true
+	if msoCheck {
+		skipFiles := [][]byte{
+			[]byte("[Content_Types].xml"),
+			[]byte("_rels/.rels"),
+			[]byte("docProps"),
+			[]byte("customXml"),
+			[]byte("[trash]"),
+		}
+
+		hasSkipFile := false
+		for _, sf := range skipFiles {
+			if bytes.HasPrefix(b, sf) {
+				hasSkipFile = true
+				break
 			}
+		}
+		if !hasSkipFile {
+			return false
+		}
+	}
+
+	searchOffset := binary.LittleEndian.Uint32(raw[18:]) + 49
+	if !b.advance(int(searchOffset)) {
+		return false
+	}
+
+	nextHeader := bytes.Index(raw[searchOffset:], pk)
+	if !b.advance(nextHeader) {
+		return false
+	}
+	if bytes.HasPrefix(b, sig) {
+		return true
+	}
+
+	for i := 0; i < 4; i++ {
+		if !b.advance(0x1A) {
+			return false
+		}
+		nextHeader = bytes.Index(b, pk)
+		if nextHeader == -1 {
+			return false
+		}
+		if !b.advance(nextHeader + 0x1E) {
+			return false
+		}
+		if bytes.HasPrefix(b, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// APK matches an Android Package Archive.
+// The source of signatures is https://github.com/file/file/blob/1778642b8ba3d947a779a36fcd81f8e807220a19/magic/Magdir/archive#L1820-L1887
+func APK(raw []byte, _ uint32) bool {
+	apkSignatures := [][]byte{
+		[]byte("AndroidManifest.xml"),
+		[]byte("META-INF/com/android/build/gradle/app-metadata.properties"),
+		[]byte("classes.dex"),
+		[]byte("resources.arsc"),
+		[]byte("res/drawable"),
+	}
+	for _, sig := range apkSignatures {
+		if zipContains(raw, sig, false) {
+			return true
 		}
 	}
 
