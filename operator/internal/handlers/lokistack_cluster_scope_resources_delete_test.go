@@ -9,17 +9,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	v1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func TestDeleteDashboards(t *testing.T) {
-	objs, err := openshift.BuildDashboards("operator-ns")
+	opts := openshift.NewOptionsClusterScope("operator-ns", nil, nil, nil)
+	objs, err := openshift.BuildDashboards(opts)
 	require.NoError(t, err)
 
 	k := &k8sfakes.FakeClient{}
 
-	err = DeleteDashboards(context.TODO(), k, "operator-ns")
+	err = DeleteClusterScopedResources(context.TODO(), k, "operator-ns", v1.LokiStackList{})
 	require.NoError(t, err)
 	require.Equal(t, k.DeleteCallCount(), len(objs))
 }
@@ -30,6 +32,6 @@ func TestDeleteDashboards_ReturnsNoError_WhenNotFound(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := DeleteDashboards(context.TODO(), k, "operator-ns")
+	err := DeleteClusterScopedResources(context.TODO(), k, "operator-ns", v1.LokiStackList{})
 	require.NoError(t, err)
 }

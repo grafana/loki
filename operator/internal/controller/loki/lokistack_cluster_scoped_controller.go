@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers"
 )
 
-const ControllerNameLokiDashboards = "loki-dashboards"
+const ControllerNameLokiClusterScope = "loki-cluster-scope"
 
 var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	UpdateFunc:  func(e event.UpdateEvent) bool { return false },
@@ -27,18 +27,19 @@ var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	GenericFunc: func(e event.GenericEvent) bool { return false },
 })
 
-// DashboardsReconciler deploys and removes the cluster-global resources needed
-// for the metrics dashboards depending on whether any LokiStacks exist.
-type DashboardsReconciler struct {
+// ClusterScopeReconciler deploys and removes the cluster-global resources needed
+// for the metrics dashboards and RBAC resources depending on whether any LokiStacks exist.
+type ClusterScopeReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Log        logr.Logger
 	OperatorNs string
+	Dashboards bool
 }
 
 // Reconcile creates all LokiStack dashboard ConfigMap and PrometheusRule objects on OpenShift clusters when
 // the at least one LokiStack custom resource exists or removes all when none.
-func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterScopeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var stacks lokiv1.LokiStackList
 	if err := r.List(ctx, &stacks, client.MatchingLabelsSelector{Selector: labels.Everything()}); err != nil {
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to list any lokistack instances")
@@ -47,7 +48,7 @@ func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if len(stacks.Items) == 0 {
 		// Removes all LokiStack dashboard resources on OpenShift clusters when
 		// the last LokiStack custom resource is deleted.
-		if err := handlers.DeleteDashboards(ctx, r.Client, r.OperatorNs); err != nil {
+		if err := handlers.DeleteClusterScopedResources(ctx, r.Client, r.OperatorNs, stacks); err != nil {
 			return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard resources")
 		}
 		return ctrl.Result{}, nil
@@ -55,16 +56,16 @@ func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Creates all LokiStack dashboard resources on OpenShift clusters when
 	// the first LokiStack custom resource is created.
-	if err := handlers.CreateDashboards(ctx, r.Log, r.OperatorNs, r.Client, r.Scheme); err != nil {
+	if err := handlers.CreateClusterScopedResources(ctx, r.Log, r.Dashboards, r.OperatorNs, r.Client, r.Scheme, stacks); err != nil {
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to create dashboard resources", "req", req)
 	}
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager to only call this controller on create/delete/generic events.
-func (r *DashboardsReconciler) SetupWithManager(mgr manager.Manager) error {
+func (r *ClusterScopeReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.LokiStack{}, createOrDeletesPred).
-		Named(ControllerNameLokiDashboards).
+		Named(ControllerNameLokiClusterScope).
 		Complete(r)
 }

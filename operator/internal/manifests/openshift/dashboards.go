@@ -16,7 +16,7 @@ const (
 	managedConfigNamespace = "openshift-config-managed"
 )
 
-func BuildDashboards(operatorNs string) ([]client.Object, error) {
+func BuildDashboards(opts OptionsClusterScope) ([]client.Object, error) {
 	ds, rules := dashboards.Content()
 
 	var objs []client.Object
@@ -24,7 +24,7 @@ func BuildDashboards(operatorNs string) ([]client.Object, error) {
 		objs = append(objs, newDashboardConfigMap(name, content))
 	}
 
-	promRule, err := newDashboardPrometheusRule(operatorNs, rules)
+	promRule, err := newDashboardPrometheusRule(opts.BuildOpts.OperatorNs, rules)
 	if err != nil {
 		return nil, err
 	}

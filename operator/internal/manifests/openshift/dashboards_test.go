@@ -9,7 +9,8 @@ import (
 )
 
 func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
-	objs, err := BuildDashboards("test")
+	opts := NewOptionsClusterScope("test", nil, nil, nil)
+	objs, err := BuildDashboards(opts)
 	require.NoError(t, err)
 
 	for _, d := range objs {
@@ -22,7 +23,8 @@ func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
 }
 
 func TestBuildDashboards_ReturnsPrometheusRules(t *testing.T) {
-	objs, err := BuildDashboards("test")
+	opts := NewOptionsClusterScope("test", nil, nil, nil)
+	objs, err := BuildDashboards(opts)
 	require.NoError(t, err)
 
 	rules := objs[len(objs)-1].(*monitoringv1.PrometheusRule)
