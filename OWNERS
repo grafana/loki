@@ -1,17 +1,13 @@
 reviewers:
 - alanconway
-- aminesnow
 - btaani
 - jcantrill
-- periklis
-- shwetaap
-- syedriko
-- vimalk78
-- xperimental
 - JoaoBraveCoding
+- shwetaap
+- xperimental
 
 approvers:
 - alanconway
 - jcantrill
-- periklis
+- JoaoBraveCoding
 - xperimental
