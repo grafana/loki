@@ -1930,7 +1930,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, -1, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
