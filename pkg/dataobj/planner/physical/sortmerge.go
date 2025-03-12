@@ -1,7 +1,5 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
-
 type SortOrder int8
 
 const (
@@ -10,26 +8,23 @@ const (
 	ASC
 )
 
+// SortMerge represents a sort+merge operation in the physical plan. It
+// performs sorting of data based on the specified Column and Order direction.
 type SortMerge struct {
-	inputs []Node
-	expr   Expression
-	order  SortOrder
+	id string
+
+	Column ColumnExpression
+	Order  SortOrder
 }
 
-func (*SortMerge) ID() NodeType {
+func (m *SortMerge) ID() string {
+	return m.id
+}
+
+func (*SortMerge) Type() NodeType {
 	return NodeTypeSortMerge
 }
 
-func (m *SortMerge) Children() []Node {
-	return m.inputs
-}
-
-func (m *SortMerge) Schema() schema.Schema {
-	panic("unimplemented")
-}
-
-func (*SortMerge) isNode() {}
-
-func (m *SortMerge) Accept(v Visitor) (bool, error) {
+func (m *SortMerge) Accept(v Visitor) error {
 	return v.VisitSortMerge(m)
 }

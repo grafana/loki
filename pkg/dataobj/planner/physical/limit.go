@@ -1,26 +1,24 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
-
+// Limit represents a limiting operation in the physical plan that applies
+// offset and limit to the result set. The offset specifies how many rows to
+// skip before starting to return results, while limit specifies the maximum
+// number of rows to return.
 type Limit struct {
-	input         Node
-	offset, limit uint32
+	id string
+
+	Offset uint32
+	Limit  uint32
 }
 
-func (*Limit) ID() NodeType {
+func (l *Limit) ID() string {
+	return l.id
+}
+
+func (*Limit) Type() NodeType {
 	return NodeTypeLimit
 }
 
-func (l *Limit) Children() []Node {
-	return []Node{l.input}
-}
-
-func (l *Limit) Schema() schema.Schema {
-	panic("unimplemented")
-}
-
-func (*Limit) isNode() {}
-
-func (l *Limit) Accept(v Visitor) (bool, error) {
+func (l *Limit) Accept(v Visitor) error {
 	return v.VisitLimit(l)
 }

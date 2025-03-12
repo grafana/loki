@@ -1,27 +1,37 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+type DataObjLocation string
 
+type Direction int8
+
+const (
+	Forward Direction = iota
+	Backwards
+)
+
+// DataObjScan represents a physical plan operation for reading data objects.
+// It contains information about the object location, stream IDs, projections,
+// predicates, scan direction, and result limit for reading data from a data
+// object.
 type DataObjScan struct {
-	name    string
-	sources []string
-	schema  schema.Schema
+	id string
+
+	Location   DataObjLocation
+	StreamIDs  []int64
+	Projection []ColumnExpression
+	Predicates []Expression
+	Direction  Direction
+	Limit      uint32
 }
 
-func (*DataObjScan) ID() NodeType {
+func (s *DataObjScan) ID() string {
+	return s.id
+}
+
+func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
 }
 
-func (s *DataObjScan) Children() []Node {
-	return nil
-}
-
-func (s *DataObjScan) Schema() schema.Schema {
-	return s.schema
-}
-
-func (*DataObjScan) isNode() {}
-
-func (s *DataObjScan) Accept(v Visitor) (bool, error) {
+func (s *DataObjScan) Accept(v Visitor) error {
 	return v.VisitDataObjScan(s)
 }

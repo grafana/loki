@@ -1,26 +1,23 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
-
+// Projection represents a column selection operation in the physical plan.
+// It contains a list of columns (column expressions) that are later
+// evaluated against the input columns to remove unnecessary colums from the
+// intermediate result.
 type Projection struct {
-	input   Node
-	columns []Expression
+	id string
+
+	Columns []ColumnExpression
 }
 
-func (*Projection) ID() NodeType {
+func (p *Projection) ID() string {
+	return p.id
+}
+
+func (*Projection) Type() NodeType {
 	return NodeTypeProjection
 }
 
-func (p *Projection) Children() []Node {
-	return []Node{p.input}
-}
-
-func (p *Projection) Schema() schema.Schema {
-	panic("unimplemented")
-}
-
-func (*Projection) isNode() {}
-
-func (p *Projection) Accept(v Visitor) (bool, error) {
+func (p *Projection) Accept(v Visitor) error {
 	return v.VisitProjection(p)
 }

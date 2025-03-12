@@ -1,27 +1,24 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
-
+// Filter represents a filtering operation in the physical plan.
+// It contains a list of predicates (conditional expressions) that are later
+// evaluated against the input columns and produce a result that only contains
+// rows that match the given conditions. The list of expressions are chained
+// with a logical AND.
 type Filter struct {
-	input Node
-	expr  Expression // filter predicate
-	proj  []string
+	id string
+
+	Predicates []Expression // filter predicate
 }
 
-func (*Filter) ID() NodeType {
+func (f *Filter) ID() string {
+	return f.id
+}
+
+func (*Filter) Type() NodeType {
 	return NodeTypeFilter
 }
 
-func (f *Filter) Children() []Node {
-	return []Node{f.input}
-}
-
-func (f *Filter) Schema() schema.Schema {
-	return f.input.Schema()
-}
-
-func (*Filter) isNode() {}
-
-func (f *Filter) Accept(v Visitor) (bool, error) {
+func (f *Filter) Accept(v Visitor) error {
 	return v.VisitFilter(f)
 }
