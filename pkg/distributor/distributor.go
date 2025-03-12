@@ -2,8 +2,10 @@ package distributor
 
 import (
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"net/http"
 	"runtime/pprof"
@@ -44,9 +46,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/ingester/client"
+	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -96,9 +99,11 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
-	KafkaEnabled    bool         `yaml:"kafka_writes_enabled"`
-	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
-	KafkaConfig     kafka.Config `yaml:"-"`
+	KafkaEnabled        bool `yaml:"kafka_writes_enabled"`
+	IngesterEnabled     bool `yaml:"ingester_writes_enabled"`
+	IngestLimitsEnabled bool `yaml:"ingest_limits_enabled"`
+
+	KafkaConfig kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
 	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
@@ -114,6 +119,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 }
 
 func (cfg *Config) Validate() error {
@@ -143,12 +149,12 @@ type Distributor struct {
 	cfg              Config
 	ingesterCfg      ingester.Config
 	logger           log.Logger
-	clientCfg        client.Config
+	clientCfg        ingester_client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
 	validator        *Validator
-	pool             *ring_client.Pool
+	ingesterClients  *ring_client.Pool
 	tee              Tee
 
 	rateStore    RateStore
@@ -184,9 +190,19 @@ type Distributor struct {
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
 
+	// Will succeed usage tracker in future.
+	limitsFrontendRing ring.ReadRing
+	limitsFrontends    *ring_client.Pool
+
 	// kafka
 	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
+
+	// The number of partitions for the stream metadata topic. Unlike stream
+	// records, where entries are sharded over just the active partitions,
+	// stream metadata is sharded over all partitions, and all partitions
+	// are consumed.
+	numMetadataPartitions int
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -199,7 +215,7 @@ type Distributor struct {
 func New(
 	cfg Config,
 	ingesterCfg ingester.Config,
-	clientCfg client.Config,
+	clientCfg ingester_client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
 	partitionRing ring.PartitionRingReader,
@@ -208,25 +224,30 @@ func New(
 	metricsNamespace string,
 	tee Tee,
 	usageTracker push.UsageTracker,
+	limitsFrontendCfg limits_frontend_client.Config,
+	limitsFrontendRing ring.ReadRing,
+	numMetadataPartitions int,
 	logger log.Logger,
 ) (*Distributor, error) {
-	factory := cfg.factory
-	if factory == nil {
-		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-			return client.New(clientCfg, addr)
+	ingesterClientFactory := cfg.factory
+	if ingesterClientFactory == nil {
+		ingesterClientFactory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+			return ingester_client.New(clientCfg, addr)
 		})
 	}
 
-	internalFactory := func(addr string) (ring_client.PoolClient, error) {
+	internalIngesterClientFactory := func(addr string) (ring_client.PoolClient, error) {
 		internalCfg := clientCfg
 		internalCfg.Internal = true
-		return client.New(internalCfg, addr)
+		return ingester_client.New(internalCfg, addr)
 	}
 
 	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
 	}
+
+	limitsFrontendClientFactory := limits_frontend_client.NewPoolFactory(limitsFrontendCfg)
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
@@ -274,7 +295,7 @@ func New(
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
+		ingesterClients:       clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, ingesterClientFactory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -335,6 +356,15 @@ func New(
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
 		partitionRing:        partitionRing,
+		limitsFrontendRing:   limitsFrontendRing,
+		limitsFrontends: limits_frontend_client.NewPool(
+			"ingest-limits-frontend",
+			limitsFrontendCfg.PoolConfig,
+			limitsFrontendRing,
+			limitsFrontendClientFactory,
+			logger,
+		),
+		numMetadataPartitions: numMetadataPartitions,
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -366,7 +396,7 @@ func New(
 			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
-			ring_client.PoolAddrFunc(internalFactory),
+			ring_client.PoolAddrFunc(internalIngesterClientFactory),
 			logger,
 			metricsNamespace,
 		),
@@ -375,7 +405,7 @@ func New(
 	)
 	d.rateStore = rs
 
-	servs = append(servs, d.pool, rs)
+	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")
@@ -417,8 +447,9 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 type KeyedStream struct {
-	HashKey uint32
-	Stream  logproto.Stream
+	HashKey        uint32
+	HashKeyNoShard uint64
+	Stream         logproto.Stream
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -474,6 +505,17 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
+	if d.cfg.IngestLimitsEnabled {
+		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, req.Streams)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
+		} else if len(exceedsLimits.RejectedStreams) > 0 {
+			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+		} else {
+			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
+		}
+	}
+
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -494,8 +536,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			return
 		}
 		streams = append(streams, KeyedStream{
-			HashKey: lokiring.TokenFor(tenantID, stream.Labels),
-			Stream:  stream,
+			HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
+			HashKeyNoShard: stream.Hash,
+			Stream:         stream,
 		})
 	}
 
@@ -932,7 +975,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), Stream: stream}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -976,8 +1019,9 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
 		derivedStreams = append(derivedStreams, KeyedStream{
-			HashKey: lokiring.TokenFor(tenantID, shard.Labels),
-			Stream:  shard,
+			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
+			HashKeyNoShard: stream.Hash,
+			Stream:         shard,
 		})
 
 		if shardStreamsCfg.LoggingEnabled {
@@ -1107,9 +1151,65 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	}
 }
 
+func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []logproto.Stream) (*logproto.ExceedsLimitsResponse, error) {
+	// We use an FNV-1 of all stream hashes in the request to load balance requests
+	// to limits-frontends instances.
+	h := fnv.New32()
+
+	// The distributor sends the hashes of all streams in the request to the
+	// limits-frontend. The limits-frontend is responsible for deciding if
+	// the request would exceed the tenants limits, and if so, which streams
+	// from the request caused it to exceed its limits.
+	streamHashes := make([]*logproto.StreamMetadata, 0, len(streams))
+	for _, stream := range streams {
+		// Add the stream hash to FNV-1.
+		buf := make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(buf, stream.Hash)
+		_, _ = h.Write(buf)
+		// Add the stream hash to the request. This is sent to limits-frontend.
+		streamHashes = append(streamHashes, &logproto.StreamMetadata{
+			StreamHash: stream.Hash,
+		})
+	}
+
+	req := logproto.ExceedsLimitsRequest{
+		Tenant:  tenantID,
+		Streams: streamHashes,
+	}
+
+	// Get the limits-frontend instances from the ring.
+	var descs [5]ring.InstanceDesc
+	rs, err := d.limitsFrontendRing.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+
+	var lastErr error
+	// Send the request to the limits-frontend to see if it exceeds the tenant
+	// limits. If the RPC fails, failover to the next instance in the ring.
+	for _, instance := range rs.Instances {
+		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		client := c.(logproto.IngestLimitsFrontendClient)
+		resp, err := client.ExceedsLimits(ctx, &req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		return resp, nil
+	}
+
+	return nil, lastErr
+}
+
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
-	c, err := d.pool.GetClientFor(ingester.Addr)
+	c, err := d.ingesterClients.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
@@ -1150,19 +1250,47 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := subring.ActivePartitionForKey(stream.HashKey)
+
+	// The distributor writes stream records to one of the active partitions
+	// in the partition ring. The number of active partitions is equal to the
+	// number of ingesters.
+	streamPartitionID, err := subring.ActivePartitionForKey(stream.HashKey)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
 	}
-
 	startTime := time.Now()
-
-	records, err := kafka.Encode(partitionID, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+	records, err := kafka.Encode(
+		streamPartitionID,
+		tenant,
+		stream.Stream,
+		d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes,
+	)
 	if err != nil {
-		d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+		d.kafkaAppends.WithLabelValues(
+			fmt.Sprintf("partition_%d", streamPartitionID),
+			"fail",
+		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
+
+	// However, unlike stream records, the distributor writes stream metadata
+	// records to one of a fixed number of partitions, the size of which is
+	// determined ahead of time. It does not use a ring. The reason for this
+	// is that we want to be able to scale components that consume metadata
+	// records independent of ingesters.
+	metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
+	metadata, err := kafka.EncodeStreamMetadata(
+		metadataPartitionID,
+		d.cfg.KafkaConfig.Topic,
+		tenant,
+		stream.HashKeyNoShard,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	records = append(records, metadata)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 
@@ -1176,10 +1304,10 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	var finalErr error
 	for _, result := range produceResults {
 		if result.Err != nil {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", streamPartitionID), "fail").Inc()
 			finalErr = result.Err
 		} else {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "success").Inc()
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", streamPartitionID), "success").Inc()
 		}
 	}
 

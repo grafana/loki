@@ -39,6 +39,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -1891,6 +1893,15 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ring: partitionRing,
 	}
 
+	limitsFrontendRing, err := ring.New(ring.Config{
+		KVStore: kv.Config{
+			Mock: kvStore,
+		},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 1,
+	}, limits_frontend.RingKey, limits_frontend.RingKey, nil, nil)
+	require.NoError(t, err)
+
 	loopbackName, err := loki_net.LoopbackInterfaceName()
 	require.NoError(t, err)
 
@@ -1917,8 +1928,9 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		require.NoError(t, err)
 
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
+		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, -1, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
