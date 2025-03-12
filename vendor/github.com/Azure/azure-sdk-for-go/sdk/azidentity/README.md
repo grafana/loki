@@ -254,4 +254,4 @@ additional questions or comments.
 [ctc_overview]: https://aka.ms/azsdk/go/identity/credential-chains#chainedtokencredential-overview
 [dac_overview]: https://aka.ms/azsdk/go/identity/credential-chains#defaultazurecredential-overview
 
-![Impressions](https://azure-sdk-impressions.azurewebsites.net/api/impressions/azure-sdk-for-go%2Fsdk%2Fazidentity%2FREADME.png)
+

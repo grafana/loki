@@ -126,6 +126,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
+	} else if count == 0 && errors.Is(err, io.EOF) {
+		return 0, io.EOF
 	}
 
 	var passCount int // passCount tracks how many rows pass the predicate.
@@ -195,6 +197,12 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 
 	case OrPredicate:
 		return checkPredicate(p.Left, lookup, row) || checkPredicate(p.Right, lookup, row)
+
+	case NotPredicate:
+		return !checkPredicate(p.Inner, lookup, row)
+
+	case FalsePredicate:
+		return false
 
 	case EqualPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -350,7 +358,7 @@ func (r *Reader) validatePredicate() error {
 			err = process(p.Column)
 		case FuncPredicate:
 			err = process(p.Column)
-		case AndPredicate, OrPredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
@@ -422,7 +430,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 			process(p.Column)
 		case FuncPredicate:
 			process(p.Column)
-		case AndPredicate, OrPredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
@@ -463,6 +471,25 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		}
 		return unionRanges(nil, left, right), nil
 
+	case NotPredicate:
+		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
+		// predicates that can be applied to pages.
+		//
+		// See comment on [simplifyNotPredicate] for more information.
+		simplified, err := simplifyNotPredicate(p)
+		if err != nil {
+			// Predicate can't be simplfied, so we permit the full range.
+			var rowsCount uint64
+			for _, column := range r.dl.AllColumns() {
+				rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+			}
+			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+		}
+		return r.buildPredicateRanges(ctx, simplified)
+
+	case FalsePredicate:
+		return nil, nil // No valid ranges.
+
 	case EqualPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
@@ -486,6 +513,67 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+// simplifyNotPredicate applies De Morgan's laws to a NotPredicate to permit
+// page filtering.
+//
+// While during evaluation, a NotPredicate inverts the result of the inner
+// predicate, the same can't be done for page filtering. For example, imagine
+// that a page is included from a rule "a > 10." If we inverted that inclusion,
+// we may be incorrectly filtering out that page, as that page may also have
+// values less than 10.
+//
+// To correctly apply page filtering to a NotPredicate, we reduce the
+// NotPredicate to a set of predicates that can be applied to pages. This may
+// result in other NotPredicates that also need to be simplified.
+//
+// If the NotPredicate can't be simplified, simplifyNotPredicate returns an
+// error.
+func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
+	switch inner := p.Inner.(type) {
+	case AndPredicate: // De Morgan's law: !(A && B) == !A || !B
+		return OrPredicate{
+			Left:  NotPredicate{Inner: inner.Left},
+			Right: NotPredicate{Inner: inner.Right},
+		}, nil
+
+	case OrPredicate: // De Morgan's law: !(A || B) == !A && !B
+		return AndPredicate{
+			Left:  NotPredicate{Inner: inner.Left},
+			Right: NotPredicate{Inner: inner.Right},
+		}, nil
+
+	case NotPredicate: // De Morgan's law: !!A == A
+		return inner.Inner, nil
+
+	case FalsePredicate:
+		return nil, fmt.Errorf("can't simplify FalsePredicate")
+
+	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
+		return OrPredicate{
+			Left:  LessThanPredicate(inner),
+			Right: GreaterThanPredicate(inner),
+		}, nil
+
+	case GreaterThanPredicate: // De Morgan's law: !(A > B) == A <= B
+		return OrPredicate{
+			Left:  EqualPredicate(inner),
+			Right: LessThanPredicate(inner),
+		}, nil
+
+	case LessThanPredicate: // De Morgan's law: !(A < B) == A >= B
+		return OrPredicate{
+			Left:  EqualPredicate(inner),
+			Right: GreaterThanPredicate(inner),
+		}, nil
+
+	case FuncPredicate:
+		return nil, fmt.Errorf("can't simplify FuncPredicate")
+
+	default:
+		panic(fmt.Sprintf("unsupported predicate type %T", inner))
 	}
 }
 
@@ -536,10 +624,10 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 		switch p := p.(type) {
 		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
 			include = CompareValues(p.Value, minValue) >= 0 && CompareValues(p.Value, maxValue) <= 0
-		case GreaterThanPredicate: // GreaterThanPredicate may be true if p.Value is greater than the min value.
-			include = CompareValues(p.Value, minValue) > 0
-		case LessThanPredicate: // LessThanPredicate may be true if p.Value is less than the max value.
-			include = CompareValues(p.Value, maxValue) < 0
+		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
+			include = CompareValues(maxValue, p.Value) > 0
+		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
+			include = CompareValues(minValue, p.Value) < 0
 		default:
 			panic(fmt.Sprintf("unsupported predicate type %T", p))
 		}

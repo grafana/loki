@@ -180,6 +180,7 @@ local lambdaPromtailJob =
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
+      releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
       useGitHubAppToken=true,
     ), false, false

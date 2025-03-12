@@ -294,6 +294,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseRepo,
       common.googleAuth,
       common.setupGoogleCloudSdk,
+
       step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@main')
       + step.withId('get-secrets')
       + step.with({
@@ -334,9 +335,12 @@ local runner = import 'runner.libsonnet',
             --entrypoint /bin/sh "%s"
             git config --global --add safe.directory /src/loki
             echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+            if echo "%s" | grep -q "golang"; then
+              /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+            fi
             make %s
           EOF
-        ||| % [buildImage, std.join(' ', makeTargets)]
+        ||| % [buildImage, buildImage, std.join(' ', makeTargets)]
       ),
 
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')

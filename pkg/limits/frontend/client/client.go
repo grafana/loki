@@ -5,6 +5,7 @@ package client
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"time"
 
@@ -60,6 +61,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
+}
+
+func (cfg *Config) Validate() error {
+	if err := cfg.GRPCClientConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid gRPC client config: %w", err)
+	}
+	return nil
 }
 
 // PoolConfig contains the config for a pool of ingest-limits-frontend clients.

@@ -147,6 +147,9 @@ jobs:
           --entrypoint /bin/sh "grafana/loki-build-image:0.34.6"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+          if echo "grafana/loki-build-image:0.34.6" | grep -q "golang"; then
+            /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+          fi
           make dist packages
         EOF
       working-directory: "release"

@@ -151,6 +151,20 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, r *logproto.ExceedsLimitsR
 	return f.limits.ExceedsLimits(ctx, r)
 }
 
+func (f *Frontend) CheckReady(ctx context.Context) error {
+	if f.State() != services.Running && f.State() != services.Stopping {
+		return fmt.Errorf("ingest limits frontend not ready: %v", f.State())
+	}
+
+	err := f.lifecycler.CheckReady(ctx)
+	if err != nil {
+		level.Error(f.logger).Log("msg", "ingest limits frontend not ready", "err", err)
+		return err
+	}
+
+	return nil
+}
+
 type exceedsLimitsRequest struct {
 	TenantID     string   `json:"tenantID"`
 	StreamHashes []uint64 `json:"streamHashes"`

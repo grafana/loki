@@ -359,10 +359,9 @@ linters-settings:
       - suite-thelper
       - useless-assert
   usetesting:
-    os-create-temp: false
-    os-mkdir-temp: false
-    context-background: false
-    context-todo: false
+    # Enable/disable `os.TempDir()` detections.
+    # Default: false
+    os-temp-dir: true
 
 issues:
   # List of regexps of issue texts to exclude.

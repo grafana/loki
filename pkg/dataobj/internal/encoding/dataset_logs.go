@@ -40,30 +40,52 @@ func (ds *logsDataset) ListColumns(ctx context.Context) result.Seq[dataset.Colum
 }
 
 func (ds *logsDataset) ListPages(ctx context.Context, columns []dataset.Column) result.Seq[dataset.Pages] {
-	// TODO(rfratto): Switch to batch retrieval instead of iterating over each column.
+	// We unwrap columns to get the underlying metadata and rewrap to
+	// dataset.Page to be able to allow the underlying decoder to read multiple
+	// column metadatas in a single call.
 	return result.Iter(func(yield func(dataset.Pages) bool) error {
-		for _, column := range columns {
-			pages, err := result.Collect(column.ListPages(ctx))
-			if err != nil {
-				return err
-			} else if !yield(pages) {
-				return nil
+		descs := make([]*logsmd.ColumnDesc, len(columns))
+		for i, column := range columns {
+			column, ok := column.(*logsDatasetColumn)
+			if !ok {
+				return fmt.Errorf("unexpected column type: got=%T want=*logsDatasetColumn", column)
 			}
+			descs[i] = column.desc
 		}
 
+		for result := range ds.dec.Pages(ctx, descs) {
+			pagesDescs, err := result.Value()
+
+			pages := make([]dataset.Page, len(pagesDescs))
+			for i, pageDesc := range pagesDescs {
+				pages[i] = &logsDatasetPage{dec: ds.dec, desc: pageDesc}
+			}
+			if err != nil || !yield(pages) {
+				return err
+			}
+		}
 		return nil
 	})
 }
 
 func (ds *logsDataset) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[dataset.PageData] {
-	// TODO(rfratto): Switch to batch retrieval instead of iterating over each page.
+	// We unwrap columns to get the underlying metadata and rewrap to
+	// dataset.Page to be able to allow the underlying decoder to read multiple
+	// pages in a single call.
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
-		for _, page := range pages {
-			data, err := page.ReadPage(ctx)
-			if err != nil {
+		descs := make([]*logsmd.PageDesc, len(pages))
+		for i, page := range pages {
+			page, ok := page.(*logsDatasetPage)
+			if !ok {
+				return fmt.Errorf("unexpected page type: got=%T want=*logsDatasetPage", page)
+			}
+			descs[i] = page.desc
+		}
+
+		for result := range ds.dec.ReadPages(ctx, descs) {
+			data, err := result.Value()
+			if err != nil || !yield(data) {
 				return err
-			} else if !yield(data) {
-				return nil
 			}
 		}
 

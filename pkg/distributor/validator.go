@@ -143,7 +143,11 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	return nil
 }
 
-// Validate labels returns an error if the labels are invalid
+func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
+	return ls.Has(push.AggregatedMetricLabel)
+}
+
+// Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
 func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
 	if len(ls) == 0 {
 		// TODO: is this one correct?
@@ -152,7 +156,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 	}
 
 	// Skip validation for aggregated metric streams, as we create those for internal use
-	if ls.Has(push.AggregatedMetricLabel) {
+	if v.IsAggregatedMetricStream(ls) {
 		return nil
 	}
 

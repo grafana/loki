@@ -130,6 +130,6 @@ func readAllStreams(ctx context.Context, r *dataobj.StreamsReader) ([]dataobj.St
 			return res, err
 		}
 
-		buf = buf[:0]
+		clear(buf)
 	}
 }
