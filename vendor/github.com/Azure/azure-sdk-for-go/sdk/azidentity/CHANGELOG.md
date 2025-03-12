@@ -1,5 +1,10 @@
 # Release History
 
+## 1.8.2 (2025-02-12)
+
+### Other Changes
+* Upgraded dependencies
+
 ## 1.8.1 (2025-01-15)
 
 ### Bugs Fixed

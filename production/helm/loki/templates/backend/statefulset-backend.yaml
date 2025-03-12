@@ -54,7 +54,7 @@ spec:
       labels:
         {{- include "loki.backendLabels" . | nindent 8 }}
         {{- with merge .Values.loki.podLabels .Values.backend.podLabels }}
-        {{- toYaml . | nindent 8 }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
@@ -198,6 +198,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- with .Values.backend.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.backend.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}

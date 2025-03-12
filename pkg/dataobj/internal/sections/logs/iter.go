@@ -3,7 +3,9 @@ package logs
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"time"
 
@@ -63,25 +65,34 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			return err
 		}
 
-		for result := range dataset.Iter(ctx, columns) {
-			row, err := result.Value()
-			if err != nil {
-				return err
-			}
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+		})
 
-			record, err := decodeRecord(streamsColumns, row)
-			if err != nil {
+		var rows [1]dataset.Row
+		for {
+			n, err := r.Read(ctx, rows[:])
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
-			} else if !yield(record) {
+			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-		}
 
-		return nil
+			for _, row := range rows[:n] {
+				record, err := Decode(streamsColumns, row)
+				if err != nil || !yield(record) {
+					return err
+				}
+			}
+		}
 	})
 }
 
-func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
+// Decode decodes a record from a [dataset.Row], using the provided columns to
+// determine the column type. The list of columns must match the columns used
+// to create the row.
+func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 	record := Record{
 		// Preallocate metadata to exact number of metadata columns to avoid
 		// oversizing.

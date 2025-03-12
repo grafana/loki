@@ -19,13 +19,13 @@ type patternSample struct {
 	sample  logproto.PatternSample
 }
 
-var max = patternSample{
+var maxSample = patternSample{
 	pattern: "",
 	sample:  logproto.PatternSample{Timestamp: math.MaxInt64},
 }
 
 func NewMerge(iters ...Iterator) Iterator {
-	tree := loser.New(iters, max, func(s Iterator) patternSample {
+	tree := loser.New(iters, maxSample, func(s Iterator) patternSample {
 		return patternSample{
 			pattern: s.Pattern(),
 			sample:  s.At(),

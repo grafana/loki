@@ -248,25 +248,54 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
 				t.Run("multi-extractor", func(t *testing.T) {
-					t.Skip("TODO(trevor): fix this")
-					extractors := []log.StreamSampleExtractor{countExtractor, bytesExtractor}
+					// Wrap extractors in variant extractors so they get a variant index we can use later for differentiating counts and bytes
+					extractors := []log.StreamSampleExtractor{
+						log.NewVariantsStreamSampleExtractorWrapper(0, countExtractor),
+						log.NewVariantsStreamSampleExtractorWrapper(1, bytesExtractor),
+					}
 					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 					idx = 0
+
+					// variadic arguments can't guarantee order, so we're going to store the expected and actual values
+					// and do an ElementsMatch on them.
+					var actualCounts = make([]float64, 0, len(cases))
+					var actualBytes = make([]float64, 0, len(cases))
+
+					var expectedCounts = make([]float64, 0, len(cases))
+					var expectedBytes = make([]float64, 0, len(cases))
+					for _, c := range cases {
+						expectedCounts = append(expectedCounts, 1.)
+						expectedBytes = append(expectedBytes, c.bytes)
+					}
 
 					// 2 extractors, expect 2 samples per original timestamp
 					for sampleIt.Next() {
 						s := sampleIt.At()
 						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.Equal(t, 1., s.Value)
 						require.NotEmpty(t, s.Hash)
+						lbls := sampleIt.Labels()
+						if strings.Contains(lbls, `__variant__="0"`) {
+							actualCounts = append(actualCounts, s.Value)
+						} else {
+							actualBytes = append(actualBytes, s.Value)
+						}
 
 						require.True(t, sampleIt.Next())
 						s = sampleIt.At()
 						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.Equal(t, cases[idx].bytes, s.Value)
 						require.NotEmpty(t, s.Hash)
+						lbls = sampleIt.Labels()
+						if strings.Contains(lbls, `__variant__="0"`) {
+							actualCounts = append(actualCounts, s.Value)
+						} else {
+							actualBytes = append(actualBytes, s.Value)
+						}
+
 						idx++
 					}
+
+					require.ElementsMatch(t, expectedCounts, actualCounts)
+					require.ElementsMatch(t, expectedBytes, actualBytes)
 
 					require.NoError(t, sampleIt.Err())
 					require.NoError(t, sampleIt.Close())
@@ -1128,7 +1157,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-func BenchmarkHeadBlockMultiExtractorSampleIterator(b *testing.B) {
+func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 	for _, j := range []int{20000, 10000, 8000, 5000} {
 		for _, withStructuredMetadata := range []bool{false, true} {
 			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {

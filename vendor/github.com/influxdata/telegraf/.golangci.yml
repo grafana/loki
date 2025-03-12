@@ -11,6 +11,7 @@ linters:
     - errcheck
     - errname
     - errorlint
+    - gci
     - gocheckcompilerdirectives
     - gocritic
     - goprintffuncname
@@ -31,13 +32,13 @@ linters:
     - revive
     - sqlclosecheck
     - staticcheck
-    - tenv
     - testifylint
     - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
+    - usetesting
 
 linters-settings:
   depguard:
@@ -79,6 +80,12 @@ linters-settings:
       - "(*hash/maphash.Hash).WriteString"
       - "(*github.com/influxdata/telegraf/plugins/outputs/postgresql/sqltemplate.Template).UnmarshalText"
 
+  gci:
+    sections:
+      - standard
+      - default
+      - localmodule
+ 
   gocritic:
     # Disable all checks.
     # Default: false
@@ -322,11 +329,6 @@ linters-settings:
       - name: var-declaration
       - name: var-naming
       - name: waitgroup-by-value
-  tenv:
-    # The option `all` will run against whole test files (`_test.go`) regardless of method/function signatures.
-    # Otherwise, only methods that take `*testing.T`, `*testing.B`, and `testing.TB` as arguments are checked.
-    # Default: false
-    all: true
   testifylint:
     # Disable all checkers (https://github.com/Antonboom/testifylint#checkers).
     # Default: false
@@ -356,6 +358,10 @@ linters-settings:
       - suite-subtest-run
       - suite-thelper
       - useless-assert
+  usetesting:
+    # Enable/disable `os.TempDir()` detections.
+    # Default: false
+    os-temp-dir: true
 
 issues:
   # List of regexps of issue texts to exclude.

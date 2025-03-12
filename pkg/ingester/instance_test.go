@@ -876,6 +876,49 @@ func Test_ExtractorWrapper(t *testing.T) {
 			wrapper.extractor.sp.called,
 		) // we've passed every log line through the wrapper
 	})
+	t.Run("variants", func(t *testing.T) {
+		instance := defaultInstance(t)
+
+		wrapper := &testExtractorWrapper{
+			extractor: newMockExtractor(),
+		}
+		instance.extractorWrapper = wrapper
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(
+							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+						),
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+		defer it.Close()
+
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
+
+		require.Equal(
+			t,
+			`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+			wrapper.query,
+		)
+		require.Equal(
+			t,
+			10,
+			wrapper.extractor.sp.called,
+		) // we've passed every log line through the wrapper
+	})
 }
 
 func Test_ExtractorWrapper_disabled(t *testing.T) {
@@ -912,6 +955,37 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 
 		require.Equal(t, ``, wrapper.query)
 		require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+	})
+
+	t.Run("variants", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(
+							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+						),
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+		defer it.Close()
+
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
+
+		require.Equal(t, ``, wrapper.query)
+		require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+
 	})
 }
 
@@ -1044,6 +1118,49 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 				},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var samples []float64
+	for it.Next() {
+		samples = append(samples, it.At().Value)
+	}
+
+	require.Equal(t, samples, []float64{1.})
+}
+
+func Test_QueryVariantsWithDelete(t *testing.T) {
+	instance := defaultInstance(t)
+
+	it, err := instance.QuerySample(context.TODO(),
+		logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: `variants(count_over_time({job="3"}[5m])) of ({job="3"}[5m])`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 110000000),
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10 * 1e6,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5 * 1e6,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10 * 1e6,
+					},
+				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`variants(count_over_time({job="3"}[5m])) of ({job="3"}[5m])`),
 				},
 			},
 		},

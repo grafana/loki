@@ -1717,7 +1717,7 @@ func newSampleIterator(
 	}
 
 	if len(extractors) > 1 {
-		return newMultiExtractorSampleIterator(ctx, pool, b, format, extractors, symbolizer)
+		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
 
 	return &sampleBufferedIterator{
