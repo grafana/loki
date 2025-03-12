@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers"
 )
 
+const ControllerNameCertRotation = "cert-rotation"
+
 // CertRotationReconciler reconciles the `loki.grafana.com/certRotationRequiredAt` annotation on
 // any LokiStack object associated with any of the owned signer/client/serving certificates secrets
 // and CA bundle configmap.
@@ -94,6 +96,7 @@ func (r *CertRotationReconciler) buildController(bld k8s.Builder) error {
 	return bld.
 		For(&lokiv1.LokiStack{}).
 		Owns(&corev1.Secret{}).
+		Named(ControllerNameCertRotation).
 		Complete(r)
 }
 
