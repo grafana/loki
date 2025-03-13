@@ -104,13 +104,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.WindowSize == 0 {
+	if cfg.WindowSize <= 0 {
 		return errors.New("window-size must be greater than 0")
 	}
-	if cfg.RateWindow == 0 {
+	if cfg.RateWindow <= 0 {
 		return errors.New("rate-window must be greater than 0")
 	}
-	if cfg.BucketDuration == 0 {
+	if cfg.BucketDuration <= 0 {
 		return errors.New("bucket-duration must be greater than 0")
 	}
 	if cfg.RateWindow < cfg.BucketDuration {
