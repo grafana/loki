@@ -1,6 +1,14 @@
 # Changes
 
 
+
+## [0.119.0](https://github.com/googleapis/google-cloud-go/compare/v0.118.3...v0.119.0) (2025-03-11)
+
+
+### Features
+
+* **main:** Add support for listening on custom host to internal/testutil ([#11780](https://github.com/googleapis/google-cloud-go/issues/11780)) ([9608a09](https://github.com/googleapis/google-cloud-go/commit/9608a09a5d41778c7bb93792b5d5128d7081d4a6)), refs [#11586](https://github.com/googleapis/google-cloud-go/issues/11586)
+
 ## [0.118.3](https://github.com/googleapis/google-cloud-go/compare/v0.118.2...v0.118.3) (2025-02-20)
 
 

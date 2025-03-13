@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	cloud.google.com/go/bigtable v1.35.0
-	cloud.google.com/go/pubsub v1.47.0
+	cloud.google.com/go/pubsub v1.48.0
 	cloud.google.com/go/storage v1.51.0
 	dario.cat/mergo v1.0.1
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -226,7 +226,7 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.118.3 // indirect
+	cloud.google.com/go v0.119.0 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.4.1 // indirect
 	cloud.google.com/go/longrunning v0.6.5 // indirect

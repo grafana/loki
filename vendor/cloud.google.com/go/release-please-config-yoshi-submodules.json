@@ -195,6 +195,9 @@
         "filestore": {
             "component": "filestore"
         },
+        "financialservices": {
+            "component": "financialservices"
+        },
         "functions": {
             "component": "functions"
         },
@@ -344,9 +347,6 @@
         },
         "resourcemanager": {
             "component": "resourcemanager"
-        },
-        "resourcesettings": {
-            "component": "resourcesettings"
         },
         "retail": {
             "component": "retail"

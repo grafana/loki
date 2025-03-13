@@ -1,7 +1,7 @@
 # cel.dev/expr v0.19.2
 ## explicit; go 1.21.1
 cel.dev/expr
-# cloud.google.com/go v0.118.3
+# cloud.google.com/go v0.119.0
 ## explicit; go 1.23.0
 cloud.google.com/go
 cloud.google.com/go/internal
@@ -55,8 +55,8 @@ cloud.google.com/go/longrunning/autogen/longrunningpb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/pubsub v1.47.0
-## explicit; go 1.22.7
+# cloud.google.com/go/pubsub v1.48.0
+## explicit; go 1.23.0
 cloud.google.com/go/pubsub
 cloud.google.com/go/pubsub/apiv1
 cloud.google.com/go/pubsub/apiv1/pubsubpb
