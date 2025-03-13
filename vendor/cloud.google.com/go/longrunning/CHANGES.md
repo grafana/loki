@@ -1,5 +1,12 @@
 # Changes
 
+## [0.6.5](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.4...longrunning/v0.6.5) (2025-03-06)
+
+
+### Bug Fixes
+
+* **longrunning:** Fix out-of-sync version.go ([28f0030](https://github.com/googleapis/google-cloud-go/commit/28f00304ebb13abfd0da2f45b9b79de093cca1ec))
+
 ## [0.6.4](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.3...longrunning/v0.6.4) (2025-01-02)
 
 
