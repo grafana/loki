@@ -45,6 +45,5 @@ type Limits interface {
 
 	IngestionPartitionsTenantShardSize(userID string) int
 
-	// SimulatedLatency returns the simulated latency to add to distributor operations.
-	SimulatedLatency(userID string) time.Duration
+	SimulatedPushLatency(userID string) time.Duration
 }

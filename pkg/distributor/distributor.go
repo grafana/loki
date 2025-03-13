@@ -486,7 +486,7 @@ func (p *pushTracker) doneWithResult(err error) {
 }
 
 func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string, start time.Time) {
-	latency := d.validator.Limits.SimulatedLatency(tenantID)
+	latency := d.validator.Limits.SimulatedPushLatency(tenantID)
 	if latency > 0 {
 		// All requests must wait at least the simulated latency. However,
 		// we want to avoid adding additional latency on top of slow requests
