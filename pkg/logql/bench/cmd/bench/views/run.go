@@ -171,21 +171,18 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "p":
 			if !m.cpuProfileOn {
 				return m, m.startCPUProfile()
-			} else {
-				return m, m.stopCPUProfile()
 			}
+			return m, m.stopCPUProfile()
 		case "m":
 			if !m.memProfileOn {
 				return m, m.startMemProfile()
-			} else {
-				return m, m.stopMemProfile()
 			}
+			return m, m.stopMemProfile()
 		case "x":
 			if !m.traceProfileOn {
 				return m, m.startTraceProfile()
-			} else {
-				return m, m.stopTraceProfile()
 			}
+			return m, m.stopTraceProfile()
 		case "d":
 			m.showDiff = !m.showDiff
 			m.updateViewportDimensions()

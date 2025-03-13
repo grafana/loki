@@ -35,6 +35,7 @@ func initialModel() mainModel {
 	}
 }
 
+// Init is required by the tea.Model interface but doesn't need to do anything
 func (m mainModel) Init() tea.Cmd {
 	return nil
 }
@@ -53,14 +54,13 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Stop all profiling tools before quitting
 				m.runView.StopAllProfiling()()
 				return m, tea.Quit
-			} else {
-				m.currentView = views.ListID
-				newModel, cmd := m.listView.Update(msg)
-				if listView, ok := newModel.(*views.ListView); ok {
-					m.listView = listView
-				}
-				return m, cmd
 			}
+			m.currentView = views.ListID
+			newModel, cmd := m.listView.Update(msg)
+			if listView, ok := newModel.(*views.ListView); ok {
+				m.listView = listView
+			}
+			return m, cmd
 		case "esc":
 			if m.currentView != views.ListID {
 				m.currentView = views.ListID

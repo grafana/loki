@@ -11,16 +11,19 @@ import (
 
 func main() {
 	var (
-		size     = flag.Int64("size", 2147483648, "Size in bytes to generate")
-		dir      = flag.String("dir", "data", "Output directory")
-		tenantID = flag.String("tenant", "test-tenant", "Tenant ID")
+		size        = flag.Int64("size", 2147483648, "Size in bytes to generate")
+		dir         = flag.String("dir", "data", "Output directory")
+		tenantID    = flag.String("tenant", "test-tenant", "Tenant ID")
+		clearFolder = flag.Bool("clear", true, "Clear output directory before generating data")
 	)
 	flag.Parse()
 
-	// Clean the output directory
-	if err := os.RemoveAll(*dir); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to clear output directory: %v\n", err)
-		os.Exit(1)
+	// Clean the output directory if requested
+	if *clearFolder {
+		if err := os.RemoveAll(*dir); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to clear output directory: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Create stores

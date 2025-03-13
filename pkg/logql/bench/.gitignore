@@ -1,7 +1,6 @@
 # Ignore generated data directory
 data/
-cpu.prof
-mem.prof
+*.prof
 bench.test
 trace.out
 result.new.txt
