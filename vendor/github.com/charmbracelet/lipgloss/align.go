@@ -30,8 +30,8 @@ func alignTextHorizontal(str string, pos Position, width int, style *termenv.Sty
 				l = s + l
 			case Center:
 				// Note: remainder goes on the right.
-				left := shortAmount / 2       //nolint:gomnd
-				right := left + shortAmount%2 //nolint:gomnd
+				left := shortAmount / 2       //nolint:mnd
+				right := left + shortAmount%2 //nolint:mnd
 
 				leftSpaces := strings.Repeat(" ", left)
 				rightSpaces := strings.Repeat(" ", right)
@@ -69,7 +69,7 @@ func alignTextVertical(str string, pos Position, height int, _ *termenv.Style) s
 	case Top:
 		return str + strings.Repeat("\n", height-strHeight)
 	case Center:
-		topPadding, bottomPadding := (height-strHeight)/2, (height-strHeight)/2 //nolint:gomnd
+		topPadding, bottomPadding := (height-strHeight)/2, (height-strHeight)/2 //nolint:mnd
 		if strHeight+topPadding+bottomPadding > height {
 			topPadding--
 		} else if strHeight+topPadding+bottomPadding < height {

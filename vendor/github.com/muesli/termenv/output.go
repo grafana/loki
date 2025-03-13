@@ -6,10 +6,8 @@ import (
 	"sync"
 )
 
-var (
-	// output is the default global output.
-	output = NewOutput(os.Stdout)
-)
+// output is the default global output.
+var output = NewOutput(os.Stdout)
 
 // File represents a file descriptor.
 //
@@ -177,7 +175,7 @@ func (o *Output) BackgroundColor() Color {
 func (o *Output) HasDarkBackground() bool {
 	c := ConvertToRGB(o.BackgroundColor())
 	_, _, l := c.Hsl()
-	return l < 0.5
+	return l < 0.5 //nolint:mnd
 }
 
 // TTY returns the terminal's file descriptor. This may be nil if the output is
@@ -198,7 +196,7 @@ func (o Output) Writer() io.Writer {
 }
 
 func (o Output) Write(p []byte) (int, error) {
-	return o.w.Write(p)
+	return o.w.Write(p) //nolint:wrapcheck
 }
 
 // WriteString writes the given string to the output.

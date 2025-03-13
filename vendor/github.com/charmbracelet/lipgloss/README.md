@@ -425,17 +425,28 @@ rows := [][]string{
 Use the table package to style and render the table.
 
 ```go
+var (
+    purple    = lipgloss.Color("99")
+    gray      = lipgloss.Color("245")
+    lightGray = lipgloss.Color("241")
+
+    headerStyle  = lipgloss.NewStyle().Foreground(purple).Bold(true).Align(lipgloss.Center)
+    cellStyle    = lipgloss.NewStyle().Padding(0, 1).Width(14)
+    oddRowStyle  = cellStyle.Foreground(gray)
+    evenRowStyle = cellStyle.Foreground(lightGray)
+)
+
 t := table.New().
     Border(lipgloss.NormalBorder()).
-    BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
+    BorderStyle(lipgloss.NewStyle().Foreground(purple)).
     StyleFunc(func(row, col int) lipgloss.Style {
         switch {
-        case row == 0:
-            return HeaderStyle
+        case row == table.HeaderRow:
+            return headerStyle
         case row%2 == 0:
-            return EvenRowStyle
+            return evenRowStyle
         default:
-            return OddRowStyle
+            return oddRowStyle
         }
     }).
     Headers("LANGUAGE", "FORMAL", "INFORMAL").
@@ -455,6 +466,42 @@ fmt.Println(t)
 
 > [!WARNING]
 > Table `Rows` need to be declared before `Offset` otherwise it does nothing.
+
+### Table Borders
+
+There are helpers to generate tables in markdown or ASCII style:
+
+#### Markdown Table
+
+```go
+table.New().Border(lipgloss.MarkdownBorder()).BorderTop(false).BorderBottom(false)
+```
+
+```
+| LANGUAGE |    FORMAL    | INFORMAL  |
+|----------|--------------|-----------|
+| Chinese  | Nǐn hǎo      | Nǐ hǎo    |
+| French   | Bonjour      | Salut     |
+| Russian  | Zdravstvuyte | Privet    |
+| Spanish  | Hola         | ¿Qué tal? |
+```
+
+#### ASCII Table
+
+```go
+table.New().Border(lipgloss.ASCIIBorder())
+```
+
+```
++----------+--------------+-----------+
+| LANGUAGE |    FORMAL    | INFORMAL  |
++----------+--------------+-----------+
+| Chinese  | Nǐn hǎo      | Nǐ hǎo    |
+| French   | Bonjour      | Salut     |
+| Russian  | Zdravstvuyte | Privet    |
+| Spanish  | Hola         | ¿Qué tal? |
++----------+--------------+-----------+
+```
 
 For more on tables see [the docs](https://pkg.go.dev/github.com/charmbracelet/lipgloss?tab=doc) and [examples](https://github.com/charmbracelet/lipgloss/tree/master/examples/table).
 
