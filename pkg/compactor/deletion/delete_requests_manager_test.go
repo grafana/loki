@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -932,10 +933,11 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDeleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore, time.Hour, tc.batchSize, &fakeLimits{defaultLimit: limit{
+			mgr, err := NewDeleteRequestsManager(t.TempDir(), mockDeleteRequestsStore, time.Hour, tc.batchSize, &fakeLimits{defaultLimit: limit{
 				retentionPeriod: 7 * 24 * time.Hour,
 				deletionMode:    tc.deletionMode.String(),
 			}}, nil)
+			require.NoError(t, err)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -944,7 +946,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, model.Now())
+			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, nil, "", model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
@@ -1003,11 +1005,214 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+		require.NoError(t, err)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}
 		require.Equal(t, tc.hasChunks, mgr.IntervalMayHaveExpiredChunks(interval, tc.user))
+	}
+}
+
+func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
+	user1 := []byte("user1")
+	user2 := []byte("user2")
+	lblFooBar := mustParseLabel(`{foo="bar"}`)
+	lblFizzBuzz := mustParseLabel(`{fizz="buzz"}`)
+	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+		{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
+	}}
+	type markSeriesProcessed struct {
+		userID, seriesID []byte
+		lbls             labels.Labels
+		tableName        string
+	}
+
+	type chunkEntry struct {
+		userID    []byte
+		chk       retention.Chunk
+		lbls      labels.Labels
+		seriesID  []byte
+		tableName string
+	}
+
+	for _, tc := range []struct {
+		name                  string
+		seriesToMarkProcessed []markSeriesProcessed
+		chunkEntry            chunkEntry
+		expSkipSeries         bool
+		expExpired            bool
+	}{
+		{
+			name: "no series marked as processed",
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "chunk's series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: true,
+			expExpired:    false,
+		},
+		{
+			name: "a different series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFizzBuzz.String()),
+					lbls:      lblFizzBuzz,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "a different users series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user2,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "series from different table marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t2",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "multiple series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t2",
+				},
+				{
+					userID:    user2,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: true,
+			expExpired:    false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workingDir := t.TempDir()
+			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			require.NoError(t, err)
+			require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+			for _, m := range tc.seriesToMarkProcessed {
+				require.NoError(t, mgr.MarkSeriesAsProcessed(m.userID, m.seriesID, m.lbls, m.tableName))
+			}
+
+			require.Equal(t, tc.expSkipSeries, mgr.CanSkipSeries(tc.chunkEntry.userID, tc.chunkEntry.lbls, tc.chunkEntry.seriesID, 0, tc.chunkEntry.tableName, 0))
+			isExpired, _ := mgr.Expired(tc.chunkEntry.userID, tc.chunkEntry.chk, tc.chunkEntry.lbls, tc.chunkEntry.seriesID, tc.chunkEntry.tableName, 0)
+			require.Equal(t, tc.expExpired, isExpired)
+
+			// see if stopping the manager properly retains the progress and loads back when initialized
+			storedSeriesProgress := mgr.processedSeries
+			mgr.Stop()
+			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			require.NoError(t, err)
+			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
+
+			// when the mark phase ends, series progress should get cleared
+			mgr.MarkPhaseFinished()
+			require.Len(t, mgr.processedSeries, 0)
+			require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+		})
 	}
 }
 

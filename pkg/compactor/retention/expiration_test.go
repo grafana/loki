@@ -123,7 +123,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
@@ -198,7 +198,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
@@ -245,7 +245,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
@@ -286,6 +286,42 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, model.Now())
+			require.Equal(t, tt.want, actual)
+		})
+	}
+}
+
+func Test_expirationChecker_CanSkipSeries(t *testing.T) {
+	// Default retention should be zero
+	d := defaultLimitsTestConfig()
+
+	// Override tenant 2 to have 24 hour retention
+	tl := defaultLimitsTestConfig()
+	oneDay, _ := model.ParseDuration("24h")
+	tl.RetentionPeriod = oneDay
+	f := fakeOverrides{
+		tenantLimits: map[string]*validation.Limits{
+			"2": &tl,
+		},
+	}
+	o, err := overridesTestConfig(d, f)
+	require.NoError(t, err)
+	e := NewExpirationChecker(o)
+
+	tests := []struct {
+		name        string
+		userID      string
+		labels      string
+		seriesStart model.Time
+		want        bool
+	}{
+		{"tenant with no override should skip series", "1", `{foo="buzz"}`, model.Now().Add(-48 * time.Hour), true},
+		{"tenant with override, seriesStart within retention period should skip series", "2", `{foo="buzz"}`, model.Now().Add(-1 * time.Hour), true},
+		{"tenant with override, seriesStart outside retention period should not skip series", "2", `{foo="buzz"}`, model.Now().Add(-48 * time.Hour), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := e.CanSkipSeries([]byte(tt.userID), mustParseLabels(tt.labels), nil, tt.seriesStart, "", model.Now())
 			require.Equal(t, tt.want, actual)
 		})
 	}

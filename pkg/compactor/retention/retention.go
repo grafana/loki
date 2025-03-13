@@ -204,14 +204,31 @@ func markForDelete(
 	defer cancel()
 
 	err := indexFile.ForEachSeries(iterCtx, func(s Series) error {
-		chunksFound = true
-		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 		chunks := s.Chunks()
+		if len(chunks) == 0 {
+			// add the series to series map so that it gets cleaned up
+			seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
+			return nil
+		}
+
+		chunksFound = true
+		seriesStart := chunks[0].From
+		for i := 0; i < len(chunks); i++ {
+			if chunks[i].From < seriesStart {
+				seriesStart = chunks[i].From
+			}
+		}
+
+		if expiration.CanSkipSeries(s.UserID(), s.labels, s.SeriesID(), seriesStart, tableName, now) {
+			empty = false
+			return nil
+		}
+		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 
 		for i := 0; i < len(chunks) && iterCtx.Err() == nil; i++ {
 			c := chunks[i]
 			// see if the chunk is deleted completely or partially
-			if expired, filterFunc := expiration.Expired(s.UserID(), c, s.Labels(), now); expired {
+			if expired, filterFunc := expiration.Expired(s.UserID(), c, s.Labels(), s.SeriesID(), tableName, now); expired {
 				linesDeleted := true // tracks whether we deleted at least some data from the chunk
 				if filterFunc != nil {
 					wroteChunks := false

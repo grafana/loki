@@ -23,13 +23,14 @@ type IntervalFilter struct {
 }
 
 type ExpirationChecker interface {
-	Expired(userID []byte, chk Chunk, lbls labels.Labels, now model.Time) (bool, filter.Func)
+	Expired(userID []byte, chk Chunk, lbls labels.Labels, seriesID []byte, tableName string, now model.Time) (bool, filter.Func)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseTimedOut()
 	MarkPhaseFinished()
 	DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool
+	CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool
 }
 
 type expirationChecker struct {
@@ -52,7 +53,7 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels, now model.Time) (bool, filter.Func) {
+func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels, _ []byte, _ string, now model.Time) (bool, filter.Func) {
 	userIDStr := unsafeGetString(userID)
 	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, lbls)
 	// The 0 value should disable retention
@@ -84,6 +85,16 @@ func (e *expirationChecker) MarkPhaseStarted() {
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseTimedOut() {}
 func (e *expirationChecker) MarkPhaseFinished() {}
+func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, _ []byte, seriesStart model.Time, _ string, now model.Time) bool {
+	userIDStr := unsafeGetString(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, lbls)
+	// The 0 value should disable retention
+	if period <= 0 {
+		return true
+	}
+
+	return now.Sub(seriesStart) < period
+}
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	// when userID is empty, it means we are checking for common index table. In this case we use e.overallLatestRetentionStartTime.
@@ -109,7 +120,7 @@ func NeverExpiringExpirationChecker(_ Limits) ExpirationChecker {
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(_ []byte, _ Chunk, _ labels.Labels, _ model.Time) (bool, filter.Func) {
+func (e *neverExpiringExpirationChecker) Expired(_ []byte, _ Chunk, _ labels.Labels, _ []byte, _ string, _ model.Time) (bool, filter.Func) {
 	return false, nil
 }
 func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(_ model.Interval, _ string) bool {
@@ -121,6 +132,9 @@ func (e *neverExpiringExpirationChecker) MarkPhaseTimedOut() {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
 func (e *neverExpiringExpirationChecker) DropFromIndex(_ []byte, _ Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
+}
+func (e *neverExpiringExpirationChecker) CanSkipSeries(_ []byte, _ labels.Labels, _ []byte, _ model.Time, _ string, _ model.Time) bool {
+	return true
 }
 
 type TenantsRetention struct {
