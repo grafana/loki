@@ -3477,6 +3477,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Simulated latency to add to distributor operations. Used for testing. Set to
+# 0s to disable.
+[simulated_latency: <int>]
+
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
 # log entry.

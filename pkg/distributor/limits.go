@@ -44,4 +44,7 @@ type Limits interface {
 	PolicyEnforcedLabels(userID string, policy string) []string
 
 	IngestionPartitionsTenantShardSize(userID string) int
+
+	// SimulatedLatency returns the simulated latency to add to distributor operations.
+	SimulatedLatency(userID string) time.Duration
 }

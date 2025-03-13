@@ -84,6 +84,7 @@ type Limits struct {
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	SimulatedLatency            model.Duration   `yaml:"simulated_latency" json:"simulated_latency" doc:"description=Simulated latency to add to distributor operations. Used for testing. Set to 0s to disable."`
 
 	// Metadata field extraction
 	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
@@ -1266,4 +1267,8 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 	sm.m = def
 
 	return nil
+}
+
+func (o *Overrides) SimulatedLatency(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).SimulatedLatency)
 }
