@@ -124,6 +124,8 @@ func (m *ClientStatusRequest) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for ExcludeResourceContents
+
 	if len(errors) > 0 {
 		return ClientStatusRequestMultiError(errors)
 	}

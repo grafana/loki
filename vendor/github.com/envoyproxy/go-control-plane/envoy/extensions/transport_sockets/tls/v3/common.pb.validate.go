@@ -190,6 +190,8 @@ func (m *PrivateKeyProvider) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
+	// no validation rules for Fallback
+
 	switch v := m.ConfigType.(type) {
 	case *PrivateKeyProvider_TypedConfig:
 		if v == nil {

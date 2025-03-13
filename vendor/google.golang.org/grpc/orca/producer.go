@@ -37,7 +37,7 @@ import (
 type producerBuilder struct{}
 
 // Build constructs and returns a producer and its cleanup function
-func (*producerBuilder) Build(cci interface{}) (balancer.Producer, func()) {
+func (*producerBuilder) Build(cci any) (balancer.Producer, func()) {
 	p := &producer{
 		client:    v3orcaservicegrpc.NewOpenRcaServiceClient(cci.(grpc.ClientConnInterface)),
 		intervals: make(map[time.Duration]int),

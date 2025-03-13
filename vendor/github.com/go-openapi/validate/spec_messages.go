@@ -349,9 +349,10 @@ func parameterValidationTypeMismatchMsg(param, path, typ string) errors.Error {
 }
 
 // disabled
-// func invalidResponseDefinitionAsSchemaMsg(path, method string) errors.Error {
-//	return errors.New(errors.CompositeErrorCode, InvalidResponseDefinitionAsSchemaError, path, method)
-// }
+//
+//	func invalidResponseDefinitionAsSchemaMsg(path, method string) errors.Error {
+//		return errors.New(errors.CompositeErrorCode, InvalidResponseDefinitionAsSchemaError, path, method)
+//	}
 func someParametersBrokenMsg(path, method, operationID string) errors.Error {
 	return errors.New(errors.CompositeErrorCode, SomeParametersBrokenError, path, method, operationID)
 }

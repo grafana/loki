@@ -97,7 +97,6 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 
 	if !runDirectPath() {
 		// If not xDS, fallback to DNS.
-		t.Scheme = dnsName
 		t.URL.Scheme = dnsName
 		return resolver.Get(dnsName).Build(t, cc, opts)
 	}
@@ -144,7 +143,6 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	}
 
 	// Create and return an xDS resolver.
-	t.Scheme = xdsName
 	t.URL.Scheme = xdsName
 	if envconfig.XDSFederation {
 		t = resolver.Target{

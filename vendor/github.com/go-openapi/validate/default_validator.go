@@ -170,7 +170,6 @@ func (d *defaultValidator) validateDefaultInResponse(resp *spec.Response, respon
 
 	responseName, responseCodeAsStr := responseHelp.responseMsgVariants(responseType, responseCode)
 
-	// nolint: dupl
 	if response.Headers != nil { // Safeguard
 		for nm, h := range response.Headers {
 			// reset explored schemas to get depth-first recursive-proof exploration
@@ -262,7 +261,7 @@ func (d *defaultValidator) validateDefaultValueSchemaAgainstSchema(path, in stri
 }
 
 // TODO: Temporary duplicated code. Need to refactor with examples
-// nolint: dupl
+
 func (d *defaultValidator) validateDefaultValueItemsAgainstSchema(path, in string, root interface{}, items *spec.Items) *Result {
 	res := new(Result)
 	s := d.SpecValidator
