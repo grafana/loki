@@ -10,7 +10,7 @@
 
 Style definitions for nice terminal layouts. Built with TUIs in mind.
 
-![Lip Gloss example](https://github.com/user-attachments/assets/7950b1c1-e0e3-427e-8e7d-6f7f6ad17ca7)
+![Lip Gloss example](https://github.com/user-attachments/assets/99c5c015-551b-4897-8cd1-bcaafa0aad5a)
 
 Lip Gloss takes an expressive, declarative approach to terminal rendering.
 Users familiar with CSS will feel at home with Lip Gloss.
@@ -452,9 +452,6 @@ fmt.Println(t)
 ```
 
 ![Table Example](https://github.com/charmbracelet/lipgloss/assets/42545625/6e4b70c4-f494-45da-a467-bdd27df30d5d)
-
-> [!WARNING]
-> Table `Rows` need to be declared before `Offset` otherwise it does nothing.
 
 For more on tables see [the docs](https://pkg.go.dev/github.com/charmbracelet/lipgloss?tab=doc) and [examples](https://github.com/charmbracelet/lipgloss/tree/master/examples/table).
 

@@ -121,7 +121,8 @@ require (
 	github.com/buger/jsonparser v1.1.1
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.3.4
-	github.com/charmbracelet/lipgloss v1.0.1-0.20250110214317-ecc1bd014d51
+	github.com/charmbracelet/lipgloss v1.0.0
+	github.com/charmbracelet/lipgloss/v2 v2.0.0-alpha.2
 	github.com/coder/quartz v0.1.3
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1

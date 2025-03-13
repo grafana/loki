@@ -300,7 +300,7 @@ func (s Style) GetBorderTopWidth() int {
 // runes of varying widths, the widest rune is returned. If no border exists on
 // the top edge, 0 is returned.
 func (s Style) GetBorderTopSize() int {
-	if !s.getAsBool(borderTopKey, false) && !s.implicitBorders() {
+	if !s.getAsBool(borderTopKey, false) {
 		return 0
 	}
 	return s.getBorderStyle().GetTopSize()
@@ -310,7 +310,7 @@ func (s Style) GetBorderTopSize() int {
 // runes of varying widths, the widest rune is returned. If no border exists on
 // the left edge, 0 is returned.
 func (s Style) GetBorderLeftSize() int {
-	if !s.getAsBool(borderLeftKey, false) && !s.implicitBorders() {
+	if !s.getAsBool(borderLeftKey, false) {
 		return 0
 	}
 	return s.getBorderStyle().GetLeftSize()
@@ -320,7 +320,7 @@ func (s Style) GetBorderLeftSize() int {
 // contain runes of varying widths, the widest rune is returned. If no border
 // exists on the left edge, 0 is returned.
 func (s Style) GetBorderBottomSize() int {
-	if !s.getAsBool(borderBottomKey, false) && !s.implicitBorders() {
+	if !s.getAsBool(borderBottomKey, false) {
 		return 0
 	}
 	return s.getBorderStyle().GetBottomSize()
@@ -330,7 +330,7 @@ func (s Style) GetBorderBottomSize() int {
 // contain runes of varying widths, the widest rune is returned. If no border
 // exists on the right edge, 0 is returned.
 func (s Style) GetBorderRightSize() int {
-	if !s.getAsBool(borderRightKey, false) && !s.implicitBorders() {
+	if !s.getAsBool(borderRightKey, false) {
 		return 0
 	}
 	return s.getBorderStyle().GetRightSize()
@@ -517,20 +517,6 @@ func (s Style) getBorderStyle() Border {
 		return noBorder
 	}
 	return s.borderStyle
-}
-
-// Returns whether or not the style has implicit borders. This happens when
-// a border style has been set but no border sides have been explicitly turned
-// on or off.
-func (s Style) implicitBorders() bool {
-	var (
-		borderStyle = s.getBorderStyle()
-		topSet      = s.isSet(borderTopKey)
-		rightSet    = s.isSet(borderRightKey)
-		bottomSet   = s.isSet(borderBottomKey)
-		leftSet     = s.isSet(borderLeftKey)
-	)
-	return borderStyle != noBorder && !(topSet || rightSet || bottomSet || leftSet)
 }
 
 func (s Style) getAsTransform(propKey) func(string) string {
