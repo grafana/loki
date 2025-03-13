@@ -209,7 +209,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// Assign the Partition IDs.
 			partitions := make(map[string][]int32)
 			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
-			partitions["test"] = append(partitions["test"], tt.assignedPartitionIDs...)
+			for _, partitionID := range tt.assignedPartitionIDs {
+				partitions["test"] = append(partitions["test"], partitionID)
+			}
 			s.partitionManager.Assign(context.Background(), nil, partitions)
 			// Call GetStreamUsage.
 			req := &logproto.GetStreamUsageRequest{
@@ -415,7 +417,9 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			// Assign the Partition IDs.
 			partitions := make(map[string][]int32)
 			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
-			partitions["test"] = append(partitions["test"], tt.assignedPartitionIDs...)
+			for _, partitionID := range tt.assignedPartitionIDs {
+				partitions["test"] = append(partitions["test"], partitionID)
+			}
 			s.partitionManager.Assign(context.Background(), nil, partitions)
 
 			s.updateMetadata(tt.updateMetadata, tt.tenantID, tt.partitionID, tt.lastSeenAt)
