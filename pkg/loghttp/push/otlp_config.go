@@ -42,7 +42,7 @@ func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
 type OTLPConfig struct {
 	ResourceAttributes  ResourceAttributesConfig `yaml:"resource_attributes,omitempty" doc:"description=Configuration for resource attributes to store them as index labels or Structured Metadata or drop them altogether"`
 	ScopeAttributes     []AttributesConfig       `yaml:"scope_attributes,omitempty" doc:"description=Configuration for scope attributes to store them as Structured Metadata or drop them altogether"`
-	LogAttributes       []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as Structured Metadata or drop them altogether"`
+	LogAttributes       []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as index labels or Structured Metadata or drop them altogether"`
 	SeverityTextAsLabel bool                     `yaml:"severity_text_as_label,omitempty" doc:"default=false|description=When true, the severity_text field from log records will be stored as an index label. It is recommended not to use this option unless absolutely necessary"`
 }
 

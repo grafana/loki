@@ -3496,7 +3496,7 @@ discover_generic_fields:
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
 
 # Maximum depth to search for log level fields in JSON logs. A value of 0 or
 # less means unlimited depth. Default is 2 which searches the first 2 levels of
@@ -4000,8 +4000,8 @@ otlp_config:
   # drop them altogether
   [scope_attributes: <list of attributes_configs>]
 
-  # Configuration for log attributes to store them as Structured Metadata or
-  # drop them altogether
+  # Configuration for log attributes to store them as index labels or Structured
+  # Metadata or drop them altogether
   [log_attributes: <list of attributes_configs>]
 
   # When true, the severity_text field from log records will be stored as an
