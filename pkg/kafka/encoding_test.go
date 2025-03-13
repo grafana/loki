@@ -153,35 +153,51 @@ func generateRandomString(length int) string {
 
 func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	tests := []struct {
-		name      string
-		hash      uint64
-		partition int32
-		topic     string
-		tenantID  string
-		expectErr bool
+		name                   string
+		hash                   uint64
+		partition              int32
+		topic                  string
+		tenantID               string
+		entriesSize            uint64
+		structuredMetadataSize uint64
+		expectErr              bool
 	}{
 		{
-			name:      "Valid metadata",
-			hash:      12345,
-			partition: 1,
-			topic:     "logs",
-			tenantID:  "tenant-1",
-			expectErr: false,
+			name:                   "Valid metadata",
+			hash:                   12345,
+			partition:              1,
+			topic:                  "logs",
+			tenantID:               "tenant-1",
+			entriesSize:            1024,
+			structuredMetadataSize: 512,
+			expectErr:              false,
 		},
 		{
-			name:      "Zero hash - should error",
-			hash:      0,
-			partition: 3,
-			topic:     "traces",
-			tenantID:  "tenant-3",
-			expectErr: true,
+			name:                   "Valid metadata with zero sizes",
+			hash:                   67890,
+			partition:              2,
+			topic:                  "metrics",
+			tenantID:               "tenant-2",
+			entriesSize:            0,
+			structuredMetadataSize: 0,
+			expectErr:              false,
+		},
+		{
+			name:                   "Zero hash - should error",
+			hash:                   0,
+			partition:              3,
+			topic:                  "traces",
+			tenantID:               "tenant-3",
+			entriesSize:            2048,
+			structuredMetadataSize: 1024,
+			expectErr:              true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record, err := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
+			record, err := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.entriesSize, tt.structuredMetadataSize)
 			if tt.expectErr {
 				require.Error(t, err)
 				require.Nil(t, record)
@@ -201,6 +217,8 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 
 			// Verify decoded values
 			require.Equal(t, tt.hash, metadata.StreamHash)
+			require.Equal(t, tt.entriesSize, metadata.EntriesSize)
+			require.Equal(t, tt.structuredMetadataSize, metadata.StructuredMetadataSize)
 		})
 	}
 

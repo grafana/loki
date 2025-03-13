@@ -506,17 +506,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
-	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, req.Streams)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if len(exceedsLimits.RejectedStreams) > 0 {
-			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-		} else {
-			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
-		}
-	}
-
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
@@ -704,6 +693,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
+	}
+
+	if d.cfg.IngestLimitsEnabled {
+		exceedsLimits, _, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
+		}
+		if exceedsLimits {
+			level.Info(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+		}
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
@@ -1152,7 +1151,60 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	}
 }
 
-func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []logproto.Stream) (*logproto.ExceedsLimitsResponse, error) {
+// exceedsLimits returns true if the request exceeds the per-tenant limits,
+// otherwise false. If the request does exceed per-tenant limits, a list of
+// reasons are returned explaining which limits were exceeded. An error is
+// returned if the limits could not be checked.
+func (d *Distributor) exceedsLimits(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+	doExceedsLimitsFn doExceedsLimitsFunc,
+) (bool, []string, error) {
+	if !d.cfg.IngestLimitsEnabled {
+		return false, nil, nil
+	}
+	resp, err := doExceedsLimitsFn(ctx, tenantID, streams)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(resp.RejectedStreams) == 0 {
+		return false, nil, nil
+	}
+	// hashesToLabels memoizes the labels for a stream hash so we can add
+	// it to the reason.
+	hashesToLabels := make(map[uint64]string)
+	for _, s := range streams {
+		hashesToLabels[s.HashKeyNoShard] = s.Stream.Labels
+	}
+	reasons := make([]string, 0, len(resp.RejectedStreams))
+	for _, rejection := range resp.RejectedStreams {
+		reasons = append(reasons, fmt.Sprintf(
+			"stream %s was rejected because %q",
+			hashesToLabels[rejection.StreamHash],
+			rejection.Reason,
+		))
+	}
+	return true, reasons, nil
+}
+
+// doExceedsLimitsFunc enables stubbing out doExceedsLimitsRPC for tests.
+type doExceedsLimitsFunc func(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+) (*logproto.ExceedsLimitsResponse, error)
+
+// doExceedsLimitsRPC executes an RPC to the limits-frontend service to check
+// if per-tenant limits have been exceeded. If an RPC call returns an error,
+// it failsover to the next limits-frontend service. The failover is repeated
+// until there are no more replicas remaining or the context is canceled,
+// whichever happens first.
+func (d *Distributor) doExceedsLimitsRPC(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+) (*logproto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -1161,21 +1213,27 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
-	streamHashes := make([]*logproto.StreamMetadata, 0, len(streams))
+	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		// Add the stream hash to FNV-1.
 		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.Hash)
+		binary.PutUvarint(buf, stream.HashKeyNoShard)
 		_, _ = h.Write(buf)
+
+		// Calculate the size of the stream.
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+
 		// Add the stream hash to the request. This is sent to limits-frontend.
-		streamHashes = append(streamHashes, &logproto.StreamMetadata{
-			StreamHash: stream.Hash,
+		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
+			StreamHash:             stream.HashKeyNoShard,
+			EntriesSize:            entriesSize,
+			StructuredMetadataSize: structuredMetadataSize,
 		})
 	}
 
 	req := logproto.ExceedsLimitsRequest{
 		Tenant:  tenantID,
-		Streams: streamHashes,
+		Streams: streamMetadata,
 	}
 
 	// Get the limits-frontend instances from the ring.
@@ -1189,6 +1247,12 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	// Send the request to the limits-frontend to see if it exceeds the tenant
 	// limits. If the RPC fails, failover to the next instance in the ring.
 	for _, instance := range rs.Instances {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
 		if err != nil {
 			lastErr = err
@@ -1275,6 +1339,8 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
+	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+
 	// However, unlike stream records, the distributor writes stream metadata
 	// records to one of a fixed number of partitions, the size of which is
 	// determined ahead of time. It does not use a ring. The reason for this
@@ -1286,6 +1352,8 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		d.cfg.KafkaConfig.Topic,
 		tenant,
 		stream.HashKeyNoShard,
+		entriesSize,
+		structuredMetadataSize,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -1401,6 +1469,15 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 		return 1
 	}
 	return int(math.Ceil(shards))
+}
+
+func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+	var entriesSize, structuredMetadataSize uint64
+	for _, entry := range stream.Entries {
+		entriesSize += uint64(len(entry.Line))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	}
+	return entriesSize, structuredMetadataSize
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates

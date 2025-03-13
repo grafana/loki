@@ -6,8 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +55,13 @@ var (
 		[]string{"tenant"},
 		nil,
 	)
+
+	tenantIngestedBytesTotal = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_ingested_bytes_total",
+		"The total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant"},
+		nil,
+	)
 )
 
 // Config represents the configuration for the ingest limits service.
@@ -67,6 +72,17 @@ type Config struct {
 	// WindowSize defines the time window for which stream metadata is considered active.
 	// Stream metadata older than WindowSize will be evicted from the metadata map.
 	WindowSize time.Duration `yaml:"window_size"`
+
+	// RateWindow defines the time window for rate calculation.
+	// This should match the window used in Prometheus rate() queries for consistency,
+	// when using the `loki_ingest_limits_ingested_bytes_total` metric.
+	// Defaults to 5 minutes if not specified.
+	RateWindow time.Duration `yaml:"rate_window"`
+
+	// BucketDuration defines the granularity of time buckets used for sliding window rate calculation.
+	// Smaller buckets provide more precise rate tracking but require more memory.
+	// Defaults to 1 minute if not specified.
+	BucketDuration time.Duration `yaml:"bucket_duration"`
 
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
@@ -82,10 +98,27 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.", f, util_log.Logger)
 	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
 	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
+	f.DurationVar(&cfg.RateWindow, "ingest-limits.rate-window", 5*time.Minute, "The time window for rate calculation. This should match the window used in Prometheus rate() queries for consistency.")
+	f.DurationVar(&cfg.BucketDuration, "ingest-limits.bucket-duration", 1*time.Minute, "The granularity of time buckets used for sliding window rate calculation. Smaller buckets provide more precise rate tracking but require more memory.")
 	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.WindowSize <= 0 {
+		return errors.New("window-size must be greater than 0")
+	}
+	if cfg.RateWindow <= 0 {
+		return errors.New("rate-window must be greater than 0")
+	}
+	if cfg.BucketDuration <= 0 {
+		return errors.New("bucket-duration must be greater than 0")
+	}
+	if cfg.RateWindow < cfg.BucketDuration {
+		return errors.New("rate-window must be greater than or equal to bucket-duration")
+	}
+	if cfg.NumPartitions <= 0 {
+		return errors.New("num-partitions must be greater than 0")
+	}
 	return nil
 }
 
@@ -123,6 +156,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type streamMetadata struct {
 	hash       uint64
 	lastSeenAt int64
+	totalSize  uint64
+	// Add a slice to track bytes per time interval for sliding window rate calculation
+	rateBuckets []rateBucket
+}
+
+// rateBucket represents the bytes received during a specific time interval
+type rateBucket struct {
+	timestamp int64  // start of the interval
+	size      uint64 // bytes received during this interval
 }
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -211,6 +253,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 	descs <- tenantPartitionDesc
 	descs <- tenantRecordedStreamsDesc
 	descs <- tenantActiveStreamsDesc
+	descs <- tenantIngestedBytesTotal
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
@@ -221,8 +264,9 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 
 	for tenant, partitions := range s.metadata {
 		var (
-			recorded int
-			active   int
+			recorded   int
+			active     int
+			totalBytes uint64
 		)
 
 		for partitionID, partition := range partitions {
@@ -235,6 +279,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 			for _, stream := range partition {
 				if stream.lastSeenAt >= cutoff {
 					active++
+					totalBytes += stream.totalSize
 				}
 			}
 		}
@@ -242,6 +287,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
 		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
 		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
+		m <- prometheus.MustNewConstMetric(tenantIngestedBytesTotal, prometheus.CounterValue, float64(totalBytes), tenant)
 	}
 }
 
@@ -385,24 +431,29 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 	for tenant, partitions := range s.metadata {
 		evicted := 0
 		for partitionID, streams := range partitions {
-			for i, stream := range streams {
-				if stream.lastSeenAt < cutoff {
-					// Delete the element without allocating or copying into
-					// a new backing array https://go.dev/wiki/SliceTricks#delete.
-					s.metadata[tenant][partitionID] = append(
-						s.metadata[tenant][partitionID][:i],
-						s.metadata[tenant][partitionID][i+1:]...,
-					)
+			// Create a new slice with only active streams
+			activeStreams := make([]streamMetadata, 0, len(streams))
+			for _, stream := range streams {
+				if stream.lastSeenAt >= cutoff {
+					activeStreams = append(activeStreams, stream)
+				} else {
 					evicted++
 				}
 			}
+			s.metadata[tenant][partitionID] = activeStreams
+
+			// If no active streams in this partition, delete it
+			if len(activeStreams) == 0 {
+				delete(s.metadata[tenant], partitionID)
+			}
 		}
+
+		// If no partitions left for this tenant, delete the tenant
 		if len(s.metadata[tenant]) == 0 {
 			delete(s.metadata, tenant)
 		}
-		s.metrics.tenantStreamEvictionsTotal.
-			WithLabelValues(tenant).
-			Add(float64(evicted))
+
+		s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evicted))
 	}
 }
 
@@ -450,18 +501,67 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
+	recTotalSize := rec.EntriesSize + rec.StructuredMetadataSize
+
+	// Get the bucket for this timestamp using the configured interval duration
+	bucketStart := lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+
+	// Calculate the rate window cutoff for cleaning up old buckets
+	rateWindowCutoff := lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 
 	for i, stream := range s.metadata[tenant][partition] {
 		if stream.hash == rec.StreamHash {
-			stream.lastSeenAt = recordTime
-			s.metadata[tenant][partition][i] = stream
+			// Update total size
+			totalSize := stream.totalSize + recTotalSize
+
+			// Update or add size for the current bucket
+			updated := false
+			sb := make([]rateBucket, 0, len(stream.rateBuckets)+1)
+
+			// Only keep buckets within the rate window and update the current bucket
+			for _, bucket := range stream.rateBuckets {
+				// Clean up buckets outside the rate window
+				if bucket.timestamp < rateWindowCutoff {
+					continue
+				}
+
+				if bucket.timestamp == bucketStart {
+					// Update existing bucket
+					sb = append(sb, rateBucket{
+						timestamp: bucketStart,
+						size:      bucket.size + recTotalSize,
+					})
+					updated = true
+				} else {
+					// Keep other buckets within the rate window as is
+					sb = append(sb, bucket)
+				}
+			}
+
+			// Add new bucket if it wasn't updated
+			if !updated {
+				sb = append(sb, rateBucket{
+					timestamp: bucketStart,
+					size:      recTotalSize,
+				})
+			}
+
+			s.metadata[tenant][partition][i] = streamMetadata{
+				hash:        stream.hash,
+				lastSeenAt:  recordTime,
+				totalSize:   totalSize,
+				rateBuckets: sb,
+			}
 			return
 		}
 	}
 
+	// Create new stream metadata with the initial interval
 	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
-		hash:       rec.StreamHash,
-		lastSeenAt: recordTime,
+		hash:        rec.StreamHash,
+		lastSeenAt:  recordTime,
+		totalSize:   recTotalSize,
+		rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
 	})
 }
 
@@ -493,74 +593,69 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
+	// Get the rate window cutoff for rate calculations
+	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
+
 	// Calculate stream counts and status per tenant
 	type tenantLimits struct {
-		Tenant          string   `json:"tenant"`
-		ActiveStreams   uint64   `json:"activeStreams"`
-		AssignedStreams []uint64 `json:"assignedStreams"`
+		Tenant        string  `json:"tenant"`
+		ActiveStreams uint64  `json:"activeStreams"`
+		Rate          float64 `json:"rate"`
 	}
 
 	// Get tenant and partitions from query parameters
 	params := r.URL.Query()
 	tenant := params.Get("tenant")
-	partitionsStr := params.Get("partitions")
-
-	var requestedPartitions []int32
-	if partitionsStr != "" {
-		// Split comma-separated partition list
-		partitionStrs := strings.Split(partitionsStr, ",")
-		requestedPartitions = make([]int32, 0, len(partitionStrs))
-
-		// Convert each partition string to int32
-		for _, p := range partitionStrs {
-			if val, err := strconv.ParseInt(strings.TrimSpace(p), 10, 32); err == nil {
-				requestedPartitions = append(requestedPartitions, int32(val))
-			}
-		}
-	}
-
-	partitions := s.metadata[tenant]
-
 	var (
-		activeStreams   uint64
-		assignedStreams = make([]uint64, 0)
-		response        = make(map[string]tenantLimits)
+		activeStreams uint64
+		totalSize     uint64
+		response      tenantLimits
 	)
 
-	for _, requestedID := range requestedPartitions {
-		// Consider the recorded stream if it's partition
-		// is one of the partitions we are still assigned to.
-		assigned := false
-		for assignedID := range partitions {
-			if requestedID == assignedID {
-				assigned = true
-				break
-			}
-		}
-
-		if !assigned {
-			continue
-		}
-
-		// If the stream is written into a partition we are
-		// assigned to and has been seen within the window,
-		// it is an active stream.
-		for _, stream := range partitions[requestedID] {
+	for _, partitions := range s.metadata[tenant] {
+		for _, stream := range partitions {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
-				assignedStreams = append(assignedStreams, stream.hash)
+
+				// Calculate size only within the rate window
+				for _, bucket := range stream.rateBuckets {
+					if bucket.timestamp >= rateWindowCutoff {
+						totalSize += bucket.size
+					}
+				}
 			}
 		}
 	}
 
-	if activeStreams > 0 || len(assignedStreams) > 0 {
-		response[tenant] = tenantLimits{
-			Tenant:          tenant,
-			ActiveStreams:   activeStreams,
-			AssignedStreams: assignedStreams,
+	// Calculate rate using only data from within the rate window
+	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()
+
+	if activeStreams > 0 {
+		response = tenantLimits{
+			Tenant:        tenant,
+			ActiveStreams: activeStreams,
+			Rate:          calculatedRate,
+		}
+	} else {
+		// If no active streams found, return zeros
+		response = tenantLimits{
+			Tenant:        tenant,
+			ActiveStreams: 0,
+			Rate:          0,
 		}
 	}
 
+	// Log the calculated values for debugging
+	level.Debug(s.logger).Log(
+		"msg", "HTTP endpoint calculated stream usage",
+		"tenant", tenant,
+		"active_streams", activeStreams,
+		"total_size", util.HumanizeBytes(totalSize),
+		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
+		"calculated_rate", util.HumanizeBytes(uint64(calculatedRate)),
+	)
+
+	// Use util.WriteJSONResponse to write the JSON response
 	util.WriteJSONResponse(w, response)
 }
 
@@ -584,6 +679,9 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
+	// Calculate the rate window cutoff in nanoseconds
+	rateWindowCutoff := time.Now().Add(-s.cfg.RateWindow).UnixNano()
+
 	// Get the tenant's streams
 	partitions := s.metadata[req.Tenant]
 	if partitions == nil {
@@ -598,7 +696,11 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// across all assigned partitions and record
 	// the streams that have been seen within the
 	// window
-	var activeStreams uint64
+	var (
+		activeStreams uint64
+		totalSize     uint64
+	)
+
 	for _, requestedID := range req.Partitions {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
@@ -618,21 +720,30 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		// assigned to and has been seen within the window,
 		// it is an active stream.
 		for _, stream := range partitions[requestedID] {
-			if stream.lastSeenAt >= cutoff {
-				activeStreams++
+			if stream.lastSeenAt < cutoff {
+				continue
+			}
+
+			activeStreams++
+
+			// Calculate size only within the rate window
+			for _, bucket := range stream.rateBuckets {
+				if bucket.timestamp >= rateWindowCutoff {
+					totalSize += bucket.size
+				}
 			}
 		}
 	}
 
 	// Get the unknown streams
 	var unknownStreams []uint64
-	for _, reqHash := range req.StreamHashes {
+	for _, streamHash := range req.StreamHashes {
 		found := false
 
 	outer:
 		for _, streams := range partitions {
 			for _, stream := range streams {
-				if stream.hash == reqHash && stream.lastSeenAt >= cutoff {
+				if stream.hash == streamHash && stream.lastSeenAt >= cutoff {
 					found = true
 					break outer
 				}
@@ -640,13 +751,28 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		}
 
 		if !found {
-			unknownStreams = append(unknownStreams, reqHash)
+			unknownStreams = append(unknownStreams, streamHash)
+			continue
 		}
 	}
+
+	// Calculate rate using only data from within the rate window
+	rate := float64(totalSize) / s.cfg.RateWindow.Seconds()
+
+	// Debug logging to help diagnose rate calculation issues
+	level.Debug(s.logger).Log(
+		"msg", "calculated stream usage",
+		"tenant", req.Tenant,
+		"active_streams", activeStreams,
+		"total_size", util.HumanizeBytes(totalSize),
+		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
+		"calculated_rate", util.HumanizeBytes(uint64(rate)),
+	)
 
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,
 		ActiveStreams:  activeStreams,
 		UnknownStreams: unknownStreams,
+		Rate:           int64(rate),
 	}, nil
 }

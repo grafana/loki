@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	gapic "cloud.google.com/go/storage/internal/apiv2"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
@@ -28,8 +29,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const defaultWriteChunkRetryDeadline = 32 * time.Second
+
 type gRPCAppendBidiWriteBufferSender struct {
-	ctx             context.Context
 	bucket          string
 	routingToken    *string
 	raw             *gapic.Client
@@ -39,6 +41,7 @@ type gRPCAppendBidiWriteBufferSender struct {
 	objectChecksums *storagepb.ObjectChecksums
 
 	forceFirstMessage bool
+	progress          func(int64)
 	flushOffset       int64
 
 	// Fields used to report responses from the receive side of the stream
@@ -50,7 +53,6 @@ type gRPCAppendBidiWriteBufferSender struct {
 
 func (w *gRPCWriter) newGRPCAppendBidiWriteBufferSender() (*gRPCAppendBidiWriteBufferSender, error) {
 	s := &gRPCAppendBidiWriteBufferSender{
-		ctx:      w.ctx,
 		bucket:   w.spec.GetResource().GetBucket(),
 		raw:      w.c.raw,
 		settings: w.c.settings,
@@ -62,11 +64,12 @@ func (w *gRPCWriter) newGRPCAppendBidiWriteBufferSender() (*gRPCAppendBidiWriteB
 		},
 		objectChecksums:   toProtoChecksums(w.sendCRC32C, w.attrs),
 		forceFirstMessage: true,
+		progress:          w.progress,
 	}
 	return s, nil
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) connect() (err error) {
+func (s *gRPCAppendBidiWriteBufferSender) connect(ctx context.Context) (err error) {
 	err = func() error {
 		// If this is a forced first message, we've already determined it's safe to
 		// send.
@@ -105,7 +108,7 @@ func (s *gRPCAppendBidiWriteBufferSender) connect() (err error) {
 		return err
 	}
 
-	return s.startReceiver()
+	return s.startReceiver(ctx)
 }
 
 func (s *gRPCAppendBidiWriteBufferSender) withRequestParams(ctx context.Context) context.Context {
@@ -113,11 +116,11 @@ func (s *gRPCAppendBidiWriteBufferSender) withRequestParams(ctx context.Context)
 	if s.routingToken != nil {
 		param = param + fmt.Sprintf("&routing_token=%s", *s.routingToken)
 	}
-	return gax.InsertMetadataIntoOutgoingContext(s.ctx, "x-goog-request-params", param)
+	return gax.InsertMetadataIntoOutgoingContext(ctx, "x-goog-request-params", param)
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) startReceiver() (err error) {
-	s.stream, err = s.raw.BidiWriteObject(s.withRequestParams(s.ctx), s.settings.gax...)
+func (s *gRPCAppendBidiWriteBufferSender) startReceiver(ctx context.Context) (err error) {
+	s.stream, err = s.raw.BidiWriteObject(s.withRequestParams(ctx), s.settings.gax...)
 	if err != nil {
 		return
 	}
@@ -246,37 +249,46 @@ func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offs
 		if s.recvErr != io.EOF {
 			return nil, s.recvErr
 		}
+		if obj.GetSize() > s.flushOffset {
+			s.flushOffset = obj.GetSize()
+			s.progress(s.flushOffset)
+		}
 		return
 	}
 
 	if flush {
 		// We don't necessarily expect multiple responses for a single flush, but
 		// this allows the server to send multiple responses if it wants to.
-		for s.flushOffset < offset+int64(len(buf)) {
+		flushOffset := s.flushOffset
+		for flushOffset < offset+int64(len(buf)) {
 			resp, ok := <-s.recvs
 			if !ok {
 				return nil, s.recvErr
 			}
 			pSize := resp.GetPersistedSize()
 			rSize := resp.GetResource().GetSize()
-			if s.flushOffset < pSize {
-				s.flushOffset = pSize
+			if flushOffset < pSize {
+				flushOffset = pSize
 			}
-			if s.flushOffset < rSize {
-				s.flushOffset = rSize
+			if flushOffset < rSize {
+				flushOffset = rSize
 			}
+		}
+		if s.flushOffset < flushOffset {
+			s.flushOffset = flushOffset
+			s.progress(s.flushOffset)
 		}
 	}
 
 	return
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) sendBuffer(buf []byte, offset int64, flush, finishWrite bool) (obj *storagepb.Object, err error) {
+func (s *gRPCAppendBidiWriteBufferSender) sendBuffer(ctx context.Context, buf []byte, offset int64, flush, finishWrite bool) (obj *storagepb.Object, err error) {
 	for {
 		sendFirstMessage := false
 		if s.stream == nil {
 			sendFirstMessage = true
-			if err = s.connect(); err != nil {
+			if err = s.connect(ctx); err != nil {
 				return
 			}
 		}
