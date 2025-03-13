@@ -9,10 +9,8 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
-var (
-	// ErrInvalidColor gets returned when a color is invalid.
-	ErrInvalidColor = errors.New("invalid color")
-)
+// ErrInvalidColor gets returned when a color is invalid.
+var ErrInvalidColor = errors.New("invalid color")
 
 // Foreground and Background sequence codes.
 const (
@@ -73,6 +71,8 @@ func (c NoColor) Sequence(_ bool) string {
 }
 
 // Sequence returns the ANSI Sequence for the color.
+//
+//nolint:mnd
 func (c ANSIColor) Sequence(bg bool) string {
 	col := int(c)
 	bgMod := func(c int) int {
@@ -83,9 +83,9 @@ func (c ANSIColor) Sequence(bg bool) string {
 	}
 
 	if col < 8 {
-		return fmt.Sprintf("%d", bgMod(col)+30)
+		return fmt.Sprintf("%d", bgMod(col)+30) //nolint:mnd
 	}
-	return fmt.Sprintf("%d", bgMod(col-8)+90)
+	return fmt.Sprintf("%d", bgMod(col-8)+90) //nolint:mnd
 }
 
 // Sequence returns the ANSI Sequence for the color.
@@ -108,7 +108,7 @@ func (c RGBColor) Sequence(bg bool) string {
 	if bg {
 		prefix = Background
 	}
-	return fmt.Sprintf("%s;2;%d;%d;%d", prefix, uint8(f.R*255), uint8(f.G*255), uint8(f.B*255))
+	return fmt.Sprintf("%s;2;%d;%d;%d", prefix, uint8(f.R*255), uint8(f.G*255), uint8(f.B*255)) //nolint:mnd
 }
 
 func xTermColor(s string) (RGBColor, error) {
@@ -158,6 +158,7 @@ func ansi256ToANSIColor(c ANSI256Color) ANSIColor {
 	return ANSIColor(r)
 }
 
+//nolint:mnd
 func hexToANSI256Color(c colorful.Color) ANSI256Color {
 	v2ci := func(v float64) int {
 		if v < 48 {

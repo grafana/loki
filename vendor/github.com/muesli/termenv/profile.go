@@ -95,7 +95,7 @@ func (p Profile) Color(s string) Color {
 			return nil
 		}
 
-		if i < 16 {
+		if i < 16 { //nolint:mnd
 			c = ANSIColor(i)
 		} else {
 			c = ANSI256Color(i)
