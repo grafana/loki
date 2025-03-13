@@ -696,7 +696,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, _, err := d.exceedsLimits(ctx, tenantID, streams)
+		exceedsLimits, _, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
 		}
@@ -1159,11 +1159,12 @@ func (d *Distributor) exceedsLimits(
 	ctx context.Context,
 	tenantID string,
 	streams []KeyedStream,
+	doExceedsLimitsFn doExceedsLimitsFunc,
 ) (bool, []string, error) {
 	if !d.cfg.IngestLimitsEnabled {
 		return false, nil, nil
 	}
-	resp, err := d.doExceedsLimitsRPC(ctx, tenantID, streams)
+	resp, err := doExceedsLimitsFn(ctx, tenantID, streams)
 	if err != nil {
 		return false, nil, err
 	}
@@ -1186,6 +1187,13 @@ func (d *Distributor) exceedsLimits(
 	}
 	return true, reasons, nil
 }
+
+// doExceedsLimitsFunc enables stubbing out doExceedsLimitsRPC for tests.
+type doExceedsLimitsFunc func(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+) (*logproto.ExceedsLimitsResponse, error)
 
 // doExceedsLimitsRPC executes an RPC to the limits-frontend service to check
 // if per-tenant limits have been exceeded. If an RPC call returns an error,
