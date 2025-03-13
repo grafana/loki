@@ -8,7 +8,7 @@ type ValueType uint32
 const (
 	_ ValueType = iota // zero-value is an invalid type
 	ValueTypeBool
-	ValueTypeUint64
+	ValueTypeInt64
 	ValueTypeTimestamp
 	ValueTypeString
 )
@@ -157,6 +157,7 @@ type BinaryExpression interface {
 // physcial plan.
 type LiteralExpression interface {
 	Expression
+	ValueType() ValueType
 	isLiteralExpr()
 }
 
@@ -198,9 +199,9 @@ func (*BinaryExpr) Type() ExpressionType {
 }
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
-type LiteralExpr[T bool | uint64 | string] struct {
+type LiteralExpr[T bool | int64 | uint64 | string] struct {
 	Value T
-	Ty    ValueType
+	ty    ValueType
 }
 
 func (*LiteralExpr[T]) isExpr()        {}
@@ -209,6 +210,43 @@ func (*LiteralExpr[T]) isLiteralExpr() {}
 // ID returns the type of the [LiteralExpr].
 func (*LiteralExpr[T]) Type() ExpressionType {
 	return ExprTypeLiteral
+}
+
+// ValueType returns the type of the literal value.
+func (e *LiteralExpr[T]) ValueType() ValueType {
+	return e.ty
+}
+
+// newBooleanLiteral is a convenience function for creating boolean literals.
+func newBooleanLiteral(value bool) *LiteralExpr[bool] {
+	return &LiteralExpr[bool]{
+		Value: value,
+		ty:    ValueTypeBool,
+	}
+}
+
+// newInt64Literal is a convenience function for creating int64 literals.
+func newInt64Literal(value int64) *LiteralExpr[int64] {
+	return &LiteralExpr[int64]{
+		Value: value,
+		ty:    ValueTypeInt64,
+	}
+}
+
+// newTimestampLiteral is a convenience function for creating timestamp literals.
+func newTimestampLiteral(value uint64) *LiteralExpr[uint64] {
+	return &LiteralExpr[uint64]{
+		Value: value,
+		ty:    ValueTypeTimestamp,
+	}
+}
+
+// newStringLiteral is a convenience function for creating string literals.
+func newStringLiteral(value string) *LiteralExpr[string] {
+	return &LiteralExpr[string]{
+		Value: value,
+		ty:    ValueTypeString,
+	}
 }
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.

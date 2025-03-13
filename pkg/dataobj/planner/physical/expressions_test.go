@@ -52,3 +52,38 @@ func TestExpressionTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestLiteralExpr(t *testing.T) {
+
+	t.Run("bool", func(t *testing.T) {
+		var expr Expression = newBooleanLiteral(true)
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, ValueTypeBool, literal.ValueType())
+	})
+
+	t.Run("int64", func(t *testing.T) {
+		var expr Expression = newInt64Literal(123456789)
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, ValueTypeInt64, literal.ValueType())
+	})
+
+	t.Run("timestamp", func(t *testing.T) {
+		var expr Expression = newTimestampLiteral(1741882435000000000)
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, ValueTypeTimestamp, literal.ValueType())
+	})
+
+	t.Run("string", func(t *testing.T) {
+		var expr Expression = newStringLiteral("loki")
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, ValueTypeString, literal.ValueType())
+	})
+}
