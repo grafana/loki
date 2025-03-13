@@ -883,6 +883,16 @@ ingest_limits:
   # CLI flag: -ingest-limits.window-size
   [window_size: <duration> | default = 1h]
 
+  # The time window for rate calculation. This should match the window used in
+  # Prometheus rate() queries for consistency.
+  # CLI flag: -ingest-limits.rate-window
+  [rate_window: <duration> | default = 5m]
+
+  # The granularity of time buckets used for sliding window rate calculation.
+  # Smaller buckets provide more precise rate tracking but require more memory.
+  # CLI flag: -ingest-limits.bucket-duration
+  [bucket_duration: <duration> | default = 1m]
+
   lifecycler:
     ring:
       kvstore:
@@ -1185,6 +1195,10 @@ ingest_limits_frontend:
     # ID to register in the ring.
     # CLI flag: -ingest-limits-frontend.lifecycler.ID
     [id: <string> | default = "<hostname>"]
+
+  # The period to recheck per tenant ingestion rate limit configuration.
+  # CLI flag: -ingest-limits-frontend.recheck-period
+  [recheck_period: <duration> | default = 10s]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
