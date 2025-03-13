@@ -3479,7 +3479,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 # Simulated latency to add to distributor operations. Used for testing. Set to
 # 0s to disable.
-[simulated_latency: <int>]
+# CLI flag: -limits.simulated-latency
+[simulated_latency: <duration> | default = 0s]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
