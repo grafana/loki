@@ -2,9 +2,13 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,10 +21,19 @@ import (
 
 type mockLimits struct {
 	maxGlobalStreams int
+	ingestionRate    float64
 }
 
 func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return m.maxGlobalStreams
+}
+
+func (m *mockLimits) IngestionRateBytes(_ string) float64 {
+	return m.ingestionRate
+}
+
+func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
+	return 1000
 }
 
 type mockReadRing struct {
@@ -33,14 +46,15 @@ func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, err
 }
 
 type mockFactory struct {
-	clients []logproto.IngestLimitsClient
+	clientsByAddr map[string]logproto.IngestLimitsClient
 }
 
-func (f *mockFactory) FromInstance(_ ring.InstanceDesc) (ring_client.PoolClient, error) {
-	for _, c := range f.clients {
-		return c.(ring_client.PoolClient), nil
+func (f *mockFactory) FromInstance(inst ring.InstanceDesc) (ring_client.PoolClient, error) {
+	client, ok := f.clientsByAddr[inst.Addr]
+	if !ok {
+		return nil, fmt.Errorf("no client for address %s", inst.Addr)
 	}
-	return nil, nil
+	return client.(ring_client.PoolClient), nil
 }
 
 type mockIngestLimitsClient struct {
@@ -54,7 +68,14 @@ func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *log
 }
 
 func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
-	return m.getStreamUsageResponse, nil
+	// Create a copy of the response to avoid modifying the original
+	resp := &logproto.GetStreamUsageResponse{
+		Tenant:         m.getStreamUsageResponse.Tenant,
+		ActiveStreams:  m.getStreamUsageResponse.ActiveStreams,
+		Rate:           m.getStreamUsageResponse.Rate,
+		UnknownStreams: m.getStreamUsageResponse.UnknownStreams,
+	}
+	return resp, nil
 }
 
 func (m *mockIngestLimitsClient) Close() error {
@@ -76,6 +97,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 		name                       string
 		tenant                     string
 		maxGlobalStreams           int
+		ingestionRate              float64
 		streams                    []*logproto.StreamMetadata
 		getStreamUsageResps        []*logproto.GetStreamUsageResponse
 		getAssignedPartitionsResps []*logproto.GetAssignedPartitionsResponse
@@ -85,11 +107,13 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "no streams",
 			tenant:           "test",
 			maxGlobalStreams: 10,
+			ingestionRate:    100,
 			streams:          []*logproto.StreamMetadata{},
 			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{
 					Tenant:        "test",
 					ActiveStreams: 0,
+					Rate:          10,
 				},
 			},
 			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
@@ -106,6 +130,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "under limit",
 			tenant:           "test",
 			maxGlobalStreams: 10,
+			ingestionRate:    100,
 			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 				{StreamHash: 2},
@@ -114,6 +139,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{
 					Tenant:        "test",
 					ActiveStreams: 2,
+					Rate:          10,
 				},
 			},
 			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
@@ -130,6 +156,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "exceeds limit with new streams",
 			tenant:           "test",
 			maxGlobalStreams: 5,
+			ingestionRate:    100,
 			streams: []*logproto.StreamMetadata{
 				{StreamHash: 6}, // Exceeds limit
 				{StreamHash: 7}, // Exceeds limit
@@ -138,6 +165,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{
 					Tenant:         "test",
 					ActiveStreams:  5,
+					Rate:           10,
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
@@ -158,6 +186,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "exceeds limit but reject only new streams",
 			tenant:           "test",
 			maxGlobalStreams: 5,
+			ingestionRate:    100,
 			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 				{StreamHash: 2},
@@ -171,6 +200,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{
 					Tenant:         "test",
 					ActiveStreams:  5,
+					Rate:           10,
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
@@ -191,6 +221,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			name:             "empty response from backend",
 			tenant:           "test",
 			maxGlobalStreams: 10,
+			ingestionRate:    100,
 			streams: []*logproto.StreamMetadata{
 				{StreamHash: 1},
 			},
@@ -206,6 +237,126 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 			expectedRejections: nil, // No rejections because activeStreamsTotal is 0
 		},
+		{
+			name:             "rate limit not exceeded",
+			tenant:           "test",
+			maxGlobalStreams: 10,
+			ingestionRate:    100,
+			streams: []*logproto.StreamMetadata{
+				{StreamHash: 1},
+				{StreamHash: 2},
+			},
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
+				{
+					Tenant:        "test",
+					ActiveStreams: 2,
+					Rate:          50, // Below the limit of 100 bytes/sec
+				},
+			},
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+					},
+				},
+			},
+			expectedRejections: nil,
+		},
+		{
+			name:             "rate limit exceeded",
+			tenant:           "test",
+			maxGlobalStreams: 10,
+			ingestionRate:    100,
+			streams: []*logproto.StreamMetadata{
+				{StreamHash: 1},
+				{StreamHash: 2},
+			},
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
+				{
+					Tenant:        "test",
+					ActiveStreams: 2,
+					Rate:          1500, // Above the limit of 100 bytes/sec
+				},
+			},
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+					},
+				},
+			},
+			expectedRejections: []*logproto.RejectedStream{
+				{StreamHash: 1, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 2, Reason: RejectedStreamReasonRateLimited},
+			},
+		},
+		{
+			name:             "rate limit exceeded with multiple instances",
+			tenant:           "test",
+			maxGlobalStreams: 10,
+			ingestionRate:    100,
+			streams: []*logproto.StreamMetadata{
+				{StreamHash: 1},
+				{StreamHash: 2},
+			},
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
+				{
+					Tenant:        "test",
+					ActiveStreams: 1,
+					Rate:          600,
+				},
+				{
+					Tenant:        "test",
+					ActiveStreams: 1,
+					Rate:          500,
+				},
+			},
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+					},
+				},
+				{
+					AssignedPartitions: map[int32]int64{
+						1: 1,
+					},
+				},
+			},
+			expectedRejections: []*logproto.RejectedStream{
+				{StreamHash: 1, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 2, Reason: RejectedStreamReasonRateLimited},
+			},
+		},
+		{
+			name:             "both global limit and rate limit exceeded",
+			tenant:           "test",
+			maxGlobalStreams: 5,
+			ingestionRate:    100,
+			streams: []*logproto.StreamMetadata{
+				{StreamHash: 6},
+				{StreamHash: 7},
+			},
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
+				{
+					Tenant:         "test",
+					ActiveStreams:  5,
+					UnknownStreams: []uint64{6, 7},
+					Rate:           1500, // Above the limit of 100 bytes/sec
+				},
+			},
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+					},
+				},
+			},
+			expectedRejections: []*logproto.RejectedStream{
+				{StreamHash: 6, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 7, Reason: RejectedStreamReasonRateLimited},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -213,15 +364,18 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			// Create mock clients that return the test responses
 			mockClients := make([]logproto.IngestLimitsClient, len(tt.getStreamUsageResps))
 			mockInstances := make([]ring.InstanceDesc, len(tt.getStreamUsageResps))
+			clientsByAddr := make(map[string]logproto.IngestLimitsClient)
 
 			for i, resp := range tt.getStreamUsageResps {
 				mockClients[i] = &mockIngestLimitsClient{
 					getStreamUsageResponse:        resp,
 					getAssignedPartitionsResponse: tt.getAssignedPartitionsResps[i],
 				}
+				addr := fmt.Sprintf("mock-instance-%d", i)
 				mockInstances[i] = ring.InstanceDesc{
-					Addr: "mock-instance",
+					Addr: addr,
 				}
+				clientsByAddr[addr] = mockClients[i]
 			}
 
 			mockRing := &mockReadRing{
@@ -239,16 +393,19 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				"test",
 				poolCfg,
 				ring_client.NewRingServiceDiscovery(mockRing),
-				&mockFactory{clients: mockClients},
+				&mockFactory{clientsByAddr: clientsByAddr},
 				prometheus.NewGauge(prometheus.GaugeOpts{}),
 				log.NewNopLogger(),
 			)
 
 			mockLimits := &mockLimits{
 				maxGlobalStreams: tt.maxGlobalStreams,
+				ingestionRate:    tt.ingestionRate,
 			}
 
-			service := NewRingIngestLimitsService(mockRing, mockPool, mockLimits, log.NewNopLogger(), prometheus.NewRegistry())
+			rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(mockLimits), 10*time.Second)
+
+			service := NewRingIngestLimitsService(mockRing, mockPool, mockLimits, rateLimiter, log.NewNopLogger(), prometheus.NewRegistry())
 
 			req := &logproto.ExceedsLimitsRequest{
 				Tenant:  tt.tenant,
@@ -258,6 +415,26 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			resp, err := service.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.Equal(t, tt.tenant, resp.Tenant)
+
+			// Sort the rejected streams for consistent comparison
+			if resp.RejectedStreams != nil {
+				sort.Slice(resp.RejectedStreams, func(i, j int) bool {
+					if resp.RejectedStreams[i].StreamHash == resp.RejectedStreams[j].StreamHash {
+						return resp.RejectedStreams[i].Reason < resp.RejectedStreams[j].Reason
+					}
+					return resp.RejectedStreams[i].StreamHash < resp.RejectedStreams[j].StreamHash
+				})
+			}
+
+			if tt.expectedRejections != nil {
+				sort.Slice(tt.expectedRejections, func(i, j int) bool {
+					if tt.expectedRejections[i].StreamHash == tt.expectedRejections[j].StreamHash {
+						return tt.expectedRejections[i].Reason < tt.expectedRejections[j].Reason
+					}
+					return tt.expectedRejections[i].StreamHash < tt.expectedRejections[j].StreamHash
+				})
+			}
+
 			require.Equal(t, tt.expectedRejections, resp.RejectedStreams)
 		})
 	}

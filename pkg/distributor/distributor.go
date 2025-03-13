@@ -1161,21 +1161,27 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
-	streamHashes := make([]*logproto.StreamMetadata, 0, len(streams))
+	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		// Add the stream hash to FNV-1.
 		buf := make([]byte, binary.MaxVarintLen64)
 		binary.PutUvarint(buf, stream.HashKeyNoShard)
 		_, _ = h.Write(buf)
+
+		// Calculate the size of the stream.
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+
 		// Add the stream hash to the request. This is sent to limits-frontend.
-		streamHashes = append(streamHashes, &logproto.StreamMetadata{
-			StreamHash: stream.HashKeyNoShard,
+		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
+			StreamHash:             stream.HashKeyNoShard,
+			EntriesSize:            entriesSize,
+			StructuredMetadataSize: structuredMetadataSize,
 		})
 	}
 
 	req := logproto.ExceedsLimitsRequest{
 		Tenant:  tenantID,
-		Streams: streamHashes,
+		Streams: streamMetadata,
 	}
 
 	// Get the limits-frontend instances from the ring.
@@ -1275,6 +1281,8 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
+	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+
 	// However, unlike stream records, the distributor writes stream metadata
 	// records to one of a fixed number of partitions, the size of which is
 	// determined ahead of time. It does not use a ring. The reason for this
@@ -1286,6 +1294,8 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		d.cfg.KafkaConfig.Topic,
 		tenant,
 		stream.HashKeyNoShard,
+		entriesSize,
+		structuredMetadataSize,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -1401,6 +1411,15 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 		return 1
 	}
 	return int(math.Ceil(shards))
+}
+
+func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+	var entriesSize, structuredMetadataSize uint64
+	for _, entry := range stream.Entries {
+		entriesSize += uint64(len(entry.Line))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	}
+	return entriesSize, structuredMetadataSize
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
