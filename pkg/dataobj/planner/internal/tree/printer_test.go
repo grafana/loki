@@ -16,6 +16,11 @@ func TestPrinter(t *testing.T) {
 	lvl2 := lvl1.AddChild("Product", "foobar", []Property{
 		{Key: "relations", Values: []any{"foo", "bar"}, IsMultiValue: true},
 	})
+	rel := lvl2.AddComment("Relation", "foo", nil)
+	rel.AddChild("Shard", "0", nil)
+	rel.AddChild("Shard", "1", nil)
+	rel.AddChild("Shard", "2", nil)
+	lvl2.AddComment("Relation", "bar", nil)
 	lvl2.AddChild("Scan", "foo", []Property{
 		{Key: "selector", Values: []any{`{env="prod", region=".+"}`}},
 	})
@@ -33,6 +38,11 @@ func TestPrinter(t *testing.T) {
 Root
 └── Merge #foo key_a=(value_a) key_b=(value_b, value_c)
     ├── Product #foobar relations=(foo, bar)
+    │   │   ├── Relation #foo
+    │   │   │   ├── Shard #0
+    │   │   │   ├── Shard #1
+    │   │   │   └── Shard #2
+    │   │   └── Relation #bar
     │   ├── Scan #foo selector={env="prod", region=".+"}
     │   └── Scan #bar selector={env="dev", region=".+"}
     └── Scan #baz

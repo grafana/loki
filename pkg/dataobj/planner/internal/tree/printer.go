@@ -5,6 +5,13 @@ import (
 	"io"
 )
 
+const (
+	symPrefix   = "    "
+	symIndent   = "│   "
+	symConn     = "├── "
+	symLastConn = "└── "
+)
+
 // Property represents a property of a [Node]. It is a key-value-pair, where
 // the value is either a single value or a list of values.
 // When the value is a multi-value, the field IsMultiValue needs to be set to
@@ -41,8 +48,13 @@ type Node struct {
 	Name string
 	// Properties contains a list of key-value properties associated with the node.
 	Properties []Property
-	// Children contains the child nodes of this node.
+	// Children are child nodes of the node.
 	Children []*Node
+	// Comments, like Children, are child nodes of the node, with the difference
+	// that comments are indented a level deeper than children. A common use-case
+	// for comments are tree-style properies of a node, such as expressions of a
+	// physical plan node.
+	Comments []*Node
 }
 
 // NewNode creates a new node with the given name, unique identifier and
@@ -61,6 +73,12 @@ func (n *Node) AddChild(name, id string, properties []Property) *Node {
 	child := NewNode(name, id, properties...)
 	n.Children = append(n.Children, child)
 	return child
+}
+
+func (n *Node) AddComment(name, id string, properties []Property) *Node {
+	node := NewNode(name, id, properties...)
+	n.Comments = append(n.Comments, node)
+	return node
 }
 
 // Printer is used for writing the hierarchical representation of a tree
@@ -86,7 +104,7 @@ func NewPrinter(w io.StringWriter) *Printer {
 //	    └── DataObjScan #scan2 location=dataobj_2
 func (tp *Printer) Print(root *Node) {
 	tp.printNode(root)
-	tp.printChildren(root.Children, "")
+	tp.printChildren(root.Comments, root.Children, "")
 }
 
 func (tp *Printer) printNode(node *Node) {
@@ -106,6 +124,7 @@ func (tp *Printer) printNode(node *Node) {
 	for i, attr := range node.Properties {
 		tp.w.WriteString(attr.Key)
 		tp.w.WriteString("=")
+
 		if attr.IsMultiValue {
 			tp.w.WriteString("(")
 		}
@@ -115,6 +134,7 @@ func (tp *Printer) printNode(node *Node) {
 				tp.w.WriteString(", ")
 			}
 		}
+
 		if attr.IsMultiValue {
 			tp.w.WriteString(")")
 		}
@@ -125,16 +145,29 @@ func (tp *Printer) printNode(node *Node) {
 	tp.w.WriteString("\n")
 }
 
-func (tp *Printer) printChildren(nodes []*Node, prefix string) {
-	for i, node := range nodes {
-		isLast := i == len(nodes)-1
+// printChildren recursively prints all children with appropriate indentation
+func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
+	hasChildren := len(children) > 0
+
+	// Iterate over sub nodes first.
+	// They have extended indentation compared to regular child nodes
+	// and depending if there are child nodes, also have a | as prefix.
+	for i, node := range comments {
+		isLast := i == len(comments)-1
 
 		// Choose connector symbols based on whether this is the last item
-		connector := "├── "
-		newPrefix := prefix + "│   "
+		connector := symPrefix + symConn
+		newPrefix := prefix + symIndent + symIndent
+		if hasChildren {
+			connector = symIndent + symConn
+		}
+
 		if isLast {
-			connector = "└── "
-			newPrefix = prefix + "    "
+			connector = symPrefix + symLastConn
+			newPrefix = prefix + symIndent + symPrefix
+			if hasChildren {
+				connector = symIndent + symLastConn
+			}
 		}
 
 		// Print this node
@@ -143,6 +176,27 @@ func (tp *Printer) printChildren(nodes []*Node, prefix string) {
 		tp.printNode(node)
 
 		// Recursively print children
-		tp.printChildren(node.Children, newPrefix)
+		tp.printChildren(node.Comments, node.Children, newPrefix)
+	}
+
+	// Iterate over child nodes last.
+	for i, node := range children {
+		isLast := i == len(children)-1
+
+		// Choose connector symbols based on whether this is the last item
+		connector := symConn
+		newPrefix := prefix + symIndent
+		if isLast {
+			connector = symLastConn
+			newPrefix = prefix + symPrefix
+		}
+
+		// Print this node
+		tp.w.WriteString(prefix)
+		tp.w.WriteString(connector)
+		tp.printNode(node)
+
+		// Recursively print children
+		tp.printChildren(node.Comments, node.Children, newPrefix)
 	}
 }
