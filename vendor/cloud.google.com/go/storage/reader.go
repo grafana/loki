@@ -411,6 +411,10 @@ type multiRangeDownloader interface {
 // This will initiate the read range but is non-blocking; call callback to
 // process the result. Add is thread-safe and can be called simultaneously
 // from different goroutines.
+//
+// Callback will be called with the offset, length of data read, and error
+// of the read. Note that the length of the data read may be less than the
+// requested length if the end of the object is reached.
 func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
 	mrd.reader.add(output, offset, length, callback)
 }

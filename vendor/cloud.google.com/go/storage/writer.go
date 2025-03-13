@@ -77,12 +77,12 @@ type Writer struct {
 	// For uploads of larger files, the Writer will attempt to retry if the
 	// request to upload a particular chunk fails with a transient error.
 	// If a single chunk has been attempting to upload for longer than this
-	// deadline and the request fails, it will no longer be retried, and the error
-	// will be returned to the caller. This is only applicable for files which are
-	// large enough to require a multi-chunk resumable upload. The default value
-	// is 32s. Users may want to pick a longer deadline if they are using larger
-	// values for ChunkSize or if they expect to have a slow or unreliable
-	// internet connection.
+	// deadline and the request fails, it will no longer be retried, and the
+	// error will be returned to the caller. This is only applicable for files
+	// which are large enough to require a multi-chunk resumable upload. The
+	// default value is 32s. Users may want to pick a longer deadline if they
+	// are using larger values for ChunkSize or if they expect to have a slow or
+	// unreliable internet connection.
 	//
 	// To set a deadline on the entire upload, use context timeout or
 	// cancellation.
@@ -90,9 +90,11 @@ type Writer struct {
 
 	// ChunkTransferTimeout sets a per-chunk request timeout for resumable uploads.
 	//
-	// For resumable uploads, the Writer will terminate the request and attempt a retry
-	// if the request to upload a particular chunk stalls for longer than this duration. Retries
-	// may continue until the ChunkRetryDeadline is reached.
+	// For resumable uploads, the Writer will terminate the request and attempt
+	// a retry if the request to upload a particular chunk stalls for longer than
+	// this duration. Retries may continue until the ChunkRetryDeadline is reached.
+	//
+	// ChunkTransferTimeout is not applicable to uploads made using a gRPC client.
 	//
 	// The default value is no timeout.
 	ChunkTransferTimeout time.Duration
@@ -125,13 +127,15 @@ type Writer struct {
 	o   *ObjectHandle
 
 	opened bool
+	closed bool
 	pw     *io.PipeWriter
 
 	donec chan struct{} // closed after err and obj are set.
 	obj   *ObjectAttrs
 
-	mu  sync.Mutex
-	err error
+	mu    sync.Mutex
+	err   error
+	flush func() (int64, error)
 }
 
 // Write appends to w. It implements the io.Writer interface.
@@ -170,6 +174,46 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// Flush syncs all bytes currently in the Writer's buffer to Cloud Storage.
+// It returns the offset of bytes that have been currently synced to
+// Cloud Storage and an error.
+//
+// If Flush is never called, Writer will sync data automatically every
+// [Writer.ChunkSize] bytes and on [Writer.Close].
+//
+// [Writer.ProgressFunc] will be called on Flush if present.
+//
+// Do not call Flush concurrently with Write or Close. A single Writer is not
+// safe for unsynchronized use across threads.
+//
+// Flush is supported only on gRPC clients where [Writer.Append] is set
+// to true. This feature is in preview and is not yet available for general use.
+func (w *Writer) Flush() (int64, error) {
+	// Return error if Append is not true.
+	if !w.Append {
+		return 0, errors.New("storage: Flush not supported unless client uses gRPC and Append is set to true")
+	}
+	if w.closed {
+		return 0, errors.New("storage: Flush called on closed Writer")
+	}
+	// Return error if already in error state.
+	w.mu.Lock()
+	werr := w.err
+	w.mu.Unlock()
+	if werr != nil {
+		return 0, werr
+	}
+	// If Flush called before any bytes written, it should start the upload
+	// at zero bytes. This will make the object visible with zero length data.
+	if !w.opened {
+		err := w.openWriter()
+		w.progress(0)
+		return 0, err
+	}
+
+	return w.flush()
+}
+
 // Close completes the write operation and flushes any buffered data.
 // If Close doesn't return an error, metadata about the written object
 // can be retrieved by calling Attrs.
@@ -186,6 +230,7 @@ func (w *Writer) Close() error {
 	}
 
 	<-w.donec
+	w.closed = true
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	trace.EndSpan(w.ctx, w.err)
@@ -200,7 +245,7 @@ func (w *Writer) openWriter() (err error) {
 		return fmt.Errorf("storage: generation not supported on Writer, got %v", w.o.gen)
 	}
 
-	isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist == true)
+	isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist)
 	opts := makeStorageOpts(isIdempotent, w.o.retry, w.o.userProject)
 	params := &openWriterParams{
 		ctx:                   w.ctx,
@@ -217,6 +262,8 @@ func (w *Writer) openWriter() (err error) {
 		setError:              w.error,
 		progress:              w.progress,
 		setObj:                func(o *ObjectAttrs) { w.obj = o },
+		setFlush:              func(f func() (int64, error)) { w.flush = f },
+		setPipeWriter:         func(pw *io.PipeWriter) { w.pw = pw },
 		forceEmptyContentType: w.ForceEmptyContentType,
 	}
 	if err := w.ctx.Err(); err != nil {
@@ -286,9 +333,9 @@ func (w *Writer) validateWriteAttrs() error {
 }
 
 // progress is a convenience wrapper that reports write progress to the Writer
-// ProgressFunc if it is set and progress is non-zero.
+// ProgressFunc if it is set.
 func (w *Writer) progress(p int64) {
-	if w.ProgressFunc != nil && p != 0 {
+	if w.ProgressFunc != nil {
 		w.ProgressFunc(p)
 	}
 }
