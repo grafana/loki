@@ -43,13 +43,6 @@ func TestExpressionTypes(t *testing.T) {
 			},
 			expected: ExprTypeColumn,
 		},
-		{
-			name: "ColumnExpression",
-			expr: &ColumnExpr{
-				Name: "log",
-			},
-			expected: ExprTypeColumn,
-		},
 	}
 
 	for _, tt := range tests {
