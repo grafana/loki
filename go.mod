@@ -1,6 +1,8 @@
 module github.com/grafana/loki
 
-go 1.20
+go 1.23.0
+
+toolchain go1.24.1
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -128,15 +130,14 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.27.0
 	golang.org/x/text v0.21.0
 	google.golang.org/protobuf v1.33.0
 )
 
 require (
 	cloud.google.com/go v0.110.2 // indirect
-	cloud.google.com/go/compute v1.20.1 // indirect
-	cloud.google.com/go/compute/metadata v0.2.3 // indirect
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v0.13.0 // indirect
 	cloud.google.com/go/longrunning v0.4.1 // indirect
 	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible // indirect
