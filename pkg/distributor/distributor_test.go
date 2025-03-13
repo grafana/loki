@@ -2427,7 +2427,7 @@ func TestExceedsLimits(t *testing.T) {
 	})
 
 	t.Run("stream exceeds limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(ctx context.Context, tenantID string, streams []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
 			return &logproto.ExceedsLimitsResponse{
 				Tenant: "test",
 				RejectedStreams: []*logproto.RejectedStream{{
@@ -2443,7 +2443,7 @@ func TestExceedsLimits(t *testing.T) {
 	})
 
 	t.Run("stream does not exceed limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(ctx context.Context, tenantID string, streams []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
 			return &logproto.ExceedsLimitsResponse{}, nil
 		}
 		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
