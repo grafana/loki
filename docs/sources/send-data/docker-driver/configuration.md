@@ -74,7 +74,7 @@ Options for the logging driver can also be configured with `log-opts` in the
 log-opt configuration options in daemon.json must be provided as
 > strings. Boolean and numeric values (such as the value for loki-batch-size in
 > the example above) must therefore be enclosed in quotes (`"`).
-> {{< /admonition >}}
+{{< /admonition >}}
 
 After changing `daemon.json`, restart the Docker daemon for the changes to take
 effect. All **newly created** containers from that host will then send logs to Loki via the driver.
