@@ -40,12 +40,14 @@ func (t NodeType) String() string {
 // Nodes can be connected to form a directed acyclic graph (DAG) representing
 // the complete execution plan.
 type Node interface {
-	// Traversable accepts a node to be visited by the Visitor
-	Traversable
 	// ID returns a string that uniquely identifies a node in the plan
 	ID() string
 	// Type returns the node type
 	Type() NodeType
+	// Accept allows the object to be visited by a [Visitor] as part of the
+	// visitor pattern. It typically calls back to the appropriate Visit method
+	// on the Visitor for the concrete type being visited.
+	Accept(Visitor) error
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
 	isNode()
@@ -68,11 +70,15 @@ type Edge struct {
 	Parent, Child Node
 }
 
+// WalkOrder defined the order in which current vertex and its children are
+// visited.
+// Pre-order: Process the current vertex before visiting any of its children.
+// Post-order: Process the current vertex after visiting all of its children.
 type WalkOrder uint8
 
 const (
-	PreOrderWalk  WalkOrder = iota // Pre-order: Process the current vertex before visiting any of its children.
-	PostOrderWalk                  // Post-order: Process the current vertex after visiting all of its children.
+	PreOrderWalk WalkOrder = iota
+	PostOrderWalk
 )
 
 type nodeSet map[Node]struct{}
@@ -148,9 +154,9 @@ func (p *Plan) init() {
 	}
 }
 
-// AddNode adds a new node to the plan if it doesn't already exist. For
+// addNode adds a new node to the plan if it doesn't already exist. For
 // convenience, the function returns the input node without modification.
-func (p *Plan) AddNode(n Node) Node {
+func (p *Plan) addNode(n Node) Node {
 	p.init()
 	if n == nil {
 		return nil
@@ -170,13 +176,13 @@ func (p *Plan) AddNode(n Node) Node {
 	return n
 }
 
-// AddEdge creates a directed edge between two nodes in the plan.
+// addEdge creates a directed edge between two nodes in the plan.
 // It establishes a parent-child relationship between the nodes where
 // e.Parent becomes a parent of e.Child. Both nodes must already exist
 // in the plan. Returns an error if either node is nil or doesn't exist
 // in the plan.
 // The order of addition of edges is not preserved.
-func (p *Plan) AddEdge(e Edge) error {
+func (p *Plan) addEdge(e Edge) error {
 	if e.Parent == nil || e.Child == nil {
 		return fmt.Errorf("parent and child nodes must not be nil")
 	}

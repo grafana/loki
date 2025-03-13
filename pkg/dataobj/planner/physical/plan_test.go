@@ -16,7 +16,7 @@ func TestPlan(t *testing.T) {
 
 	t.Run("adding a single node makes it both root and leave node", func(t *testing.T) {
 		p := &Plan{}
-		p.AddNode(&DataObjScan{
+		p.addNode(&DataObjScan{
 			id: "scan",
 		})
 		require.Len(t, p.Roots(), 1)
@@ -25,7 +25,7 @@ func TestPlan(t *testing.T) {
 
 	t.Run("adding an edge for nodes that do no exist fails", func(t *testing.T) {
 		p := &Plan{}
-		err := p.AddEdge(Edge{
+		err := p.addEdge(Edge{
 			Parent: &SortMerge{id: "merge"},
 			Child:  &DataObjScan{id: "scan"},
 		})
@@ -34,23 +34,23 @@ func TestPlan(t *testing.T) {
 
 	t.Run("adding an edge for nil nodes fails", func(t *testing.T) {
 		p := &Plan{}
-		err := p.AddEdge(Edge{})
+		err := p.addEdge(Edge{})
 		require.ErrorContains(t, err, "parent and child nodes must not be nil")
 	})
 
 	t.Run("test roots and leaves", func(t *testing.T) {
 		p := &Plan{}
-		scan1 := p.AddNode(&DataObjScan{
+		scan1 := p.addNode(&DataObjScan{
 			id: "scan1",
 		})
-		scan2 := p.AddNode(&DataObjScan{
+		scan2 := p.addNode(&DataObjScan{
 			id: "scan2",
 		})
-		merge := p.AddNode(&SortMerge{
+		merge := p.addNode(&SortMerge{
 			id: "merge",
 		})
-		_ = p.AddEdge(Edge{Parent: merge, Child: scan1})
-		_ = p.AddEdge(Edge{Parent: merge, Child: scan2})
+		_ = p.addEdge(Edge{Parent: merge, Child: scan1})
+		_ = p.addEdge(Edge{Parent: merge, Child: scan2})
 
 		require.Equal(t, p.Len(), 3)
 		require.Len(t, p.Roots(), 1)
@@ -59,17 +59,17 @@ func TestPlan(t *testing.T) {
 
 	t.Run("get node by id", func(t *testing.T) {
 		p := &Plan{}
-		scan1 := p.AddNode(&DataObjScan{
+		scan1 := p.addNode(&DataObjScan{
 			id: "scan1",
 		})
-		scan2 := p.AddNode(&DataObjScan{
+		scan2 := p.addNode(&DataObjScan{
 			id: "scan2",
 		})
-		merge := p.AddNode(&SortMerge{
+		merge := p.addNode(&SortMerge{
 			id: "merge",
 		})
-		_ = p.AddEdge(Edge{Parent: merge, Child: scan1})
-		_ = p.AddEdge(Edge{Parent: merge, Child: scan2})
+		_ = p.addEdge(Edge{Parent: merge, Child: scan1})
+		_ = p.addEdge(Edge{Parent: merge, Child: scan2})
 
 		n := p.NodeByID("merge")
 		require.Len(t, p.Parents(n), 0)  // no parents
@@ -80,25 +80,25 @@ func TestPlan(t *testing.T) {
 		// Graph can be inspected as SVG under the following URL:
 		// https://dreampuf.github.io/GraphvizOnline/?engine=dot#digraph%20G%20%7B%0A%20%20%20%20limit1%20-%3Emerge1%3B%0A%20%20%20%20merge1%20-%3E%20filter1%3B%0A%20%20%20%20merge1%20-%3E%20merge2%3B%0A%20%20%20%20merge1%20-%3E%20proj3%3B%0A%20%20%20%20filter1%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj2%3B%0A%20%20%20%20proj1%20-%3E%20scan1%3B%0A%20%20%20%20proj2%20-%3E%20scan1%3B%0A%20%20%20%20proj3%20-%3E%20scan1%3B%0A%7D
 		p := &Plan{}
-		limit1 := p.AddNode(&Limit{id: "limit1"})
-		merge1 := p.AddNode(&SortMerge{id: "merge1"})
-		filter1 := p.AddNode(&Filter{id: "filter1"})
-		merge2 := p.AddNode(&SortMerge{id: "merge2"})
-		proj1 := p.AddNode(&Projection{id: "projection1"})
-		proj2 := p.AddNode(&Projection{id: "projection2"})
-		proj3 := p.AddNode(&Projection{id: "projection3"})
-		scan1 := p.AddNode(&DataObjScan{id: "scan1"})
+		limit1 := p.addNode(&Limit{id: "limit1"})
+		merge1 := p.addNode(&SortMerge{id: "merge1"})
+		filter1 := p.addNode(&Filter{id: "filter1"})
+		merge2 := p.addNode(&SortMerge{id: "merge2"})
+		proj1 := p.addNode(&Projection{id: "projection1"})
+		proj2 := p.addNode(&Projection{id: "projection2"})
+		proj3 := p.addNode(&Projection{id: "projection3"})
+		scan1 := p.addNode(&DataObjScan{id: "scan1"})
 
-		_ = p.AddEdge(Edge{Parent: limit1, Child: merge1})
-		_ = p.AddEdge(Edge{Parent: merge1, Child: filter1})
-		_ = p.AddEdge(Edge{Parent: merge1, Child: merge2})
-		_ = p.AddEdge(Edge{Parent: merge1, Child: proj3})
-		_ = p.AddEdge(Edge{Parent: filter1, Child: proj1})
-		_ = p.AddEdge(Edge{Parent: merge2, Child: proj1})
-		_ = p.AddEdge(Edge{Parent: merge2, Child: proj2})
-		_ = p.AddEdge(Edge{Parent: proj1, Child: scan1})
-		_ = p.AddEdge(Edge{Parent: proj2, Child: scan1})
-		_ = p.AddEdge(Edge{Parent: proj3, Child: scan1})
+		_ = p.addEdge(Edge{Parent: limit1, Child: merge1})
+		_ = p.addEdge(Edge{Parent: merge1, Child: filter1})
+		_ = p.addEdge(Edge{Parent: merge1, Child: merge2})
+		_ = p.addEdge(Edge{Parent: merge1, Child: proj3})
+		_ = p.addEdge(Edge{Parent: filter1, Child: proj1})
+		_ = p.addEdge(Edge{Parent: merge2, Child: proj1})
+		_ = p.addEdge(Edge{Parent: merge2, Child: proj2})
+		_ = p.addEdge(Edge{Parent: proj1, Child: scan1})
+		_ = p.addEdge(Edge{Parent: proj2, Child: scan1})
+		_ = p.addEdge(Edge{Parent: proj3, Child: scan1})
 
 		roots := p.Roots()
 		require.Len(t, roots, 1)
