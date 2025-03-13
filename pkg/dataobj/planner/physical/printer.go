@@ -6,6 +6,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/planner/internal/tree"
 )
 
+// BuildTree converts a physical plan node and its children into a tree structure
+// that can be used for visualization and debugging purposes.
 func BuildTree(p *Plan, n Node) *tree.Node {
 	return toTree(p, n)
 }
@@ -24,31 +26,31 @@ func toTreeNode(n Node) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), n.ID())
 	switch node := n.(type) {
 	case *DataObjScan:
-		treeNode.Attributes = []tree.Attribute{
-			tree.NewAttribute("location", false, node.Location),
-			tree.NewAttribute("stream_ids", true, toAnySlice(node.StreamIDs)...),
-			tree.NewAttribute("projections", true, toAnySlice(node.Projections)...),
-			tree.NewAttribute("predicates", true, toAnySlice(node.Predicates)...),
-			tree.NewAttribute("direction", false, node.Direction),
-			tree.NewAttribute("limit", false, node.Limit),
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("location", false, node.Location),
+			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
+			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
+			tree.NewProperty("predicates", true, toAnySlice(node.Predicates)...),
+			tree.NewProperty("direction", false, node.Direction),
+			tree.NewProperty("limit", false, node.Limit),
 		}
 	case *SortMerge:
-		treeNode.Attributes = []tree.Attribute{
-			tree.NewAttribute("column", false, node.Column),
-			tree.NewAttribute("order", false, node.Order),
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("column", false, node.Column),
+			tree.NewProperty("order", false, node.Order),
 		}
 	case *Projection:
-		treeNode.Attributes = []tree.Attribute{
-			tree.NewAttribute("columns", true, toAnySlice(node.Columns)...),
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
 		}
 	case *Filter:
-		treeNode.Attributes = []tree.Attribute{
-			tree.NewAttribute("predicates", true, toAnySlice(node.Predicates)...),
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("predicates", true, toAnySlice(node.Predicates)...),
 		}
 	case *Limit:
-		treeNode.Attributes = []tree.Attribute{
-			tree.NewAttribute("offset", false, node.Offset),
-			tree.NewAttribute("limit", false, node.Limit),
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("offset", false, node.Offset),
+			tree.NewProperty("limit", false, node.Limit),
 		}
 	}
 	return treeNode
@@ -62,6 +64,9 @@ func toAnySlice[T any](s []T) []any {
 	return ret
 }
 
+// PrintAsTree converts a physical [Plan] into a human-readable tree representation.
+// It processes each root node in the plan graph, and returns the combined
+// string output of all trees joined by newlines.
 func PrintAsTree(p *Plan) string {
 	results := make([]string, 0, len(p.Roots()))
 
