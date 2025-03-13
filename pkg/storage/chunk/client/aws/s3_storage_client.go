@@ -624,9 +624,9 @@ func (a *S3ObjectClient) IsRetryableErr(err error) bool {
 func (a *S3ObjectClient) convertObjectKey(objectKey string, toS3 bool) string {
 	if len(a.cfg.ChunkDelimiter) == 1 {
 		if toS3 {
-			objectKey = strings.ReplaceAll(objectKey, ":", string(a.cfg.ChunkDelimiter))
+			objectKey = strings.ReplaceAll(objectKey, ":", a.cfg.ChunkDelimiter)
 		} else {
-			objectKey = strings.ReplaceAll(objectKey, string(a.cfg.ChunkDelimiter), ":")
+			objectKey = strings.ReplaceAll(objectKey, a.cfg.ChunkDelimiter, ":")
 		}
 	}
 	return objectKey
