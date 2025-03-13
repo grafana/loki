@@ -696,13 +696,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, err := d.exceedsLimits(ctx, tenantID, streams)
+		exceedsLimits, _, err := d.exceedsLimits(ctx, tenantID, streams)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if len(exceedsLimits.RejectedStreams) > 0 {
-			level.Error(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-		} else {
-			level.Debug(d.logger).Log("msg", "request accepted", "tenant", tenantID)
+		}
+		if exceedsLimits {
+			level.Info(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
 		}
 	}
 
@@ -1152,7 +1151,46 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	}
 }
 
-func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+// exceedsLimits returns true if the request exceeds the per-tenant limits,
+// otherwise false. If the request does exceed per-tenant limits, a list of
+// reasons are returned explaining which limits were exceeded. An error is
+// returned if the limits could not be checked.
+func (d *Distributor) exceedsLimits(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+) (bool, []string, error) {
+	if !d.cfg.IngestLimitsEnabled {
+		return false, nil, nil
+	}
+	resp, err := d.doExceedsLimitsRPC(ctx, tenantID, streams)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(resp.RejectedStreams) == 0 {
+		return false, nil, nil
+	}
+	reasons := make([]string, 0, len(resp.RejectedStreams))
+	for _, rejection := range resp.RejectedStreams {
+		reasons = append(reasons, fmt.Sprintf(
+			"stream %x was rejected because %q",
+			rejection.StreamHash,
+			rejection.Reason,
+		))
+	}
+	return true, reasons, nil
+}
+
+// doExceedsLimitsRPC executes an RPC to the limits-frontend service to check
+// if per-tenant limits have been exceeded. If an RPC call returns an error,
+// it failsover to the next limits-frontend service. The failover is repeated
+// until there are no more replicas remaining or the context is canceled,
+// whichever happens first.
+func (d *Distributor) doExceedsLimitsRPC(
+	ctx context.Context,
+	tenantID string,
+	streams []KeyedStream,
+) (*logproto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -1195,6 +1233,12 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 	// Send the request to the limits-frontend to see if it exceeds the tenant
 	// limits. If the RPC fails, failover to the next instance in the ring.
 	for _, instance := range rs.Instances {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
 		if err != nil {
 			lastErr = err
