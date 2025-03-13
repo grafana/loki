@@ -1168,11 +1168,8 @@ func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, stream
 		binary.PutUvarint(buf, stream.HashKeyNoShard)
 		_, _ = h.Write(buf)
 
-		var entriesSize, structuredMetadataSize uint64
-		for _, entry := range stream.Stream.Entries {
-			entriesSize += uint64(len(entry.Line))
-			structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
-		}
+		// Calculate the size of the stream.
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 
 		// Add the stream hash to the request. This is sent to limits-frontend.
 		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
@@ -1284,11 +1281,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
-	var entriesSize, structuredMetadataSize uint64
-	for _, entry := range stream.Stream.Entries {
-		entriesSize += uint64(len(entry.Line))
-		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
-	}
+	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 
 	// However, unlike stream records, the distributor writes stream metadata
 	// records to one of a fixed number of partitions, the size of which is
@@ -1418,6 +1411,15 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 		return 1
 	}
 	return int(math.Ceil(shards))
+}
+
+func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+	var entriesSize, structuredMetadataSize uint64
+	for _, entry := range stream.Entries {
+		entriesSize += uint64(len(entry.Line))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	}
+	return entriesSize, structuredMetadataSize
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates

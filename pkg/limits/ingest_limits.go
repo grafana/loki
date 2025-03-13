@@ -104,6 +104,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.WindowSize == 0 {
+		return errors.New("window-size must be greater than 0")
+	}
+	if cfg.RateWindow == 0 {
+		return errors.New("rate-window must be greater than 0")
+	}
+	if cfg.BucketDuration == 0 {
+		return errors.New("bucket-duration must be greater than 0")
+	}
+	if cfg.RateWindow < cfg.BucketDuration {
+		return errors.New("rate-window must be greater than or equal to bucket-duration")
+	}
+	if cfg.NumPartitions <= 0 {
+		return errors.New("num-partitions must be greater than 0")
+	}
 	return nil
 }
 
@@ -143,11 +158,11 @@ type streamMetadata struct {
 	lastSeenAt int64
 	totalSize  uint64
 	// Add a slice to track bytes per time interval for sliding window rate calculation
-	sizeBuckets []sizeBucket
+	rateBuckets []rateBucket
 }
 
-// sizeBucket represents the bytes received during a specific time interval
-type sizeBucket struct {
+// rateBucket represents the bytes received during a specific time interval
+type rateBucket struct {
 	timestamp int64  // start of the interval
 	size      uint64 // bytes received during this interval
 }
@@ -186,19 +201,6 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
 func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
-
-	// If RateWindow is not set, default to 5 minutes to match common Prometheus rate() window
-	if cfg.RateWindow == 0 {
-		cfg.RateWindow = 5 * time.Minute
-		level.Info(logger).Log("msg", "RateWindow not set, defaulting to 5m")
-	}
-
-	// If IntervalDuration is not set, default to 1 minute for a good balance between precision and memory usage
-	if cfg.BucketDuration == 0 {
-		cfg.BucketDuration = 1 * time.Minute
-		level.Info(logger).Log("msg", "IntervalDuration not set, defaulting to 1m")
-	}
-
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
@@ -514,10 +516,10 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 			// Update or add size for the current bucket
 			updated := false
-			sb := make([]sizeBucket, 0, len(stream.sizeBuckets)+1)
+			sb := make([]rateBucket, 0, len(stream.rateBuckets)+1)
 
 			// Only keep buckets within the rate window and update the current bucket
-			for _, bucket := range stream.sizeBuckets {
+			for _, bucket := range stream.rateBuckets {
 				// Clean up buckets outside the rate window
 				if bucket.timestamp < rateWindowCutoff {
 					continue
@@ -525,7 +527,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 				if bucket.timestamp == bucketStart {
 					// Update existing bucket
-					sb = append(sb, sizeBucket{
+					sb = append(sb, rateBucket{
 						timestamp: bucketStart,
 						size:      bucket.size + recTotalSize,
 					})
@@ -538,7 +540,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 			// Add new bucket if it wasn't updated
 			if !updated {
-				sb = append(sb, sizeBucket{
+				sb = append(sb, rateBucket{
 					timestamp: bucketStart,
 					size:      recTotalSize,
 				})
@@ -548,7 +550,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 				hash:        stream.hash,
 				lastSeenAt:  recordTime,
 				totalSize:   totalSize,
-				sizeBuckets: sb,
+				rateBuckets: sb,
 			}
 			return
 		}
@@ -559,7 +561,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 		hash:        rec.StreamHash,
 		lastSeenAt:  recordTime,
 		totalSize:   recTotalSize,
-		sizeBuckets: []sizeBucket{{timestamp: bucketStart, size: recTotalSize}},
+		rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
 	})
 }
 
@@ -616,7 +618,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				activeStreams++
 
 				// Calculate size only within the rate window
-				for _, bucket := range stream.sizeBuckets {
+				for _, bucket := range stream.rateBuckets {
 					if bucket.timestamp >= rateWindowCutoff {
 						totalSize += bucket.size
 					}
@@ -725,7 +727,7 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 			activeStreams++
 
 			// Calculate size only within the rate window
-			for _, bucket := range stream.sizeBuckets {
+			for _, bucket := range stream.rateBuckets {
 				if bucket.timestamp >= rateWindowCutoff {
 					totalSize += bucket.size
 				}

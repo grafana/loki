@@ -43,8 +43,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant2": {
 					0: []streamMetadata{
-						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
 					},
 				},
 			},
@@ -63,10 +63,10 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
-						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
 					},
 				},
 			},
@@ -88,11 +88,11 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
 						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000}, // expired
-						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
 						{hash: 4, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 4000}, // expired
-						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
 					},
 				},
 			},
@@ -135,8 +135,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
 					},
 				},
 			},
@@ -158,11 +158,11 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
-						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
-						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
 					},
 				},
 			},
@@ -185,13 +185,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
 					},
 					1: []streamMetadata{
-						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
-						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+						{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
+						{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
+						{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
 					},
 				},
 			},
@@ -213,8 +213,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			metadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
 					0: []streamMetadata{
-						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+						{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
+						{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
 					},
 				},
 			},
@@ -241,7 +241,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 							hash:       1,
 							lastSeenAt: time.Now().UnixNano(),
 							totalSize:  5000, // Total size includes all buckets
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Now().Add(-10 * time.Minute).UnixNano(), size: 1000}, // Outside rate window
 								{timestamp: time.Now().Add(-6 * time.Minute).UnixNano(), size: 1500},  // Outside rate window
 								{timestamp: time.Now().Add(-4 * time.Minute).UnixNano(), size: 1000},  // Inside rate window
@@ -252,7 +252,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 							hash:       2,
 							lastSeenAt: time.Now().UnixNano(),
 							totalSize:  4000, // Total size includes all buckets
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Now().Add(-8 * time.Minute).UnixNano(), size: 1000}, // Outside rate window
 								{timestamp: time.Now().Add(-3 * time.Minute).UnixNano(), size: 1500}, // Inside rate window
 								{timestamp: time.Now().Add(-1 * time.Minute).UnixNano(), size: 1500}, // Inside rate window
@@ -333,10 +333,10 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	metadata := map[string]map[int32][]streamMetadata{
 		"tenant1": {
 			0: []streamMetadata{
-				{hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, sizeBuckets: []sizeBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
-				{hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano(), totalSize: 2000, sizeBuckets: []sizeBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
+				{hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
+				{hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
 				{hash: 3, lastSeenAt: now.Add(-2 * time.Hour).UnixNano(), totalSize: 3000},                                                                        // expired
-				{hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano(), totalSize: 4000, sizeBuckets: []sizeBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
+				{hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
 				{hash: 5, lastSeenAt: now.Add(-3 * time.Hour).UnixNano(), totalSize: 5000},                                                                        // expired
 			},
 		},
@@ -440,7 +440,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(100, 0).UnixNano(),
 							totalSize:  1500,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1500},
 							},
 						},
@@ -458,7 +458,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(100, 0).UnixNano(),
 							totalSize:  1000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
 							},
 						},
@@ -482,7 +482,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(100, 0).UnixNano(),
 							totalSize:  1000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
 							},
 						},
@@ -492,7 +492,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       456,
 							lastSeenAt: time.Unix(200, 0).UnixNano(),
 							totalSize:  3000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), size: 3000},
 							},
 						},
@@ -510,7 +510,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(100, 0).UnixNano(),
 							totalSize:  1000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
 							},
 						},
@@ -534,7 +534,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(300, 0).UnixNano(),
 							totalSize:  5500,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
 								{timestamp: time.Unix(300, 0).Truncate(time.Minute).UnixNano(), size: 4500},
 							},
@@ -553,7 +553,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       123,
 							lastSeenAt: time.Unix(100, 0).UnixNano(),
 							totalSize:  1000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
 							},
 						},
@@ -561,7 +561,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       456,
 							lastSeenAt: time.Unix(200, 0).UnixNano(),
 							totalSize:  3000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), size: 3000},
 							},
 						},
@@ -585,7 +585,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       456,
 							lastSeenAt: time.Unix(200, 0).UnixNano(),
 							totalSize:  3000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), size: 3000},
 							},
 						},
@@ -612,7 +612,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       888,
 							lastSeenAt: time.Unix(850, 0).UnixNano(),
 							totalSize:  1500,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(850, 0).Truncate(time.Minute).UnixNano(), size: 1500},
 							},
 						},
@@ -626,7 +626,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       888,
 							lastSeenAt: time.Unix(852, 0).UnixNano(),
 							totalSize:  3000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(850, 0).Truncate(time.Minute).UnixNano(), size: 3000},
 							},
 						},
@@ -653,7 +653,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       999,
 							lastSeenAt: time.Unix(950, 0).UnixNano(),
 							totalSize:  5000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(1000, 0).Add(-5 * time.Minute).Truncate(time.Minute).UnixNano(), size: 1000},  // Old, outside window
 								{timestamp: time.Unix(1000, 0).Add(-10 * time.Minute).Truncate(time.Minute).UnixNano(), size: 1500}, // Outside rate window (>5 min old from 1000)
 								{timestamp: time.Unix(950, 0).Truncate(time.Minute).UnixNano(), size: 2500},                         // Recent, within window
@@ -669,7 +669,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       999,
 							lastSeenAt: time.Unix(1000, 0).UnixNano(),
 							totalSize:  8000, // Old total + new 3000
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(950, 0).Truncate(time.Minute).UnixNano(), size: 2500},
 								{timestamp: time.Unix(1000, 0).Truncate(time.Minute).UnixNano(), size: 3000},
 							},
@@ -697,7 +697,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       555,
 							lastSeenAt: time.Unix(1080, 0).UnixNano(), // Same minute as new data
 							totalSize:  2000,
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								{timestamp: time.Unix(1080, 0).Truncate(time.Minute).UnixNano(), size: 2000},
 							},
 						},
@@ -711,7 +711,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 							hash:       555,
 							lastSeenAt: time.Unix(1100, 0).UnixNano(),
 							totalSize:  3500, // 2000 + 1500
-							sizeBuckets: []sizeBucket{
+							rateBuckets: []rateBucket{
 								// Same bucket as before but updated with new size
 								{timestamp: time.Unix(1100, 0).Truncate(time.Minute).UnixNano(), size: 3500},
 							},
@@ -746,15 +746,15 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 				for tenant, partitions := range tt.expected {
 					for partition, streams := range partitions {
 						for i, expectedStream := range streams {
-							if len(expectedStream.sizeBuckets) > 0 {
-								require.Equal(t, len(expectedStream.sizeBuckets), len(s.metadata[tenant][partition][i].sizeBuckets),
+							if len(expectedStream.rateBuckets) > 0 {
+								require.Equal(t, len(expectedStream.rateBuckets), len(s.metadata[tenant][partition][i].rateBuckets),
 									"Number of size buckets does not match for stream %d", expectedStream.hash)
 
 								// Check each bucket
-								for j, expectedBucket := range expectedStream.sizeBuckets {
-									require.Equal(t, expectedBucket.timestamp, s.metadata[tenant][partition][i].sizeBuckets[j].timestamp,
+								for j, expectedBucket := range expectedStream.rateBuckets {
+									require.Equal(t, expectedBucket.timestamp, s.metadata[tenant][partition][i].rateBuckets[j].timestamp,
 										"Bucket timestamp mismatch for stream %d, bucket %d", expectedStream.hash, j)
-									require.Equal(t, expectedBucket.size, s.metadata[tenant][partition][i].sizeBuckets[j].size,
+									require.Equal(t, expectedBucket.size, s.metadata[tenant][partition][i].rateBuckets[j].size,
 										"Bucket size mismatch for stream %d, bucket %d", expectedStream.hash, j)
 								}
 							}
@@ -794,12 +794,7 @@ func TestNewIngestLimits(t *testing.T) {
 	require.NotNil(t, s)
 	require.NotNil(t, s.client)
 
-	// The NewIngestLimits function sets a default RateWindow value of 5 minutes
-	// if it's not specified in the config
-	expectedCfg := cfg
-	expectedCfg.RateWindow = 5 * time.Minute
-	expectedCfg.BucketDuration = 1 * time.Minute
-	require.Equal(t, expectedCfg, s.cfg)
+	require.Equal(t, cfg, s.cfg)
 
 	require.NotNil(t, s.metadata)
 	require.NotNil(t, s.lifecycler)
