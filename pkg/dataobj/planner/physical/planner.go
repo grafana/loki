@@ -2,15 +2,15 @@ package physical
 
 import "github.com/grafana/loki/v3/pkg/dataobj/planner/logical"
 
-// Context holds information about
+// Context holds meta information needed to create a physical plan.
 type Context struct{}
 
-// Planner creates a executable physical plan from a logical plan.
+// Planner creates an executable physical plan from a logical plan.
 type Planner struct {
 	ctx Context
 }
 
-// NewPlanner create a new planner instance with the given context.
+// NewPlanner creates a new planner instance with the given context.
 func NewPlanner(ctx Context) *Planner {
 	return &Planner{ctx: ctx}
 }
@@ -18,8 +18,7 @@ func NewPlanner(ctx Context) *Planner {
 // Convert transforms a logical plan into a physical plan.
 func (p *Planner) Convert(_ *logical.Plan) (*Plan, error) {
 	pp := &Plan{}
-	// TODO
-	// The logical plan implementation is not traversible yet.
+	// TODO: The logical plan implementation is not traversible yet.
 	// Convert MAKETABLE
 	// Convert SELECT
 	// Convert SORT
