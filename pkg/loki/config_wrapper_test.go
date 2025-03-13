@@ -274,6 +274,7 @@ memberlist:
       secret_access_key: def789
       insecure: true
       disable_dualstack: true
+      chunk_delimiter: "-"
       http_config:
         response_header_timeout: 5m`
 
@@ -299,6 +300,7 @@ memberlist:
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.True(t, actual.DisableDualstack)
+				assert.Equal(t, "-", actual.ChunkDelimiter)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -364,6 +366,7 @@ memberlist:
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.False(t, actual.DisableDualstack)
+				assert.Equal(t, "", actual.ChunkDelimiter)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
