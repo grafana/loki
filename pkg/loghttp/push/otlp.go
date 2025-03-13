@@ -33,6 +33,7 @@ const (
 	attrServiceName     = "service.name"
 
 	OTLPSeverityNumber = "severity_number"
+	OTLPSeverityText   = "severity_text"
 )
 
 func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
@@ -408,15 +409,15 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushReques
 	if severityText := log.SeverityText(); severityText != "" {
 		// Add severity_text as an index label if configured
 		if otlpConfig.SeverityTextAsLabel {
-			logLabels[model.LabelName("severity_text")] = model.LabelValue(severityText)
+			logLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
 			if logPushRequestStreams && pushedLabels != nil {
-				pushedLabels[model.LabelName("severity_text")] = model.LabelValue(severityText)
+				pushedLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
 			}
 		}
 
 		// Always add severity_text as structured metadata
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "severity_text",
+			Name:  OTLPSeverityText,
 			Value: severityText,
 		})
 	}
