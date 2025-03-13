@@ -609,6 +609,40 @@ func (m *HealthCheck) validate(all bool) error {
 
 	// no validation rules for EventLogPath
 
+	for idx, item := range m.GetEventLogger() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, HealthCheckValidationError{
+						field:  fmt.Sprintf("EventLogger[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, HealthCheckValidationError{
+						field:  fmt.Sprintf("EventLogger[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return HealthCheckValidationError{
+					field:  fmt.Sprintf("EventLogger[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if all {
 		switch v := interface{}(m.GetEventService()).(type) {
 		case interface{ ValidateAll() error }:
