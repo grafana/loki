@@ -51,7 +51,7 @@ For more information:
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
 
-- [Filesystem]({{< relref "./filesystem" >}}) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - S3 API compatible storage, such as [MinIO](https://min.io/)
 
 ### ❌ Deprecated chunks stores

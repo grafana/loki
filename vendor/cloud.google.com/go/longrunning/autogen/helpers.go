@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ func executeHTTPRequestWithResponse(ctx context.Context, client *http.Client, re
 		return nil, nil, err
 	}
 	logger.DebugContext(ctx, "api response", "serviceName", serviceName, "rpcName", rpc, "response", internallog.HTTPResponse(resp, buf))
-	if err = googleapi.CheckResponse(resp); err != nil {
+	if err = googleapi.CheckResponseWithBody(resp, buf); err != nil {
 		return nil, nil, err
 	}
 	return buf, resp, nil

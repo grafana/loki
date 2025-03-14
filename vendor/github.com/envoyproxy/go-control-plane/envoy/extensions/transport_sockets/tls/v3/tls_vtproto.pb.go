@@ -51,6 +51,26 @@ func (m *UpstreamTlsContext) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.AutoSniSanValidation {
+		i--
+		if m.AutoSniSanValidation {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.AutoHostSni {
+		i--
+		if m.AutoHostSni {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.EnforceRsaKeyUsage != nil {
 		size, err := (*wrapperspb.BoolValue)(m.EnforceRsaKeyUsage).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -919,6 +939,12 @@ func (m *UpstreamTlsContext) SizeVT() (n int) {
 	if m.EnforceRsaKeyUsage != nil {
 		l = (*wrapperspb.BoolValue)(m.EnforceRsaKeyUsage).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.AutoHostSni {
+		n += 2
+	}
+	if m.AutoSniSanValidation {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n

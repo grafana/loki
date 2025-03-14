@@ -181,6 +181,6 @@ func readAllRecords(ctx context.Context, r *dataobj.LogsReader) ([]dataobj.Recor
 			return res, err
 		}
 
-		buf = buf[:0]
+		clear(buf)
 	}
 }

@@ -210,7 +210,16 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer, metricsNamespace string) (*Compactor, error) {
+func NewCompactor(
+	cfg Config,
+	objectStoreClients map[config.DayTime]client.ObjectClient,
+	deleteStoreClient client.ObjectClient,
+	schemaConfig config.SchemaConfig,
+	limits Limits,
+	indexUpdatePropagationMaxDelay time.Duration,
+	r prometheus.Registerer,
+	metricsNamespace string,
+) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -267,7 +276,7 @@ func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.Objec
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, indexUpdatePropagationMaxDelay, limits, r); err != nil {
 		return nil, fmt.Errorf("init compactor: %w", err)
 	}
 
@@ -275,7 +284,14 @@ func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.Objec
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
+func (c *Compactor) init(
+	objectStoreClients map[config.DayTime]client.ObjectClient,
+	deleteStoreClient client.ObjectClient,
+	schemaConfig config.SchemaConfig,
+	indexUpdatePropagationMaxDelay time.Duration,
+	limits Limits,
+	r prometheus.Registerer,
+) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -286,7 +302,7 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 			return fmt.Errorf("delete store client not initialised when retention is enabled")
 		}
 
-		if err := c.initDeletes(deleteStoreClient, r, limits); err != nil {
+		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
 	}
@@ -365,10 +381,16 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 	return nil
 }
 
-func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
+func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix)
-	store, err := deletion.NewDeleteRequestsStore(deletion.DeleteRequestsStoreDBType(c.cfg.DeleteRequestStoreDBType), deletionWorkDir, indexStorageClient, deletion.DeleteRequestsStoreDBType(c.cfg.BackupDeleteRequestStoreDBType))
+	store, err := deletion.NewDeleteRequestsStore(
+		deletion.DeleteRequestsStoreDBType(c.cfg.DeleteRequestStoreDBType),
+		deletionWorkDir,
+		indexStorageClient,
+		deletion.DeleteRequestsStoreDBType(c.cfg.BackupDeleteRequestStoreDBType),
+		indexUpdatePropagationMaxDelay,
+	)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -39,6 +40,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -501,6 +504,18 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
+	_, err = distributors[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Metrics should remain unchanged
+	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
+	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
+
+	// enforced labels are configured but the stream is an aggregated metric, so no errors.
+	limits.EnforcedLabels = []string{"app", "env"}
+	distributors, _ = prepare(t, 1, 3, limits, nil)
+
+	req = makeWriteRequestWithLabels(100, 100, []string{`{__aggregated_metric__="foo"}`}, false, false, false)
 	_, err = distributors[0].Push(ctx, req)
 	require.NoError(t, err)
 
@@ -1879,6 +1894,15 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ring: partitionRing,
 	}
 
+	limitsFrontendRing, err := ring.New(ring.Config{
+		KVStore: kv.Config{
+			Mock: kvStore,
+		},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 1,
+	}, limits_frontend.RingKey, limits_frontend.RingKey, nil, nil)
+	require.NoError(t, err)
+
 	loopbackName, err := loki_net.LoopbackInterfaceName()
 	require.NoError(t, err)
 
@@ -1905,8 +1929,9 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		require.NoError(t, err)
 
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
+		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -2362,4 +2387,68 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 
 	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
+}
+
+func TestExceedsLimits(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 0, limits, nil)
+	d := distributors[0]
+
+	ctx := context.Background()
+	streams := []KeyedStream{{
+		HashKeyNoShard: 1,
+		Stream: logproto.Stream{
+			Labels: "{foo=\"bar\"}",
+		},
+	}}
+
+	t.Run("no limits should be checked when disabled", func(t *testing.T) {
+		d.cfg.IngestLimitsEnabled = false
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+			t.Fail() // Should not be called.
+			return nil, nil
+		}
+		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
+		require.Nil(t, err)
+		require.False(t, exceedsLimits)
+		require.Nil(t, reasons)
+	})
+
+	t.Run("error should be returned if limits cannot be checked", func(t *testing.T) {
+		d.cfg.IngestLimitsEnabled = true
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+			return nil, errors.New("failed to check limits")
+		}
+		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
+		require.EqualError(t, err, "failed to check limits")
+		require.False(t, exceedsLimits)
+		require.Nil(t, reasons)
+	})
+
+	t.Run("stream exceeds limits", func(t *testing.T) {
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+			return &logproto.ExceedsLimitsResponse{
+				Tenant: "test",
+				RejectedStreams: []*logproto.RejectedStream{{
+					StreamHash: 1,
+					Reason:     "test",
+				}},
+			}, nil
+		}
+		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
+		require.Nil(t, err)
+		require.True(t, exceedsLimits)
+		require.Equal(t, []string{"stream {foo=\"bar\"} was rejected because \"test\""}, reasons)
+	})
+
+	t.Run("stream does not exceed limits", func(t *testing.T) {
+		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
+			return &logproto.ExceedsLimitsResponse{}, nil
+		}
+		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
+		require.Nil(t, err)
+		require.False(t, exceedsLimits)
+		require.Nil(t, reasons)
+	})
 }
