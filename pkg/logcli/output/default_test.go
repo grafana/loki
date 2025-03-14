@@ -84,7 +84,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 			"Hello",
 			"2006-01-02T08:04:05.123456789Z {} Hello\n",
 		},
-		"TimestampFormat using StampMicro not rounded": {
+		"TimestampFormat using StampMicro truncated": {
 			&LogOutputOptions{Timezone: time.UTC, TimestampFormat: time.StampMicro},
 			timestamp,
 			emptyLabels,
