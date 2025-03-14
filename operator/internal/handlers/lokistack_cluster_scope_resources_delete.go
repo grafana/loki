@@ -16,13 +16,11 @@ import (
 
 // DeleteClusterScopedResources removes all cluster-scoped resources.
 func DeleteClusterScopedResources(ctx context.Context, k k8s.Client, operatorNs string, stacks lokiv1.LokiStackList) error {
+	// Since we are deleting we don't need to worry about the subjects.
 	opts := openshift.NewOptionsClusterScope(operatorNs, manifests.ClusterScopeLabels(), []rbacv1.Subject{}, []rbacv1.Subject{})
-	objs, err := openshift.BuildDashboards(opts)
-	if err != nil {
-		return kverrors.Wrap(err, "failed to build dashboards manifests")
-	}
 
-	// Delete all re
+	objs := openshift.BuildRBAC(opts)
+	objs = append(objs, openshift.BuildDashboards(opts)...)
 
 	for _, obj := range objs {
 		key := client.ObjectKeyFromObject(obj)
@@ -30,7 +28,7 @@ func DeleteClusterScopedResources(ctx context.Context, k k8s.Client, operatorNs 
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return kverrors.Wrap(err, "failed to delete dashboard", "key", key)
+			return kverrors.Wrap(err, "failed to delete dashboard", "kind", obj.GetObjectKind(), "key", key)
 		}
 	}
 	return nil

@@ -11,13 +11,34 @@ const (
 	rulerName   = "lokistack-ruler"
 )
 
-func BuildRBAC(opts OptionsClusterScope) ([]client.Object, error) {
+func BuildRBAC(opts OptionsClusterScope) []client.Object {
 	objs := make([]client.Object, 0, 4)
-	objs = append(objs, BuildGatewayClusterRole(opts))
-	objs = append(objs, BuildGatewayClusterRoleBinding(opts))
 	objs = append(objs, BuildRulerClusterRole(opts))
 	objs = append(objs, BuildRulerClusterRoleBinding(opts))
-	return objs, nil
+	return objs
+}
+
+func LegacyRBAC(gatewayName, rulerName string) []client.Object {
+	opts := NewOptionsClusterScope("", map[string]string{}, []rbacv1.Subject{}, []rbacv1.Subject{})
+	objs := make([]client.Object, 0, 4)
+
+	cr := BuildGatewayClusterRole(opts)
+	cr.Name = authorizerRbacName(gatewayName)
+	objs = append(objs, cr)
+
+	crb := BuildGatewayClusterRoleBinding(opts)
+	crb.Name = authorizerRbacName(gatewayName)
+	objs = append(objs, crb)
+
+	cr = BuildRulerClusterRole(opts)
+	cr.Name = authorizerRbacName(rulerName)
+	objs = append(objs, cr)
+
+	crb = BuildRulerClusterRoleBinding(opts)
+	crb.Name = authorizerRbacName(rulerName)
+	objs = append(objs, crb)
+
+	return objs
 }
 
 // BuildGatewayClusterRole returns a k8s ClusterRole object for the
