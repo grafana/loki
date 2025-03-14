@@ -485,11 +485,30 @@ func (p *pushTracker) doneWithResult(err error) {
 	}
 }
 
+func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string, start time.Time) {
+	latency := d.validator.Limits.SimulatedPushLatency(tenantID)
+	if latency > 0 {
+		// All requests must wait at least the simulated latency. However,
+		// we want to avoid adding additional latency on top of slow requests
+		// that already took longer then the simulated latency.
+		wait := latency - time.Since(start)
+		if wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return // The client canceled the request.
+			}
+		}
+	}
+}
+
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+	start := time.Now()
+	defer d.waitSimulatedLatency(ctx, tenantID, start)
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
 }
 
