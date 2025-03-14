@@ -41,6 +41,8 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 	realm := authParameters.AuthorityInfo.Tenant
 	clientID := authParameters.ClientID
 	scopes := authParameters.Scopes
+	authnSchemeKeyID := authParameters.AuthnScheme.KeyID()
+	tokenType := authParameters.AuthnScheme.AccessTokenType()
 
 	// fetch metadata if instanceDiscovery is enabled
 	aliases := []string{authParameters.AuthorityInfo.Host}
@@ -57,7 +59,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 	// errors returned by read* methods indicate a cache miss and are therefore non-fatal. We continue populating
 	// TokenResponse fields so that e.g. lack of an ID token doesn't prevent the caller from receiving a refresh token.
-	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest)
+	accessToken, err := m.readAccessToken(aliases, realm, clientID, userAssertionHash, scopes, partitionKeyFromRequest, tokenType, authnSchemeKeyID)
 	if err == nil {
 		tr.AccessToken = accessToken
 	}
@@ -84,7 +86,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 // Write writes a token response to the cache and returns the account information the token is stored with.
 func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenResponse accesstokens.TokenResponse) (shared.Account, error) {
-	authParameters.HomeAccountID = tokenResponse.ClientInfo.HomeAccountID()
+	authParameters.HomeAccountID = tokenResponse.HomeAccountID()
 	homeAccountID := authParameters.HomeAccountID
 	environment := authParameters.AuthorityInfo.Host
 	realm := authParameters.AuthorityInfo.Tenant
@@ -92,7 +94,7 @@ func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenRes
 	target := strings.Join(tokenResponse.GrantedScopes.Slice, scopeSeparator)
 	userAssertionHash := authParameters.AssertionHash()
 	cachedAt := time.Now()
-
+	authnSchemeKeyID := authParameters.AuthnScheme.KeyID()
 	var account shared.Account
 
 	if len(tokenResponse.RefreshToken) > 0 {
@@ -116,6 +118,8 @@ func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenRes
 			tokenResponse.ExtExpiresOn.T,
 			target,
 			tokenResponse.AccessToken,
+			tokenResponse.TokenType,
+			authnSchemeKeyID,
 		)
 		if authParameters.AuthorizationType == authority.ATOnBehalfOf {
 			accessToken.UserAssertionHash = userAssertionHash // get Hash method on this
@@ -215,7 +219,7 @@ func (m *PartitionedManager) aadMetadata(ctx context.Context, authorityInfo auth
 	return m.aadCache[authorityInfo.Host], nil
 }
 
-func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey string) (AccessToken, error) {
+func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientID, userAssertionHash string, scopes []string, partitionKey, tokenType, authnSchemeKeyID string) (AccessToken, error) {
 	m.contractMu.RLock()
 	defer m.contractMu.RUnlock()
 	if accessTokens, ok := m.contract.AccessTokensPartition[partitionKey]; ok {
@@ -224,9 +228,11 @@ func (m *PartitionedManager) readAccessToken(envAliases []string, realm, clientI
 		// an issue, however if it does become a problem then we know where to look.
 		for _, at := range accessTokens {
 			if at.Realm == realm && at.ClientID == clientID && at.UserAssertionHash == userAssertionHash {
-				if checkAlias(at.Environment, envAliases) {
-					if isMatchingScopes(scopes, at.Scopes) {
-						return at, nil
+				if at.TokenType == tokenType && at.AuthnSchemeKeyID == authnSchemeKeyID {
+					if checkAlias(at.Environment, envAliases) {
+						if isMatchingScopes(scopes, at.Scopes) {
+							return at, nil
+						}
 					}
 				}
 			}

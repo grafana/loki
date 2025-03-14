@@ -28,8 +28,7 @@ func NewJSONStream(recordChan chan Record) Stream {
 func (s Stream) Start(r io.ReadCloser, tokenCountToTarget int) {
 	defer r.Close()
 	defer close(s.records)
-	var decoder *json.Decoder
-	decoder = json.NewDecoder(r)
+	decoder := json.NewDecoder(r)
 
 	// Skip the provided count of JSON tokens to get the the target array, ex: "{" "Record"
 	for i := 0; i < tokenCountToTarget; i++ {

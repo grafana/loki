@@ -15,11 +15,11 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/compactor"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -280,7 +280,7 @@ func (t *tableCompactor) compactUserIndexes(idxSet compactor.IndexSet) (*Compact
 	}
 
 	// go through each file and dump records in the local bucket of the new compacted file
-	err = concurrency.ForEachJob(t.ctx, len(indexes), readDBsConcurrency, func(ctx context.Context, idx int) error {
+	err = concurrency.ForEachJob(t.ctx, len(indexes), readDBsConcurrency, func(_ context.Context, idx int) error {
 		downloadAt, err := idxSet.GetSourceFile(indexes[idx])
 		if err != nil {
 			return err
@@ -296,7 +296,7 @@ func (t *tableCompactor) compactUserIndexes(idxSet compactor.IndexSet) (*Compact
 		}
 		dbPair.db = db
 
-		err = readFile(idxSet.GetLogger(), dbPair, func(bucketName string, batch []indexEntry) error {
+		err = readFile(idxSet.GetLogger(), dbPair, func(_ string, batch []indexEntry) error {
 			return writeBatch(compactedFile, batch)
 		})
 		if err != nil {
@@ -341,7 +341,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 	var fetchStateMx sync.Mutex
 
 	defer func() {
-		err := concurrency.ForEachJob(ctx, len(dbsToRead), readDBsConcurrency, func(ctx context.Context, idx int) error {
+		err := concurrency.ForEachJob(ctx, len(dbsToRead), readDBsConcurrency, func(_ context.Context, idx int) error {
 			dbsToRead[idx].cleanup(idxSet.GetLogger())
 			return nil
 		})
@@ -351,7 +351,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 	}()
 
 	// fetch common index files and extract information about tenants that have records in a given file
-	err = concurrency.ForEachJob(ctx, len(indexes), readDBsConcurrency, func(ctx context.Context, idx int) error {
+	err = concurrency.ForEachJob(ctx, len(indexes), readDBsConcurrency, func(_ context.Context, idx int) error {
 		workNum := idx
 		// skip seed file
 		if workNum == compactedFileIdx {
@@ -378,7 +378,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 		dbsToRead[idx].db = db
 
 		return db.View(func(tx *bbolt.Tx) error {
-			return tx.ForEach(func(name []byte, b *bbolt.Bucket) error {
+			return tx.ForEach(func(name []byte, _ *bbolt.Bucket) error {
 				bucketNameStr := string(name)
 				if bucketNameStr == shipper_util.GetUnsafeString(local.IndexBucketName) {
 					return nil
@@ -396,13 +396,13 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 		return nil, errors.Wrap(err, "unable to fetch index files and extract tenants: ")
 	}
 
-	tenantIdsSlice := make([]string, 0, len(tenantsToFetch))
+	tenantIDsSlice := make([]string, 0, len(tenantsToFetch))
 	for tenant := range tenantsToFetch {
-		tenantIdsSlice = append(tenantIdsSlice, tenant)
+		tenantIDsSlice = append(tenantIDsSlice, tenant)
 	}
 
-	err = concurrency.ForEachJob(ctx, len(tenantIdsSlice), readDBsConcurrency, func(ctx context.Context, idx int) error {
-		userID := tenantIdsSlice[idx]
+	err = concurrency.ForEachJob(ctx, len(tenantIDsSlice), readDBsConcurrency, func(_ context.Context, idx int) error {
+		userID := tenantIDsSlice[idx]
 		return t.fetchOrCreateUserCompactedIndexSet(userID)
 	})
 
@@ -411,7 +411,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 	}
 
 	// go through each file and build index in FORMAT1 from FORMAT1 indexes and FORMAT3 from FORMAT2 indexes
-	err = concurrency.ForEachJob(ctx, len(indexes), readDBsConcurrency, func(ctx context.Context, idx int) error {
+	err = concurrency.ForEachJob(ctx, len(indexes), readDBsConcurrency, func(_ context.Context, idx int) error {
 		workNum := idx
 		// skip seed file
 		if workNum == compactedFileIdx {

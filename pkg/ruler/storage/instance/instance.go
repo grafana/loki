@@ -27,9 +27,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/ruler/storage/util"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/util"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func init() {
@@ -262,7 +263,7 @@ func (i *Instance) Run(ctx context.Context) error {
 				level.Info(i.logger).Log("msg", "truncation loop stopped")
 				return nil
 			},
-			func(err error) {
+			func(_ error) {
 				level.Info(i.logger).Log("msg", "stopping truncation loop...")
 				contextCancel()
 			},
@@ -303,7 +304,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(remoteLogger, reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
+	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{}, false)
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})
@@ -311,7 +312,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 		return fmt.Errorf("failed applying config to remote storage: %w", err)
 	}
 
-	i.storage = storage.NewFanout(i.logger, i.wal, i.remoteStore)
+	i.storage = storage.NewFanout(util_log.SlogFromGoKit(i.logger), i.wal, i.remoteStore)
 	i.wal.SetWriteNotified(i.remoteStore)
 	i.initialized = true
 

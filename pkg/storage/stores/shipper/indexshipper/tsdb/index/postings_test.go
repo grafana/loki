@@ -716,7 +716,7 @@ func TestBigEndian(t *testing.T) {
 	}
 
 	t.Run("Iteration", func(t *testing.T) {
-		bep := newBigEndianPostings(beLst)
+		bep := NewBigEndianPostings(beLst)
 		for i := 0; i < num; i++ {
 			require.True(t, bep.Next())
 			require.Equal(t, storage.SeriesRef(ls[i]), bep.At())
@@ -764,7 +764,7 @@ func TestBigEndian(t *testing.T) {
 			},
 		}
 
-		bep := newBigEndianPostings(beLst)
+		bep := NewBigEndianPostings(beLst)
 
 		for _, v := range table {
 			require.Equal(t, v.found, bep.Seek(storage.SeriesRef(v.seek)))

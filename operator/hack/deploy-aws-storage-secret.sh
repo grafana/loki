@@ -37,7 +37,7 @@ readonly access_key_id
 secret_access_key=${SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}
 readonly secret_access_key
 
-# Managed authentication with/without a manually provisioned AWS Role.
+# token authentication with/without a manually provisioned AWS Role.
 readonly sts=${STS:-false}
 readonly role_arn=${2-}
 

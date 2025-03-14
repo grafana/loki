@@ -13,13 +13,13 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -100,7 +100,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	var tests map[string]testCase
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -1000,7 +999,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for _, schemaConfig := range schemaConfigs {
 		s := schemaConfig
 		for name, tt := range tests {
-			tt := tt
 			t.Run(name, func(t *testing.T) {
 				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
 				require.NoError(t, err)
@@ -1416,12 +1414,22 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		tt := tt
 		t.Run(name, func(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
+			it, err := newSampleBatchIterator(
+				context.Background(),
+				s,
+				NilMetrics,
+				tt.chunks,
+				tt.batchSize,
+				newMatchers(tt.matchers),
+				tt.start,
+				tt.end,
+				nil,
+				ex,
+			)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1649,9 +1657,9 @@ func TestBuildHeapIterator(t *testing.T) {
 				ctx:      ctx,
 				pipeline: log.NewNoopPipeline(),
 			}
-			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			if err != nil {
-				t.Errorf("buildHeapIterator error = %v", err)
+				t.Errorf("buildMergeIterator error = %v", err)
 				return
 			}
 			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)
@@ -1745,7 +1753,7 @@ func TestBatchCancel(t *testing.T) {
 	//nolint:revive
 	for it.Next() {
 	}
-	require.Equal(t, context.Canceled, it.Error())
+	require.Equal(t, context.Canceled, it.Err())
 }
 
 var entry logproto.Entry
@@ -1784,7 +1792,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 		for it.Next() {
-			entry = it.Entry()
+			entry = it.At()
 		}
 		if err := it.Close(); err != nil {
 			b.Fatal(err)

@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
@@ -208,13 +207,7 @@ func CreateOrUpdateLokiStack(
 		return "", kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
-	// 1x.demo is used only for development, so the metrics will not
-	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXDemo {
-		metrics.Collect(&opts.Stack, opts.Name)
-	}
-
-	return objStore.CredentialMode(), nil
+	return objStore.CredentialMode, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {

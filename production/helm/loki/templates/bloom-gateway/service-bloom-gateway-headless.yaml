@@ -1,0 +1,39 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+{{- if (gt (int .Values.bloomGateway.replicas) 0) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.bloomGatewayFullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.bloomGatewaySelectorLabels" . | nindent 4 }}
+    {{- with .Values.bloomGateway.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.bloomGateway.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.bloomGateway.appProtocol.grpc }}
+      appProtocol: {{ .Values.bloomGateway.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.bloomGatewaySelectorLabels" . | nindent 4 }}
+{{- end -}}
+{{- end -}}

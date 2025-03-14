@@ -4,7 +4,7 @@ menuTItle:
 description: Overview of how log queries are constructed and parsed.
 aliases: 
 - ../logql/log_queries/
-weight: 10 
+weight: 300 
 ---
 
 # Log queries
@@ -95,7 +95,7 @@ An example that mutates is the expression
 ```
 
 
-Log pipeline expressions fall into one of three categories:
+Log pipeline expressions fall into one of four categories:
 
 - Filtering expressions: [line filter expressions](#line-filter-expression)
 and
@@ -104,6 +104,7 @@ and
 - Formatting expressions: [line format expressions](#line-format-expression)
 and
 [label format expressions](#labels-format-expression)
+- Labels expressions: [drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression)
 
 ### Line filter expression
 
@@ -199,7 +200,7 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
-Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
+Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 
 ### Removing color codes
@@ -222,15 +223,15 @@ For example with `cluster="namespace"` the cluster is the label identifier, the 
 We support multiple **value** types which are automatically inferred from the query input.
 
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
-- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison.
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
-- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
+- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5KiB" or "20B". Valid bytes units are "B", "kB", "MB", "GB", "TB", "KB", "KiB", "MiB", "GiB", "TiB".
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
 > The string type is the only one that can filter out a log line with a label `__error__`.
 
-Using Duration, Number and Bytes will convert the label value prior to comparision and support the following comparators:
+Using Duration, Number and Bytes will convert the label value prior to comparison and support the following comparators:
 
 - `==` or `=` for equality.
 - `!=` for inequality.
@@ -239,17 +240,17 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{< relref "..#pipeline-errors" >}}) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
 This means that all the following expressions are equivalent:
 
 ```logql
-| duration >= 20ms or size == 20kb and method!~"2.."
-| duration >= 20ms or size == 20kb | method!~"2.."
-| duration >= 20ms or size == 20kb , method!~"2.."
-| duration >= 20ms or size == 20kb  method!~"2.."
+| duration >= 20ms or size == 20KB and method!~"2.."
+| duration >= 20ms or size == 20KB | method!~"2.."
+| duration >= 20ms or size == 20KB , method!~"2.."
+| duration >= 20ms or size == 20KB  method!~"2.."
 
 ```
 
@@ -270,11 +271,11 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
-Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
+Label filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 ### Parser expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](../metric_queries/).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -294,7 +295,7 @@ If an extracted label key name already exists in the original log stream, the ex
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
-Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{< relref "../query_examples#examples-that-use-multiple-parsers" >}}).
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](../query_examples/#examples-that-use-multiple-parsers).
 
 #### JSON
 
@@ -339,6 +340,8 @@ The **json** parser operates in two modes:
    "request_method" => "GET"
    "request_host" => "foo.grafana.net"
    "request_size" => "55"
+   "request_headers_Accept" => "*/*"
+   "request_headers_User_Agent" => "curl/7.68.0"
    "response_status" => "401"
    "response_size" => "228"
    "response_latency_seconds" => "6.031"
@@ -552,7 +555,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../../send-data/promtail/stages/pack.md" >}}).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage](../../send-data/promtail/stages/pack/).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:
@@ -594,7 +597,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions]({{< relref "../template_functions" >}}) to learn about available functions in the template format.
+Additionally, you can also access the log line using the [`__line__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__line__) function and the timestamp using the [`__timestamp__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__timestamp__) function. See [template functions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/) to learn about available functions in the template format.
 
 ### Labels format expression
 
@@ -626,7 +629,7 @@ the result will be
 {host="grafana.net", path="/", status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+Similarly, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
 
 ```
 INFO GET / loki.net 200
@@ -660,9 +663,9 @@ the result will be
 
 The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Query examples:
 

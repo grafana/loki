@@ -7,7 +7,7 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/grafana/loki/tools/deprecated-config-checker/checker"
+	"github.com/grafana/loki/v3/tools/deprecated-config-checker/checker"
 )
 
 const upgradeGuideURL = "https://grafana.com/docs/loki/latest/setup/upgrade/"

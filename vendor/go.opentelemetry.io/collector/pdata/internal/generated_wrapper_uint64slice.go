@@ -7,13 +7,28 @@
 package internal
 
 type UInt64Slice struct {
-	orig *[]uint64
+	orig  *[]uint64
+	state *State
 }
 
 func GetOrigUInt64Slice(ms UInt64Slice) *[]uint64 {
 	return ms.orig
 }
 
-func NewUInt64Slice(orig *[]uint64) UInt64Slice {
-	return UInt64Slice{orig: orig}
+func GetUInt64SliceState(ms UInt64Slice) *State {
+	return ms.state
+}
+
+func NewUInt64Slice(orig *[]uint64, state *State) UInt64Slice {
+	return UInt64Slice{orig: orig, state: state}
+}
+
+func FillTestUInt64Slice(tv UInt64Slice) {
+}
+
+func GenerateTestUInt64Slice() UInt64Slice {
+	state := StateMutable
+	var orig []uint64 = nil
+
+	return UInt64Slice{&orig, &state}
 }

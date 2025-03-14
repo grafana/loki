@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
@@ -19,9 +18,9 @@ import (
 	"github.com/prometheus/prometheus/discovery/moby"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_TargetManager(t *testing.T) {
@@ -33,10 +32,10 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "/containers/json"):
 			// Serve container list
 			w.Header().Set("Content-Type", "application/json")
-			containerResponse := []types.Container{{
+			containerResponse := []container.Summary{{
 				ID:    "1234",
 				Names: []string{"flog"},
-				NetworkSettings: &types.SummaryNetworkSettings{
+				NetworkSettings: &container.NetworkSettingsSummary{
 					Networks: map[string]*network.EndpointSettings{
 						"foo": {
 							NetworkID: "my_network",
@@ -50,15 +49,15 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "/networks"):
 			// Serve networks
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
+			err := json.NewEncoder(w).Encode([]network.Inspect{})
 			require.NoError(t, err)
 		case strings.HasSuffix(path, "json"):
 			w.Header().Set("Content-Type", "application/json")
-			info := types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{},
-				Mounts:            []types.MountPoint{},
+			info := container.InspectResponse{
+				ContainerJSONBase: &container.ContainerJSONBase{},
+				Mounts:            []container.MountPoint{},
 				Config:            &container.Config{Tty: false},
-				NetworkSettings:   &types.NetworkSettings{},
+				NetworkSettings:   &container.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
@@ -95,6 +94,7 @@ func Test_TargetManager(t *testing.T) {
 		ps,
 		entryHandler,
 		cfgs,
+		0,
 	)
 	require.NoError(t, err)
 	require.True(t, ta.Ready())

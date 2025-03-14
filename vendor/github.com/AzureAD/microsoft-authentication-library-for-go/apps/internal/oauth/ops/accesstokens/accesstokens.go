@@ -30,7 +30,7 @@ import (
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/grant"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -380,6 +380,12 @@ func (c Client) FromSamlGrant(ctx context.Context, authParameters authority.Auth
 
 func (c Client) doTokenResp(ctx context.Context, authParams authority.AuthParams, qv url.Values) (TokenResponse, error) {
 	resp := TokenResponse{}
+	if authParams.AuthnScheme != nil {
+		trParams := authParams.AuthnScheme.TokenRequestParams()
+		for k, v := range trParams {
+			qv.Set(k, v)
+		}
+	}
 	err := c.Comm.URLFormCall(ctx, authParams.Endpoints.TokenEndpoint, qv, &resp)
 	if err != nil {
 		return resp, err

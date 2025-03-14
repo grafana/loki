@@ -1,20 +1,21 @@
 package ingester
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type WALReader interface {
@@ -52,7 +53,7 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 type Recoverer interface {
 	NumWorkers() int
 	Series(series *Series) error
-	SetStream(userID string, series record.RefSeries) error
+	SetStream(ctx context.Context, userID string, series record.RefSeries) error
 	Push(userID string, entries wal.RefEntries) error
 	Done() <-chan struct{}
 }
@@ -86,7 +87,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		}
 
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
-		stream, err := inst.getOrCreateStream(logproto.Stream{
+		stream, err := inst.getOrCreateStream(context.Background(), logproto.Stream{
 			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
 		}, nil)
 
@@ -130,13 +131,14 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 // fingerprint from the mapper. This is paramount because subsequent WAL records will use
 // the fingerprint reported in the WAL record, not the potentially differing one assigned during
 // stream creation.
-func (r *ingesterRecoverer) SetStream(userID string, series record.RefSeries) error {
+func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series record.RefSeries) error {
 	inst, err := r.ing.GetOrCreateInstance(userID)
 	if err != nil {
 		return err
 	}
 
 	stream, err := inst.getOrCreateStream(
+		ctx,
 		logproto.Stream{
 			Labels: series.Labels.String(),
 		},
@@ -158,16 +160,16 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
-			return errors.Errorf("user (%s) not set during WAL replay", userID)
+			return fmt.Errorf("user (%s) not set during WAL replay", userID)
 		}
 
 		s, ok := out.(*sync.Map).Load(entries.Ref)
 		if !ok {
-			return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
+			return fmt.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker)
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -193,9 +195,6 @@ func (r *ingesterRecoverer) Close() {
 		inst.forAllStreams(context.Background(), func(s *stream) error {
 			s.chunkMtx.Lock()
 			defer s.chunkMtx.Unlock()
-
-			// reset all the incrementing stream counters after a successful WAL replay.
-			s.resetCounter()
 
 			if len(s.chunks) == 0 {
 				inst.removeStream(s)
@@ -231,7 +230,7 @@ func (r *ingesterRecoverer) Done() <-chan struct{} {
 	return r.done
 }
 
-func RecoverWAL(reader WALReader, recoverer Recoverer) error {
+func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) error {
 	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
 		rec := recordPool.GetRecord()
 		if err := wal.DecodeRecord(b, rec); err != nil {
@@ -241,7 +240,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 		// First process all series to ensure we don't write entries to nonexistant series.
 		var firstErr error
 		for _, s := range rec.Series {
-			if err := recoverer.SetStream(rec.UserID, s); err != nil {
+			if err := recoverer.SetStream(ctx, rec.UserID, s); err != nil {
 				if firstErr == nil {
 					firstErr = err
 				}
@@ -272,7 +271,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 				entries, ok := next.data.(wal.RefEntries)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
 				}
 				if err == nil {
 					err = recoverer.Push(next.userID, entries)
@@ -322,7 +321,7 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 				series, ok := next.data.(*Series)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
 				}
 				if err == nil {
 					err = recoverer.Series(series)

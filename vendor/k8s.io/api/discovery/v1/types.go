@@ -23,6 +23,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.21
 
 // EndpointSlice represents a subset of the endpoints that implement a service.
 // For a given service there may be multiple EndpointSlice objects, selected by
@@ -168,7 +169,7 @@ type ForZone struct {
 // +structType=atomic
 type EndpointPort struct {
 	// name represents the name of this port. All ports in an EndpointSlice must have a unique name.
-	// If the EndpointSlice is dervied from a Kubernetes service, this corresponds to the Service.ports[].name.
+	// If the EndpointSlice is derived from a Kubernetes service, this corresponds to the Service.ports[].name.
 	// Name must either be an empty string or pass DNS_LABEL validation:
 	// * must be no more than 63 characters long.
 	// * must consist of lower case alphanumeric characters or '-'.
@@ -195,7 +196,7 @@ type EndpointPort struct {
 	// RFC-6335 and https://www.iana.org/assignments/service-names).
 	//
 	// * Kubernetes-defined prefixed names:
-	//   * 'kubernetes.io/h2c' - HTTP/2 over cleartext as described in https://www.rfc-editor.org/rfc/rfc7540
+	//   * 'kubernetes.io/h2c' - HTTP/2 prior knowledge over cleartext as described in https://www.rfc-editor.org/rfc/rfc9113.html#name-starting-http-2-with-prior-
 	//   * 'kubernetes.io/ws'  - WebSocket over cleartext as described in https://www.rfc-editor.org/rfc/rfc6455
 	//   * 'kubernetes.io/wss' - WebSocket over TLS as described in https://www.rfc-editor.org/rfc/rfc6455
 	//
@@ -206,6 +207,7 @@ type EndpointPort struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.21
 
 // EndpointSliceList represents a list of endpoint slices
 type EndpointSliceList struct {

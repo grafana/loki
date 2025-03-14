@@ -25,7 +25,6 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/backoff"
-	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/orca/internal"
 	"google.golang.org/grpc/status"
 
@@ -46,6 +45,12 @@ func (*producerBuilder) Build(cci any) (balancer.Producer, func()) {
 		backoff:   internal.DefaultBackoffFunc,
 	}
 	return p, func() {
+		p.mu.Lock()
+		if p.stop != nil {
+			p.stop()
+			p.stop = nil
+		}
+		p.mu.Unlock()
 		<-p.stopped
 	}
 }
@@ -67,24 +72,21 @@ type OOBListenerOptions struct {
 	ReportInterval time.Duration
 }
 
-// RegisterOOBListener registers an out-of-band load report listener on sc.
-// Any OOBListener may only be registered once per subchannel at a time.  The
-// returned stop function must be called when no longer needed.  Do not
+// RegisterOOBListener registers an out-of-band load report listener on a Ready
+// sc.  Any OOBListener may only be registered once per subchannel at a time.
+// The returned stop function must be called when no longer needed.  Do not
 // register a single OOBListener more than once per SubConn.
 func RegisterOOBListener(sc balancer.SubConn, l OOBListener, opts OOBListenerOptions) (stop func()) {
-	pr, close := sc.GetOrBuildProducer(producerBuilderSingleton)
+	pr, closeFn := sc.GetOrBuildProducer(producerBuilderSingleton)
 	p := pr.(*producer)
 
 	p.registerListener(l, opts.ReportInterval)
 
-	// TODO: When we can register for SubConn state updates, automatically call
-	// stop() on SHUTDOWN.
-
 	// If stop is called multiple times, prevent it from having any effect on
 	// subsequent calls.
-	return grpcsync.OnceFunc(func() {
+	return sync.OnceFunc(func() {
 		p.unregisterListener(l, opts.ReportInterval)
-		close()
+		closeFn()
 	})
 }
 
@@ -96,13 +98,13 @@ type producer struct {
 	// is incremented when stream errors occur and is reset when the stream
 	// reports a result.
 	backoff func(int) time.Duration
+	stopped chan struct{} // closed when the run goroutine exits
 
 	mu          sync.Mutex
 	intervals   map[time.Duration]int    // map from interval time to count of listeners requesting that time
 	listeners   map[OOBListener]struct{} // set of registered listeners
 	minInterval time.Duration
-	stop        func()        // stops the current run goroutine
-	stopped     chan struct{} // closed when the run goroutine exits
+	stop        func() // stops the current run goroutine
 }
 
 // registerListener adds the listener and its requested report interval to the

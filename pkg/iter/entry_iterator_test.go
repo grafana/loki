@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 const (
@@ -91,12 +91,12 @@ func TestIterator(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			for i := int64(0); i < tc.length; i++ {
 				assert.Equal(t, true, tc.iterator.Next())
-				assert.Equal(t, tc.generator(i), tc.iterator.Entry(), fmt.Sprintln("iteration", i))
+				assert.Equal(t, tc.generator(i), tc.iterator.At(), fmt.Sprintln("iteration", i))
 				assert.Equal(t, tc.labels, tc.iterator.Labels(), fmt.Sprintln("iteration", i))
 			}
 
 			assert.Equal(t, false, tc.iterator.Next())
-			assert.Equal(t, nil, tc.iterator.Error())
+			assert.Equal(t, nil, tc.iterator.Err())
 			assert.NoError(t, tc.iterator.Close())
 		})
 	}
@@ -148,12 +148,12 @@ func TestIteratorMultipleLabels(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			for i := int64(0); i < tc.length; i++ {
 				assert.Equal(t, true, tc.iterator.Next())
-				assert.Equal(t, tc.generator(i), tc.iterator.Entry(), fmt.Sprintln("iteration", i))
+				assert.Equal(t, tc.generator(i), tc.iterator.At(), fmt.Sprintln("iteration", i))
 				assert.Equal(t, tc.labels(i), tc.iterator.Labels(), fmt.Sprintln("iteration", i))
 			}
 
 			assert.Equal(t, false, tc.iterator.Next())
-			assert.Equal(t, nil, tc.iterator.Error())
+			assert.Equal(t, nil, tc.iterator.Err())
 			assert.NoError(t, tc.iterator.Close())
 		})
 	}
@@ -162,24 +162,22 @@ func TestIteratorMultipleLabels(t *testing.T) {
 func TestMergeIteratorPrefetch(t *testing.T) {
 	t.Parallel()
 
-	type tester func(t *testing.T, i HeapIterator)
+	type tester func(t *testing.T, i MergeEntryIterator)
 
 	tests := map[string]tester{
-		"prefetch on IsEmpty() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on IsEmpty() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.Equal(t, false, i.IsEmpty())
 		},
-		"prefetch on Peek() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on Peek() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.Equal(t, time.Unix(0, 0), i.Peek())
 		},
-		"prefetch on Next() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on Next() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.True(t, i.Next())
-			assert.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 0), Line: "0"}, i.Entry())
+			assert.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 0), Line: "0"}, i.At())
 		},
 	}
 
 	for testName, testFunc := range tests {
-		testFunc := testFunc
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -268,18 +266,18 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 				j = length - 1 - i
 			}
 			require.True(t, it.Next())
-			require.NoError(t, it.Error())
+			require.NoError(t, it.Err())
 			require.Equal(t, bar.Labels, it.Labels())
-			require.Equal(t, bar.Entries[j], it.Entry())
+			require.Equal(t, bar.Entries[j], it.At())
 
 			require.True(t, it.Next())
-			require.NoError(t, it.Error())
+			require.NoError(t, it.Err())
 			require.Equal(t, foo.Labels, it.Labels())
-			require.Equal(t, foo.Entries[j], it.Entry())
+			require.Equal(t, foo.Entries[j], it.At())
 
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	}
 	// forward iteration
 	it := NewMergeEntryIterator(context.Background(), []EntryIterator{
@@ -340,18 +338,18 @@ func TestMergeIteratorWithoutLabels(t *testing.T) {
 	for i := 0; i < 3; i++ {
 
 		require.True(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.Equal(t, bar.Labels, it.Labels())
-		require.Equal(t, bar.Entries[i], it.Entry())
+		require.Equal(t, bar.Entries[i], it.At())
 
 		require.True(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.Equal(t, foo.Labels, it.Labels())
-		require.Equal(t, foo.Entries[i], it.Entry())
+		require.Equal(t, foo.Entries[i], it.At())
 
 	}
 	require.False(t, it.Next())
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 }
 
 func mustReverseStreamIterator(it EntryIterator) EntryIterator {
@@ -372,15 +370,15 @@ func TestReverseIterator(t *testing.T) {
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
 		assert.Equal(t, true, reversedIter.Next())
-		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, identity(i), reversedIter.At(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
 		assert.Equal(t, true, reversedIter.Next())
-		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, identity(i), reversedIter.At(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), itr1.Labels())
 	}
 
 	assert.Equal(t, false, reversedIter.Next())
-	assert.Equal(t, nil, reversedIter.Error())
+	assert.Equal(t, nil, reversedIter.Err())
 	assert.NoError(t, reversedIter.Close())
 }
 
@@ -392,12 +390,12 @@ func TestReverseEntryIterator(t *testing.T) {
 
 	for i := int64(testSize - 1); i >= 0; i-- {
 		assert.Equal(t, true, reversedIter.Next())
-		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, identity(i), reversedIter.At(), fmt.Sprintln("iteration", i))
 		assert.Equal(t, reversedIter.Labels(), defaultLabels)
 	}
 
 	assert.Equal(t, false, reversedIter.Next())
-	assert.Equal(t, nil, reversedIter.Error())
+	assert.Equal(t, nil, reversedIter.Err())
 	assert.NoError(t, reversedIter.Close())
 }
 
@@ -443,7 +441,7 @@ func Test_PeekingIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Entry().Timestamp.UnixNano() != 1 {
+	if iter.At().Timestamp.UnixNano() != 1 {
 		t.Fatal("wrong peeked time.")
 	}
 
@@ -458,7 +456,7 @@ func Test_PeekingIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Entry().Timestamp.UnixNano() != 2 {
+	if iter.At().Timestamp.UnixNano() != 2 {
 		t.Fatal("wrong peeked time.")
 	}
 	_, peek, ok = iter.Peek()
@@ -472,7 +470,7 @@ func Test_PeekingIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Entry().Timestamp.UnixNano() != 3 {
+	if iter.At().Timestamp.UnixNano() != 3 {
 		t.Fatal("wrong peeked time.")
 	}
 	_, _, ok = iter.Peek()
@@ -671,11 +669,11 @@ type CloseTestingIterator struct {
 	e      logproto.Entry
 }
 
-func (i *CloseTestingIterator) Next() bool            { return true }
-func (i *CloseTestingIterator) Entry() logproto.Entry { return i.e }
-func (i *CloseTestingIterator) Labels() string        { return "" }
-func (i *CloseTestingIterator) StreamHash() uint64    { return 0 }
-func (i *CloseTestingIterator) Error() error          { return nil }
+func (i *CloseTestingIterator) Next() bool         { return true }
+func (i *CloseTestingIterator) At() logproto.Entry { return i.e }
+func (i *CloseTestingIterator) Labels() string     { return "" }
+func (i *CloseTestingIterator) StreamHash() uint64 { return 0 }
+func (i *CloseTestingIterator) Err() error         { return nil }
 func (i *CloseTestingIterator) Close() error {
 	i.closed.Store(true)
 	return nil
@@ -730,7 +728,7 @@ func BenchmarkSortIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
 			for it.Next() {
-				it.Entry()
+				it.At()
 			}
 			it.Close()
 		}
@@ -749,7 +747,7 @@ func BenchmarkSortIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
 			for it.Next() {
-				it.Entry()
+				it.At()
 			}
 			it.Close()
 		}
@@ -767,7 +765,7 @@ func BenchmarkSortIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewSortEntryIterator(itrs, logproto.BACKWARD)
 			for it.Next() {
-				it.Entry()
+				it.At()
 			}
 			it.Close()
 		}
@@ -799,7 +797,7 @@ func Test_EntrySortIterator(t *testing.T) {
 		var i int64 = 5
 		defer it.Close()
 		for it.Next() {
-			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			require.Equal(t, time.Unix(0, i), it.At().Timestamp)
 			i--
 		}
 	})
@@ -827,7 +825,7 @@ func Test_EntrySortIterator(t *testing.T) {
 		var i int64
 		defer it.Close()
 		for it.Next() {
-			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			require.Equal(t, time.Unix(0, i), it.At().Timestamp)
 			i++
 		}
 	})
@@ -855,13 +853,13 @@ func Test_EntrySortIterator(t *testing.T) {
 			}, logproto.FORWARD)
 		// The first entry appears in both so we expect it to be sorted by Labels.
 		require.True(t, it.Next())
-		require.Equal(t, time.Unix(0, 0), it.Entry().Timestamp)
+		require.Equal(t, time.Unix(0, 0), it.At().Timestamp)
 		require.Equal(t, `a`, it.Labels())
 
 		var i int64
 		defer it.Close()
 		for it.Next() {
-			require.Equal(t, time.Unix(0, i), it.Entry().Timestamp)
+			require.Equal(t, time.Unix(0, i), it.At().Timestamp)
 			i++
 		}
 	})
@@ -906,17 +904,17 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 			}),
 		}, logproto.FORWARD)
 	require.True(t, it.Next())
-	lines := []string{it.Entry().Line}
-	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	lines := []string{it.At().Line}
+	require.Equal(t, time.Unix(1, 0), it.At().Timestamp)
 	require.True(t, it.Next())
-	lines = append(lines, it.Entry().Line)
-	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	lines = append(lines, it.At().Line)
+	require.Equal(t, time.Unix(1, 0), it.At().Timestamp)
 	require.True(t, it.Next())
-	lines = append(lines, it.Entry().Line)
-	require.Equal(t, time.Unix(1, 0), it.Entry().Timestamp)
+	lines = append(lines, it.At().Line)
+	require.Equal(t, time.Unix(1, 0), it.At().Timestamp)
 	require.True(t, it.Next())
-	lines = append(lines, it.Entry().Line)
-	require.Equal(t, time.Unix(2, 0), it.Entry().Timestamp)
+	lines = append(lines, it.At().Line)
+	require.Equal(t, time.Unix(2, 0), it.At().Timestamp)
 	// Two orderings are consistent with the inputs.
 	if lines[0] == "1" {
 		require.Equal(t, []string{"1", "0", "2", "3"}, lines)

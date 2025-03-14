@@ -17,10 +17,10 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var (
@@ -164,7 +164,7 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 		}
 		ln := model.LabelName(k)
 		// skips invalid name and values
-		if !ln.IsValid() {
+		if !ln.IsValidLegacy() {
 			continue
 		}
 		lv := model.LabelValue(fmt.Sprintf("%v", v))

@@ -19,25 +19,33 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 const (
-	queryPath         = "/loki/api/v1/query"
-	queryRangePath    = "/loki/api/v1/query_range"
-	labelsPath        = "/loki/api/v1/labels"
-	labelValuesPath   = "/loki/api/v1/label/%s/values"
-	seriesPath        = "/loki/api/v1/series"
-	tailPath          = "/loki/api/v1/tail"
-	statsPath         = "/loki/api/v1/index/stats"
-	volumePath        = "/loki/api/v1/index/volume"
-	volumeRangePath   = "/loki/api/v1/index/volume_range"
-	defaultAuthHeader = "Authorization"
+	queryPath               = "/loki/api/v1/query"
+	queryRangePath          = "/loki/api/v1/query_range"
+	labelsPath              = "/loki/api/v1/labels"
+	labelValuesPath         = "/loki/api/v1/label/%s/values"
+	seriesPath              = "/loki/api/v1/series"
+	tailPath                = "/loki/api/v1/tail"
+	statsPath               = "/loki/api/v1/index/stats"
+	volumePath              = "/loki/api/v1/index/volume"
+	volumeRangePath         = "/loki/api/v1/index/volume_range"
+	detectedFieldsPath      = "/loki/api/v1/detected_fields"
+	detectedFieldValuesPath = "/loki/api/v1/detected_field/%s/values"
+	defaultAuthHeader       = "Authorization"
+
+	// HTTP header keys
+	HTTPScopeOrgID          = "X-Scope-OrgID"
+	HTTPQueryTags           = "X-Query-Tags"
+	HTTPCacheControl        = "Cache-Control"
+	HTTPCacheControlNoCache = "no-cache"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -54,6 +62,7 @@ type Client interface {
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -65,19 +74,22 @@ type BackoffConfig struct {
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig       config.TLSConfig
-	Username        string
-	Password        string
-	Address         string
-	OrgID           string
-	Tripperware     Tripperware
-	BearerToken     string
-	BearerTokenFile string
-	Retries         int
-	QueryTags       string
-	AuthHeader      string
-	ProxyURL        string
-	BackoffConfig   BackoffConfig
+	TLSConfig        config.TLSConfig
+	Username         string
+	Password         string
+	Address          string
+	OrgID            string
+	Tripperware      Tripperware
+	BearerToken      string
+	BearerTokenFile  string
+	Retries          int
+	QueryTags        string
+	NoCache          bool
+	AuthHeader       string
+	ProxyURL         string
+	BackoffConfig    BackoffConfig
+	Compression      bool
+	EnvironmentProxy bool
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -224,7 +236,42 @@ func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.Qu
 	return &resp, nil
 }
 
-func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) GetDetectedFields(
+	queryStr, fieldName string,
+	limit, lineLimit int,
+	start, end time.Time,
+	step time.Duration,
+	quiet bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("limit", int64(limit))
+	qsb.SetInt("line_limit", int64(lineLimit))
+	qsb.SetInt("start", start.UnixNano())
+	qsb.SetInt("end", end.UnixNano())
+	qsb.SetString("step", step.String())
+
+	var err error
+	var r loghttp.DetectedFieldsResponse
+
+	path := detectedFieldsPath
+	if fieldName != "" {
+		path = fmt.Sprintf(detectedFieldValuesPath, url.PathEscape(fieldName))
+	}
+
+	if err = c.doRequest(path, qsb.Encode(), quiet, &r); err != nil {
+		return nil, err
+	}
+
+	return &r, nil
+}
+
+func (c *DefaultClient) doQuery(
+	path string,
+	query string,
+	quiet bool,
+) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
@@ -260,6 +307,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.EnvironmentProxy {
+		clientConfig.ProxyFromEnvironment = true
+	}
+
 	if c.ProxyURL != "" {
 		prox, err := url.Parse(c.ProxyURL)
 		if err != nil {
@@ -274,6 +325,16 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
+	}
+	if c.Compression {
+		// NewClientFromConfig() above returns an http.Client that uses a transport which
+		// has compression explicitly disabled. Here we re-enable it. If the caller
+		// defines a custom Tripperware that isn't an http.Transport then this won't work,
+		// but in that case they control the transport anyway and can configure
+		// compression that way.
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			transport.DisableCompression = false
+		}
 	}
 
 	var resp *http.Response
@@ -341,11 +402,15 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
-		h.Set("X-Scope-OrgID", c.OrgID)
+		h.Set(HTTPScopeOrgID, c.OrgID)
+	}
+
+	if c.NoCache {
+		h.Set(HTTPCacheControl, HTTPCacheControlNoCache)
 	}
 
 	if c.QueryTags != "" {
-		h.Set("X-Query-Tags", c.QueryTags)
+		h.Set(HTTPQueryTags, c.QueryTags)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
@@ -407,7 +472,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 	}
 
 	if c.ProxyURL != "" {
-		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+		ws.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(c.ProxyURL)
 		}
 	}

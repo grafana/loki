@@ -12,11 +12,11 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/compactor/retention"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -198,7 +198,7 @@ func (t *table) done() error {
 		userIDs = append(userIDs, userID)
 	}
 
-	err := concurrency.ForEachJob(t.ctx, len(userIDs), t.uploadConcurrency, func(ctx context.Context, idx int) error {
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), t.uploadConcurrency, func(_ context.Context, idx int) error {
 		return t.indexSets[userIDs[idx]].done()
 	})
 	if err != nil {

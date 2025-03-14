@@ -117,13 +117,13 @@ func (c *concreteSeriesIterator) At() (t int64, v float64) {
 	return int64(s.Timestamp), float64(s.Value)
 }
 
-func (c *concreteSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (c *concreteSeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	// TODO: support native histograms.
 	// This method is called when Next() returns ValHistogram
 	return 0, nil
 }
 
-func (c *concreteSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (c *concreteSeriesIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	// TODO: support native histograms.
 	// This method may be called when Next() returns ValHistogram or ValFloatHistogram
 	return 0, nil
@@ -168,11 +168,11 @@ func (errIterator) At() (t int64, v float64) {
 	return 0, 0
 }
 
-func (errIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (errIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	return 0, nil
 }
 
-func (errIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (errIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	return 0, nil
 }
 
@@ -241,13 +241,13 @@ func (d DeletedSeriesIterator) At() (t int64, v float64) {
 	return d.itr.At()
 }
 
-func (d DeletedSeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (d DeletedSeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	// TODO: support native histograms.
 	// This method is called when Next() returns ValHistogram
 	return 0, nil
 }
 
-func (d DeletedSeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (d DeletedSeriesIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	// TODO: support native histograms.
 	// This method may be called when Next() returns ValHistogram or ValFloatHistogram
 	return 0, nil
@@ -328,11 +328,11 @@ func (emptySeriesIterator) At() (t int64, v float64) {
 	return 0, 0
 }
 
-func (emptySeriesIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (emptySeriesIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	return 0, nil
 }
 
-func (emptySeriesIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (emptySeriesIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	return 0, nil
 }
 

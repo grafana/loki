@@ -19,17 +19,17 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
-// NamespaceStatusApplyConfiguration represents an declarative configuration of the NamespaceStatus type for use
+// NamespaceStatusApplyConfiguration represents a declarative configuration of the NamespaceStatus type for use
 // with apply.
 type NamespaceStatusApplyConfiguration struct {
-	Phase      *v1.NamespacePhase                     `json:"phase,omitempty"`
+	Phase      *corev1.NamespacePhase                 `json:"phase,omitempty"`
 	Conditions []NamespaceConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
-// NamespaceStatusApplyConfiguration constructs an declarative configuration of the NamespaceStatus type for use with
+// NamespaceStatusApplyConfiguration constructs a declarative configuration of the NamespaceStatus type for use with
 // apply.
 func NamespaceStatus() *NamespaceStatusApplyConfiguration {
 	return &NamespaceStatusApplyConfiguration{}
@@ -38,7 +38,7 @@ func NamespaceStatus() *NamespaceStatusApplyConfiguration {
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *NamespaceStatusApplyConfiguration) WithPhase(value v1.NamespacePhase) *NamespaceStatusApplyConfiguration {
+func (b *NamespaceStatusApplyConfiguration) WithPhase(value corev1.NamespacePhase) *NamespaceStatusApplyConfiguration {
 	b.Phase = &value
 	return b
 }

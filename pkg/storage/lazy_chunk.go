@@ -7,13 +7,13 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -46,7 +46,7 @@ func (c *LazyChunk) Iterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 	its := make([]iter.EntryIterator, 0, len(blocks))
 
@@ -115,8 +115,8 @@ func (c *LazyChunk) Iterator(
 func (c *LazyChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractor log.StreamSampleExtractor,
 	nextChunk *LazyChunk,
+	extractors ...log.StreamSampleExtractor,
 ) (iter.SampleIterator, error) {
 	// If the chunk is not already loaded, then error out.
 	if c.Chunk.Data == nil {
@@ -126,7 +126,7 @@ func (c *LazyChunk) SampleIterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 	its := make([]iter.SampleIterator, 0, len(blocks))
 
@@ -140,7 +140,7 @@ func (c *LazyChunk) SampleIterator(
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractor), b.Entries())
+			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractors...), b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
 				c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
@@ -160,7 +160,7 @@ func (c *LazyChunk) SampleIterator(
 			}
 		}
 		// non-overlapping block with the next chunk are not cached.
-		its = append(its, b.SampleIterator(ctx, extractor))
+		its = append(its, b.SampleIterator(ctx, extractors...))
 	}
 
 	// build the final iterator bound to the requested time range.

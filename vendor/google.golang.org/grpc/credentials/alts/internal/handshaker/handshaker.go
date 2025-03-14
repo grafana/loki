@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"golang.org/x/sync/semaphore"
 	grpc "google.golang.org/grpc"
@@ -60,8 +61,6 @@ var (
 	// control number of concurrent created (but not closed) handshakes.
 	clientHandshakes = semaphore.NewWeighted(int64(envconfig.ALTSMaxConcurrentHandshakes))
 	serverHandshakes = semaphore.NewWeighted(int64(envconfig.ALTSMaxConcurrentHandshakes))
-	// errDropped occurs when maxPendingHandshakes is reached.
-	errDropped = errors.New("maximum number of concurrent ALTS handshakes is reached")
 	// errOutOfBound occurs when the handshake service returns a consumed
 	// bytes value larger than the buffer that was passed to it originally.
 	errOutOfBound = errors.New("handshaker service consumed bytes value is out-of-bound")
@@ -129,7 +128,7 @@ type altsHandshaker struct {
 // NewClientHandshaker creates a core.Handshaker that performs a client-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewClientHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
+func NewClientHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -142,7 +141,7 @@ func NewClientHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn,
 // NewServerHandshaker creates a core.Handshaker that performs a server-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewServerHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
+func NewServerHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -155,8 +154,8 @@ func NewServerHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn,
 // ClientHandshake starts and completes a client ALTS handshake for GCP. Once
 // done, ClientHandshake returns a secure connection.
 func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credentials.AuthInfo, error) {
-	if !clientHandshakes.TryAcquire(1) {
-		return nil, nil, errDropped
+	if err := clientHandshakes.Acquire(ctx, 1); err != nil {
+		return nil, nil, err
 	}
 	defer clientHandshakes.Release(1)
 
@@ -208,8 +207,8 @@ func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credent
 // ServerHandshake starts and completes a server ALTS handshake for GCP. Once
 // done, ServerHandshake returns a secure connection.
 func (h *altsHandshaker) ServerHandshake(ctx context.Context) (net.Conn, credentials.AuthInfo, error) {
-	if !serverHandshakes.TryAcquire(1) {
-		return nil, nil, errDropped
+	if err := serverHandshakes.Acquire(ctx, 1); err != nil {
+		return nil, nil, err
 	}
 	defer serverHandshakes.Release(1)
 
@@ -308,8 +307,10 @@ func (h *altsHandshaker) accessHandshakerService(req *altspb.HandshakerReq) (*al
 // the results. Handshaker service takes care of frame parsing, so we read
 // whatever received from the network and send it to the handshaker service.
 func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []byte) (*altspb.HandshakerResult, []byte, error) {
+	var lastWriteTime time.Time
 	for {
 		if len(resp.OutFrames) > 0 {
+			lastWriteTime = time.Now()
 			if _, err := h.conn.Write(resp.OutFrames); err != nil {
 				return nil, nil, err
 			}
@@ -333,11 +334,15 @@ func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []b
 		// Append extra bytes from the previous interaction with the
 		// handshaker service with the current buffer read from conn.
 		p := append(extra, buf[:n]...)
+		// Compute the time elapsed since the last write to the peer.
+		timeElapsed := time.Since(lastWriteTime)
+		timeElapsedMs := uint32(timeElapsed.Milliseconds())
 		// From here on, p and extra point to the same slice.
 		resp, err = h.accessHandshakerService(&altspb.HandshakerReq{
 			ReqOneof: &altspb.HandshakerReq_Next{
 				Next: &altspb.NextHandshakeMessageReq{
-					InBytes: p,
+					InBytes:          p,
+					NetworkLatencyMs: timeElapsedMs,
 				},
 			},
 		})

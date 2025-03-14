@@ -12,16 +12,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-kit/log"
-	"github.com/influxdata/go-syslog/v3"
+	"github.com/leodido/go-syslog/v4"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog/syslogparser"
 )
 
 var (
@@ -305,7 +305,6 @@ func Benchmark_SyslogTarget(b *testing.B) {
 		{"tcp", protocolTCP, fmtOctetCounting},
 		{"udp", protocolUDP, fmtOctetCounting},
 	} {
-		tt := tt
 		b.Run(tt.name, func(b *testing.B) {
 			client := fake.New(func() {})
 
@@ -366,7 +365,6 @@ func TestSyslogTarget(t *testing.T) {
 		{"udp newline separated", protocolUDP, fmtNewline},
 		{"udp octetcounting", protocolUDP, fmtOctetCounting},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			w := log.NewSyncWriter(os.Stderr)
 			logger := log.NewLogfmtLogger(w)
@@ -481,7 +479,6 @@ func TestSyslogTarget_RFC5424Messages(t *testing.T) {
 		{"tcp newline separated", protocolTCP, fmtNewline},
 		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			w := log.NewSyncWriter(os.Stderr)
 			logger := log.NewLogfmtLogger(w)
@@ -916,7 +913,7 @@ func TestParseStream_WithAsyncPipe(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(pipe, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, pipe, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(results))
 }

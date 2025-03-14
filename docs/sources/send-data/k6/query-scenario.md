@@ -23,7 +23,7 @@ Loki has 5 types of queries:
 
 In a real-world use-case, such as querying Loki using it as a Grafana
 data source, all of these queries are used. Each of them has a different
-[API]({{< relref "../../reference/api.md" >}}) endpoint. The xk6-loki extension
+[API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/) endpoint. The xk6-loki extension
 provides a [Javascript API](https://github.com/grafana/xk6-loki#javascript-api)
 for all these query types.
 
@@ -96,7 +96,7 @@ export default () => {
 ## Metrics
 
 The extension collects metrics that are printed in the
-[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
+[end-of-test summary](https://grafana.com/docs/k6/latest/results-output/end-of-test/) in addition to the built-in metrics.
 These metrics are collected only for instant and range queries.
 
 | name                              | description                                  |

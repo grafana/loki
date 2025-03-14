@@ -39,6 +39,11 @@ type PayloadOptions struct {
 // Subsequent reads will access the cached value.
 // Exported as runtime.Payload() WITHOUT the opts parameter.
 func Payload(resp *http.Response, opts *PayloadOptions) ([]byte, error) {
+	if resp.Body == nil {
+		// this shouldn't happen in real-world scenarios as a
+		// response with no body should set it to http.NoBody
+		return nil, nil
+	}
 	modifyBytes := func(b []byte) []byte { return b }
 	if opts != nil && opts.BytesModifier != nil {
 		modifyBytes = opts.BytesModifier

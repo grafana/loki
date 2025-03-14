@@ -14,13 +14,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/compactor"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 const readDBsConcurrency = 50
@@ -53,8 +53,9 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}
 
 	builder := NewBuilder(indexFormat)
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
+		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func (t *tableCompactor) CompactTable() error {
 	downloadPaths := make([]string, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
-	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(ctx context.Context, job int) error {
+	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(_ context.Context, job int) error {
 		downloadedAt, err := t.commonIndexSet.GetSourceFile(multiTenantIndexes[job])
 		if err != nil {
 			return err
@@ -212,8 +213,9 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
+			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
 			return nil, err
@@ -244,8 +246,9 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
+			return false
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
 			return nil, err
@@ -266,7 +269,7 @@ type compactedIndex struct {
 	tableInterval model.Interval
 	periodConfig  config.PeriodConfig
 
-	indexChunks     []chunk.Chunk
+	indexChunks     map[string][]tsdbindex.ChunkMeta
 	deleteChunks    map[string][]tsdbindex.ChunkMeta
 	seriesToCleanup map[string]struct{}
 }
@@ -279,6 +282,7 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 		workingDir:      workingDir,
 		periodConfig:    periodConfig,
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
+		indexChunks:     map[string][]tsdbindex.ChunkMeta{},
 		deleteChunks:    map[string][]tsdbindex.ChunkMeta{},
 		seriesToCleanup: map[string]struct{}{},
 	}
@@ -335,7 +339,20 @@ func (c *compactedIndex) IndexChunk(chk chunk.Chunk) (bool, error) {
 		return false, nil
 	}
 
-	c.indexChunks = append(c.indexChunks, chk)
+	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+	b := labels.NewBuilder(chk.Metric)
+	b.Del(labels.MetricName)
+	ls := b.Labels().String()
+
+	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+
+	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(chk.From),
+		MaxTime:  int64(chk.Through),
+		KB:       uint32(approxKB),
+		Entries:  uint32(chk.Data.Entries()),
+	})
 
 	return true, nil
 }
@@ -369,22 +386,12 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	}
 	c.deleteChunks = nil
 
-	for _, chk := range c.indexChunks {
-		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-		b := labels.NewBuilder(chk.Metric)
-		b.Del(labels.MetricName)
-		ls := b.Labels()
-
-		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-		err := c.builder.InsertChunk(ls.String(), tsdbindex.ChunkMeta{
-			Checksum: chk.Checksum,
-			MinTime:  int64(chk.From),
-			MaxTime:  int64(chk.Through),
-			KB:       uint32(approxKB),
-			Entries:  uint32(chk.Data.Entries()),
-		})
-		if err != nil {
-			return nil, err
+	for ls, metas := range c.indexChunks {
+		for i := range metas {
+			err := c.builder.InsertChunk(ls, metas[i])
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	c.indexChunks = nil
@@ -406,5 +413,5 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 }
 
 func getUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
+	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated
 }

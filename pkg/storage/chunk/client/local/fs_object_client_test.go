@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
 
 func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
@@ -156,6 +156,11 @@ func TestFSObjectClient_List_and_ObjectExists(t *testing.T) {
 	ok, err := bucketClient.ObjectExists(context.Background(), "outer-file2")
 	require.NoError(t, err)
 	require.True(t, ok)
+
+	attrs, err := bucketClient.GetAttributes(context.Background(), "outer-file2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.EqualValues(t, len("outer-file2"), attrs.Size)
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {

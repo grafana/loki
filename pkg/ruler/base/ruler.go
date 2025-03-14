@@ -34,12 +34,12 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/config"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -168,7 +168,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AlertmanagerURL, "ruler.alertmanager-url", "", "Comma-separated list of Alertmanager URLs to send notifications to. Each Alertmanager URL is treated as a separate group in the configuration. Multiple Alertmanagers in HA per group can be supported by using DNS resolution via '-ruler.alertmanager-discovery'.")
 	f.BoolVar(&cfg.AlertmanagerDiscovery, "ruler.alertmanager-discovery", false, "Use DNS SRV records to discover Alertmanager hosts.")
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", alertmanagerRefreshIntervalDefault, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
-	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", false, "If enabled requests to Alertmanager will utilize the V2 API.")
+	f.BoolVar(&cfg.AlertmanangerEnableV2API, "ruler.alertmanager-use-v2", true, "Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", alertmanagerNotificationQueueCapacityDefault, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", alertmanagerNotificationTimeoutDefault, "HTTP timeout duration when sending notifications to the Alertmanager.")
 
@@ -407,9 +407,9 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 	}
 
 	marshaledExpression, _ := json.Marshal(exprStruct)
-	escapedExpression := url.QueryEscape(string(marshaledExpression))
-	str := `/explore?left={"queries":[%s]}`
-	return fmt.Sprintf(str, escapedExpression)
+	params := url.Values{}
+	params.Set("left", fmt.Sprintf(`{"queries":[%s]}`, marshaledExpression))
+	return `/explore?` + params.Encode()
 }
 
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -417,7 +417,7 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 //
 // Copied from Prometheus's main.go.
 func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
+	return func(_ context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -783,7 +783,7 @@ func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.
 }
 
 // the delimiter is prefixed with ";" since that is what Prometheus uses for its group key
-const ruleTokenDelimiter = ";rule-shard-token"
+const ruleTokenDelimiter = ";rule-shard-token" //#nosec G101 -- False positive
 
 // AddRuleTokenToGroupName adds a rule shard token to a given group's name to make it unique.
 // Only relevant when using "by-rule" sharding strategy.

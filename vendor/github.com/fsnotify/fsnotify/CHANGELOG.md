@@ -1,16 +1,115 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+1.8.0 2023-10-31
+----------------
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Additions
 
-## [Unreleased]
+- all: add `FSNOTIFY_DEBUG` to print debug logs to stderr ([#619])
 
-Nothing yet.
+### Changes and fixes
 
-## [1.6.0] - 2022-10-13
+- windows: fix behaviour of `WatchList()` to be consistent with other platforms ([#610])
 
+- kqueue: ignore events with Ident=0 ([#590])
+
+- kqueue: set O_CLOEXEC to prevent passing file descriptors to children ([#617])
+
+- kqueue: emit events as "/path/dir/file" instead of "path/link/file" when watching a symlink ([#625])
+
+- inotify: don't send event for IN_DELETE_SELF when also watching the parent ([#620])
+
+- inotify: fix panic when calling Remove() in a goroutine ([#650])
+
+- fen: allow watching subdirectories of watched directories ([#621])
+
+[#590]: https://github.com/fsnotify/fsnotify/pull/590
+[#610]: https://github.com/fsnotify/fsnotify/pull/610
+[#617]: https://github.com/fsnotify/fsnotify/pull/617
+[#619]: https://github.com/fsnotify/fsnotify/pull/619
+[#620]: https://github.com/fsnotify/fsnotify/pull/620
+[#621]: https://github.com/fsnotify/fsnotify/pull/621
+[#625]: https://github.com/fsnotify/fsnotify/pull/625
+[#650]: https://github.com/fsnotify/fsnotify/pull/650
+
+1.7.0 - 2023-10-22
+------------------
+This version of fsnotify needs Go 1.17.
+
+### Additions
+
+- illumos: add FEN backend to support illumos and Solaris. ([#371])
+
+- all: add `NewBufferedWatcher()` to use a buffered channel, which can be useful
+  in cases where you can't control the kernel buffer and receive a large number
+  of events in bursts. ([#550], [#572])
+
+- all: add `AddWith()`, which is identical to `Add()` but allows passing
+  options. ([#521])
+
+- windows: allow setting the ReadDirectoryChangesW() buffer size with
+  `fsnotify.WithBufferSize()`; the default of 64K is the highest value that
+  works on all platforms and is enough for most purposes, but in some cases a
+  highest buffer is needed. ([#521])
+
+### Changes and fixes
+
+- inotify: remove watcher if a watched path is renamed ([#518])
+
+  After a rename the reported name wasn't updated, or even an empty string.
+  Inotify doesn't provide any good facilities to update it, so just remove the
+  watcher. This is already how it worked on kqueue and FEN.
+
+  On Windows this does work, and remains working.
+
+- windows: don't listen for file attribute changes ([#520])
+
+  File attribute changes are sent as `FILE_ACTION_MODIFIED` by the Windows API,
+  with no way to see if they're a file write or attribute change, so would show
+  up as a fsnotify.Write event. This is never useful, and could result in many
+  spurious Write events.
+
+- windows: return `ErrEventOverflow` if the buffer is full ([#525])
+
+  Before it would merely return "short read", making it hard to detect this
+  error.
+
+- kqueue: make sure events for all files are delivered properly when removing a
+  watched directory ([#526])
+
+  Previously they would get sent with `""` (empty string) or `"."` as the path
+  name.
+
+- kqueue: don't emit spurious Create events for symbolic links ([#524])
+
+  The link would get resolved but kqueue would "forget" it already saw the link
+  itself, resulting on a Create for every Write event for the directory.
+
+- all: return `ErrClosed` on `Add()` when the watcher is closed ([#516])
+
+- other: add `Watcher.Errors` and `Watcher.Events` to the no-op `Watcher` in
+  `backend_other.go`, making it easier to use on unsupported platforms such as
+  WASM, AIX, etc. ([#528])
+
+- other: use the `backend_other.go` no-op if the `appengine` build tag is set;
+  Google AppEngine forbids usage of the unsafe package so the inotify backend
+  won't compile there.
+
+[#371]: https://github.com/fsnotify/fsnotify/pull/371
+[#516]: https://github.com/fsnotify/fsnotify/pull/516
+[#518]: https://github.com/fsnotify/fsnotify/pull/518
+[#520]: https://github.com/fsnotify/fsnotify/pull/520
+[#521]: https://github.com/fsnotify/fsnotify/pull/521
+[#524]: https://github.com/fsnotify/fsnotify/pull/524
+[#525]: https://github.com/fsnotify/fsnotify/pull/525
+[#526]: https://github.com/fsnotify/fsnotify/pull/526
+[#528]: https://github.com/fsnotify/fsnotify/pull/528
+[#537]: https://github.com/fsnotify/fsnotify/pull/537
+[#550]: https://github.com/fsnotify/fsnotify/pull/550
+[#572]: https://github.com/fsnotify/fsnotify/pull/572
+
+1.6.0 - 2022-10-13
+------------------
 This version of fsnotify needs Go 1.16 (this was already the case since 1.5.1,
 but not documented). It also increases the minimum Linux version to 2.6.32.
 

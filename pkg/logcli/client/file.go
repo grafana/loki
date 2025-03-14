@@ -11,15 +11,15 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
@@ -77,6 +77,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse query: %w", err)
@@ -117,6 +118,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		interval,
 		direction,
 		uint32(limit),
+		nil,
 		nil,
 	)
 	if err != nil {
@@ -190,17 +192,28 @@ func (f *FileClient) GetOrgID() string {
 }
 
 func (f *FileClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
 
 func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
 
 func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
-	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	// TODO(twhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetDetectedFields(
+	_, _ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	// TODO(twhitney): could we teach logcli to do this?
 	return nil, ErrNotSupported
 }
 
@@ -265,7 +278,7 @@ func newFileIterator(
 	})
 
 	if len(lines) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streams := map[uint64]*logproto.Stream{}
@@ -304,7 +317,7 @@ func newFileIterator(
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streamResult := make([]logproto.Stream, 0, len(streams))

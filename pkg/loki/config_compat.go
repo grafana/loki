@@ -4,28 +4,29 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/ingester/index"
-	frontend "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
+	frontend "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
-func ValidateConfigCompatibility(c Config) error {
+func ValidateConfigCompatibility(c Config) []error {
+	var errs []error
 	for _, fn := range []func(Config) error{
 		ensureInvertedIndexShardingCompatibility,
 		ensureProtobufEncodingForAggregationSharding,
 	} {
 		if err := fn(c); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errs
 }
 
 func ensureInvertedIndexShardingCompatibility(c Config) error {
 
 	for i, sc := range c.SchemaConfig.Configs {
 		switch sc.IndexType {
-		case config.TSDBType:
+		case types.TSDBType:
 			if err := index.ValidateBitPrefixShardFactor(uint32(c.Ingester.IndexShards)); err != nil {
 				return err
 			}

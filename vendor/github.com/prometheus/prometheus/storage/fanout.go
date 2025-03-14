@@ -15,9 +15,8 @@ package storage
 
 import (
 	"context"
+	"log/slog"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -28,7 +27,7 @@ import (
 )
 
 type fanout struct {
-	logger log.Logger
+	logger *slog.Logger
 
 	primary     Storage
 	secondaries []Storage
@@ -43,7 +42,7 @@ type fanout struct {
 // and the error from the secondary querier will be returned as a warning.
 //
 // NOTE: In the case of Prometheus, it treats all remote storages as secondary / best effort.
-func NewFanout(logger log.Logger, primary Storage, secondaries ...Storage) Storage {
+func NewFanout(logger *slog.Logger, primary Storage, secondaries ...Storage) Storage {
 	return &fanout{
 		logger:      logger,
 		primary:     primary,
@@ -89,7 +88,9 @@ func (f *fanout) Querier(mint, maxt int64) (Querier, error) {
 			}
 			return nil, errs.Err()
 		}
-		secondaries = append(secondaries, querier)
+		if _, ok := querier.(noopQuerier); !ok {
+			secondaries = append(secondaries, querier)
+		}
 	}
 	return NewMergeQuerier([]Querier{primary}, secondaries, ChainedSeriesMerge), nil
 }
@@ -140,10 +141,20 @@ func (f *fanout) Close() error {
 
 // fanoutAppender implements Appender.
 type fanoutAppender struct {
-	logger log.Logger
+	logger *slog.Logger
 
 	primary     Appender
 	secondaries []Appender
+}
+
+// SetOptions propagates the hints to both primary and secondary appenders.
+func (f *fanoutAppender) SetOptions(opts *AppendOptions) {
+	if f.primary != nil {
+		f.primary.SetOptions(opts)
+	}
+	for _, appender := range f.secondaries {
+		appender.SetOptions(opts)
+	}
 }
 
 func (f *fanoutAppender) Append(ref SeriesRef, l labels.Labels, t int64, v float64) (SeriesRef, error) {
@@ -188,6 +199,20 @@ func (f *fanoutAppender) AppendHistogram(ref SeriesRef, l labels.Labels, t int64
 	return ref, nil
 }
 
+func (f *fanoutAppender) AppendHistogramCTZeroSample(ref SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (SeriesRef, error) {
+	ref, err := f.primary.AppendHistogramCTZeroSample(ref, l, t, ct, h, fh)
+	if err != nil {
+		return ref, err
+	}
+
+	for _, appender := range f.secondaries {
+		if _, err := appender.AppendHistogramCTZeroSample(ref, l, t, ct, h, fh); err != nil {
+			return 0, err
+		}
+	}
+	return ref, nil
+}
+
 func (f *fanoutAppender) UpdateMetadata(ref SeriesRef, l labels.Labels, m metadata.Metadata) (SeriesRef, error) {
 	ref, err := f.primary.UpdateMetadata(ref, l, m)
 	if err != nil {
@@ -202,6 +227,20 @@ func (f *fanoutAppender) UpdateMetadata(ref SeriesRef, l labels.Labels, m metada
 	return ref, nil
 }
 
+func (f *fanoutAppender) AppendCTZeroSample(ref SeriesRef, l labels.Labels, t, ct int64) (SeriesRef, error) {
+	ref, err := f.primary.AppendCTZeroSample(ref, l, t, ct)
+	if err != nil {
+		return ref, err
+	}
+
+	for _, appender := range f.secondaries {
+		if _, err := appender.AppendCTZeroSample(ref, l, t, ct); err != nil {
+			return 0, err
+		}
+	}
+	return ref, nil
+}
+
 func (f *fanoutAppender) Commit() (err error) {
 	err = f.primary.Commit()
 
@@ -210,7 +249,7 @@ func (f *fanoutAppender) Commit() (err error) {
 			err = appender.Commit()
 		} else {
 			if rollbackErr := appender.Rollback(); rollbackErr != nil {
-				level.Error(f.logger).Log("msg", "Squashed rollback error on commit", "err", rollbackErr)
+				f.logger.Error("Squashed rollback error on commit", "err", rollbackErr)
 			}
 		}
 	}
@@ -226,7 +265,7 @@ func (f *fanoutAppender) Rollback() (err error) {
 		case err == nil:
 			err = rollbackErr
 		case rollbackErr != nil:
-			level.Error(f.logger).Log("msg", "Squashed rollback error on rollback", "err", rollbackErr)
+			f.logger.Error("Squashed rollback error on rollback", "err", rollbackErr)
 		}
 	}
 	return nil

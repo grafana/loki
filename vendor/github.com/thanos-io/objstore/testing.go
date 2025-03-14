@@ -106,6 +106,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc1, err := bkt.Get(ctx, "id1/obj_1.some")
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc1.Close()) }()
+
+	sz, err := TryToGetSize(rc1)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(11), sz, "expected size to be equal to 11")
+
 	content, err := io.ReadAll(rc1)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "@test-data@", string(content))
@@ -118,6 +123,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc2, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, 3)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc2.Close()) }()
+
+	sz, err = TryToGetSize(rc2)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(3), sz, "expected size to be equal to 3")
+
 	content, err = io.ReadAll(rc2)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "tes", string(content))
@@ -126,6 +136,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcUnspecifiedLen, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, -1)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcUnspecifiedLen.Close()) }()
+
+	sz, err = TryToGetSize(rcUnspecifiedLen)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(10), sz, "expected size to be equal to 10")
+
 	content, err = io.ReadAll(rcUnspecifiedLen)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "test-data@", string(content))
@@ -141,6 +156,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcLength, err := bkt.GetRange(ctx, "id1/obj_1.some", 3, 9999)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcLength.Close()) }()
+
+	sz, err = TryToGetSize(rcLength)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(8), sz, "expected size to be equal to 8")
+
 	content, err = io.ReadAll(rcLength)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "st-data@", string(content))
@@ -175,7 +195,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	testutil.Ok(t, bkt.Iter(ctx, "", func(fn string) error {
 		seen = append(seen, fn)
 		return nil
-	}, WithRecursiveIter))
+	}, WithRecursiveIter()))
 	expected = []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some", "id2/obj_4.some", "obj_5.some"}
 	sort.Strings(expected)
 	sort.Strings(seen)
@@ -194,7 +214,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	testutil.Ok(t, bkt.Iter(ctx, "id1/", func(fn string) error {
 		seen = append(seen, fn)
 		return nil
-	}, WithRecursiveIter))
+	}, WithRecursiveIter()))
 	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from id1 dir?
@@ -210,7 +230,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	testutil.Ok(t, bkt.Iter(ctx, "id1", func(fn string) error {
 		seen = append(seen, fn)
 		return nil
-	}, WithRecursiveIter))
+	}, WithRecursiveIter()))
 	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from not existing dir?
@@ -260,9 +280,15 @@ func WithDelay(bkt Bucket, delay time.Duration) Bucket {
 	return &delayingBucket{bkt: bkt, delay: delay}
 }
 
+func (d *delayingBucket) Provider() ObjProvider { return d.bkt.Provider() }
+
 func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	time.Sleep(d.delay)
 	return d.bkt.Get(ctx, name)
+}
+
+func (b *delayingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: delayingBucket.GetAndReplace")
 }
 
 func (d *delayingBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
@@ -273,6 +299,15 @@ func (d *delayingBucket) Attributes(ctx context.Context, name string) (ObjectAtt
 func (d *delayingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error {
 	time.Sleep(d.delay)
 	return d.bkt.Iter(ctx, dir, f, options...)
+}
+
+func (d *delayingBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	time.Sleep(d.delay)
+	return d.bkt.IterWithAttributes(ctx, dir, f, options...)
+}
+
+func (d *delayingBucket) SupportedIterOptions() []IterOptionType {
+	return d.bkt.SupportedIterOptions()
 }
 
 func (d *delayingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {

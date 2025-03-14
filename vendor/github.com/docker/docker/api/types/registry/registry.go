@@ -9,11 +9,29 @@ import (
 
 // ServiceConfig stores daemon registry services configuration.
 type ServiceConfig struct {
-	AllowNondistributableArtifactsCIDRs     []*NetIPNet
-	AllowNondistributableArtifactsHostnames []string
-	InsecureRegistryCIDRs                   []*NetIPNet           `json:"InsecureRegistryCIDRs"`
-	IndexConfigs                            map[string]*IndexInfo `json:"IndexConfigs"`
-	Mirrors                                 []string
+	AllowNondistributableArtifactsCIDRs     []*NetIPNet `json:"AllowNondistributableArtifactsCIDRs,omitempty"`     // Deprecated: non-distributable artifacts are deprecated and enabled by default. This field will be removed in the next release.
+	AllowNondistributableArtifactsHostnames []string    `json:"AllowNondistributableArtifactsHostnames,omitempty"` // Deprecated: non-distributable artifacts are deprecated and enabled by default. This field will be removed in the next release.
+
+	InsecureRegistryCIDRs []*NetIPNet           `json:"InsecureRegistryCIDRs"`
+	IndexConfigs          map[string]*IndexInfo `json:"IndexConfigs"`
+	Mirrors               []string
+}
+
+// MarshalJSON implements a custom marshaler to include legacy fields
+// in API responses.
+func (sc ServiceConfig) MarshalJSON() ([]byte, error) {
+	tmp := map[string]interface{}{
+		"InsecureRegistryCIDRs": sc.InsecureRegistryCIDRs,
+		"IndexConfigs":          sc.IndexConfigs,
+		"Mirrors":               sc.Mirrors,
+	}
+	if sc.AllowNondistributableArtifactsCIDRs != nil {
+		tmp["AllowNondistributableArtifactsCIDRs"] = nil
+	}
+	if sc.AllowNondistributableArtifactsHostnames != nil {
+		tmp["AllowNondistributableArtifactsHostnames"] = nil
+	}
+	return json.Marshal(tmp)
 }
 
 // NetIPNet is the net.IPNet type, which can be marshalled and
@@ -82,30 +100,6 @@ type IndexInfo struct {
 	Secure bool
 	// Official indicates whether this is an official registry
 	Official bool
-}
-
-// SearchResult describes a search result returned from a registry
-type SearchResult struct {
-	// StarCount indicates the number of stars this repository has
-	StarCount int `json:"star_count"`
-	// IsOfficial is true if the result is from an official repository.
-	IsOfficial bool `json:"is_official"`
-	// Name is the name of the repository
-	Name string `json:"name"`
-	// IsAutomated indicates whether the result is automated
-	IsAutomated bool `json:"is_automated"`
-	// Description is a textual description of the repository
-	Description string `json:"description"`
-}
-
-// SearchResults lists a collection search results returned from a registry
-type SearchResults struct {
-	// Query contains the query string that generated the search results
-	Query string `json:"query"`
-	// NumResults indicates the number of results the query returned
-	NumResults int `json:"num_results"`
-	// Results is a slice containing the actual results for the search
-	Results []SearchResult `json:"results"`
 }
 
 // DistributionInspect describes the result obtained from contacting the

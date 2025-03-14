@@ -19,10 +19,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"net/http"
+	http "net/http"
 
-	v1alpha1 "k8s.io/api/storage/v1alpha1"
-	"k8s.io/client-go/kubernetes/scheme"
+	storagev1alpha1 "k8s.io/api/storage/v1alpha1"
+	scheme "k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
@@ -30,6 +30,7 @@ type StorageV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	CSIStorageCapacitiesGetter
 	VolumeAttachmentsGetter
+	VolumeAttributesClassesGetter
 }
 
 // StorageV1alpha1Client is used to interact with features provided by the storage.k8s.io group.
@@ -43,6 +44,10 @@ func (c *StorageV1alpha1Client) CSIStorageCapacities(namespace string) CSIStorag
 
 func (c *StorageV1alpha1Client) VolumeAttachments() VolumeAttachmentInterface {
 	return newVolumeAttachments(c)
+}
+
+func (c *StorageV1alpha1Client) VolumeAttributesClasses() VolumeAttributesClassInterface {
+	return newVolumeAttributesClasses(c)
 }
 
 // NewForConfig creates a new StorageV1alpha1Client for the given config.
@@ -90,10 +95,10 @@ func New(c rest.Interface) *StorageV1alpha1Client {
 }
 
 func setConfigDefaults(config *rest.Config) error {
-	gv := v1alpha1.SchemeGroupVersion
+	gv := storagev1alpha1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	config.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme.Scheme, scheme.Codecs).WithoutConversion()
 
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()

@@ -9,24 +9,24 @@ weight:  600
 Retention in Grafana Loki is achieved through the [Compactor](#compactor).
 By default the `compactor.retention-enabled` flag is not set, so the logs sent to Loki live forever.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If you have a lifecycle policy configured on the object store, please ensure that it is longer than the retention period.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
-{{% admonition type="note" %}}
-The Compactor does not support retention on [legacy index types]({{< relref "../../storage#index-storage" >}}). Please use the [Table Manager]({{< relref "./table-manager" >}}) when using legacy index types.
+{{< admonition type="note" >}}
+The Compactor does not support retention on [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage). Please use the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) when using legacy index types.
 Both the Table manager and legacy index types are deprecated and may be removed in future major versions of Loki.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Compactor
 
 The Compactor is responsible for compaction of index files and applying log retention.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Run the Compactor as a singleton (a single instance).
-{{% /admonition %}}
+{{< /admonition >}}
 
 The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
 Both compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
@@ -49,9 +49,9 @@ Chunks cannot be deleted immediately for the following reasons:
 - It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
 
 Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the Compactor process restarts.
-{{% admonition type="note" %}}
-We recommend running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
-{{% /admonition %}}
+{{< admonition type="note" >}}
+Grafana Labs recommends running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
+{{< /admonition >}}
 
 ### Retention Configuration
 
@@ -72,7 +72,7 @@ schema_config:
             period: 24h
             prefix: index_
         object_store: gcs
-        schema: v12
+        schema: v13
         store: tsdb
 storage_config:
     tsdb_shipper:
@@ -82,9 +82,9 @@ storage_config:
         bucket_name: loki
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Retention is only available if the index period is 24h. Single store TSDB and single store BoltDB require 24h index period.
-{{% /admonition %}}
+{{< /admonition >}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
 
@@ -100,16 +100,16 @@ Retention is only available if the index period is 24h. Single store TSDB and si
 
 #### Configuring the retention period
 
-Retention period is configured within the [`limits_config`]({{< relref "../../configure#limits_config" >}}) configuration section.
+Retention period is configured within the [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) configuration section.
 
 There are two ways of setting retention policies:
 
 - `retention_period` which is applied globally for all log streams.
 - `retention_stream` which is only applied to log streams matching the selector.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The minimum retention period is 24h.
-{{% /admonition %}}
+{{< /admonition >}}
 
 This example configures global retention that applies to all tenants (unless overridden by configuring per-tenant overrides):
 
@@ -125,11 +125,11 @@ limits_config:
 ...
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
-{{% /admonition %}}
+{{< /admonition >}}
 
-Per tenant retention can be defined by configuring [runtime overrides]({{< relref "../../configure#runtime-configuration-file" >}}). For example:
+Per tenant retention can be defined by configuring [runtime overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file). For example:
 
 ```yaml
 overrides:
@@ -156,9 +156,9 @@ Retention period for a given stream is decided based on the first match in this 
 4. The global `retention_period` will be applied if none of the above match.
 5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The larger the priority value, the higher the priority.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Stream matching uses the same syntax as Prometheus label matching:
 
@@ -181,31 +181,29 @@ The example configurations defined above will result in the following retention 
 
 ## Table Manager (deprecated)
 
-Retention through the [Table Manager]({{< relref "./table-manager" >}}) is
+Retention through the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) is
 achieved by relying on the object store TTL feature, and will work for both
-[boltdb-shipper]({{< relref "./boltdb-shipper" >}}) store and chunk/index stores.
+[boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) store and chunk/index stores.
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager`]({{< relref "../../configure#table_manager" >}})
+[`table_manager`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#table_manager)
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
 provided retention period needs to be a duration represented as a string that
 can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`]({{< relref "../../configure#period_config" >}})
-block. See the [Table Manager]({{< relref "./table-manager#retention" >}}) documentation for
+`period`, configured in the [`period_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) block.
+See the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/#retention) documentation for
 more information.
-{{% /admonition %}}
+{{< /admonition >}}
 
-{{% admonition type="note" %}}
-To avoid querying of data beyond the retention period,
-`max_query_lookback` config in [`limits_config`]({{< relref "../../configure#limits_config" >}}) must be set to a value less than or equal to
-what is set in `table_manager.retention_period`.
-{{% /admonition %}}
+{{< admonition type="note" >}}
+To avoid querying of data beyond the retention period,`max_query_lookback` config in [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) must be set to a value less than or equal to what is set in `table_manager.retention_period`.
+{{< /admonition >}}
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
 policy set correctly. For more details check
@@ -213,19 +211,15 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-The retention policy for Table manager can only be set globally.
-Per-tenant and per-stream retention policies along with support for deleting
-ingested logs using an API are only supported by Compactor retention.
-
-Since a design goal of Loki is to make storing logs cheap, a volume-based
-deletion API is deprioritized. Until this feature is released, if you suddenly
-must delete ingested logs, you can delete old chunks in your object store. Note,
+If you must delete ingested logs, you can delete old chunks in your object store. Note,
 however, that this only deletes the log content and keeps the label index
 intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
 For further details on the Table Manager internals, refer to the
-[Table Manager]({{< relref "./table-manager" >}}) documentation.
+[Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
+
+Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) to delete log entries from a specific stream.
 
 
 ## Example Configuration
@@ -238,7 +232,7 @@ schema_config:
   - from: 2018-04-15
     store: tsdb
     object_store: gcs
-    schema: v12
+    schema: v13
     index:
       prefix: loki_index_
       period: 24h

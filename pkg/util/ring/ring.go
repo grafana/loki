@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // TokenFor generates a token used for finding ingesters from ring

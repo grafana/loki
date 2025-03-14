@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
@@ -28,10 +28,17 @@ var (
 	bufferedLogger *dslog.BufferedLogger
 
 	plogger *prometheusLogger
+	// initialize log level to info, but it is set in the InitLogger function
+	logLevel = func() dslog.Level {
+		var l dslog.Level
+		_ = l.Set("info")
+		return l
+	}()
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and returns that logger.
 func InitLogger(cfg *server.Config, reg prometheus.Registerer, sync bool) log.Logger {
+	logLevel = cfg.LogLevel
 	logger := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, sync)
 	// when using util_log.Logger, skip 3 stack frames.
 	Logger = log.With(logger, "caller", log.Caller(3))

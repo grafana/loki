@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
@@ -97,7 +97,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			entriesCount := 0
 			for iter.Next() {
 				require.Equal(t, tc.expLabels[entriesCount], iter.Labels())
-				require.Equal(t, tc.expLines[entriesCount], iter.Entry().Line)
+				require.Equal(t, tc.expLines[entriesCount], iter.At().Line)
 				entriesCount++
 			}
 			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
@@ -256,7 +256,7 @@ func (it mockEntryIterator) Labels() string {
 	return it.labels
 }
 
-func (it mockEntryIterator) Entry() logproto.Entry {
+func (it mockEntryIterator) At() logproto.Entry {
 	return logproto.Entry{}
 }
 
@@ -268,7 +268,7 @@ func (it mockEntryIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (it mockEntryIterator) Error() error {
+func (it mockEntryIterator) Err() error {
 	return nil
 }
 

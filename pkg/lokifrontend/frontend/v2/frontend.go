@@ -27,14 +27,14 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/querier/stats"
-	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/stats"
+	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -154,7 +154,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
 	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
 	// This isn't perfect, but better than nothing.
-	f.lastQueryID.Store(rand.Uint64())
+	f.lastQueryID.Store(rand.Uint64()) //#nosec G404 -- See above comment, this can't leak data or otherwise result in a vuln, simply very rarely cause confusing behavior. A CSPRNG would not help.
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
@@ -444,6 +444,14 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 	msg := fmt.Sprintf("not ready: number of schedulers this worker is connected to is %d", workers)
 	level.Info(f.log).Log("msg", msg)
 	return errors.New(msg)
+}
+
+func (f *Frontend) IsProtobufEncoded() bool {
+	return f.cfg.Encoding == EncodingProtobuf
+}
+
+func (f *Frontend) IsJSONEncoded() bool {
+	return f.cfg.Encoding == EncodingJSON
 }
 
 const stripeSize = 1 << 6

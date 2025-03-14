@@ -15,7 +15,8 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RingConfig masks the ring lifecycler config which contains
@@ -28,6 +29,8 @@ type RingConfig struct { // nolint:revive
 	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
 	TokensFilePath       string        `yaml:"tokens_file_path"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+	NumTokens            int           `yaml:"num_tokens"`
+	ReplicationFactor    int           `yaml:"replication_factor"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"default=<hostname>"`
@@ -45,7 +48,9 @@ type RingConfig struct { // nolint:revive
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 // storePrefix is used to set the path in the KVStore and should end with a /
-func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, f *flag.FlagSet) {
+func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, fs *flag.FlagSet, skip ...string) {
+	f := util_flagext.NewFlagSetWithSkip(fs, skip)
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to get hostname", "err", err)
@@ -53,11 +58,13 @@ func (cfg *RingConfig) RegisterFlagsWithPrefix(flagsPrefix, storePrefix string, 
 	}
 
 	// Ring flags
-	cfg.KVStore.RegisterFlagsWithPrefix(flagsPrefix+"ring.", storePrefix, f)
+	cfg.KVStore.RegisterFlagsWithPrefix(flagsPrefix+"ring.", storePrefix, f.ToFlagSet())
 	f.DurationVar(&cfg.HeartbeatPeriod, flagsPrefix+"ring.heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, flagsPrefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which compactors are considered unhealthy within the ring. 0 = never (timeout disabled).")
 	f.StringVar(&cfg.TokensFilePath, flagsPrefix+"ring.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, flagsPrefix+"ring.zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
+	f.IntVar(&cfg.NumTokens, flagsPrefix+"ring.num-tokens", 128, "Number of tokens to own in the ring.")
+	f.IntVar(&cfg.ReplicationFactor, flagsPrefix+"ring.replication-factor", 3, "Factor for data replication.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
@@ -122,19 +129,4 @@ func (cfg *RingConfig) ToRingConfig(replicationFactor int) ring.Config {
 	rc.ReplicationFactor = replicationFactor
 
 	return rc
-}
-
-// RingConfigWithRF is a wrapper for our internally used ring configuration plus the replication factor.
-type RingConfigWithRF struct { // nolint:revive
-	// RingConfig configures the ring.
-	RingConfig `yaml:",inline"`
-
-	// ReplicationFactor defines how many replicas store a single data shard.
-	ReplicationFactor int `yaml:"replication_factor"`
-}
-
-// RegisterFlagsWithPrefix registers all Bloom Gateway CLI flags.
-func (cfg *RingConfigWithRF) RegisterFlagsWithPrefix(prefix, storePrefix string, f *flag.FlagSet) {
-	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, storePrefix, f)
-	f.IntVar(&cfg.ReplicationFactor, prefix+"replication-factor", 3, "Factor for data replication.")
 }

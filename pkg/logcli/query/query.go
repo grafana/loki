@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	stdErrors "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,28 +11,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/print"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/util/cfg"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/print"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	chunk "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const schemaConfigFilename = "schemaconfig"
@@ -50,6 +50,7 @@ type Query struct {
 	NoLabels               bool
 	IgnoreLabelsKey        []string
 	ShowLabelsKey          []string
+	IncludeCommonLabels    bool
 	FixedLabelsLen         int
 	ColoredOutput          bool
 	LocalConfig            string
@@ -118,7 +119,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		out = out.WithWriter(partFile)
 	}
 
-	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
+	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward, q.IncludeCommonLabels)
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
@@ -395,6 +396,41 @@ func maxTime(t1, t2 time.Time) time.Time {
 	return t2
 }
 
+func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaConfig, error) {
+	// Get the latest
+	iteration := 0
+	searchFor := fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
+	var loadedSchema *config.SchemaConfig
+	for {
+		if iteration != 0 {
+			searchFor = fmt.Sprintf("%s-%s-%d.yaml", orgID, schemaConfigFilename, iteration) // tenant-schemaconfig-1.yaml
+		}
+		tempSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
+		if err == errNotExists {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		loadedSchema = tempSchema
+		iteration++
+	}
+	if loadedSchema != nil {
+		return loadedSchema, nil
+	}
+
+	searchFor = fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
+	loadedSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
+	if err == nil {
+		return loadedSchema, nil
+	}
+	if err != errNotExists {
+		return nil, err
+	}
+	return nil, errors.Wrap(err, "could not find a schema config file matching any of the known patterns. First verify --org-id is correct. Then check the root of the bucket for a file with `schemaconfig` in the name. If no such file exists it may need to be created or re-synced from the source.")
+}
+
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
 	var conf loki.Config
@@ -417,15 +453,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			return err
 		}
 
-		objects := []string{
-			fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename), // schemaconfig-tenant.yaml
-			fmt.Sprintf("%s.yaml", schemaConfigFilename),           // schemaconfig.yaml for backwards compatibility
-		}
-		loadedSchema, err := LoadSchemaUsingObjectClient(client, objects...)
+		loadedSchema, err := getLatestConfig(client, orgID)
 		if err != nil {
 			return err
 		}
-
 		conf.SchemaConfig = *loadedSchema
 	}
 
@@ -460,6 +491,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			nil,
 		)
 		if err != nil {
 			return err
@@ -476,16 +508,13 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			nil,
 		)
 		if err != nil {
 			return err
 		}
 
 		query = eng.Query(params)
-	}
-
-	if err != nil {
-		return err
 	}
 
 	// execute the query
@@ -495,7 +524,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	resPrinter := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
+	resPrinter := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward, q.IncludeCommonLabels)
 	if statistics {
 		resPrinter.PrintStats(result.Statistics)
 	}
@@ -510,52 +539,43 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 }
 
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
-	oc, err := storage.NewObjectClient(
-		store,
-		conf.StorageConfig,
-		cm,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return oc, nil
+	return storage.NewObjectClient(store, "logcli-query", conf.StorageConfig, cm)
 }
+
+var errNotExists = stdErrors.New("doesn't exist")
 
 type schemaConfigSection struct {
 	config.SchemaConfig `yaml:"schema_config"`
 }
 
-// LoadSchemaUsingObjectClient returns the loaded schema from the first found object
-func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*config.SchemaConfig, error) {
-	errs := multierror.New()
-	for _, name := range names {
-		schema, err := func(name string) (*config.SchemaConfig, error) {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
-			defer cancel()
-			rdr, _, err := oc.GetObject(ctx, name)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
-			}
-			defer rdr.Close()
+// LoadSchemaUsingObjectClient returns the loaded schema from the object with the given name
+func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.SchemaConfig, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
+	defer cancel()
 
-			decoder := yaml.NewDecoder(rdr)
-			decoder.SetStrict(true)
-			section := schemaConfigSection{}
-			err = decoder.Decode(&section)
-			if err != nil {
-				return nil, err
-			}
-
-			return &section.SchemaConfig, nil
-		}(name)
-
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		return schema, nil
+	ok, err := oc.ObjectExists(ctx, name)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errs.Err()
+	if !ok {
+		return nil, errNotExists
+	}
+
+	rdr, _, err := oc.GetObject(ctx, name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
+	}
+	defer rdr.Close()
+
+	decoder := yaml.NewDecoder(rdr)
+	decoder.SetStrict(true)
+	section := schemaConfigSection{}
+	err = decoder.Decode(&section)
+	if err != nil {
+		return nil, err
+	}
+
+	return &section.SchemaConfig, nil
 }
 
 // SetInstant makes the Query an instant type

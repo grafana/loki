@@ -6,8 +6,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // takes a chunk client and exposes metrics for its operations.
@@ -29,6 +29,7 @@ type ChunkClientMetrics struct {
 	chunksSizePutPerUser     *prometheus.CounterVec
 	chunksFetchedPerUser     *prometheus.CounterVec
 	chunksSizeFetchedPerUser *prometheus.CounterVec
+	chunkDecodeFailures      *prometheus.CounterVec
 }
 
 func NewChunkClientMetrics(reg prometheus.Registerer) ChunkClientMetrics {
@@ -52,6 +53,11 @@ func NewChunkClientMetrics(reg prometheus.Registerer) ChunkClientMetrics {
 			Namespace: constants.Loki,
 			Name:      "chunk_store_fetched_chunk_bytes_total",
 			Help:      "Total bytes fetched in chunks per user.",
+		}, []string{"user"}),
+		chunkDecodeFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "chunk_store_decode_failures_total",
+			Help:      "Total chunk decoding failures.",
 		}, []string{"user"}),
 	}
 }
@@ -85,6 +91,17 @@ func (c MetricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk)
 func (c MetricsChunkClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	chks, err := c.Client.GetChunks(ctx, chunks)
 	if err != nil {
+		// Get chunks fetches chunks in parallel, and returns any error. As a result we don't know which chunk failed,
+		// so we increment the metric for all tenants with chunks in the request. I think in practice we're only ever
+		// fetching chunks for a single tenant at a time anyway?
+		affectedUsers := map[string]struct{}{}
+		for _, chk := range chks {
+			affectedUsers[chk.UserID] = struct{}{}
+		}
+		for user := range affectedUsers {
+			c.metrics.chunkDecodeFailures.WithLabelValues(user).Inc()
+		}
+
 		return chks, err
 	}
 

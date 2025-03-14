@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/alicebob/miniredis/v2/hyperloglog"
 	"github.com/stretchr/testify/assert"
@@ -22,20 +21,20 @@ type event struct {
 }
 
 func TestTopkCardinality(t *testing.T) {
-	max := 1000000
+	maxVal := 1000000
 	topk, err := newCMSTopK(100, 10, 10)
 	assert.NoError(t, err)
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxVal; i++ {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough := topk.Cardinality()
 	// hll has a typical error accuracy of 2%
-	assert.True(t, (c >= uint64(float64(max)*0.98)) && (c <= uint64(float64(max)*1.02)))
+	assert.True(t, (c >= uint64(float64(maxVal)*0.98)) && (c <= uint64(float64(maxVal)*1.02)))
 	assert.False(t, bigEnough)
 
-	topk, err = NewCMSTopkForCardinality(nil, 100, max)
+	topk, err = NewCMSTopkForCardinality(nil, 100, maxVal)
 	assert.NoError(t, err)
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxVal; i++ {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough = topk.Cardinality()
@@ -48,14 +47,14 @@ func TestTopK_Merge(t *testing.T) {
 	k := 1
 	maxPerStream := 1000
 	events := make([]event, 0)
-	max := int64(0)
+	maxVal := int64(0)
 	r := rand.New(rand.NewSource(99))
 
 	for i := 0; i < nStreams-k; i++ {
 		num := int64(maxPerStream)
 		n := r.Int63n(num) + 1
-		if n > max {
-			max = n
+		if n > maxVal {
+			maxVal = n
 		}
 		for j := 0; j < int(n); j++ {
 			events = append(events, event{name: strconv.Itoa(i), count: 1})
@@ -63,13 +62,12 @@ func TestTopK_Merge(t *testing.T) {
 	}
 	// then another set of things more than the max of the previous entries
 	for i := nStreams - k; i < nStreams; i++ {
-		n := rand.Int63n(int64(maxPerStream)) + 1 + max
+		n := rand.Int63n(int64(maxPerStream)) + 1 + maxVal
 		for j := 0; j < int(n); j++ {
 			events = append(events, event{name: strconv.Itoa(i), count: 1})
 		}
 	}
 
-	rand.Seed(time.Now().UnixNano()) //nolint:all
 	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 
 	topk1, err := NewCMSTopkForCardinality(nil, k, nStreams)
@@ -133,7 +131,7 @@ outer2:
 
 	require.LessOrEqualf(t, singleMissing, 2, "more than acceptable misses: %d > %d", singleMissing, 2)
 	// this condition is never actually true
-	//require.LessOrEqualf(t, mergedMissing, singleMissing, "merged sketch should be at least as accurate as a single sketch")
+	// require.LessOrEqualf(t, mergedMissing, singleMissing, "merged sketch should be at least as accurate as a single sketch")
 }
 
 // compare the accuracy of cms topk and hk to the real topk
@@ -144,7 +142,7 @@ func TestRealTopK(t *testing.T) {
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 
-	m := make(map[string]uint32)
+	m := make(map[string]float64)
 	h := MinHeap{}
 	hll := hyperloglog.New16()
 
@@ -172,7 +170,7 @@ func TestRealTopK(t *testing.T) {
 
 	res := make(TopKResult, 0, len(h))
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res = append(res, element{h[i].event, h[i].count})
 	}
 	sort.Sort(res)
 
@@ -221,7 +219,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	scanner := bufio.NewScanner(combined)
 
-	m := make(map[string]uint32)
+	m := make(map[string]float64)
 	h := MinHeap{}
 	hll := hyperloglog.New16()
 	// HK gets more inaccurate with merging the more shards we have
@@ -253,7 +251,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	res := make(TopKResult, 0, len(h))
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res = append(res, element{h[i].event, h[i].count})
 	}
 	sort.Sort(res)
 
@@ -267,7 +265,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	scanner = bufio.NewScanner(combined)
 	scanner.Split(bufio.ScanWords)
-	var cms = make([]*Topk, shards)
+	cms := make([]*Topk, shards)
 	for i := range cms {
 		cms[i], _ = newCMSTopK(k, 2048, 5)
 	}

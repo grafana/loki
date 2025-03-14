@@ -1,13 +1,16 @@
 package container // import "github.com/docker/docker/api/types/container"
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/docker/docker/api/types/blkiodev"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/go-connections/nat"
-	units "github.com/docker/go-units"
+	"github.com/docker/go-units"
 )
 
 // CgroupnsMode represents the cgroup namespace mode of the container
@@ -132,12 +135,12 @@ type NetworkMode string
 
 // IsNone indicates whether container isn't using a network stack.
 func (n NetworkMode) IsNone() bool {
-	return n == "none"
+	return n == network.NetworkNone
 }
 
 // IsDefault indicates whether container uses the default network stack.
 func (n NetworkMode) IsDefault() bool {
-	return n == "default"
+	return n == network.NetworkDefault
 }
 
 // IsPrivate indicates whether container uses its private network stack.
@@ -271,38 +274,74 @@ type DeviceMapping struct {
 
 // RestartPolicy represents the restart policies of the container.
 type RestartPolicy struct {
-	Name              string
+	Name              RestartPolicyMode
 	MaximumRetryCount int
 }
+
+type RestartPolicyMode string
+
+const (
+	RestartPolicyDisabled      RestartPolicyMode = "no"
+	RestartPolicyAlways        RestartPolicyMode = "always"
+	RestartPolicyOnFailure     RestartPolicyMode = "on-failure"
+	RestartPolicyUnlessStopped RestartPolicyMode = "unless-stopped"
+)
 
 // IsNone indicates whether the container has the "no" restart policy.
 // This means the container will not automatically restart when exiting.
 func (rp *RestartPolicy) IsNone() bool {
-	return rp.Name == "no" || rp.Name == ""
+	return rp.Name == RestartPolicyDisabled || rp.Name == ""
 }
 
 // IsAlways indicates whether the container has the "always" restart policy.
 // This means the container will automatically restart regardless of the exit status.
 func (rp *RestartPolicy) IsAlways() bool {
-	return rp.Name == "always"
+	return rp.Name == RestartPolicyAlways
 }
 
 // IsOnFailure indicates whether the container has the "on-failure" restart policy.
 // This means the container will automatically restart of exiting with a non-zero exit status.
 func (rp *RestartPolicy) IsOnFailure() bool {
-	return rp.Name == "on-failure"
+	return rp.Name == RestartPolicyOnFailure
 }
 
 // IsUnlessStopped indicates whether the container has the
 // "unless-stopped" restart policy. This means the container will
 // automatically restart unless user has put it to stopped state.
 func (rp *RestartPolicy) IsUnlessStopped() bool {
-	return rp.Name == "unless-stopped"
+	return rp.Name == RestartPolicyUnlessStopped
 }
 
 // IsSame compares two RestartPolicy to see if they are the same
 func (rp *RestartPolicy) IsSame(tp *RestartPolicy) bool {
 	return rp.Name == tp.Name && rp.MaximumRetryCount == tp.MaximumRetryCount
+}
+
+// ValidateRestartPolicy validates the given RestartPolicy.
+func ValidateRestartPolicy(policy RestartPolicy) error {
+	switch policy.Name {
+	case RestartPolicyAlways, RestartPolicyUnlessStopped, RestartPolicyDisabled:
+		if policy.MaximumRetryCount != 0 {
+			msg := "invalid restart policy: maximum retry count can only be used with 'on-failure'"
+			if policy.MaximumRetryCount < 0 {
+				msg += " and cannot be negative"
+			}
+			return &errInvalidParameter{errors.New(msg)}
+		}
+		return nil
+	case RestartPolicyOnFailure:
+		if policy.MaximumRetryCount < 0 {
+			return &errInvalidParameter{errors.New("invalid restart policy: maximum retry count cannot be negative")}
+		}
+		return nil
+	case "":
+		// Versions before v25.0.0 created an empty restart-policy "name" as
+		// default. Allow an empty name with "any" MaximumRetryCount for
+		// backward-compatibility.
+		return nil
+	default:
+		return &errInvalidParameter{fmt.Errorf("invalid restart policy: unknown policy '%s'; use one of '%s', '%s', '%s', or '%s'", policy.Name, RestartPolicyDisabled, RestartPolicyAlways, RestartPolicyOnFailure, RestartPolicyUnlessStopped)}
+	}
 }
 
 // LogMode is a type to define the available modes for logging
@@ -321,6 +360,12 @@ type LogConfig struct {
 	Type   string
 	Config map[string]string
 }
+
+// Ulimit is an alias for [units.Ulimit], which may be moving to a different
+// location or become a local type. This alias is to help transitioning.
+//
+// Users are recommended to use this alias instead of using [units.Ulimit] directly.
+type Ulimit = units.Ulimit
 
 // Resources contains container's resources (cgroups config, ulimits...)
 type Resources struct {
@@ -349,14 +394,14 @@ type Resources struct {
 
 	// KernelMemory specifies the kernel memory limit (in bytes) for the container.
 	// Deprecated: kernel 5.4 deprecated kmem.limit_in_bytes.
-	KernelMemory      int64           `json:",omitempty"`
-	KernelMemoryTCP   int64           `json:",omitempty"` // Hard limit for kernel TCP buffer memory (in bytes)
-	MemoryReservation int64           // Memory soft limit (in bytes)
-	MemorySwap        int64           // Total memory usage (memory + swap); set `-1` to enable unlimited swap
-	MemorySwappiness  *int64          // Tuning container memory swappiness behaviour
-	OomKillDisable    *bool           // Whether to disable OOM Killer or not
-	PidsLimit         *int64          // Setting PIDs limit for a container; Set `0` or `-1` for unlimited, or `null` to not change.
-	Ulimits           []*units.Ulimit // List of ulimits to be set in the container
+	KernelMemory      int64     `json:",omitempty"`
+	KernelMemoryTCP   int64     `json:",omitempty"` // Hard limit for kernel TCP buffer memory (in bytes)
+	MemoryReservation int64     // Memory soft limit (in bytes)
+	MemorySwap        int64     // Total memory usage (memory + swap); set `-1` to enable unlimited swap
+	MemorySwappiness  *int64    // Tuning container memory swappiness behaviour
+	OomKillDisable    *bool     // Whether to disable OOM Killer or not
+	PidsLimit         *int64    // Setting PIDs limit for a container; Set `0` or `-1` for unlimited, or `null` to not change.
+	Ulimits           []*Ulimit // List of ulimits to be set in the container
 
 	// Applicable to Windows
 	CPUCount           int64  `json:"CpuCount"`   // CPU count

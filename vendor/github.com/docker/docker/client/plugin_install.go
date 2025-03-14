@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/url"
 
-	"github.com/docker/distribution/reference"
+	"github.com/distribution/reference"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/errdefs"
@@ -34,13 +35,13 @@ func (cli *Client) PluginInstall(ctx context.Context, name string, options types
 		return nil, err
 	}
 
-	name = resp.header.Get("Docker-Plugin-Name")
+	name = resp.Header.Get("Docker-Plugin-Name")
 
 	pr, pw := io.Pipe()
 	go func() { // todo: the client should probably be designed more around the actual api
-		_, err := io.Copy(pw, resp.body)
+		_, err := io.Copy(pw, resp.Body)
 		if err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 			return
 		}
 		defer func() {
@@ -51,37 +52,39 @@ func (cli *Client) PluginInstall(ctx context.Context, name string, options types
 		}()
 		if len(options.Args) > 0 {
 			if err := cli.PluginSet(ctx, name, options.Args); err != nil {
-				pw.CloseWithError(err)
+				_ = pw.CloseWithError(err)
 				return
 			}
 		}
 
 		if options.Disabled {
-			pw.Close()
+			_ = pw.Close()
 			return
 		}
 
 		enableErr := cli.PluginEnable(ctx, name, types.PluginEnableOptions{Timeout: 0})
-		pw.CloseWithError(enableErr)
+		_ = pw.CloseWithError(enableErr)
 	}()
 	return pr, nil
 }
 
-func (cli *Client) tryPluginPrivileges(ctx context.Context, query url.Values, registryAuth string) (serverResponse, error) {
-	headers := map[string][]string{registry.AuthHeader: {registryAuth}}
-	return cli.get(ctx, "/plugins/privileges", query, headers)
+func (cli *Client) tryPluginPrivileges(ctx context.Context, query url.Values, registryAuth string) (*http.Response, error) {
+	return cli.get(ctx, "/plugins/privileges", query, http.Header{
+		registry.AuthHeader: {registryAuth},
+	})
 }
 
-func (cli *Client) tryPluginPull(ctx context.Context, query url.Values, privileges types.PluginPrivileges, registryAuth string) (serverResponse, error) {
-	headers := map[string][]string{registry.AuthHeader: {registryAuth}}
-	return cli.post(ctx, "/plugins/pull", query, privileges, headers)
+func (cli *Client) tryPluginPull(ctx context.Context, query url.Values, privileges types.PluginPrivileges, registryAuth string) (*http.Response, error) {
+	return cli.post(ctx, "/plugins/pull", query, privileges, http.Header{
+		registry.AuthHeader: {registryAuth},
+	})
 }
 
 func (cli *Client) checkPluginPermissions(ctx context.Context, query url.Values, options types.PluginInstallOptions) (types.PluginPrivileges, error) {
 	resp, err := cli.tryPluginPrivileges(ctx, query, options.RegistryAuth)
 	if errdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
 		// todo: do inspect before to check existing name before checking privileges
-		newAuthHeader, privilegeErr := options.PrivilegeFunc()
+		newAuthHeader, privilegeErr := options.PrivilegeFunc(ctx)
 		if privilegeErr != nil {
 			ensureReaderClosed(resp)
 			return nil, privilegeErr
@@ -95,14 +98,14 @@ func (cli *Client) checkPluginPermissions(ctx context.Context, query url.Values,
 	}
 
 	var privileges types.PluginPrivileges
-	if err := json.NewDecoder(resp.body).Decode(&privileges); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&privileges); err != nil {
 		ensureReaderClosed(resp)
 		return nil, err
 	}
 	ensureReaderClosed(resp)
 
 	if !options.AcceptAllPermissions && options.AcceptPermissionsFunc != nil && len(privileges) > 0 {
-		accept, err := options.AcceptPermissionsFunc(privileges)
+		accept, err := options.AcceptPermissionsFunc(ctx, privileges)
 		if err != nil {
 			return nil, err
 		}

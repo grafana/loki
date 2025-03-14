@@ -11,20 +11,20 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
-	loki_runtime "github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type MemoryWALReader struct {
@@ -131,7 +131,7 @@ func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
 
 func (r *MemRecoverer) Series(_ *Series) error { return nil }
 
-func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
+func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record.RefSeries) error {
 	r.Lock()
 	defer r.Unlock()
 	user, ok := r.users[userID]
@@ -142,7 +142,7 @@ func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	}
 
 	if _, exists := user[series.Ref]; exists {
-		return errors.Errorf("stream (%d) already exists for user (%s)", series.Ref, userID)
+		return fmt.Errorf("stream (%d) already exists for user (%s)", series.Ref, userID)
 	}
 
 	user[series.Ref] = make([]logproto.Entry, 0)
@@ -156,12 +156,12 @@ func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
 
 	user, ok := r.users[userID]
 	if !ok {
-		return errors.Errorf("unexpected user access (%s)", userID)
+		return fmt.Errorf("unexpected user access (%s)", userID)
 	}
 
 	stream, ok := user[entries.Ref]
 	if !ok {
-		return errors.Errorf("unexpected stream access")
+		return fmt.Errorf("unexpected stream access")
 	}
 
 	r.seriesCt += len(entries.Entries)
@@ -190,7 +190,7 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 			recoverer := NewMemRecoverer()
 
-			require.Nil(t, RecoverWAL(reader, recoverer))
+			require.NoError(t, RecoverWAL(context.Background(), reader, recoverer))
 			recoverer.Close()
 
 			require.Equal(t, users, recoverer.usersCt)
@@ -228,7 +228,9 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -262,7 +264,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	// recover the checkpointed series
@@ -300,4 +302,43 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)
+}
+
+func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+
+	var (
+		users            = 10
+		streamsCt        = 1000
+		entriesPerStream = 50
+	)
+
+	reader, _ := buildMemoryReader(users, streamsCt, entriesPerStream, true)
+
+	recoverer := newIngesterRecoverer(i)
+
+	err = RecoverWAL(context.Background(), reader, recoverer)
+	require.NoError(t, err)
+
+	recoverer.Close()
+
+	// Check that the entry count continues counting from the last WAL entry to avoid overwriting existing entries in the WAL on future replays.
+	for _, inst := range i.getInstances() {
+		err := inst.forAllStreams(context.Background(), func(s *stream) error {
+			assert.Equal(t, int64(entriesPerStream), s.entryCt)
+			return nil
+		})
+		require.NoError(t, err)
+	}
 }

@@ -9,11 +9,12 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 )
 
 const forRangeQuery = false
@@ -257,7 +258,7 @@ func Test_toPrometheusResponse(t *testing.T) {
 
 func Test_VolumeMiddleware(t *testing.T) {
 	makeVolumeRequest := func(req *logproto.VolumeRequest) *queryrangebase.PrometheusResponse {
-		nextHandler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		nextHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{

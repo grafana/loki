@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestRenderHTTPResponse(t *testing.T) {
@@ -217,4 +217,122 @@ func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 func TestIsRequestBodyTooLargeRegression(t *testing.T) {
 	_, err := io.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), io.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
 	assert.True(t, util.IsRequestBodyTooLarge(err))
+}
+
+func TestErrorTypeFromHTTPStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		expectedResult string
+	}{
+		{
+			name:           "rate limited error",
+			status:         429,
+			expectedResult: util.HTTPRateLimited,
+		},
+		{
+			name:           "server error - 500",
+			status:         500,
+			expectedResult: util.HTTPServerError,
+		},
+		{
+			name:           "server error - 503",
+			status:         503,
+			expectedResult: util.HTTPServerError,
+		},
+		{
+			name:           "client error - 400",
+			status:         400,
+			expectedResult: util.HTTPClientError,
+		},
+		{
+			name:           "client error - 404",
+			status:         404,
+			expectedResult: util.HTTPClientError,
+		},
+		{
+			name:           "success status should return unknown - 200",
+			status:         200,
+			expectedResult: util.HTTPErrorUnknown,
+		},
+		{
+			name:           "success status should return unknown - 201",
+			status:         201,
+			expectedResult: util.HTTPErrorUnknown,
+		},
+		{
+			name:           "invalid status should return unknown - 600",
+			status:         600,
+			expectedResult: util.HTTPClientError,
+		},
+		{
+			name:           "invalid status should return unknown - -1",
+			status:         -1,
+			expectedResult: util.HTTPClientError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := util.ErrorTypeFromHTTPStatus(tt.status)
+			assert.Equal(t, tt.expectedResult, result, "ErrorTypeFromHTTPStatus(%d) = %s; want %s",
+				tt.status, result, tt.expectedResult)
+		})
+	}
+}
+
+func TestIsError(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		expectedResult bool
+	}{
+		{
+			name:           "200 OK",
+			status:         200,
+			expectedResult: false,
+		},
+		{
+			name:           "201 Created",
+			status:         201,
+			expectedResult: false,
+		},
+		{
+			name:           "400 Bad Request",
+			status:         400,
+			expectedResult: true,
+		},
+		{
+			name:           "404 Not Found",
+			status:         404,
+			expectedResult: true,
+		},
+		{
+			name:           "429 Too Many Requests",
+			status:         429,
+			expectedResult: true,
+		},
+		{
+			name:           "500 Internal Server Error",
+			status:         500,
+			expectedResult: true,
+		},
+		{
+			name:           "503 Service Unavailable",
+			status:         503,
+			expectedResult: true,
+		},
+		{
+			name:           "600 Unknown",
+			status:         600,
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := util.IsError(tt.status)
+			assert.Equal(t, tt.expectedResult, result)
+		})
+	}
 }

@@ -9,10 +9,9 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type bigtableObjectClient struct {
@@ -114,7 +113,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 		)
 
 		for i := 0; i < len(keys); i += maxRowReads {
-			page := keys[i:math.Min(i+maxRowReads, len(keys))]
+			page := keys[i:min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
 				decodeContext := chunk.NewDecodeContext()
 

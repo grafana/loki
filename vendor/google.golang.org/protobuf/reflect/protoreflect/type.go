@@ -12,7 +12,7 @@ package protoreflect
 // exactly identical. However, it is possible for the same semantically
 // identical proto type to be represented by multiple type descriptors.
 //
-// For example, suppose we have t1 and t2 which are both MessageDescriptors.
+// For example, suppose we have t1 and t2 which are both an [MessageDescriptor].
 // If t1 == t2, then the types are definitely equal and all accessors return
 // the same information. However, if t1 != t2, then it is still possible that
 // they still represent the same proto type (e.g., t1.FullName == t2.FullName).
@@ -68,7 +68,7 @@ type Descriptor interface {
 	// dependency is not resolved, in which case only name information is known.
 	//
 	// Placeholder types may only be returned by the following accessors
-	// as a result of unresolved dependencies or weak imports:
+	// as a result of unresolved dependencies:
 	//
 	//	╔═══════════════════════════════════╤═════════════════════╗
 	//	║ Accessor                          │ Descriptor          ║
@@ -115,7 +115,7 @@ type Descriptor interface {
 // corresponds with the google.protobuf.FileDescriptorProto message.
 //
 // Top-level declarations:
-// EnumDescriptor, MessageDescriptor, FieldDescriptor, and/or ServiceDescriptor.
+// [EnumDescriptor], [MessageDescriptor], [FieldDescriptor], and/or [ServiceDescriptor].
 type FileDescriptor interface {
 	Descriptor // Descriptor.FullName is identical to Package
 
@@ -168,11 +168,7 @@ type FileImport struct {
 	// The current file and the imported file must be within proto package.
 	IsPublic bool
 
-	// IsWeak reports whether this is a weak import, which does not impose
-	// a direct dependency on the target file.
-	//
-	// Weak imports are a legacy proto1 feature. Equivalent behavior is
-	// achieved using proto2 extension fields or proto3 Any messages.
+	// Deprecated: support for weak fields has been removed.
 	IsWeak bool
 }
 
@@ -180,8 +176,8 @@ type FileImport struct {
 // corresponds with the google.protobuf.DescriptorProto message.
 //
 // Nested declarations:
-// FieldDescriptor, OneofDescriptor, FieldDescriptor, EnumDescriptor,
-// and/or MessageDescriptor.
+// [FieldDescriptor], [OneofDescriptor], [FieldDescriptor], [EnumDescriptor],
+// and/or [MessageDescriptor].
 type MessageDescriptor interface {
 	Descriptor
 
@@ -214,7 +210,7 @@ type MessageDescriptor interface {
 	ExtensionRanges() FieldRanges
 	// ExtensionRangeOptions returns the ith extension range options.
 	//
-	// To avoid a dependency cycle, this method returns a proto.Message value,
+	// To avoid a dependency cycle, this method returns a proto.Message] value,
 	// which always contains a google.protobuf.ExtensionRangeOptions message.
 	// This method returns a typed nil-pointer if no options are present.
 	// The caller must import the descriptorpb package to use this.
@@ -231,9 +227,9 @@ type MessageDescriptor interface {
 }
 type isMessageDescriptor interface{ ProtoType(MessageDescriptor) }
 
-// MessageType encapsulates a MessageDescriptor with a concrete Go implementation.
+// MessageType encapsulates a [MessageDescriptor] with a concrete Go implementation.
 // It is recommended that implementations of this interface also implement the
-// MessageFieldTypes interface.
+// [MessageFieldTypes] interface.
 type MessageType interface {
 	// New returns a newly allocated empty message.
 	// It may return nil for synthetic messages representing a map entry.
@@ -249,19 +245,19 @@ type MessageType interface {
 	Descriptor() MessageDescriptor
 }
 
-// MessageFieldTypes extends a MessageType by providing type information
+// MessageFieldTypes extends a [MessageType] by providing type information
 // regarding enums and messages referenced by the message fields.
 type MessageFieldTypes interface {
 	MessageType
 
-	// Enum returns the EnumType for the ith field in Descriptor.Fields.
+	// Enum returns the EnumType for the ith field in MessageDescriptor.Fields.
 	// It returns nil if the ith field is not an enum kind.
 	// It panics if out of bounds.
 	//
 	// Invariant: mt.Enum(i).Descriptor() == mt.Descriptor().Fields(i).Enum()
 	Enum(i int) EnumType
 
-	// Message returns the MessageType for the ith field in Descriptor.Fields.
+	// Message returns the MessageType for the ith field in MessageDescriptor.Fields.
 	// It returns nil if the ith field is not a message or group kind.
 	// It panics if out of bounds.
 	//
@@ -286,8 +282,8 @@ type MessageDescriptors interface {
 // corresponds with the google.protobuf.FieldDescriptorProto message.
 //
 // It is used for both normal fields defined within the parent message
-// (e.g., MessageDescriptor.Fields) and fields that extend some remote message
-// (e.g., FileDescriptor.Extensions or MessageDescriptor.Extensions).
+// (e.g., [MessageDescriptor.Fields]) and fields that extend some remote message
+// (e.g., [FileDescriptor.Extensions] or [MessageDescriptor.Extensions]).
 type FieldDescriptor interface {
 	Descriptor
 
@@ -325,9 +321,7 @@ type FieldDescriptor interface {
 	// specified in the source .proto file.
 	HasOptionalKeyword() bool
 
-	// IsWeak reports whether this is a weak field, which does not impose a
-	// direct dependency on the target type.
-	// If true, then Message returns a placeholder type.
+	// Deprecated: support for weak fields has been removed.
 	IsWeak() bool
 
 	// IsPacked reports whether repeated primitive numeric kinds should be
@@ -344,7 +338,7 @@ type FieldDescriptor interface {
 	// IsMap reports whether this field represents a map,
 	// where the value type for the associated field is a Map.
 	// It is equivalent to checking whether Cardinality is Repeated,
-	// that the Kind is MessageKind, and that Message.IsMapEntry reports true.
+	// that the Kind is MessageKind, and that MessageDescriptor.IsMapEntry reports true.
 	IsMap() bool
 
 	// MapKey returns the field descriptor for the key in the map entry.
@@ -419,7 +413,7 @@ type OneofDescriptor interface {
 
 	// IsSynthetic reports whether this is a synthetic oneof created to support
 	// proto3 optional semantics. If true, Fields contains exactly one field
-	// with HasOptionalKeyword specified.
+	// with FieldDescriptor.HasOptionalKeyword specified.
 	IsSynthetic() bool
 
 	// Fields is a list of fields belonging to this oneof.
@@ -442,10 +436,10 @@ type OneofDescriptors interface {
 	doNotImplement
 }
 
-// ExtensionDescriptor is an alias of FieldDescriptor for documentation.
+// ExtensionDescriptor is an alias of [FieldDescriptor] for documentation.
 type ExtensionDescriptor = FieldDescriptor
 
-// ExtensionTypeDescriptor is an ExtensionDescriptor with an associated ExtensionType.
+// ExtensionTypeDescriptor is an [ExtensionDescriptor] with an associated [ExtensionType].
 type ExtensionTypeDescriptor interface {
 	ExtensionDescriptor
 
@@ -470,12 +464,12 @@ type ExtensionDescriptors interface {
 	doNotImplement
 }
 
-// ExtensionType encapsulates an ExtensionDescriptor with a concrete
+// ExtensionType encapsulates an [ExtensionDescriptor] with a concrete
 // Go implementation. The nested field descriptor must be for a extension field.
 //
 // While a normal field is a member of the parent message that it is declared
-// within (see Descriptor.Parent), an extension field is a member of some other
-// target message (see ExtensionDescriptor.Extendee) and may have no
+// within (see [Descriptor.Parent]), an extension field is a member of some other
+// target message (see [FieldDescriptor.ContainingMessage]) and may have no
 // relationship with the parent. However, the full name of an extension field is
 // relative to the parent that it is declared within.
 //
@@ -510,7 +504,7 @@ type ExtensionType interface {
 	//
 	// ValueOf is more extensive than protoreflect.ValueOf for a given field's
 	// value as it has more type information available.
-	ValueOf(interface{}) Value
+	ValueOf(any) Value
 
 	// InterfaceOf completely unwraps the Value to the underlying Go type.
 	// InterfaceOf panics if the input is nil or does not represent the
@@ -519,20 +513,20 @@ type ExtensionType interface {
 	//
 	// InterfaceOf is able to unwrap the Value further than Value.Interface
 	// as it has more type information available.
-	InterfaceOf(Value) interface{}
+	InterfaceOf(Value) any
 
 	// IsValidValue reports whether the Value is valid to assign to the field.
 	IsValidValue(Value) bool
 
 	// IsValidInterface reports whether the input is valid to assign to the field.
-	IsValidInterface(interface{}) bool
+	IsValidInterface(any) bool
 }
 
 // EnumDescriptor describes an enum and
 // corresponds with the google.protobuf.EnumDescriptorProto message.
 //
 // Nested declarations:
-// EnumValueDescriptor.
+// [EnumValueDescriptor].
 type EnumDescriptor interface {
 	Descriptor
 
@@ -544,11 +538,17 @@ type EnumDescriptor interface {
 	// ReservedRanges is a list of reserved ranges of enum numbers.
 	ReservedRanges() EnumRanges
 
+	// IsClosed reports whether this enum uses closed semantics.
+	// See https://protobuf.dev/programming-guides/enum/#definitions.
+	// Note: the Go protobuf implementation is not spec compliant and treats
+	// all enums as open enums.
+	IsClosed() bool
+
 	isEnumDescriptor
 }
 type isEnumDescriptor interface{ ProtoType(EnumDescriptor) }
 
-// EnumType encapsulates an EnumDescriptor with a concrete Go implementation.
+// EnumType encapsulates an [EnumDescriptor] with a concrete Go implementation.
 type EnumType interface {
 	// New returns an instance of this enum type with its value set to n.
 	New(n EnumNumber) Enum
@@ -610,7 +610,7 @@ type EnumValueDescriptors interface {
 // ServiceDescriptor describes a service and
 // corresponds with the google.protobuf.ServiceDescriptorProto message.
 //
-// Nested declarations: MethodDescriptor.
+// Nested declarations: [MethodDescriptor].
 type ServiceDescriptor interface {
 	Descriptor
 

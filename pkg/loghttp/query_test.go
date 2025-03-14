@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 func TestParseRangeQuery(t *testing.T) {
@@ -280,7 +280,6 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run("", func(t *testing.T) {
 			b, err := jsoniter.Marshal(tt)
 			require.Nil(t, err)

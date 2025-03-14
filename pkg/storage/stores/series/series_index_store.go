@@ -3,6 +3,7 @@ package series
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 
@@ -16,21 +17,21 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	storageerrors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/extract"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	storageerrors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/extract"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -303,7 +304,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		return nil, err
 	}
 
-	results := make([]labels.Labels, len(chunksBySeries)) // Flatten out the per-job results.
+	results := make([]labels.Labels, 0, len(chunksBySeries)) // Flatten out the per-job results.
 	for _, innerSlice := range perJobResults {
 		results = append(results, innerSlice...)
 	}
@@ -314,18 +315,16 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	// Fetch the series IDs from the index
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, nil)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
+	sp.LogKV("series-ids", len(seriesIDs))
 
 	// Lookup the series in the index to get label names.
 	labelNames, err := c.lookupLabelNamesBySeries(ctx, from, through, userID, seriesIDs)
@@ -334,10 +333,10 @@ func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 		if err == series_index.ErrNotSupported {
 			return c.lookupLabelNamesByChunks(ctx, from, through, userID, seriesIDs)
 		}
-		level.Error(log).Log("msg", "lookupLabelNamesBySeries", "err", err)
+		sp.LogKV("msg", "lookupLabelNamesBySeries", "err", err)
 		return nil, err
 	}
-	level.Debug(log).Log("labelNames", len(labelNames))
+	sp.LogKV("labelNames", len(labelNames))
 
 	return labelNames, nil
 }
@@ -345,14 +344,12 @@ func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	if len(matchers) != 0 {
 		return c.labelValuesForMetricNameWithMatchers(ctx, userID, from, through, metricName, labelName, matchers...)
 	}
 
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
+	sp.LogKV("from", from, "through", through, "metricName", metricName, "labelName", labelName)
 
 	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
@@ -377,7 +374,7 @@ func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 	return result.Strings(), nil
 }
 
-// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+// labelValuesForMetricNameWithMatchers retrieves all label values for a single label name and metric name.
 func (c *IndexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
@@ -504,12 +501,12 @@ func (c *IndexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context
 }
 
 func (c *IndexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
+	return c.lookupIDsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *IndexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
+func (c *IndexReaderWriter) lookupIDsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
 	var err error
 	var queries []series_index.Query
 	var labelName string
@@ -632,10 +629,8 @@ func (c *IndexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries 
 func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesBySeries")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
-	level.Debug(log).Log("seriesIDs", len(seriesIDs))
+	sp.LogKV("seriesIDs", len(seriesIDs))
 	queries := make([]series_index.Query, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
@@ -644,7 +639,7 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 		}
 		queries = append(queries, qs...)
 	}
-	level.Debug(log).Log("queries", len(queries))
+	sp.LogKV("queries", len(queries))
 	entries := entriesPool.Get().(*[]series_index.Entry)
 	defer entriesPool.Put(entries)
 	err := c.lookupEntriesByQueries(ctx, queries, entries)
@@ -652,7 +647,7 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 		return nil, err
 	}
 
-	level.Debug(log).Log("entries", len(*entries))
+	sp.LogKV("entries", len(*entries))
 
 	var result util.UniqueStrings
 	for _, entry := range *entries {
@@ -669,34 +664,32 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesByChunks")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
 	if err != nil {
-		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
+		sp.LogKV("msg", "lookupChunksBySeries", "err", err)
 		return nil, err
 	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+	sp.LogKV("chunk-ids", len(chunkIDs))
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
-		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
+		sp.LogKV("err", "convertChunkIDsToChunks", "err", err)
 		return nil, err
 	}
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
 	filtered = filterChunksByUniqueFingerprint(filtered)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	sp.LogKV("Chunks post filtering", len(chunks))
 
 	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered)
 	if err != nil {
-		level.Error(log).Log("msg", "FetchChunks", "err", err)
+		sp.LogKV("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
 	return labelNamesFromChunks(allChunks), nil
@@ -757,4 +750,31 @@ func (c *IndexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, 
 // old index stores do not implement label volume -- skip
 func (c *IndexReaderWriter) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
+}
+
+// old index stores do not implement dynamic sharidng -- skip
+func (c *IndexReaderWriter) GetShards(
+	_ context.Context,
+	_ string,
+	_, _ model.Time,
+	_ uint64,
+	_ chunk.Predicate,
+) (*logproto.ShardsResponse, error) {
+	// should not be called for legacy indices at all, so just return a single shard covering everything
+	// could be improved by reading schema shards
+	return &logproto.ShardsResponse{
+		Shards: []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{
+					Min: 0,
+					Max: math.MaxUint64,
+				},
+			},
+		},
+	}, nil
+}
+
+// old index stores do not implement tsdb.ForSeries -- skip
+func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
+	return nil, false
 }

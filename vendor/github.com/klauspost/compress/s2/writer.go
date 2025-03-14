@@ -13,6 +13,8 @@ import (
 	"io"
 	"runtime"
 	"sync"
+
+	"github.com/klauspost/compress/internal/race"
 )
 
 const (
@@ -81,11 +83,14 @@ type Writer struct {
 	snappy            bool
 	flushOnWrite      bool
 	appendIndex       bool
+	bufferCB          func([]byte)
 	level             uint8
 }
 
 type result struct {
 	b []byte
+	// return when writing
+	ret []byte
 	// Uncompressed start offset
 	startOffset int64
 }
@@ -144,6 +149,10 @@ func (w *Writer) Reset(writer io.Writer) {
 		for write := range toWrite {
 			// Wait for the data to be available.
 			input := <-write
+			if input.ret != nil && w.bufferCB != nil {
+				w.bufferCB(input.ret)
+				input.ret = nil
+			}
 			in := input.b
 			if len(in) > 0 {
 				if w.err(nil) == nil {
@@ -213,7 +222,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		return 0, err
 	}
 	if len(w.ibuf) > 0 {
-		err := w.Flush()
+		err := w.AsyncFlush()
 		if err != nil {
 			return 0, err
 		}
@@ -223,7 +232,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		if err := w.EncodeBuffer(buf); err != nil {
 			return 0, err
 		}
-		return int64(len(buf)), w.Flush()
+		return int64(len(buf)), w.AsyncFlush()
 	}
 	for {
 		inbuf := w.buffers.Get().([]byte)[:w.blockSize+obufHeaderLen]
@@ -237,6 +246,9 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			}
 		}
 		if n2 == 0 {
+			if cap(inbuf) >= w.obufLen {
+				w.buffers.Put(inbuf)
+			}
 			break
 		}
 		n += int64(n2)
@@ -271,7 +283,7 @@ func (w *Writer) AddSkippableBlock(id uint8, data []byte) (err error) {
 		return fmt.Errorf("skippable block excessed maximum size")
 	}
 	var header [4]byte
-	chunkLen := 4 + len(data)
+	chunkLen := len(data)
 	header[0] = id
 	header[1] = uint8(chunkLen >> 0)
 	header[2] = uint8(chunkLen >> 8)
@@ -282,7 +294,7 @@ func (w *Writer) AddSkippableBlock(id uint8, data []byte) (err error) {
 			if err = w.err(err); err != nil {
 				return err
 			}
-			if n != len(data) {
+			if n != len(b) {
 				return w.err(io.ErrShortWrite)
 			}
 			w.written += int64(n)
@@ -303,9 +315,7 @@ func (w *Writer) AddSkippableBlock(id uint8, data []byte) (err error) {
 		if err := write(header[:]); err != nil {
 			return err
 		}
-		if err := write(data); err != nil {
-			return err
-		}
+		return write(data)
 	}
 
 	// Create output...
@@ -314,9 +324,9 @@ func (w *Writer) AddSkippableBlock(id uint8, data []byte) (err error) {
 		hWriter := make(chan result)
 		w.output <- hWriter
 		if w.snappy {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunkSnappy)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkSnappyBytes}
 		} else {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunk)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkBytes}
 		}
 	}
 
@@ -338,7 +348,8 @@ func (w *Writer) AddSkippableBlock(id uint8, data []byte) (err error) {
 // but the input buffer cannot be written to by the caller
 // until Flush or Close has been called when concurrency != 1.
 //
-// If you cannot control that, use the regular Write function.
+// Use the WriterBufferDone to receive a callback when the buffer is done
+// Processing.
 //
 // Note that input is not buffered.
 // This means that each write will result in discrete blocks being created.
@@ -354,13 +365,16 @@ func (w *Writer) EncodeBuffer(buf []byte) (err error) {
 	}
 	// Flush queued data first.
 	if len(w.ibuf) > 0 {
-		err := w.Flush()
+		err := w.AsyncFlush()
 		if err != nil {
 			return err
 		}
 	}
 	if w.concurrency == 1 {
 		_, err := w.writeSync(buf)
+		if w.bufferCB != nil {
+			w.bufferCB(buf)
+		}
 		return err
 	}
 
@@ -370,12 +384,12 @@ func (w *Writer) EncodeBuffer(buf []byte) (err error) {
 		hWriter := make(chan result)
 		w.output <- hWriter
 		if w.snappy {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunkSnappy)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkSnappyBytes}
 		} else {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunk)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkBytes}
 		}
 	}
-
+	orgBuf := buf
 	for len(buf) > 0 {
 		// Cut input.
 		uncompressed := buf
@@ -385,6 +399,8 @@ func (w *Writer) EncodeBuffer(buf []byte) (err error) {
 		buf = buf[len(uncompressed):]
 		// Get an output buffer.
 		obuf := w.buffers.Get().([]byte)[:len(uncompressed)+obufHeaderLen]
+		race.WriteSlice(obuf)
+
 		output := make(chan result)
 		// Queue output now, so we keep order.
 		w.output <- output
@@ -392,7 +408,12 @@ func (w *Writer) EncodeBuffer(buf []byte) (err error) {
 			startOffset: w.uncompWritten,
 		}
 		w.uncompWritten += int64(len(uncompressed))
+		if len(buf) == 0 && w.bufferCB != nil {
+			res.ret = orgBuf
+		}
 		go func() {
+			race.ReadSlice(uncompressed)
+
 			checksum := crc(uncompressed)
 
 			// Set to uncompressed.
@@ -474,9 +495,9 @@ func (w *Writer) write(p []byte) (nRet int, errRet error) {
 			hWriter := make(chan result)
 			w.output <- hWriter
 			if w.snappy {
-				hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunkSnappy)}
+				hWriter <- result{startOffset: w.uncompWritten, b: magicChunkSnappyBytes}
 			} else {
-				hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunk)}
+				hWriter <- result{startOffset: w.uncompWritten, b: magicChunkBytes}
 			}
 		}
 
@@ -556,6 +577,9 @@ func (w *Writer) writeFull(inbuf []byte) (errRet error) {
 
 	if w.concurrency == 1 {
 		_, err := w.writeSync(inbuf[obufHeaderLen:])
+		if cap(inbuf) >= w.obufLen {
+			w.buffers.Put(inbuf)
+		}
 		return err
 	}
 
@@ -565,9 +589,9 @@ func (w *Writer) writeFull(inbuf []byte) (errRet error) {
 		hWriter := make(chan result)
 		w.output <- hWriter
 		if w.snappy {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunkSnappy)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkSnappyBytes}
 		} else {
-			hWriter <- result{startOffset: w.uncompWritten, b: []byte(magicChunk)}
+			hWriter <- result{startOffset: w.uncompWritten, b: magicChunkBytes}
 		}
 	}
 
@@ -633,9 +657,9 @@ func (w *Writer) writeSync(p []byte) (nRet int, errRet error) {
 		var n int
 		var err error
 		if w.snappy {
-			n, err = w.writer.Write([]byte(magicChunkSnappy))
+			n, err = w.writer.Write(magicChunkSnappyBytes)
 		} else {
-			n, err = w.writer.Write([]byte(magicChunk))
+			n, err = w.writer.Write(magicChunkBytes)
 		}
 		if err != nil {
 			return 0, w.err(err)
@@ -712,9 +736,9 @@ func (w *Writer) writeSync(p []byte) (nRet int, errRet error) {
 	return nRet, nil
 }
 
-// Flush flushes the Writer to its underlying io.Writer.
-// This does not apply padding.
-func (w *Writer) Flush() error {
+// AsyncFlush writes any buffered bytes to a block and starts compressing it.
+// It does not wait for the output has been written as Flush() does.
+func (w *Writer) AsyncFlush() error {
 	if err := w.err(nil); err != nil {
 		return err
 	}
@@ -733,6 +757,15 @@ func (w *Writer) Flush() error {
 				return err
 			}
 		}
+	}
+	return w.err(nil)
+}
+
+// Flush flushes the Writer to its underlying io.Writer.
+// This does not apply padding.
+func (w *Writer) Flush() error {
+	if err := w.AsyncFlush(); err != nil {
+		return err
 	}
 	if w.output == nil {
 		return w.err(nil)
@@ -903,7 +936,7 @@ func WriterBetterCompression() WriterOption {
 }
 
 // WriterBestCompression will enable better compression.
-// EncodeBetter compresses better than Encode but typically with a
+// EncodeBest compresses better than Encode but typically with a
 // big speed decrease on compression.
 func WriterBestCompression() WriterOption {
 	return func(w *Writer) error {
@@ -922,9 +955,20 @@ func WriterUncompressed() WriterOption {
 	}
 }
 
+// WriterBufferDone will perform a callback when EncodeBuffer has finished
+// writing a buffer to the output and the buffer can safely be reused.
+// If the buffer was split into several blocks, it will be sent after the last block.
+// Callbacks will not be done concurrently.
+func WriterBufferDone(fn func(b []byte)) WriterOption {
+	return func(w *Writer) error {
+		w.bufferCB = fn
+		return nil
+	}
+}
+
 // WriterBlockSize allows to override the default block size.
 // Blocks will be this size or smaller.
-// Minimum size is 4KB and and maximum size is 4MB.
+// Minimum size is 4KB and maximum size is 4MB.
 //
 // Bigger blocks may give bigger throughput on systems with many cores,
 // and will increase compression slightly, but it will limit the possible

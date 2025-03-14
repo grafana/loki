@@ -14,8 +14,8 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
-	ruler_config "github.com/grafana/loki/pkg/ruler/config"
-	"github.com/grafana/loki/pkg/util"
+	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestBuildNotifierConfig(t *testing.T) {

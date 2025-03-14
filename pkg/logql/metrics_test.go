@@ -15,13 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestQueryType(t *testing.T) {
@@ -92,8 +92,8 @@ func TestLogSlowQuery(t *testing.T) {
 
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	logger := log.NewLogfmtLogger(buf)
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")
@@ -160,52 +160,6 @@ func TestLogSeriesQuery(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 }
 
-func Test_testToKeyValues(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		exp  []interface{}
-	}{
-		{
-			name: "canonical-form",
-			in:   "Source=logvolhist",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-			},
-		},
-		{
-			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-				"feature",
-				"beta",
-				"user",
-				"Jinx@grafana.com",
-			},
-		},
-		{
-			name: "empty",
-			in:   "",
-			exp:  []interface{}{},
-		},
-		{
-			name: "non-canonical form",
-			in:   "abc",
-			exp:  []interface{}{},
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := tagsToKeyValues(c.in)
-			assert.Equal(t, c.exp, got)
-		})
-	}
-}
-
 func TestQueryHashing(t *testing.T) {
 	h1 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
 	h2 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
@@ -214,4 +168,41 @@ func TestQueryHashing(t *testing.T) {
 	h3 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
 	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
 	require.Equal(t, h1, h3)
+}
+
+func TestHasMatchEqualLabelFilterBeforeParser(t *testing.T) {
+	cases := []struct {
+		query  string
+		result bool
+	}{
+		{
+			query:  `{env="prod"} |= "id"`,
+			result: false,
+		},
+		{
+			query:  `{env="prod"} |= "id" | level="debug"`,
+			result: true,
+		},
+		{
+			query:  `{env="prod"} |= "id" | logfmt | level="debug"`,
+			result: false,
+		},
+		{
+			query:  `{env="prod"} | level="debug" or level="info"`,
+			result: true,
+		},
+		{
+			query:  `{env="prod"} | level="debug" and level!="info"`,
+			result: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("%s => %v", c.query, c.result), func(t *testing.T) {
+			p := LiteralParams{
+				queryExpr: syntax.MustParseExpr(c.query),
+			}
+			assert.Equal(t, c.result, hasMatchEqualLabelFilterBeforeParser(p))
+		})
+	}
 }

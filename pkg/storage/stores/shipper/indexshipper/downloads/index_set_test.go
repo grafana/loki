@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) {
@@ -26,7 +26,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 		}, util_log.Logger)
 	require.NoError(t, err)
 
-	require.NoError(t, idxSet.Init(false))
+	require.NoError(t, idxSet.Init(false, util_log.Logger))
 
 	return idxSet.(*indexSet), idxSet.Close
 }

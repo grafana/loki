@@ -1,4 +1,4 @@
-// +build mips64 mips64le
+//go:build mips64 || mips64le
 
 package bbolt
 

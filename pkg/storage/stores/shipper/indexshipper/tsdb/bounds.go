@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// TODO(chaudum): Replace with new v1.Interval struct
 type Bounded interface {
 	Bounds() (model.Time, model.Time)
 }
@@ -34,9 +35,13 @@ func newBounds(mint, maxt model.Time) bounds { return bounds{mint: mint, maxt: m
 
 func (b bounds) Bounds() (model.Time, model.Time) { return b.mint, b.maxt }
 
-func Overlap(a, b Bounded) bool {
-	aFrom, aThrough := a.Bounds()
-	bFrom, bThrough := b.Bounds()
+// Overlap checks whether the given chunk or index bounds
+// overlap with the bounds of a query range.
+// chunk/index bounds are defined as [from, through]
+// query bounds are defined as [from, through)
+func Overlap(chk, qry Bounded) bool {
+	chkFrom, chkThrough := chk.Bounds()
+	qryFrom, qryThrough := qry.Bounds()
 
-	return aFrom < bThrough && aThrough > bFrom
+	return chkFrom < qryThrough && chkThrough >= qryFrom
 }

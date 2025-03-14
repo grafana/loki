@@ -1,17 +1,20 @@
 package limiter
 
 import (
-	"github.com/grafana/loki/pkg/bloomcompactor"
-	"github.com/grafana/loki/pkg/bloomgateway"
-	"github.com/grafana/loki/pkg/compactor"
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/ingester"
-	querier_limits "github.com/grafana/loki/pkg/querier/limits"
-	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
-	"github.com/grafana/loki/pkg/ruler"
-	scheduler_limits "github.com/grafana/loki/pkg/scheduler/limits"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	bloombuilder "github.com/grafana/loki/v3/pkg/bloombuild/builder"
+	bloomplanner "github.com/grafana/loki/v3/pkg/bloombuild/planner"
+	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/pattern"
+	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
+	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
+	"github.com/grafana/loki/v3/pkg/ruler"
+	scheduler_limits "github.com/grafana/loki/v3/pkg/scheduler/limits"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 type CombinedLimits interface {
@@ -25,5 +28,8 @@ type CombinedLimits interface {
 	storage.StoreLimits
 	indexgateway.Limits
 	bloomgateway.Limits
-	bloomcompactor.Limits
+	bloomplanner.Limits
+	bloombuilder.Limits
+	pattern.Limits
+	bucket.SSEConfigProvider
 }

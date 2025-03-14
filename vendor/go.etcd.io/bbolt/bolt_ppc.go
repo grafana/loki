@@ -1,4 +1,4 @@
-// +build ppc
+//go:build ppc
 
 package bbolt
 

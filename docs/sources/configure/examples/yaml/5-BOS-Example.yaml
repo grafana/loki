@@ -1,20 +1,19 @@
 # This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
 # The index will be shipped to the storage via tsdb-shipper.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
     - from: 2020-05-15
       store: tsdb
       object_store: bos
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com

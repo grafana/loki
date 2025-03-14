@@ -2,15 +2,14 @@ package syntax
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func NewStringLabelFilter(s string) *string {
@@ -27,10 +26,10 @@ var ParseTestCases = []struct {
 		in: "count_over_time({foo=~`bar\\w+`}[12h] |~ `error\\`)",
 		exp: &RangeAggregationExpr{
 			Operation: "count_over_time",
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left: &PipelineExpr{
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchRegexp, "", "error\\"),
+						newLineFilterExpr(log.LineMatchRegexp, "", "error\\"),
 					},
 					Left: &MatchersExpr{
 						Mts: []*labels.Matcher{
@@ -56,11 +55,11 @@ var ParseTestCases = []struct {
 		in: `count_over_time({foo="bar"}[12h] |= "error")`,
 		exp: &RangeAggregationExpr{
 			Operation: "count_over_time",
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
 					MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "error"),
+						newLineFilterExpr(log.LineMatchEqual, "", "error"),
 					},
 				),
 				Interval: 12 * time.Hour,
@@ -72,10 +71,10 @@ var ParseTestCases = []struct {
 		in: `count_over_time({foo="bar"} |= "error" [12h])`,
 		exp: &RangeAggregationExpr{
 			Operation: "count_over_time",
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}),
-					MultiStageExpr{newLineFilterExpr(labels.MatchEqual, "", "error")},
+					MultiStageExpr{newLineFilterExpr(log.LineMatchEqual, "", "error")},
 				),
 				Interval: 12 * time.Hour,
 			},
@@ -110,7 +109,7 @@ var ParseTestCases = []struct {
 	{
 		in: `count_over_time({ foo = "bar" }[12m])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 12 * time.Minute,
 			},
@@ -120,7 +119,7 @@ var ParseTestCases = []struct {
 	{
 		in: `bytes_over_time({ foo = "bar" }[12m])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 12 * time.Minute,
 			},
@@ -130,7 +129,7 @@ var ParseTestCases = []struct {
 	{
 		in: `bytes_rate({ foo = "bar" }[12m])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 12 * time.Minute,
 			},
@@ -140,7 +139,7 @@ var ParseTestCases = []struct {
 	{
 		in: `rate({ foo = "bar" }[5h])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -189,7 +188,7 @@ var ParseTestCases = []struct {
 	{
 		in: `rate({ foo = "bar" }[5d])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * 24 * time.Hour,
 			},
@@ -199,7 +198,7 @@ var ParseTestCases = []struct {
 	{
 		in: `count_over_time({ foo = "bar" }[1w])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 7 * 24 * time.Hour,
 			},
@@ -209,7 +208,7 @@ var ParseTestCases = []struct {
 	{
 		in: `absent_over_time({ foo = "bar" }[1w])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 7 * 24 * time.Hour,
 			},
@@ -219,7 +218,7 @@ var ParseTestCases = []struct {
 	{
 		in: `sum(rate({ foo = "bar" }[5h]))`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -229,7 +228,7 @@ var ParseTestCases = []struct {
 	{
 		in: `sum(rate({ foo ="bar" }[1y]))`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 365 * 24 * time.Hour,
 			},
@@ -239,7 +238,7 @@ var ParseTestCases = []struct {
 	{
 		in: `avg(count_over_time({ foo = "bar" }[5h])) by (bar,foo)`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -262,7 +261,7 @@ var ParseTestCases = []struct {
 		exp: mustNewVectorAggregationExpr(
 			mustNewLabelReplaceExpr(
 				&RangeAggregationExpr{
-					Left: &LogRange{
+					Left: &LogRangeExpr{
 						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 5 * time.Hour,
 					},
@@ -278,7 +277,7 @@ var ParseTestCases = []struct {
 	{
 		in: `avg(count_over_time({ foo = "bar" }[5h])) by ()`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -291,7 +290,7 @@ var ParseTestCases = []struct {
 	{
 		in: `max without (bar) (count_over_time({ foo = "bar" }[5h]))`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -304,7 +303,7 @@ var ParseTestCases = []struct {
 	{
 		in: `max without () (count_over_time({ foo = "bar" }[5h]))`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -317,7 +316,7 @@ var ParseTestCases = []struct {
 	{
 		in: `topk(10,count_over_time({ foo = "bar" }[5h])) without (bar)`,
 		exp: mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -330,7 +329,7 @@ var ParseTestCases = []struct {
 	{
 		in: `bottomk(30 ,sum(rate({ foo = "bar" }[5h])) by (foo))`,
 		exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -344,7 +343,7 @@ var ParseTestCases = []struct {
 	{
 		in: `max( sum(count_over_time({ foo = "bar" }[5h])) without (foo,bar) ) by (foo)`,
 		exp: mustNewVectorAggregationExpr(mustNewVectorAggregationExpr(&RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				Interval: 5 * time.Hour,
 			},
@@ -364,6 +363,10 @@ var ParseTestCases = []struct {
 	{
 		in:  `absent_over_time({ foo = "bar" }[5h]) by (foo)`,
 		err: logqlmodel.NewParseError("grouping not allowed for absent_over_time aggregation", 0, 0),
+	},
+	{
+		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
+		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
 	},
 	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
@@ -392,8 +395,8 @@ var ParseTestCases = []struct {
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
 				newNestedLineFilterExpr(
-					newLineFilterExpr(labels.MatchEqual, "", "baz"),
-					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+					newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
 				),
 			},
 		),
@@ -404,7 +407,7 @@ var ParseTestCases = []struct {
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
 			MultiStageExpr{
 				newLogfmtParserExpr(nil),
-				newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
+				newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "127.0.0.1"),
 				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 				newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
@@ -417,7 +420,7 @@ var ParseTestCases = []struct {
 		exp: newPipelineExpr(
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+				newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
 			},
 		),
 	},
@@ -427,8 +430,8 @@ var ParseTestCases = []struct {
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
 				newNestedLineFilterExpr(
-					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
-					newLineFilterExpr(labels.MatchEqual, "", "baz"),
+					newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchEqual, "", "baz"),
 				),
 			},
 		),
@@ -440,10 +443,10 @@ var ParseTestCases = []struct {
 			MultiStageExpr{
 				newNestedLineFilterExpr(
 					newNestedLineFilterExpr(
-						newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
-						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
+						newLineFilterExpr(log.LineMatchEqual, "", "baz"),
 					),
-					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
 				),
 			},
 		),
@@ -454,8 +457,8 @@ var ParseTestCases = []struct {
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
 				newNestedLineFilterExpr(
-					newLineFilterExpr(labels.MatchEqual, "", "baz"),
-					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+					newLineFilterExpr(log.LineMatchEqual, OpFilterIP, "123.123.123.123"),
 				),
 			},
 		),
@@ -465,7 +468,7 @@ var ParseTestCases = []struct {
 		exp: newPipelineExpr(
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
-				newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+				newLineFilterExpr(log.LineMatchNotEqual, OpFilterIP, "123.123.123.123"),
 			},
 		),
 	},
@@ -475,8 +478,8 @@ var ParseTestCases = []struct {
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 			MultiStageExpr{
 				newNestedLineFilterExpr(
-					newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
-					newLineFilterExpr(labels.MatchEqual, "", "baz"),
+					newLineFilterExpr(log.LineMatchNotEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchEqual, "", "baz"),
 				),
 			},
 		),
@@ -488,10 +491,10 @@ var ParseTestCases = []struct {
 			MultiStageExpr{
 				newNestedLineFilterExpr(
 					newNestedLineFilterExpr(
-						newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
-						newLineFilterExpr(labels.MatchEqual, "", "baz"),
+						newLineFilterExpr(log.LineMatchNotEqual, OpFilterIP, "123.123.123.123"),
+						newLineFilterExpr(log.LineMatchEqual, "", "baz"),
 					),
-					newLineFilterExpr(labels.MatchNotEqual, OpFilterIP, "123.123.123.123"),
+					newLineFilterExpr(log.LineMatchNotEqual, OpFilterIP, "123.123.123.123"),
 				),
 			},
 		),
@@ -499,19 +502,19 @@ var ParseTestCases = []struct {
 	// label filter for ip-matcher
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
@@ -662,7 +665,7 @@ var ParseTestCases = []struct {
 		in: `{foo="bar"} |= "baz"`,
 		exp: newPipelineExpr(
 			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-			MultiStageExpr{newLineFilterExpr(labels.MatchEqual, "", "baz")},
+			MultiStageExpr{newLineFilterExpr(log.LineMatchEqual, "", "baz")},
 		),
 	},
 	{
@@ -673,12 +676,12 @@ var ParseTestCases = []struct {
 				newNestedLineFilterExpr(
 					newNestedLineFilterExpr(
 						newNestedLineFilterExpr(
-							newLineFilterExpr(labels.MatchEqual, "", "baz"),
-							newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+							newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+							newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 						),
-						newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+						newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 					),
-					newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+					newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 				),
 			},
 		),
@@ -686,19 +689,19 @@ var ParseTestCases = []struct {
 	{
 		in: `count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
 		exp: newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -708,19 +711,19 @@ var ParseTestCases = []struct {
 	{
 		in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])`,
 		exp: newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -730,19 +733,19 @@ var ParseTestCases = []struct {
 	{
 		in: `bytes_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack)[5m])`,
 		exp: newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 						newLabelParserExpr(OpParserTypeUnpack, ""),
 					},
@@ -762,19 +765,19 @@ var ParseTestCases = []struct {
 			`,
 		exp: mustNewLabelReplaceExpr(
 			newRangeAggregationExpr(
-				&LogRange{
+				&LogRangeExpr{
 					Left: newPipelineExpr(
 						newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 						MultiStageExpr{
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
 									newNestedLineFilterExpr(
-										newLineFilterExpr(labels.MatchEqual, "", "baz"),
-										newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+										newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+										newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 									),
-									newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+									newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 								),
-								newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+								newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 							),
 						},
 					),
@@ -789,19 +792,19 @@ var ParseTestCases = []struct {
 	{
 		in: `sum(count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
 		exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -817,19 +820,19 @@ var ParseTestCases = []struct {
 	{
 		in: `sum(bytes_rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (foo)`,
 		exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -845,19 +848,19 @@ var ParseTestCases = []struct {
 	{
 		in: `topk(5,count_over_time(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) without (foo)`,
 		exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -875,19 +878,19 @@ var ParseTestCases = []struct {
 		exp: mustNewVectorAggregationExpr(
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 							MultiStageExpr{
 								newNestedLineFilterExpr(
 									newNestedLineFilterExpr(
 										newNestedLineFilterExpr(
-											newLineFilterExpr(labels.MatchEqual, "", "baz"),
-											newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+											newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+											newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 										),
-										newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+										newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 									),
-									newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+									newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 								),
 							},
 						),
@@ -906,19 +909,19 @@ var ParseTestCases = []struct {
 	{
 		in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
 		exp: newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -928,19 +931,19 @@ var ParseTestCases = []struct {
 	{
 		in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
 		exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -956,19 +959,19 @@ var ParseTestCases = []struct {
 	{
 		in: `topk(5,count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) without (foo)`,
 		exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
-			&LogRange{
+			&LogRangeExpr{
 				Left: newPipelineExpr(
 					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 					MultiStageExpr{
 						newNestedLineFilterExpr(
 							newNestedLineFilterExpr(
 								newNestedLineFilterExpr(
-									newLineFilterExpr(labels.MatchEqual, "", "baz"),
-									newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+									newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+									newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 								),
-								newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+								newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 							),
-							newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+							newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 						),
 					},
 				),
@@ -986,19 +989,19 @@ var ParseTestCases = []struct {
 		exp: mustNewVectorAggregationExpr(
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 							MultiStageExpr{
 								newNestedLineFilterExpr(
 									newNestedLineFilterExpr(
 										newNestedLineFilterExpr(
-											newLineFilterExpr(labels.MatchEqual, "", "baz"),
-											newLineFilterExpr(labels.MatchRegexp, "", "blip"),
+											newLineFilterExpr(log.LineMatchEqual, "", "baz"),
+											newLineFilterExpr(log.LineMatchRegexp, "", "blip"),
 										),
-										newLineFilterExpr(labels.MatchNotEqual, "", "flip"),
+										newLineFilterExpr(log.LineMatchNotEqual, "", "flip"),
 									),
-									newLineFilterExpr(labels.MatchNotRegexp, "", "flap"),
+									newLineFilterExpr(log.LineMatchNotRegexp, "", "flap"),
 								),
 							},
 						),
@@ -1054,7 +1057,7 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1070,7 +1073,7 @@ var ParseTestCases = []struct {
 					nil,
 				),
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1087,7 +1090,7 @@ var ParseTestCases = []struct {
 				),
 			),
 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-				&LogRange{
+				&LogRangeExpr{
 					Left: &MatchersExpr{
 						Mts: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1121,7 +1124,7 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1137,7 +1140,7 @@ var ParseTestCases = []struct {
 					nil,
 				),
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1154,7 +1157,7 @@ var ParseTestCases = []struct {
 				),
 			),
 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-				&LogRange{
+				&LogRangeExpr{
 					Left: &MatchersExpr{
 						Mts: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1184,7 +1187,7 @@ var ParseTestCases = []struct {
 				VectorMatching: &VectorMatching{Card: CardOneToOne},
 			},
 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-				&LogRange{
+				&LogRangeExpr{
 					Left: &MatchersExpr{
 						Mts: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1205,7 +1208,7 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1221,7 +1224,7 @@ var ParseTestCases = []struct {
 					nil,
 				),
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1251,18 +1254,18 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 							}),
 							MultiStageExpr{
-								newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+								newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 							}),
 						Interval: 5 * time.Minute,
 					}, OpRangeTypeCount, nil, nil),
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
@@ -1285,18 +1288,18 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: newPipelineExpr(
 							newMatcherExpr([]*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
 							}),
 							MultiStageExpr{
-								newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+								newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 							}),
 						Interval: 5 * time.Minute,
 					}, OpRangeTypeCount, nil, nil),
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
@@ -1317,7 +1320,7 @@ var ParseTestCases = []struct {
 			},
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left: &MatchersExpr{
 							Mts: []*labels.Matcher{
 								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -1368,7 +1371,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1387,7 +1390,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeUnpack, ""),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
@@ -1407,7 +1410,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewAndLabelFilter(
@@ -1426,7 +1429,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypePattern, "<foo> bar <buzz>"),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewAndLabelFilter(
@@ -1445,7 +1448,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1464,7 +1467,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewAndLabelFilter(
@@ -1483,7 +1486,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1503,7 +1506,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1534,7 +1537,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLineFmtExpr("blip{{ .foo }}blop"),
 			},
 		},
@@ -1545,7 +1548,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1566,7 +1569,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1592,7 +1595,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1638,7 +1641,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
 					LabelFilterer: log.NewOrLabelFilter(
@@ -1659,7 +1662,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1690,7 +1693,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1720,7 +1723,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+					newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1742,7 +1745,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+					newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1764,7 +1767,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+					newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1786,7 +1789,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "namespace", Value: "tns"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "level=error"),
+					newLineFilterExpr(log.LineMatchEqual, "", "level=error"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewAndLabelFilter(
@@ -1808,7 +1811,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				},
 			},
 				5*time.Minute,
@@ -1890,7 +1893,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1921,7 +1924,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1952,7 +1955,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -1983,7 +1986,7 @@ var ParseTestCases = []struct {
 			newLogRange(&PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newLineFilterExpr(labels.MatchEqual, "", "bar"),
+					newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 					newLabelParserExpr(OpParserTypeJSON, ""),
 					&LabelFilterExpr{
 						LabelFilterer: log.NewOrLabelFilter(
@@ -2018,7 +2021,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2057,7 +2060,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2096,7 +2099,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2135,7 +2138,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2174,7 +2177,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2213,7 +2216,7 @@ var ParseTestCases = []struct {
 				newLogRange(&PipelineExpr{
 					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 					MultiStages: MultiStageExpr{
-						newLineFilterExpr(labels.MatchEqual, "", "bar"),
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 						newLabelParserExpr(OpParserTypeJSON, ""),
 						&LabelFilterExpr{
 							LabelFilterer: log.NewOrLabelFilter(
@@ -2263,7 +2266,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2295,7 +2298,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2344,7 +2347,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2376,7 +2379,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2425,7 +2428,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2457,7 +2460,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2506,7 +2509,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2538,7 +2541,7 @@ var ParseTestCases = []struct {
 					newLogRange(&PipelineExpr{
 						Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						MultiStages: MultiStageExpr{
-							newLineFilterExpr(labels.MatchEqual, "", "bar"),
+							newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 							newLabelParserExpr(OpParserTypeJSON, ""),
 							&LabelFilterExpr{
 								LabelFilterer: log.NewOrLabelFilter(
@@ -2574,7 +2577,7 @@ var ParseTestCases = []struct {
 		exp: mustNewBinOpExpr(OpTypeGT, &BinOpOptions{ReturnBool: true, VectorMatching: &VectorMatching{Card: CardOneToMany, Include: []string{"app"}, On: true, MatchingLabels: nil}},
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						Interval: 1 * time.Minute,
 					},
@@ -2586,7 +2589,7 @@ var ParseTestCases = []struct {
 			),
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						Interval: 1 * time.Minute,
 					},
@@ -2605,7 +2608,7 @@ var ParseTestCases = []struct {
 		exp: mustNewBinOpExpr(OpTypeGT, &BinOpOptions{ReturnBool: true, VectorMatching: &VectorMatching{Card: CardOneToMany, Include: nil, On: true, MatchingLabels: nil}},
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						Interval: 1 * time.Minute,
 					},
@@ -2617,7 +2620,7 @@ var ParseTestCases = []struct {
 			),
 			mustNewVectorAggregationExpr(
 				newRangeAggregationExpr(
-					&LogRange{
+					&LogRangeExpr{
 						Left:     newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 						Interval: 1 * time.Minute,
 					},
@@ -2655,7 +2658,7 @@ var ParseTestCases = []struct {
 						newLogRange(&PipelineExpr{
 							Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 							MultiStages: MultiStageExpr{
-								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 								newLabelParserExpr(OpParserTypeJSON, ""),
 								&LabelFilterExpr{
 									LabelFilterer: log.NewOrLabelFilter(
@@ -2687,7 +2690,7 @@ var ParseTestCases = []struct {
 						newLogRange(&PipelineExpr{
 							Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 							MultiStages: MultiStageExpr{
-								newLineFilterExpr(labels.MatchEqual, "", "bar"),
+								newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 								newLabelParserExpr(OpParserTypeJSON, ""),
 								&LabelFilterExpr{
 									LabelFilterer: log.NewOrLabelFilter(
@@ -2791,14 +2794,14 @@ var ParseTestCases = []struct {
 				VectorMatching: &VectorMatching{Card: CardOneToOne},
 			},
 			SampleExpr: &RangeAggregationExpr{
-				Left: &LogRange{
+				Left: &LogRangeExpr{
 					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
 				Operation: "count_over_time",
 			},
 			RHS: &RangeAggregationExpr{
-				Left: &LogRange{
+				Left: &LogRangeExpr{
 					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
@@ -2815,7 +2818,7 @@ var ParseTestCases = []struct {
 				VectorMatching: &VectorMatching{Card: CardOneToOne},
 			},
 			SampleExpr: &RangeAggregationExpr{
-				Left: &LogRange{
+				Left: &LogRangeExpr{
 					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
@@ -2838,7 +2841,7 @@ var ParseTestCases = []struct {
 				VectorMatching: &VectorMatching{},
 			},
 			SampleExpr: &RangeAggregationExpr{
-				Left: &LogRange{
+				Left: &LogRangeExpr{
 					Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 					Interval: 12 * time.Minute,
 				},
@@ -2851,7 +2854,7 @@ var ParseTestCases = []struct {
 					VectorMatching: &VectorMatching{Card: CardOneToOne},
 				},
 				SampleExpr: &RangeAggregationExpr{
-					Left: &LogRange{
+					Left: &LogRangeExpr{
 						Left:     &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 						Interval: 12 * time.Minute,
 					},
@@ -2932,7 +2935,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "bar"),
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
 				newLabelParserExpr(OpParserTypeJSON, ""),
 			},
 		},
@@ -2963,7 +2966,7 @@ var ParseTestCases = []struct {
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 			MultiStages: MultiStageExpr{
-				newLineFilterExpr(labels.MatchEqual, "", "#"),
+				newLineFilterExpr(log.LineMatchEqual, "", "#"),
 			},
 		},
 	},
@@ -3028,7 +3031,7 @@ var ParseTestCases = []struct {
 	{
 		in: `count_over_time({ foo ="bar" } | json layer7_something_specific="layer7_something_specific" [12m])`,
 		exp: &RangeAggregationExpr{
-			Left: &LogRange{
+			Left: &LogRangeExpr{
 				Left: &PipelineExpr{
 					MultiStages: MultiStageExpr{
 						newJSONExpressionParser([]log.LabelExtractionExpr{
@@ -3054,7 +3057,7 @@ var ParseTestCases = []struct {
 				VectorMatching: &VectorMatching{Card: CardOneToOne},
 			},
 			mustNewVectorAggregationExpr(newRangeAggregationExpr(
-				&LogRange{
+				&LogRangeExpr{
 					Left: &MatchersExpr{
 						Mts: []*labels.Matcher{
 							mustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -3144,26 +3147,26 @@ var ParseTestCases = []struct {
 			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
 			MultiStages: MultiStageExpr{
 				&LineFilterExpr{
-					Left: newOrLineFilter(
+					Left: newOrLineFilterExpr(
 						&LineFilterExpr{
 							LineFilter: LineFilter{
-								Ty:    labels.MatchEqual,
+								Ty:    log.LineMatchEqual,
 								Match: "foo",
 							},
 						},
 						&LineFilterExpr{
 							LineFilter: LineFilter{
-								Ty:    labels.MatchEqual,
+								Ty:    log.LineMatchEqual,
 								Match: "bar",
 							},
 						}),
 					LineFilter: LineFilter{
-						Ty:    labels.MatchEqual,
+						Ty:    log.LineMatchEqual,
 						Match: "buzz",
 					},
 					Or: &LineFilterExpr{
 						LineFilter: LineFilter{
-							Ty:    labels.MatchEqual,
+							Ty:    log.LineMatchEqual,
 							Match: "fizz",
 						},
 						IsOrChild: true,
@@ -3173,6 +3176,170 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
+	{
+		in: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchEqual,
+						Match: "foo",
+					},
+					Or: newOrLineFilterExpr(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
+					IsOrChild: false,
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |> "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchPattern,
+						Match: "foo",
+					},
+					Or: newOrLineFilterExpr(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
+					IsOrChild: false,
+				},
+			},
+		},
+	},
+	{
+		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		exp: &MultiVariantExpr{
+			logRange: &LogRangeExpr{
+				Left: &MatchersExpr{
+					Mts: []*labels.Matcher{
+						{
+							Name:  "foo",
+							Value: "bar",
+							Type:  labels.MatchEqual,
+						},
+					},
+				},
+				Interval: 5 * time.Minute,
+				Offset:   0,
+				Unwrap:   nil,
+			},
+			variants: []SampleExpr{
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeCount,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+			},
+		},
+		err: nil,
+	},
+	{
+		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		exp: &MultiVariantExpr{
+			logRange: &LogRangeExpr{
+				Left: &MatchersExpr{
+					Mts: []*labels.Matcher{
+						{
+							Name:  "foo",
+							Value: "bar",
+							Type:  labels.MatchEqual,
+						},
+					},
+				},
+				Interval: 5 * time.Minute,
+				Offset:   0,
+				Unwrap:   nil,
+			},
+			variants: []SampleExpr{
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeCount,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+				&RangeAggregationExpr{
+					Left: &LogRangeExpr{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+									Type:  labels.MatchEqual,
+								},
+							},
+						},
+						Interval: 5 * time.Minute,
+						Offset:   0,
+						Unwrap:   nil,
+					},
+					Operation: OpRangeTypeRate,
+					Params:    new(float64),
+					Grouping:  &Grouping{},
+					err:       nil,
+				},
+			},
+		},
+		err: nil,
+	},
 }
 
 func TestParse(t *testing.T) {
@@ -3180,7 +3347,7 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.exp, ast)
+			AssertExpressions(t, tc.exp, ast)
 		})
 	}
 }
@@ -3226,8 +3393,11 @@ func TestParseMatchers(t *testing.T) {
 				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+
+			if tt.want == nil {
+				require.Nil(t, got)
+			} else {
+				AssertMatchers(t, tt.want, got)
 			}
 		})
 	}
@@ -3319,27 +3489,51 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	expr, err := ParseSampleExpr(query)
 	require.Nil(b, err)
 
-	p, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.EmptyLabels())
-	var (
-		v       float64
-		lbs     log.LabelsResult
-		matches bool
-	)
-	in := []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		v, lbs, matches = sp.Process(0, in)
+
+	for _, p := range extractors {
+		sp := p.ForStream(labels.EmptyLabels())
+		var (
+			v       float64
+			lbs     log.LabelsResult
+			matches bool
+		)
+		in := []byte(
+			`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
+		)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			v, lbs, matches = sp.Process(0, in)
+		}
+		require.True(b, matches)
+		require.Equal(
+			b,
+			labels.FromStrings(
+				"caller",
+				"logging.go:66",
+				"duration",
+				"1.5s",
+				"level",
+				"debug",
+				"method",
+				"POST",
+				"msg",
+				"POST /api/prom/api/v1/query_range (200) 1.5s",
+				"path",
+				"/api/prom/api/v1/query_range",
+				"status",
+				"200",
+				"traceID",
+				"a9d4d8a928d8db1",
+				"ts",
+				"2020-10-02T10:10:42.092268913Z",
+			),
+			lbs.Labels(),
+		)
+		require.Equal(b, 1.0, v)
 	}
-	require.True(b, matches)
-	require.Equal(
-		b,
-		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
-		lbs.Labels(),
-	)
-	require.Equal(b, 1.0, v)
 }
 
 var c []*labels.Matcher

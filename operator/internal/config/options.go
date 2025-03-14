@@ -12,12 +12,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 )
 
 // LoadConfig initializes the controller configuration, optionally overriding the defaults
 // from a provided configuration file.
-func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *ManagedAuthConfig, ctrl.Options, error) {
+func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *TokenCCOAuthConfig, ctrl.Options, error) {
 	options := ctrl.Options{Scheme: scheme}
 	if configFile == "" {
 		return &configv1.ProjectConfig{}, nil, options, nil
@@ -28,13 +28,13 @@ func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectCon
 		return nil, nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
 	}
 
-	managedAuth := discoverManagedAuthConfig()
-	if ctrlCfg.Gates.OpenShift.Enabled && managedAuth != nil {
-		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
+	tokenCCOAuth := discoverTokenCCOAuthConfig()
+	if ctrlCfg.Gates.OpenShift.Enabled && tokenCCOAuth != nil {
+		ctrlCfg.Gates.OpenShift.TokenCCOAuthEnv = true
 	}
 
 	options = mergeOptionsFromFile(options, ctrlCfg)
-	return ctrlCfg, managedAuth, options, nil
+	return ctrlCfg, tokenCCOAuth, options, nil
 }
 
 func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manager.Options {

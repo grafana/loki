@@ -173,7 +173,13 @@ func (s *DDSketch) GetValueAtQuantile(quantile float64) (float64, error) {
 		return math.NaN(), errEmptySketch
 	}
 
-	rank := quantile * (count - 1)
+	// Use an explicit floating point conversion (as per Go specification) to make sure that no
+	// "fused multiply and add" (FMA) operation is used in the following code subtracting values
+	// from `rank`. Not doing so can lead to inconsistent rounding and return value for this
+	// function, depending on the architecture and whether FMA operations are used or not by the
+	// compiler.
+	rank := float64(quantile * (count - 1))
+
 	negativeValueCount := s.negativeValueStore.TotalCount()
 	if rank < negativeValueCount {
 		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
@@ -311,6 +317,23 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 		NegativeValues: s.negativeValueStore.ToProto(),
 		ZeroCount:      s.zeroCount,
 	}
+}
+
+func (s *DDSketch) EncodeProto(w io.Writer) {
+	builder := sketchpb.NewDDSketchBuilder(w)
+
+	builder.SetMapping(func(indexMappingBuilder *sketchpb.IndexMappingBuilder) {
+		s.IndexMapping.EncodeProto(indexMappingBuilder)
+	})
+
+	builder.SetZeroCount(s.zeroCount)
+	builder.SetNegativeValues(func(storeBuilder *sketchpb.StoreBuilder) {
+		s.negativeValueStore.EncodeProto(storeBuilder)
+	})
+
+	builder.SetPositiveValues(func(storeBuilder *sketchpb.StoreBuilder) {
+		s.positiveValueStore.EncodeProto(storeBuilder)
+	})
 }
 
 // FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.

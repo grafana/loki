@@ -21,22 +21,18 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
 	internalbackoff "google.golang.org/grpc/internal/backoff"
-	"google.golang.org/grpc/internal/envconfig"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -59,18 +55,10 @@ var (
 // non-nil error if the server has transitioned into not-serving mode.
 type ServingModeCallback func(addr net.Addr, mode connectivity.ServingMode, err error)
 
-// DrainCallback is the callback that an xDS-enabled server registers to get
-// notified about updates to the Listener configuration. The server is expected
-// to gracefully shutdown existing connections, thereby forcing clients to
-// reconnect and have the new configuration applied to the newly created
-// connections.
-type DrainCallback func(addr net.Addr)
-
 // XDSClient wraps the methods on the XDSClient which are required by
 // the listenerWrapper.
 type XDSClient interface {
-	WatchListener(string, func(xdsresource.ListenerUpdate, error)) func()
-	WatchRouteConfig(string, func(xdsresource.RouteConfigUpdate, error)) func()
+	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
 	BootstrapConfig() *bootstrap.Config
 }
 
@@ -80,38 +68,28 @@ type ListenerWrapperParams struct {
 	Listener net.Listener
 	// ListenerResourceName is the xDS Listener resource to request.
 	ListenerResourceName string
-	// XDSCredsInUse specifies whether or not the user expressed interest to
-	// receive security configuration from the control plane.
-	XDSCredsInUse bool
 	// XDSClient provides the functionality from the XDSClient required here.
 	XDSClient XDSClient
 	// ModeCallback is the callback to invoke when the serving mode changes.
 	ModeCallback ServingModeCallback
-	// DrainCallback is the callback to invoke when the Listener gets a LDS
-	// update.
-	DrainCallback DrainCallback
 }
 
 // NewListenerWrapper creates a new listenerWrapper with params. It returns a
-// net.Listener and a channel which is written to, indicating that the former is
-// ready to be passed to grpc.Serve().
+// net.Listener. It starts in state not serving, which triggers Accept() +
+// Close() on any incoming connections.
 //
 // Only TCP listeners are supported.
-func NewListenerWrapper(params ListenerWrapperParams) (net.Listener, <-chan struct{}) {
+func NewListenerWrapper(params ListenerWrapperParams) net.Listener {
 	lw := &listenerWrapper{
 		Listener:          params.Listener,
 		name:              params.ListenerResourceName,
-		xdsCredsInUse:     params.XDSCredsInUse,
 		xdsC:              params.XDSClient,
 		modeCallback:      params.ModeCallback,
-		drainCallback:     params.DrainCallback,
 		isUnspecifiedAddr: params.Listener.Addr().(*net.TCPAddr).IP.IsUnspecified(),
+		conns:             make(map[*connWrapper]bool),
 
-		mode:        connectivity.ServingModeStarting,
-		closed:      grpcsync.NewEvent(),
-		goodUpdate:  grpcsync.NewEvent(),
-		ldsUpdateCh: make(chan ldsUpdateWithError, 1),
-		rdsUpdateCh: make(chan rdsHandlerUpdate, 1),
+		mode:   connectivity.ServingModeNotServing,
+		closed: grpcsync.NewEvent(),
 	}
 	lw.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[xds-server-listener %p] ", lw))
 
@@ -120,15 +98,13 @@ func NewListenerWrapper(params ListenerWrapperParams) (net.Listener, <-chan stru
 	lisAddr := lw.Listener.Addr().String()
 	lw.addr, lw.port, _ = net.SplitHostPort(lisAddr)
 
-	lw.rdsHandler = newRDSHandler(lw.xdsC, lw.rdsUpdateCh)
-	lw.cancelWatch = lw.xdsC.WatchListener(lw.name, lw.handleListenerUpdate)
-	go lw.run()
-	return lw, lw.goodUpdate.Done()
-}
-
-type ldsUpdateWithError struct {
-	update xdsresource.ListenerUpdate
-	err    error
+	lw.rdsHandler = newRDSHandler(lw.handleRDSUpdate, lw.xdsC, lw.logger)
+	lw.cancelWatch = xdsresource.WatchListener(lw.xdsC, lw.name, &ldsWatcher{
+		parent: lw,
+		logger: lw.logger,
+		name:   lw.name,
+	})
+	return lw
 }
 
 // listenerWrapper wraps the net.Listener associated with the listening address
@@ -138,12 +114,10 @@ type listenerWrapper struct {
 	net.Listener
 	logger *internalgrpclog.PrefixLogger
 
-	name          string
-	xdsCredsInUse bool
-	xdsC          XDSClient
-	cancelWatch   func()
-	modeCallback  ServingModeCallback
-	drainCallback DrainCallback
+	name         string
+	xdsC         XDSClient
+	cancelWatch  func()
+	modeCallback ServingModeCallback
 
 	// Set to true if the listener is bound to the IP_ANY address (which is
 	// "0.0.0.0" for IPv4 and "::" for IPv6).
@@ -152,11 +126,6 @@ type listenerWrapper struct {
 	// Listener resource received from the control plane.
 	addr, port string
 
-	// This is used to notify that a good update has been received and that
-	// Serve() can be invoked on the underlying gRPC server. Using an event
-	// instead of a vanilla channel simplifies the update handler as it need not
-	// keep track of whether the received update is the first one or not.
-	goodUpdate *grpcsync.Event
 	// A small race exists in the XDSClient code between the receipt of an xDS
 	// response and the user cancelling the associated watch. In this window,
 	// the registered callback may be invoked after the watch is canceled, and
@@ -165,26 +134,130 @@ type listenerWrapper struct {
 	// updates received in the callback if this event has fired.
 	closed *grpcsync.Event
 
-	// mu guards access to the current serving mode and the filter chains. The
-	// reason for using an rw lock here is that these fields are read in
-	// Accept() for all incoming connections, but writes happen rarely (when we
-	// get a Listener resource update).
-	mu sync.RWMutex
+	// mu guards access to the current serving mode and the active filter chain
+	// manager.
+	mu sync.Mutex
 	// Current serving mode.
 	mode connectivity.ServingMode
-	// Filter chains received as part of the last good update.
-	filterChains *xdsresource.FilterChainManager
+	// Filter chain manager currently serving.
+	activeFilterChainManager *xdsresource.FilterChainManager
+	// conns accepted with configuration from activeFilterChainManager.
+	conns map[*connWrapper]bool
+
+	// These fields are read/written to in the context of xDS updates, which are
+	// guaranteed to be emitted synchronously from the xDS Client. Thus, they do
+	// not need further synchronization.
+
+	// Pending filter chain manager. Will go active once rdsHandler has received
+	// all the RDS resources this filter chain manager needs.
+	pendingFilterChainManager *xdsresource.FilterChainManager
 
 	// rdsHandler is used for any dynamic RDS resources specified in a LDS
 	// update.
 	rdsHandler *rdsHandler
-	// rdsUpdates are the RDS resources received from the management
-	// server, keyed on the RouteName of the RDS resource.
-	rdsUpdates unsafe.Pointer // map[string]xdsclient.RouteConfigUpdate
-	// ldsUpdateCh is a channel for XDSClient LDS updates.
-	ldsUpdateCh chan ldsUpdateWithError
-	// rdsUpdateCh is a channel for XDSClient RDS updates.
-	rdsUpdateCh chan rdsHandlerUpdate
+}
+
+func (l *listenerWrapper) handleLDSUpdate(update xdsresource.ListenerUpdate) {
+	ilc := update.InboundListenerCfg
+	// Make sure that the socket address on the received Listener resource
+	// matches the address of the net.Listener passed to us by the user. This
+	// check is done here instead of at the XDSClient layer because of the
+	// following couple of reasons:
+	// - XDSClient cannot know the listening address of every listener in the
+	//   system, and hence cannot perform this check.
+	// - this is a very context-dependent check and only the server has the
+	//   appropriate context to perform this check.
+	//
+	// What this means is that the XDSClient has ACKed a resource which can push
+	// the server into a "not serving" mode. This is not ideal, but this is
+	// what we have decided to do.
+	if ilc.Address != l.addr || ilc.Port != l.port {
+		l.mu.Lock()
+		l.switchModeLocked(connectivity.ServingModeNotServing, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		l.mu.Unlock()
+		return
+	}
+
+	l.pendingFilterChainManager = ilc.FilterChains
+	l.rdsHandler.updateRouteNamesToWatch(ilc.FilterChains.RouteConfigNames)
+
+	if l.rdsHandler.determineRouteConfigurationReady() {
+		l.maybeUpdateFilterChains()
+	}
+}
+
+// maybeUpdateFilterChains swaps in the pending filter chain manager to the
+// active one if the pending filter chain manager is present. If a swap occurs,
+// it also drains (gracefully stops) any connections that were accepted on the
+// old active filter chain manager, and puts this listener in state SERVING.
+// Must be called within an xDS Client Callback.
+func (l *listenerWrapper) maybeUpdateFilterChains() {
+	if l.pendingFilterChainManager == nil {
+		// Nothing to update, return early.
+		return
+	}
+
+	l.mu.Lock()
+	l.switchModeLocked(connectivity.ServingModeServing, nil)
+	// "Updates to a Listener cause all older connections on that Listener to be
+	// gracefully shut down with a grace period of 10 minutes for long-lived
+	// RPC's, such that clients will reconnect and have the updated
+	// configuration apply." - A36
+	connsToClose := l.conns
+	l.conns = make(map[*connWrapper]bool)
+	l.activeFilterChainManager = l.pendingFilterChainManager
+	l.pendingFilterChainManager = nil
+	l.instantiateFilterChainRoutingConfigurationsLocked()
+	l.mu.Unlock()
+	go func() {
+		for conn := range connsToClose {
+			conn.Drain()
+		}
+	}()
+
+}
+
+// handleRDSUpdate rebuilds any routing configuration server side for any filter
+// chains that point to this RDS, and potentially makes pending lds
+// configuration to swap to be active.
+func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate) {
+	// Update any filter chains that point to this route configuration.
+	if l.activeFilterChainManager != nil {
+		for _, fc := range l.activeFilterChainManager.FilterChains() {
+			if fc.RouteConfigName != routeName {
+				continue
+			}
+			if rcu.err != nil && rcu.data == nil { // Either NACK before update, or resource not found triggers this conditional.
+				fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{
+					Err: rcu.err,
+				})
+				continue
+			}
+			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data))
+		}
+	}
+	if l.rdsHandler.determineRouteConfigurationReady() {
+		l.maybeUpdateFilterChains()
+	}
+}
+
+// instantiateFilterChainRoutingConfigurationsLocked instantiates all of the
+// routing configuration for the newly active filter chains. For any inline
+// route configurations, uses that, otherwise uses cached rdsHandler updates.
+// Must be called within an xDS Client Callback.
+func (l *listenerWrapper) instantiateFilterChainRoutingConfigurationsLocked() {
+	for _, fc := range l.activeFilterChainManager.FilterChains() {
+		if fc.InlineRouteConfig != nil {
+			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*fc.InlineRouteConfig)) // Can't race with an RPC coming in but no harm making atomic.
+			continue
+		} // Inline configuration constructed once here, will remain for lifetime of filter chain.
+		rcu := l.rdsHandler.updates[fc.RouteConfigName]
+		if rcu.err != nil && rcu.data == nil {
+			fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{Err: rcu.err})
+			continue
+		}
+		fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data)) // Can't race with an RPC coming in but no harm making atomic.
+	}
 }
 
 // Accept blocks on an Accept() on the underlying listener, and wraps the
@@ -229,7 +302,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			return nil, fmt.Errorf("received connection with non-TCP address (local: %T, remote %T)", conn.LocalAddr(), conn.RemoteAddr())
 		}
 
-		l.mu.RLock()
+		l.mu.Lock()
 		if l.mode == connectivity.ServingModeNotServing {
 			// Close connections as soon as we accept them when we are in
 			// "not-serving" mode. Since we accept a net.Listener from the user
@@ -237,18 +310,19 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			// "not-serving". Closing the connection immediately upon accepting
 			// is one of the other ways to implement the "not-serving" mode as
 			// outlined in gRFC A36.
-			l.mu.RUnlock()
+			l.mu.Unlock()
 			conn.Close()
 			continue
 		}
-		fc, err := l.filterChains.Lookup(xdsresource.FilterChainLookupParams{
+
+		fc, err := l.activeFilterChainManager.Lookup(xdsresource.FilterChainLookupParams{
 			IsUnspecifiedListener: l.isUnspecifiedAddr,
 			DestAddr:              destAddr.IP,
 			SourceAddr:            srcAddr.IP,
 			SourcePort:            srcAddr.Port,
 		})
-		l.mu.RUnlock()
 		if err != nil {
+			l.mu.Unlock()
 			// When a matching filter chain is not found, we close the
 			// connection right away, but do not return an error back to
 			// `grpc.Serve()` from where this Accept() was invoked. Returning an
@@ -260,44 +334,21 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			// error, `grpc.Serve()` method sleeps for a small duration and
 			// therefore ends up blocking all connection attempts during that
 			// time frame, which is also not ideal for an error like this.
-			l.logger.Warningf("Connection from %s to %s failed to find any matching filter chain", conn.RemoteAddr().String(), conn.LocalAddr().String())
+			l.logger.Warningf("Connection from %s to %s failed to find any matching filter chain", conn.RemoteAddr(), conn.LocalAddr())
 			conn.Close()
 			continue
 		}
-		if !envconfig.XDSRBAC {
-			return &connWrapper{Conn: conn, filterChain: fc, parent: l}, nil
-		}
-		var rc xdsresource.RouteConfigUpdate
-		if fc.InlineRouteConfig != nil {
-			rc = *fc.InlineRouteConfig
-		} else {
-			rcPtr := atomic.LoadPointer(&l.rdsUpdates)
-			rcuPtr := (*map[string]xdsresource.RouteConfigUpdate)(rcPtr)
-			// This shouldn't happen, but this error protects against a panic.
-			if rcuPtr == nil {
-				return nil, errors.New("route configuration pointer is nil")
-			}
-			rcu := *rcuPtr
-			rc = rcu[fc.RouteConfigName]
-		}
-		// The filter chain will construct a usuable route table on each
-		// connection accept. This is done because preinstantiating every route
-		// table before it is needed for a connection would potentially lead to
-		// a lot of cpu time and memory allocated for route tables that will
-		// never be used. There was also a thought to cache this configuration,
-		// and reuse it for the next accepted connection. However, this would
-		// lead to a lot of code complexity (RDS Updates for a given route name
-		// can come it at any time), and connections aren't accepted too often,
-		// so this reinstantation of the Route Configuration is an acceptable
-		// tradeoff for simplicity.
-		vhswi, err := fc.ConstructUsableRouteConfiguration(rc)
-		if err != nil {
-			l.logger.Warningf("Failed to construct usable route configuration: %v", err)
-			conn.Close()
-			continue
-		}
-		return &connWrapper{Conn: conn, filterChain: fc, parent: l, virtualHosts: vhswi}, nil
+		cw := &connWrapper{Conn: conn, filterChain: fc, parent: l, urc: fc.UsableRouteConfiguration}
+		l.conns[cw] = true
+		l.mu.Unlock()
+		return cw, nil
 	}
+}
+
+func (l *listenerWrapper) removeConn(conn *connWrapper) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.conns, conn)
 }
 
 // Close closes the underlying listener. It also cancels the xDS watch
@@ -313,120 +364,11 @@ func (l *listenerWrapper) Close() error {
 	return nil
 }
 
-// run is a long running goroutine which handles all xds updates. LDS and RDS
-// push updates onto a channel which is read and acted upon from this goroutine.
-func (l *listenerWrapper) run() {
-	for {
-		select {
-		case <-l.closed.Done():
-			return
-		case u := <-l.ldsUpdateCh:
-			l.handleLDSUpdate(u)
-		case u := <-l.rdsUpdateCh:
-			l.handleRDSUpdate(u)
-		}
-	}
-}
-
-// handleLDSUpdate is the callback which handles LDS Updates. It writes the
-// received update to the update channel, which is picked up by the run
-// goroutine.
-func (l *listenerWrapper) handleListenerUpdate(update xdsresource.ListenerUpdate, err error) {
-	if l.closed.HasFired() {
-		l.logger.Warningf("Resource %q received update: %v with error: %v, after listener was closed", l.name, update, err)
-		return
-	}
-	// Remove any existing entry in ldsUpdateCh and replace with the new one, as the only update
-	// listener cares about is most recent update.
-	select {
-	case <-l.ldsUpdateCh:
-	default:
-	}
-	l.ldsUpdateCh <- ldsUpdateWithError{update: update, err: err}
-}
-
-// handleRDSUpdate handles a full rds update from rds handler. On a successful
-// update, the server will switch to ServingModeServing as the full
-// configuration (both LDS and RDS) has been received.
-func (l *listenerWrapper) handleRDSUpdate(update rdsHandlerUpdate) {
-	if l.closed.HasFired() {
-		l.logger.Warningf("RDS received update: %v with error: %v, after listener was closed", update.updates, update.err)
-		return
-	}
-	if update.err != nil {
-		l.logger.Warningf("Received error for rds names specified in resource %q: %+v", l.name, update.err)
-		if xdsresource.ErrType(update.err) == xdsresource.ErrorTypeResourceNotFound {
-			l.switchMode(nil, connectivity.ServingModeNotServing, update.err)
-		}
-		// For errors which are anything other than "resource-not-found", we
-		// continue to use the old configuration.
-		return
-	}
-	atomic.StorePointer(&l.rdsUpdates, unsafe.Pointer(&update.updates))
-
-	l.switchMode(l.filterChains, connectivity.ServingModeServing, nil)
-	l.goodUpdate.Fire()
-}
-
-func (l *listenerWrapper) handleLDSUpdate(update ldsUpdateWithError) {
-	if update.err != nil {
-		l.logger.Warningf("Received error for resource %q: %+v", l.name, update.err)
-		if xdsresource.ErrType(update.err) == xdsresource.ErrorTypeResourceNotFound {
-			l.switchMode(nil, connectivity.ServingModeNotServing, update.err)
-		}
-		// For errors which are anything other than "resource-not-found", we
-		// continue to use the old configuration.
-		return
-	}
-
-	// Make sure that the socket address on the received Listener resource
-	// matches the address of the net.Listener passed to us by the user. This
-	// check is done here instead of at the XDSClient layer because of the
-	// following couple of reasons:
-	// - XDSClient cannot know the listening address of every listener in the
-	//   system, and hence cannot perform this check.
-	// - this is a very context-dependent check and only the server has the
-	//   appropriate context to perform this check.
-	//
-	// What this means is that the XDSClient has ACKed a resource which can push
-	// the server into a "not serving" mode. This is not ideal, but this is
-	// what we have decided to do. See gRPC A36 for more details.
-	ilc := update.update.InboundListenerCfg
-	if ilc.Address != l.addr || ilc.Port != l.port {
-		l.switchMode(nil, connectivity.ServingModeNotServing, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
-		return
-	}
-
-	// "Updates to a Listener cause all older connections on that Listener to be
-	// gracefully shut down with a grace period of 10 minutes for long-lived
-	// RPC's, such that clients will reconnect and have the updated
-	// configuration apply." - A36 Note that this is not the same as moving the
-	// Server's state to ServingModeNotServing. That prevents new connections
-	// from being accepted, whereas here we simply want the clients to reconnect
-	// to get the updated configuration.
-	if envconfig.XDSRBAC {
-		if l.drainCallback != nil {
-			l.drainCallback(l.Listener.Addr())
-		}
-	}
-	l.rdsHandler.updateRouteNamesToWatch(ilc.FilterChains.RouteConfigNames)
-	// If there are no dynamic RDS Configurations still needed to be received
-	// from the management server, this listener has all the configuration
-	// needed, and is ready to serve.
-	if len(ilc.FilterChains.RouteConfigNames) == 0 {
-		l.switchMode(ilc.FilterChains, connectivity.ServingModeServing, nil)
-		l.goodUpdate.Fire()
-	}
-}
-
-// switchMode updates the value of serving mode and filter chains stored in the
-// listenerWrapper. And if the serving mode has changed, it invokes the
-// registered mode change callback.
-func (l *listenerWrapper) switchMode(fcs *xdsresource.FilterChainManager, newMode connectivity.ServingMode, err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.filterChains = fcs
+// switchModeLocked switches the current mode of the listener wrapper. It also
+// gracefully closes any connections if the listener wrapper transitions into
+// not serving. If the serving mode has changed, it invokes the registered mode
+// change callback.
+func (l *listenerWrapper) switchModeLocked(newMode connectivity.ServingMode, err error) {
 	if l.mode == newMode && l.mode == connectivity.ServingModeServing {
 		// Redundant updates are suppressed only when we are SERVING and the new
 		// mode is also SERVING. In the other case (where we are NOT_SERVING and the
@@ -436,7 +378,77 @@ func (l *listenerWrapper) switchMode(fcs *xdsresource.FilterChainManager, newMod
 		return
 	}
 	l.mode = newMode
+	if l.mode == connectivity.ServingModeNotServing {
+		connsToClose := l.conns
+		l.conns = make(map[*connWrapper]bool)
+		go func() {
+			for conn := range connsToClose {
+				conn.Drain()
+			}
+		}()
+	}
+	// The XdsServer API will allow applications to register a "serving state"
+	// callback to be invoked when the server begins serving and when the
+	// server encounters errors that force it to be "not serving". If "not
+	// serving", the callback must be provided error information, for
+	// debugging use by developers - A36.
 	if l.modeCallback != nil {
 		l.modeCallback(l.Listener.Addr(), newMode, err)
 	}
+}
+
+func (l *listenerWrapper) onLDSResourceDoesNotExist(err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.switchModeLocked(connectivity.ServingModeNotServing, err)
+	l.activeFilterChainManager = nil
+	l.pendingFilterChainManager = nil
+	l.rdsHandler.updateRouteNamesToWatch(make(map[string]bool))
+}
+
+// ldsWatcher implements the xdsresource.ListenerWatcher interface and is
+// passed to the WatchListener API.
+type ldsWatcher struct {
+	parent *listenerWrapper
+	logger *internalgrpclog.PrefixLogger
+	name   string
+}
+
+func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData, onDone xdsresource.OnDoneFunc) {
+	defer onDone()
+	if lw.parent.closed.HasFired() {
+		lw.logger.Warningf("Resource %q received update: %#v after listener was closed", lw.name, update)
+		return
+	}
+	if lw.logger.V(2) {
+		lw.logger.Infof("LDS watch for resource %q received update: %#v", lw.name, update.Resource)
+	}
+	lw.parent.handleLDSUpdate(update.Resource)
+}
+
+func (lw *ldsWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+	defer onDone()
+	if lw.parent.closed.HasFired() {
+		lw.logger.Warningf("Resource %q received error: %v after listener was closed", lw.name, err)
+		return
+	}
+	if lw.logger.V(2) {
+		lw.logger.Infof("LDS watch for resource %q reported error: %v", lw.name, err)
+	}
+	// For errors which are anything other than "resource-not-found", we
+	// continue to use the old configuration.
+}
+
+func (lw *ldsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
+	defer onDone()
+	if lw.parent.closed.HasFired() {
+		lw.logger.Warningf("Resource %q received resource-does-not-exist error after listener was closed", lw.name)
+		return
+	}
+	if lw.logger.V(2) {
+		lw.logger.Infof("LDS watch for resource %q reported resource-does-not-exist error", lw.name)
+	}
+
+	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type Listener not found in received response", lw.name)
+	lw.parent.onLDSResourceDoesNotExist(err)
 }

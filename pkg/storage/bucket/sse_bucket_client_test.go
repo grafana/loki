@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
 func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 				Insecure:        true,
 			}
 
-			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger())
+			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger(), nil)
 			require.NoError(t, err)
 
 			// Configure the config provider with NO KMS key ID.

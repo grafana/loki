@@ -1,0 +1,120 @@
+name: Reusable - Create operator hub pull request
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        type: string
+        required: true
+      repo:
+        type: string
+        required: true
+    secrets:
+      APP_ID:
+        type: string
+        required: true
+      APP_PRIVATE_KEY:
+        type: string
+        required: true
+
+jobs:
+  create-operator-pull-request:
+    runs-on: ubuntu-latest
+    steps:
+      - id: "get_github_app_token"
+        name: Get GitHub App Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: Set redhat-openshift-ecosystem specific variables
+        if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
+        env:
+          ocpDir: '-openshift'
+          ocpSupportedVersions: 'v4.12'
+        run: |
+          echo "ocpDir=${ocpDir}" >> $GITHUB_ENV
+          echo "ocpSupportedVersions=${ocpSupportedVersions}" >> $GITHUB_ENV
+
+      - name: Set version as env variable
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo $TAG
+          TAG=${TAG:10} # remove "operator/v" (prefix)
+          echo version=${TAG} >> $GITHUB_ENV # update GitHub ENV vars
+
+      - name: Sync fork
+        env:
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+        run: |
+          # synchronizing the fork is fast, and avoids the need to fetch the full upstream repo
+          # (fetching the upstream repo with "--depth 1" would lead to "shallow update not allowed"
+          #  error when pushing back to the origin repo)
+          gh repo sync grafanabot/${{ inputs.repo }} \
+              --source ${{ inputs.org }}/${{ inputs.repo }} \
+              --force
+
+      - name: Checkout operatorhub repo
+        uses: actions/checkout@v4
+        with:
+          repository: grafanabot/${{ inputs.repo }}
+          token: ${{ steps.get_github_app_token.outputs.token }}
+
+      - name: Checkout loki to tmp/ directory
+        uses: actions/checkout@v4
+        with:
+          repository: grafana/loki
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          path: tmp/
+
+      - name: Update version
+        env:
+          VERSION: ${{ env.version }}
+          OCP_DIR: ${{ env.ocpDir || ''}}
+        run: |
+          mkdir operators/loki-operator/${VERSION}
+          cp -R ./tmp/operator/bundle/community${OCP_DIR}/* operators/loki-operator/${VERSION}
+          rm -f "operators/loki-operator/${VERSION}/bundle.Dockerfile"
+          rm -rf ./tmp
+
+      - name: Add OpenShift Supported versions to redhat catalog
+        if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
+        uses: fjogeleit/yaml-update-action@main
+        with:
+          valueFile: "operators/loki-operator/${{ env.version }}/metadata/annotations.yaml"
+          propertyPath: "annotations['com.redhat.openshift.versions']"
+          value: ${{ env.ocpSupportedVersions }}
+          commitChange: false
+
+      - name: Use CLA approved github bot
+        run: |
+          git config user.name grafanabot
+          git config user.email 43478413+grafanabot@users.noreply.github.com
+
+      - name: Create pull request against ${{ inputs.org }}/${{ inputs.repo }}
+        env:
+          VERSION: ${{ env.version }}
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+        run: |
+          message="Update the loki-operator to $VERSION"
+          body="Release loki-operator \`$VERSION\`.
+
+          cc @periklis @xperimental @JoaoBraveCoding @btaani @shwetaap
+          "
+          branch="update-loki-operator-to-${VERSION}"
+
+          # gh pr create doesn't have a way to explicitly specify different head and base
+          # repositories currently, but it will implicitly pick up the head from a different
+          # repository if you set up a tracking branch
+
+          git checkout -b $branch
+          git add -A
+          git commit -s -m "$message"
+          git push -f --set-upstream origin $branch
+          gh pr create --title "$message" \
+                       --body "$body" \
+                       --repo ${{ inputs.org }}/${{ inputs.repo }} \
+                       --base main

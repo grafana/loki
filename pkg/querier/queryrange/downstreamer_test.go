@@ -17,12 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func testSampleStreams() []queryrangebase.SampleStream {
@@ -235,6 +238,7 @@ func TestInstanceFor(t *testing.T) {
 			logproto.BACKWARD,
 			1000,
 			nil,
+			nil,
 		)
 		require.NoError(t, err)
 		return params
@@ -290,7 +294,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 0, Of: 2},
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -298,7 +302,7 @@ func TestInstanceFor(t *testing.T) {
 				Params: logql.ParamsWithShardsOverride{
 					Params: newParams(),
 					ShardsOverride: logql.Shards{
-						{Shard: 1, Of: 2},
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 1, Of: 2}),
 					}.Encode(),
 				},
 			},
@@ -326,6 +330,84 @@ func TestInstanceFor(t *testing.T) {
 	ensureParallelism(t, in, in.parallelism)
 }
 
+func TestParamsToLokiRequest(t *testing.T) {
+	// Usually, queryrangebase.Request converted into Params and passed to downstream engine
+	// And converted back to queryrangebase.Request from the params before executing those queries.
+	// This test makes sure, we don't loose `CachingOption` during this transformation.
+
+	ts := time.Now()
+	qs := `sum(rate({foo="bar"}[2h] offset 1h))`
+
+	cases := []struct {
+		name    string
+		caching resultscache.CachingOptions
+		expReq  queryrangebase.Request
+	}{
+		{
+			"instant-query-cache-enabled",
+			resultscache.CachingOptions{
+				Disabled: false,
+			},
+			&LokiInstantRequest{
+				Query:       qs,
+				Limit:       1000,
+				TimeTs:      ts,
+				Direction:   logproto.BACKWARD,
+				Path:        "/loki/api/v1/query",
+				Shards:      nil,
+				StoreChunks: nil,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(qs),
+				},
+				CachingOptions: resultscache.CachingOptions{
+					Disabled: false,
+				},
+			},
+		},
+		{
+			"instant-query-cache-disabled",
+			resultscache.CachingOptions{
+				Disabled: true,
+			},
+			&LokiInstantRequest{
+				Query:       qs,
+				Limit:       1000,
+				TimeTs:      ts,
+				Direction:   logproto.BACKWARD,
+				Path:        "/loki/api/v1/query",
+				Shards:      nil,
+				StoreChunks: nil,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(qs),
+				},
+				CachingOptions: resultscache.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			params, err := logql.NewLiteralParamsWithCaching(
+				`sum(rate({foo="bar"}[2h] offset 1h))`,
+				ts,
+				ts,
+				0,
+				0,
+				logproto.BACKWARD,
+				1000,
+				nil,
+				nil,
+				tc.caching,
+			)
+			require.NoError(t, err)
+			req := ParamsToLokiRequest(params)
+			require.Equal(t, tc.expReq, req)
+		})
+	}
+}
+
 func TestInstanceDownstream(t *testing.T) {
 	t.Run("Downstream simple query", func(t *testing.T) {
 		ts := time.Unix(1, 0)
@@ -338,6 +420,7 @@ func TestInstanceDownstream(t *testing.T) {
 			0,
 			logproto.BACKWARD,
 			1000,
+			nil,
 			nil,
 		)
 		require.NoError(t, err)
@@ -363,8 +446,10 @@ func TestInstanceDownstream(t *testing.T) {
 		queries := []logql.DownstreamQuery{
 			{
 				Params: logql.ParamsWithShardsOverride{
-					Params:         logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
-					ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
+					Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+					ShardsOverride: logql.Shards{
+						logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 0, Of: 2}),
+					}.Encode(),
 				},
 			},
 		}
@@ -408,6 +493,7 @@ func TestInstanceDownstream(t *testing.T) {
 			0,
 			logproto.BACKWARD,
 			1000,
+			nil,
 			nil,
 		)
 		require.NoError(t, err)

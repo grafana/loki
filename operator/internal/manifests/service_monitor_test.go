@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 // Test that all serviceMonitor match the labels of their services so that we know all serviceMonitor
@@ -99,7 +100,6 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -190,7 +190,6 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -199,8 +198,8 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 			require.NotNil(t, tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig)
 
 			// Do not use bearer authentication for loki endpoints
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenFile)
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenSecret)
+			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenFile)   //nolint:staticcheck
+			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenSecret) //nolint:staticcheck
 
 			// Check using built-in PKI
 			c := tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig
@@ -275,11 +274,14 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
 					Scheme: "https",
-					BearerTokenSecret: corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-gateway-token",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
 						},
-						Key: corev1.ServiceAccountTokenKey,
 					},
 					TLSConfig: &monitoringv1.TLSConfig{
 						SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -291,7 +293,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -359,11 +361,14 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
 					Scheme: "https",
-					BearerTokenSecret: corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-gateway-token",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
 						},
-						Key: corev1.ServiceAccountTokenKey,
 					},
 					TLSConfig: &monitoringv1.TLSConfig{
 						SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -375,7 +380,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -383,11 +388,14 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 					Port:   "opa-metrics",
 					Path:   "/metrics",
 					Scheme: "https",
-					BearerTokenSecret: corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-gateway-token",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
 						},
-						Key: corev1.ServiceAccountTokenKey,
 					},
 					TLSConfig: &monitoringv1.TLSConfig{
 						SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -399,7 +407,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -467,11 +475,14 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
 					Scheme: "https",
-					BearerTokenSecret: corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-gateway-token",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
 						},
-						Key: corev1.ServiceAccountTokenKey,
 					},
 					TLSConfig: &monitoringv1.TLSConfig{
 						SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -483,7 +494,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -491,11 +502,14 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 					Port:   "opa-metrics",
 					Path:   "/metrics",
 					Scheme: "https",
-					BearerTokenSecret: corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-gateway-token",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
 						},
-						Key: corev1.ServiceAccountTokenKey,
 					},
 					TLSConfig: &monitoringv1.TLSConfig{
 						SafeTLSConfig: monitoringv1.SafeTLSConfig{
@@ -507,7 +521,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -516,7 +530,6 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			sm := NewGatewayServiceMonitor(tc.opts)

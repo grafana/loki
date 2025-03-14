@@ -4,22 +4,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	fl := &fakeLimits{
-		limits: map[string]string{
-			"1": "filter-only",
-			"2": "disabled",
+		tenantLimits: map[string]limit{
+			"1": {deletionMode: "filter-only"},
+			"2": {deletionMode: "disabled"},
 		},
 	}
 
 	// Setup handler
-	middle := TenantMiddleware(fl, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-
+	middle := TenantMiddleware(fl).Wrap(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	// User that has deletion enabled
 	req := httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "1"))
@@ -47,15 +51,38 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, res.Result().StatusCode)
 }
 
+type limit struct {
+	deletionMode    string
+	retentionPeriod time.Duration
+	streamRetention []validation.StreamRetention
+}
+
 type fakeLimits struct {
-	limits map[string]string
-	mode   string
+	tenantLimits map[string]limit
+	defaultLimit limit
+}
+
+func (f *fakeLimits) getLimitForUser(userID string) limit {
+	limit := f.defaultLimit
+	if override, ok := f.tenantLimits[userID]; ok {
+		limit = override
+	}
+
+	return limit
 }
 
 func (f *fakeLimits) DeletionMode(userID string) string {
-	if f.mode != "" {
-		return f.mode
-	}
+	return f.getLimitForUser(userID).deletionMode
+}
 
-	return f.limits[userID]
+func (f *fakeLimits) RetentionPeriod(userID string) time.Duration {
+	return f.getLimitForUser(userID).retentionPeriod
+}
+
+func (f *fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
+	return f.getLimitForUser(userID).streamRetention
+}
+
+func (f *fakeLimits) RetentionHours(userID string, _ labels.Labels) string {
+	return util.RetentionHours(f.getLimitForUser(userID).retentionPeriod)
 }

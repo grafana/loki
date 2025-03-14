@@ -4,20 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/compression"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keyspaces []v1.FingerprintBounds) []Meta {
@@ -72,6 +74,7 @@ func TestMetasFetcher(t *testing.T) {
 		start []Meta // initial cache state
 		end   []Meta // final cache state
 		fetch []Meta // metas to fetch
+		err   error  // error that is returned when calling cache.Fetch()
 	}{
 		{
 			name:  "all metas found in cache",
@@ -94,13 +97,23 @@ func TestMetasFetcher(t *testing.T) {
 			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
 			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
 		},
+		{
+			name:  "error fetching metas yields empty result",
+			err:   errors.New("failed to fetch"),
+			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
+			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			fetch: []Meta{},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			metasCache := cache.NewMockCache()
-			cfg := bloomStoreConfig{workingDir: t.TempDir(), numWorkers: 1}
+			metasCache.SetErr(nil, test.err)
+
+			cfg := bloomStoreConfig{workingDirs: []string{t.TempDir()}, numWorkers: 1}
 
 			oc, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 			require.NoError(t, err)
@@ -108,7 +121,7 @@ func TestMetasFetcher(t *testing.T) {
 			c, err := NewBloomClient(cfg, oc, logger)
 			require.NoError(t, err)
 
-			fetcher, err := NewFetcher(cfg, c, metasCache, nil, logger)
+			fetcher, err := NewFetcher(cfg, c, metasCache, nil, nil, logger, v1.NewMetrics(nil))
 			require.NoError(t, err)
 
 			// prepare metas cache
@@ -139,23 +152,193 @@ func TestMetasFetcher(t *testing.T) {
 	}
 }
 
+func TestFetchOptions(t *testing.T) {
+	options := &options{
+		ignoreNotFound: false,
+		fetchAsync:     false,
+	}
+
+	options.apply(WithFetchAsync(true), WithIgnoreNotFound(true))
+
+	require.True(t, options.fetchAsync)
+	require.True(t, options.ignoreNotFound)
+}
+
+func TestFetcher_DownloadQueue(t *testing.T) {
+	t.Run("invalid arguments", func(t *testing.T) {
+		for _, tc := range []struct {
+			size, workers int
+			err           string
+		}{
+			{
+				size: 0, workers: 1, err: "queue size needs to be greater than 0",
+			},
+			{
+				size: 1, workers: 0, err: "queue requires at least 1 worker",
+			},
+		} {
+			t.Run(tc.err, func(t *testing.T) {
+				_, err := newDownloadQueue[bool, bool](
+					tc.size,
+					tc.workers,
+					func(_ context.Context, _ downloadRequest[bool, bool]) {},
+					log.NewNopLogger(),
+				)
+				require.ErrorContains(t, err, tc.err)
+			})
+		}
+	})
+
+	t.Run("cancelled context", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, _ downloadRequest[bool, bool]) {},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.Error(t, err)
+		case res := <-resultsCh:
+			require.False(t, true, "got %+v should have received an error instead", res)
+		}
+
+	})
+
+	t.Run("process function is called with context and request as arguments", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		t.Cleanup(q.close)
+
+		resultsCh := make(chan downloadResponse[bool], 1)
+		errorsCh := make(chan error, 1)
+
+		r := downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     0,
+			results: resultsCh,
+			errors:  errorsCh,
+		}
+		q.enqueue(r)
+
+		select {
+		case err := <-errorsCh:
+			require.False(t, true, "got %+v should have received a response instead", err)
+		case res := <-resultsCh:
+			require.True(t, res.item)
+			require.Equal(t, r.key, res.key)
+			require.Equal(t, r.idx, res.idx)
+		}
+
+	})
+
+	t.Run("download multiple items and return in order", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		count := 10
+		resultsCh := make(chan downloadResponse[bool], count)
+		errorsCh := make(chan error, count)
+
+		reqs := buildDownloadRequest(ctx, count, resultsCh, errorsCh)
+		for _, r := range reqs {
+			q.enqueue(r)
+		}
+
+		for i := 0; i < count; i++ {
+			select {
+			case err := <-errorsCh:
+				require.False(t, true, "got %+v should have received a response instead", err)
+			case res := <-resultsCh:
+				require.True(t, res.item)
+				require.Equal(t, reqs[i].key, res.key)
+				require.Equal(t, reqs[i].idx, res.idx)
+			}
+		}
+	})
+}
+
+func buildDownloadRequest(ctx context.Context, count int, resCh chan downloadResponse[bool], errCh chan error) []downloadRequest[bool, bool] {
+	requests := make([]downloadRequest[bool, bool], count)
+	for i := 0; i < count; i++ {
+		requests[i] = downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     i,
+			results: resCh,
+			errors:  errCh,
+		}
+	}
+	return requests
+}
+
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	base := t.TempDir()
-	cfg := bloomStoreConfig{workingDir: base, numWorkers: 1}
+	cfg := bloomStoreConfig{workingDirs: []string{base}, numWorkers: 1}
 	resolver := NewPrefixedResolver(base, defaultKeyResolver{})
 
 	refs := []BlockRef{
 		// no directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Codec: compression.None},
 		// invalid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Codec: compression.Snappy},
 		// valid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Codec: compression.GZIP},
 	}
 	dirs := []string{
-		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
+		localFilePathWithoutExtension(refs[0], resolver),
+		localFilePathWithoutExtension(refs[1], resolver),
+		localFilePathWithoutExtension(refs[2], resolver),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -168,7 +351,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	c, err := NewBloomClient(cfg, oc, log.NewNopLogger())
 	require.NoError(t, err)
 
-	fetcher, err := NewFetcher(cfg, c, nil, nil, log.NewNopLogger())
+	fetcher, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
 	require.NoError(t, err)
 
 	found, missing, err := fetcher.loadBlocksFromFS(context.Background(), refs)
@@ -177,7 +360,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	require.Len(t, found, 1)
 	require.Len(t, missing, 2)
 
-	require.Equal(t, refs[2], found[0].BlockRef)
+	require.Equal(t, refs[2].Ref, found[0].Ref)
 	require.ElementsMatch(t, refs[0:2], missing)
 }
 
@@ -194,7 +377,13 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	fetcher, _ := NewFetcher(bloomStoreConfig{}, nil, nil, nil, log.NewNopLogger())
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{t.TempDir()},
+	}
+
+	fetcher, err := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(t, err)
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()
@@ -248,16 +437,54 @@ func TestFetcher_IsBlockDir(t *testing.T) {
 	})
 }
 
-func metasFromCache(data map[string][]byte) []Meta {
-	metas := make([]Meta, 0, len(data))
-	for _, v := range data {
-		meta := Meta{
-			MetaRef: MetaRef{},
-		}
-		_ = json.Unmarshal(v, &meta)
-		metas = append(metas, meta)
+func Benchmark_Fetcher_processMetasCacheResponse(b *testing.B) {
+	b.Log(b.N)
+
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{b.TempDir()},
 	}
-	return metas
+
+	c, err := NewBloomClient(cfg, nil, log.NewNopLogger())
+	require.NoError(b, err)
+	f, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(b, err)
+
+	step := math.MaxUint64 / uint64(b.N)
+
+	refs := make([]MetaRef, 0, b.N)
+	keys := make([]string, 0, b.N)
+	bufs := make([][]byte, 0, b.N)
+
+	for i := 0; i < b.N; i++ {
+		minFp := model.Fingerprint(uint64(i) * step)
+		maxFp := model.Fingerprint(uint64(i)*step + step)
+
+		ref := Ref{
+			TenantID:       "fake",
+			TableName:      "tsdb_index_20000",
+			Bounds:         v1.NewBounds(minFp, maxFp),
+			StartTimestamp: model.Earliest,
+			EndTimestamp:   model.Latest,
+		}
+		metaRef := MetaRef{Ref: ref}
+		refs = append(refs, metaRef)
+
+		keys = append(keys, f.client.Meta(metaRef).Addr())
+
+		meta := Meta{
+			MetaRef: metaRef,
+			Blocks:  []BlockRef{{Ref: ref}},
+		}
+
+		buf, _ := json.Marshal(meta)
+		bufs = append(bufs, buf)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	_, _, _ = f.processMetasCacheResponse(context.TODO(), refs, keys, bufs)
 }
 
 func metaRefs(metas []Meta) []MetaRef {

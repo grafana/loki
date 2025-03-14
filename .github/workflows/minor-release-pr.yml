@@ -1,16 +1,26 @@
 concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
+  BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
+  BUILD_TIMEOUT: 60
+  CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
+  DRY_RUN: false
   IMAGE_PREFIX: "grafana"
+  RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
+  USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@release-1.10.x"
+    uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
+      build_image: "grafana/loki-build-image:0.34.6"
+      golang_ci_lint_version: "v1.64.5"
+      release_lib_ref: "main"
       skip_validation: false
+      use_github_app_token: true
   create-release-pr:
     needs:
     - "dist"
@@ -21,7 +31,7 @@ jobs:
     - "loki"
     - "loki-canary"
     - "loki-canary-boringcrypto"
-    - "loki-operator"
+    - "loki-docker-driver"
     - "promtail"
     - "querytee"
     runs-on: "ubuntu-latest"
@@ -35,6 +45,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -45,30 +56,54 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/create-github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - env:
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
       run: |
         npm install
-        echo "Pull request footer: Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}"
         npm exec -- release-please release-pr \
+          --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
-          --label "backport main,autorelease: pending,type/docs" \
-          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/loki-build-artifacts/${SHA}) of ${SHA}" \
+          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --label "backport main,autorelease: pending,product-approved" \
+          --manifest-file .release-please-manifest.json \
+          --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
+          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --release-as "${{ needs.dist.outputs.version }}" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}" \
           --separate-pull-requests false \
-          --debug
+          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+          --token "${{ steps.github_app_token.outputs.token }}" \
+          --dry-run ${{ fromJSON(env.DRY_RUN) }}
+        
       working-directory: "lib"
   dist:
     needs:
     - "version"
+    outputs:
+      version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
     steps:
+    - name: "clean up build tools cache"
+      run: "rm -rf /opt/hostedtoolcache"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
@@ -78,6 +113,10 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
     - id: "get-secrets"
       name: "get nfpm signing keys"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@main"
@@ -91,6 +130,7 @@ jobs:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
         NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
       run: |
         cat <<EOF | docker run \
@@ -104,27 +144,32 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.0"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.34.6"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+          if echo "grafana/loki-build-image:0.34.6" | grep -q "golang"; then
+            /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+          fi
           make dist packages
         EOF
       working-directory: "release"
-    - name: "upload build artifacts"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
         path: "release/dist"
         process_gcloudignore: false
   fluent-bit:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -139,50 +184,54 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.arch }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluent-bit-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
+        path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   fluentd:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -197,50 +246,54 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
-        outputs: "type=docker,dest=release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/fluentd:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.arch }}"
+        tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/fluentd-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
+        path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   logcli:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -255,52 +308,60 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/logcli/Dockerfile"
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   logstash:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -315,50 +376,54 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
-        outputs: "type=docker,dest=release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/logstash:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.arch }}"
+        tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/logstash-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
+        path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   loki:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -373,52 +438,60 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -433,52 +506,60 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki-canary/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary-boringcrypto:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -493,52 +574,60 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
-  loki-operator:
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+  loki-docker-driver:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -561,42 +650,65 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
+        mkdir -p plugins
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        if [[ "${platform}" == "linux/arm64" ]]; then
+          echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
+        else
+          echo "plugin_arch=" >> $GITHUB_OUTPUT
+        fi
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
-        context: "release/operator"
-        file: "release/operator/Dockerfile"
-        outputs: "type=docker,dest=release/images/loki-operator-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/loki-operator:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GOARCH=${{ steps.platform.outputs.platform_short }}
+          BUILD_IMAGE=grafana/loki-build-image:0.34.6
+        context: "release"
+        file: "release/clients/cmd/docker-driver/Dockerfile"
+        outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
+        platforms: "${{ matrix.arch }}"
+        push: false
+        tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "compress rootfs"
+      run: |
+        tar -cf release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
+        -C release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/loki-operator-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins"
+        path: "release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   promtail:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -611,52 +723,60 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/promtail/Dockerfile"
         outputs: "type=docker,dest=release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/promtail:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   querytee:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -671,41 +791,44 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
-      timeout-minutes: 25
-      uses: "docker/build-push-action@v5"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
+        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
-        outputs: "type=docker,dest=release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
-        tags: "${{ env.IMAGE_PREFIX }}/querytee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        platforms: "${{ matrix.arch }}"
+        tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "loki-build-artifacts/${{ github.sha }}/images"
-        path: "release/images/querytee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
+        path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   version:
     needs:
     - "check"
@@ -718,6 +841,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -733,19 +857,58 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "get_github_app_token"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "get github app token"
+      uses: "actions/create-github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+    - id: "github_app_token"
+      name: "set github token"
+      run: |
+        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+        else
+          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+        fi
     - id: "version"
       name: "get release version"
       run: |
         npm install
-        npm exec -- release-please release-pr \
-          --consider-all-branches \
-          --dry-run \
-          --dry-run-output release.json \
-          --release-type simple \
-          --repo-url="${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token="${{ secrets.GH_TOKEN }}" \
-          --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        
+        if [[ -z "${{ env.RELEASE_AS }}" ]]; then
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+        else
+          npm exec -- release-please release-pr \
+            --consider-all-branches \
+            --dry-run \
+            --dry-run-output release.json \
+            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --manifest-file .release-please-manifest.json \
+            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --release-type simple \
+            --repo-url "${{ env.RELEASE_REPO }}" \
+            --separate-pull-requests false \
+            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+            --token "${{ steps.github_app_token.outputs.token }}" \
+            --release-as "${{ env.RELEASE_AS }}"
+        fi
+        
+        cat release.json
         
         if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
@@ -762,7 +925,7 @@ jobs:
           echo "pr_created=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "lib"
-name: "create release PR"
+name: "Prepare Minor Release PR from Weekly"
 "on":
   push:
     branches:

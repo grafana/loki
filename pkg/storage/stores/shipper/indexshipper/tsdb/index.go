@@ -6,8 +6,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type Series struct {
@@ -22,13 +23,22 @@ type ChunkRef struct {
 	Checksum    uint32
 }
 
-// Compares by (Start, End)
+// Compares by (Fp, Start, End, checksum)
 // Assumes User is equivalent
 func (r ChunkRef) Less(x ChunkRef) bool {
+	if r.Fingerprint != x.Fingerprint {
+		return r.Fingerprint < x.Fingerprint
+	}
+
 	if r.Start != x.Start {
 		return r.Start < x.Start
 	}
-	return r.End <= x.End
+
+	if r.End != x.End {
+		return r.End < x.End
+	}
+
+	return r.Checksum < x.Checksum
 }
 
 type shouldIncludeChunk func(index.ChunkMeta) bool
@@ -37,6 +47,7 @@ type Index interface {
 	Bounded
 	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
+	sharding.ForSeries
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
 	// allowing us to avoid unnecessary allocations at the caller's discretion.
@@ -82,5 +93,9 @@ func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStat
 func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
 func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
+	return nil
+}
+
+func (NoopIndex) ForSeries(_ context.Context, _ string, _ index.FingerprintFilter, _ model.Time, _ model.Time, _ func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
 	return nil
 }

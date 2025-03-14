@@ -26,6 +26,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.23
 
 // HorizontalPodAutoscaler is the configuration for a horizontal pod
 // autoscaler, which automatically manages the replica count of any resource
@@ -101,8 +102,6 @@ type CrossVersionObjectReference struct {
 type MetricSpec struct {
 	// type is the type of metric source.  It should be one of "ContainerResource", "External",
 	// "Object", "Pods" or "Resource", each mapping to a matching field in the object.
-	// Note: "ContainerResource" type is available on when the feature-gate
-	// HPAContainerMetrics is enabled
 	Type MetricSourceType `json:"type" protobuf:"bytes,1,name=type"`
 
 	// object refers to a metric describing a single kubernetes object
@@ -129,7 +128,6 @@ type MetricSpec struct {
 	// each pod of the current scale target (e.g. CPU or memory). Such metrics are
 	// built in to Kubernetes, and have special scaling options on top of those
 	// available to normal per-pod metrics using the "pods" source.
-	// This is an alpha feature and can be enabled by the HPAContainerMetrics feature flag.
 	// +optional
 	ContainerResource *ContainerResourceMetricSource `json:"containerResource,omitempty" protobuf:"bytes,7,opt,name=containerResource"`
 
@@ -452,8 +450,6 @@ type HorizontalPodAutoscalerCondition struct {
 type MetricStatus struct {
 	// type is the type of metric source.  It will be one of "ContainerResource", "External",
 	// "Object", "Pods" or "Resource", each corresponds to a matching field in the object.
-	// Note: "ContainerResource" type is available on when the feature-gate
-	// HPAContainerMetrics is enabled
 	Type MetricSourceType `json:"type" protobuf:"bytes,1,name=type"`
 
 	// object refers to a metric describing a single kubernetes object
@@ -573,6 +569,7 @@ type MetricValueStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.23
 
 // HorizontalPodAutoscalerList is a list of horizontal pod autoscaler objects.
 type HorizontalPodAutoscalerList struct {

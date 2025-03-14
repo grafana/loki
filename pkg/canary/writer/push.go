@@ -19,8 +19,8 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 const (
@@ -88,9 +88,9 @@ func NewPush(
 	// setup tls transport
 	if tlsCfg != nil {
 		tlsSettings := config.TLSRoundTripperSettings{
-			CAFile:   caFile,
-			CertFile: certFile,
-			KeyFile:  keyFile,
+			CA:   config.NewFileSecret(caFile),
+			Cert: config.NewFileSecret(certFile),
+			Key:  config.NewFileSecret(keyFile),
 		}
 		rt, err := config.NewTLSRoundTripper(tlsCfg, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil

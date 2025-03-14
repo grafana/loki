@@ -1,3 +1,4 @@
+{{- /*gotype: github.com/grafana/loki/operator/internal/manifests/internal/config.Options*/ -}}
 ---
 overrides:
 {{- $opts := . }}
@@ -54,13 +55,13 @@ overrides:
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
+    {{- if $spec.QueryLimits.MaxVolumeSeries }}
+    max_volume_series: {{ $spec.QueryLimits.MaxVolumeSeries }}
+    {{- end }}
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
-    - {{ with $blockedQuery.Pattern -}}
-      pattern: |
-        {{ . | yamlBlock "        "  }}
-      {{ end -}}
+    - pattern: {{ .Pattern | printf "%q" }}
       {{- with $blockedQuery.Regex }}
       regex: {{ . }}
       {{- end }}
@@ -73,6 +74,57 @@ overrides:
     {{- end }}
     {{- end}}
   {{- end -}}
+  {{- if $otlp := index $opts.OTLPAttributes.Tenants $tenant }}
+    otlp_config:
+      {{- if $otlp.ResourceAttributes  }}
+      resource_attributes:
+        {{- with $otlp.ResourceAttributes}}
+        attributes_config:
+        {{- range . }}
+        - action: {{ .Action }}
+          {{- with .Regex }}
+          regex: {{ . }}
+          {{- end }}
+          {{- with .Names }}
+          attributes:
+          {{- range . }}
+          - {{ . }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+      {{- end}}
+      {{- with $otlp.ScopeAttributes }}
+      scope_attributes:
+      {{- range . }}
+      - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Names }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- with $otlp.LogAttributes }}
+      log_attributes:
+      {{- range . }}
+      - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Names }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+  {{- end }}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d
     {{- with .Streams }}

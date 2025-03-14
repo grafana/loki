@@ -1,10 +1,10 @@
-package limists
+package limits
 
 import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 type TimeRangeLimits interface {

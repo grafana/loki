@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_CloudflareTarget(t *testing.T) {
@@ -65,7 +65,7 @@ func Test_CloudflareTarget(t *testing.T) {
 		logs: []string{},
 	}, nil)
 	// replace the client.
-	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+	getClient = func(_, _ string, _ []string) (Client, error) {
 		return cfClient, nil
 	}
 
@@ -114,7 +114,7 @@ func Test_RetryErrorLogpullReceived(t *testing.T) {
 		err: ErrorLogpullReceived,
 	}, nil).Times(2) // just retry once
 	// replace the client
-	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+	getClient = func(_, _ string, _ []string) (Client, error) {
 		return cfClient, nil
 	}
 	defaultBackoff.MinBackoff = 0
@@ -159,7 +159,7 @@ func Test_RetryErrorIterating(t *testing.T) {
 		err: ErrorLogpullReceived,
 	}, nil).Once()
 	// replace the client.
-	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+	getClient = func(_, _ string, _ []string) (Client, error) {
 		return cfClient, nil
 	}
 	// retries as fast as possible.
@@ -210,7 +210,7 @@ func Test_CloudflareTargetError(t *testing.T) {
 	// setup errors for all retries
 	cfClient.On("LogpullReceived", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("no logs"))
 	// replace the client.
-	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+	getClient = func(_, _ string, _ []string) (Client, error) {
 		return cfClient, nil
 	}
 
@@ -263,7 +263,7 @@ func Test_CloudflareTargetError168h(t *testing.T) {
 	// setup errors for all retries
 	cfClient.On("LogpullReceived", mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("HTTP status 400: bad query: error parsing time: invalid time range: too early: logs older than 168h0m0s are not available"))
 	// replace the client.
-	getClient = func(apiKey, zoneID string, fields []string) (Client, error) {
+	getClient = func(_, _ string, _ []string) (Client, error) {
 		return cfClient, nil
 	}
 

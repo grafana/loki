@@ -1,3 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - ./../openshift
 
@@ -5,26 +8,28 @@ resources:
 namespace: kubernetes-operators
 
 labels:
-- pairs:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/managed-by: operator-lifecycle-manager
-  includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.5.0
-    app.kubernetes.io/version: "0.5.0"
+    app.kubernetes.io/instance: loki-operator-v0.7.1
+    app.kubernetes.io/version: 0.7.1
 
 configMapGenerator:
-- files:
+- behavior: replace
+  files:
   - controller_manager_config.yaml
   name: manager-config
-  behavior: replace
 
-patchesStrategicMerge:
-- manager_related_image_patch.yaml
-- prometheus_service_monitor_patch.yaml
 
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.5.0
+  newTag: 0.7.1
+
+patches:
+- path: manager_related_image_patch.yaml
+- path: manager_resource_reqs_patch.yaml
+- path: prometheus_service_monitor_patch.yaml

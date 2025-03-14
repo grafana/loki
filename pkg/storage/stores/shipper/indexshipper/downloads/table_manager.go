@@ -3,23 +3,26 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -111,12 +114,13 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		return nil, err
 	}
 
+	// Increment the WaitGroup counter here before starting the goroutine
+	tm.wg.Add(1)
 	go tm.loop()
 	return tm, nil
 }
 
 func (tm *tableManager) loop() {
-	tm.wg.Add(1)
 	defer tm.wg.Done()
 
 	syncTicker := time.NewTicker(tm.cfg.SyncInterval)
@@ -130,7 +134,7 @@ func (tm *tableManager) loop() {
 		case <-syncTicker.C:
 			err := tm.syncTables(tm.ctx)
 			if err != nil {
-				level.Error(tm.logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				level.Error(tm.logger).Log("msg", "error syncing local index files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
@@ -152,7 +156,6 @@ func (tm *tableManager) loop() {
 func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
-
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
@@ -179,10 +182,17 @@ func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, c
 }
 
 func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
+	if tm.ctx.Err() != nil {
+		return nil, errors.New("table manager is stopping")
+	}
+
 	// if table is already there, use it.
+	start := time.Now()
 	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
 	tm.tablesMtx.RUnlock()
+
+	level.Info(tm.logger).Log("msg", "get or create table", "found", ok, "table", tableName, "wait_for_lock", time.Since(start))
 
 	if !ok {
 		tm.tablesMtx.Lock()
@@ -192,7 +202,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 		table, ok = tm.tables[tableName]
 		if !ok {
 			// table not found, creating one.
-			level.Info(tm.logger).Log("msg", fmt.Sprintf("downloading all files for table %s", tableName))
+			level.Info(tm.logger).Log("msg", "downloading all files for table", "table", tableName)
 
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
 			err := util.EnsureDirectory(tablePath)
@@ -210,7 +220,8 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
-	defer tm.tablesMtx.RUnlock()
+	tables := slices.Collect(maps.Keys(tm.tables))
+	tm.tablesMtx.RUnlock()
 
 	start := time.Now()
 	var err error
@@ -227,11 +238,29 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 
 	level.Info(tm.logger).Log("msg", "syncing tables")
 
-	for _, table := range tm.tables {
-		err := table.Sync(ctx)
-		if err != nil {
+	for _, name := range tables {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
+
+		level.Debug(tm.logger).Log("msg", "syncing table", "table", name)
+		start := time.Now()
+
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[name]
+		tm.tablesMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
+		err := table.Sync(ctx)
+		duration := time.Since(start).Seconds()
+		if err != nil {
+			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
+			return errors.Wrapf(err, "failed to sync table '%s'", name)
+		}
+		tm.metrics.tableSyncLatency.WithLabelValues(name, statusSuccess).Observe(duration)
 	}
 
 	return nil
@@ -244,10 +273,10 @@ func (tm *tableManager) cleanupCache() error {
 	level.Info(tm.logger).Log("msg", "cleaning tables cache")
 
 	for name, table := range tm.tables {
-		level.Info(tm.logger).Log("msg", fmt.Sprintf("cleaning up expired table %s", name))
+		level.Debug(tm.logger).Log("msg", "cleaning up expired table", "table", name)
 		isEmpty, err := table.DropUnusedIndex(tm.cfg.CacheTTL, time.Now())
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to clean up expired table '%s'", name)
 		}
 
 		if isEmpty {

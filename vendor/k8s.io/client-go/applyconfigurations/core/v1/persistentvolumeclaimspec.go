@@ -19,24 +19,25 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// PersistentVolumeClaimSpecApplyConfiguration represents an declarative configuration of the PersistentVolumeClaimSpec type for use
+// PersistentVolumeClaimSpecApplyConfiguration represents a declarative configuration of the PersistentVolumeClaimSpec type for use
 // with apply.
 type PersistentVolumeClaimSpecApplyConfiguration struct {
-	AccessModes      []v1.PersistentVolumeAccessMode              `json:"accessModes,omitempty"`
-	Selector         *metav1.LabelSelectorApplyConfiguration      `json:"selector,omitempty"`
-	Resources        *ResourceRequirementsApplyConfiguration      `json:"resources,omitempty"`
-	VolumeName       *string                                      `json:"volumeName,omitempty"`
-	StorageClassName *string                                      `json:"storageClassName,omitempty"`
-	VolumeMode       *v1.PersistentVolumeMode                     `json:"volumeMode,omitempty"`
-	DataSource       *TypedLocalObjectReferenceApplyConfiguration `json:"dataSource,omitempty"`
-	DataSourceRef    *TypedObjectReferenceApplyConfiguration      `json:"dataSourceRef,omitempty"`
+	AccessModes               []corev1.PersistentVolumeAccessMode           `json:"accessModes,omitempty"`
+	Selector                  *metav1.LabelSelectorApplyConfiguration       `json:"selector,omitempty"`
+	Resources                 *VolumeResourceRequirementsApplyConfiguration `json:"resources,omitempty"`
+	VolumeName                *string                                       `json:"volumeName,omitempty"`
+	StorageClassName          *string                                       `json:"storageClassName,omitempty"`
+	VolumeMode                *corev1.PersistentVolumeMode                  `json:"volumeMode,omitempty"`
+	DataSource                *TypedLocalObjectReferenceApplyConfiguration  `json:"dataSource,omitempty"`
+	DataSourceRef             *TypedObjectReferenceApplyConfiguration       `json:"dataSourceRef,omitempty"`
+	VolumeAttributesClassName *string                                       `json:"volumeAttributesClassName,omitempty"`
 }
 
-// PersistentVolumeClaimSpecApplyConfiguration constructs an declarative configuration of the PersistentVolumeClaimSpec type for use with
+// PersistentVolumeClaimSpecApplyConfiguration constructs a declarative configuration of the PersistentVolumeClaimSpec type for use with
 // apply.
 func PersistentVolumeClaimSpec() *PersistentVolumeClaimSpecApplyConfiguration {
 	return &PersistentVolumeClaimSpecApplyConfiguration{}
@@ -45,7 +46,7 @@ func PersistentVolumeClaimSpec() *PersistentVolumeClaimSpecApplyConfiguration {
 // WithAccessModes adds the given value to the AccessModes field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the AccessModes field.
-func (b *PersistentVolumeClaimSpecApplyConfiguration) WithAccessModes(values ...v1.PersistentVolumeAccessMode) *PersistentVolumeClaimSpecApplyConfiguration {
+func (b *PersistentVolumeClaimSpecApplyConfiguration) WithAccessModes(values ...corev1.PersistentVolumeAccessMode) *PersistentVolumeClaimSpecApplyConfiguration {
 	for i := range values {
 		b.AccessModes = append(b.AccessModes, values[i])
 	}
@@ -63,7 +64,7 @@ func (b *PersistentVolumeClaimSpecApplyConfiguration) WithSelector(value *metav1
 // WithResources sets the Resources field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Resources field is set to the value of the last call.
-func (b *PersistentVolumeClaimSpecApplyConfiguration) WithResources(value *ResourceRequirementsApplyConfiguration) *PersistentVolumeClaimSpecApplyConfiguration {
+func (b *PersistentVolumeClaimSpecApplyConfiguration) WithResources(value *VolumeResourceRequirementsApplyConfiguration) *PersistentVolumeClaimSpecApplyConfiguration {
 	b.Resources = value
 	return b
 }
@@ -87,7 +88,7 @@ func (b *PersistentVolumeClaimSpecApplyConfiguration) WithStorageClassName(value
 // WithVolumeMode sets the VolumeMode field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the VolumeMode field is set to the value of the last call.
-func (b *PersistentVolumeClaimSpecApplyConfiguration) WithVolumeMode(value v1.PersistentVolumeMode) *PersistentVolumeClaimSpecApplyConfiguration {
+func (b *PersistentVolumeClaimSpecApplyConfiguration) WithVolumeMode(value corev1.PersistentVolumeMode) *PersistentVolumeClaimSpecApplyConfiguration {
 	b.VolumeMode = &value
 	return b
 }
@@ -105,5 +106,13 @@ func (b *PersistentVolumeClaimSpecApplyConfiguration) WithDataSource(value *Type
 // If called multiple times, the DataSourceRef field is set to the value of the last call.
 func (b *PersistentVolumeClaimSpecApplyConfiguration) WithDataSourceRef(value *TypedObjectReferenceApplyConfiguration) *PersistentVolumeClaimSpecApplyConfiguration {
 	b.DataSourceRef = value
+	return b
+}
+
+// WithVolumeAttributesClassName sets the VolumeAttributesClassName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VolumeAttributesClassName field is set to the value of the last call.
+func (b *PersistentVolumeClaimSpecApplyConfiguration) WithVolumeAttributesClassName(value string) *PersistentVolumeClaimSpecApplyConfiguration {
+	b.VolumeAttributesClassName = &value
 	return b
 }

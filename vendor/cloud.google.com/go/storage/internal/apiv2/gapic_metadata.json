@@ -10,6 +10,16 @@
         "grpc": {
           "libraryClient": "Client",
           "rpcs": {
+            "BidiReadObject": {
+              "methods": [
+                "BidiReadObject"
+              ]
+            },
+            "BidiWriteObject": {
+              "methods": [
+                "BidiWriteObject"
+              ]
+            },
             "CancelResumableWrite": {
               "methods": [
                 "CancelResumableWrite"
@@ -25,29 +35,9 @@
                 "CreateBucket"
               ]
             },
-            "CreateHmacKey": {
-              "methods": [
-                "CreateHmacKey"
-              ]
-            },
-            "CreateNotificationConfig": {
-              "methods": [
-                "CreateNotificationConfig"
-              ]
-            },
             "DeleteBucket": {
               "methods": [
                 "DeleteBucket"
-              ]
-            },
-            "DeleteHmacKey": {
-              "methods": [
-                "DeleteHmacKey"
-              ]
-            },
-            "DeleteNotificationConfig": {
-              "methods": [
-                "DeleteNotificationConfig"
               ]
             },
             "DeleteObject": {
@@ -60,19 +50,9 @@
                 "GetBucket"
               ]
             },
-            "GetHmacKey": {
-              "methods": [
-                "GetHmacKey"
-              ]
-            },
             "GetIamPolicy": {
               "methods": [
                 "GetIamPolicy"
-              ]
-            },
-            "GetNotificationConfig": {
-              "methods": [
-                "GetNotificationConfig"
               ]
             },
             "GetObject": {
@@ -80,24 +60,9 @@
                 "GetObject"
               ]
             },
-            "GetServiceAccount": {
-              "methods": [
-                "GetServiceAccount"
-              ]
-            },
             "ListBuckets": {
               "methods": [
                 "ListBuckets"
-              ]
-            },
-            "ListHmacKeys": {
-              "methods": [
-                "ListHmacKeys"
-              ]
-            },
-            "ListNotificationConfigs": {
-              "methods": [
-                "ListNotificationConfigs"
               ]
             },
             "ListObjects": {
@@ -110,6 +75,11 @@
                 "LockBucketRetentionPolicy"
               ]
             },
+            "MoveObject": {
+              "methods": [
+                "MoveObject"
+              ]
+            },
             "QueryWriteStatus": {
               "methods": [
                 "QueryWriteStatus"
@@ -118,6 +88,11 @@
             "ReadObject": {
               "methods": [
                 "ReadObject"
+              ]
+            },
+            "RestoreObject": {
+              "methods": [
+                "RestoreObject"
               ]
             },
             "RewriteObject": {
@@ -143,11 +118,6 @@
             "UpdateBucket": {
               "methods": [
                 "UpdateBucket"
-              ]
-            },
-            "UpdateHmacKey": {
-              "methods": [
-                "UpdateHmacKey"
               ]
             },
             "UpdateObject": {

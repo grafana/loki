@@ -15,11 +15,10 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -250,7 +249,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index
 		table := s.client.Open(tq.name)
 
 		for i := 0; i < len(tq.rows); i += maxRowReads {
-			page := tq.rows[i:math.Min(i+maxRowReads, len(tq.rows))]
+			page := tq.rows[i:min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list

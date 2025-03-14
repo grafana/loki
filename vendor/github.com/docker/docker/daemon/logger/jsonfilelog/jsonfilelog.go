@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog/jsonlog"
 	"github.com/docker/docker/daemon/logger/loggerutils"
-	units "github.com/docker/go-units"
+	"github.com/docker/go-units"
 	"github.com/pkg/errors"
 )
 
@@ -57,7 +57,7 @@ func New(info logger.Info) (logger.Logger, error) {
 			return nil, fmt.Errorf("max-size must be a positive number")
 		}
 	}
-	var maxFiles = 1
+	maxFiles := 1
 	if maxFileString, ok := info.Config["max-file"]; ok {
 		var err error
 		maxFiles, err = strconv.Atoi(maxFileString)
@@ -81,7 +81,7 @@ func New(info logger.Info) (logger.Logger, error) {
 		}
 	}
 
-	attrs, err := info.ExtraAttributes(nil)
+	extraAttrs, err := info.ExtraAttributes(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -92,19 +92,19 @@ func New(info logger.Info) (logger.Logger, error) {
 		return nil, err
 	}
 	if tag != "" {
-		attrs["tag"] = tag
+		extraAttrs["tag"] = tag
 	}
 
 	var extra json.RawMessage
-	if len(attrs) > 0 {
+	if len(extraAttrs) > 0 {
 		var err error
-		extra, err = json.Marshal(attrs)
+		extra, err = json.Marshal(extraAttrs)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	writer, err := loggerutils.NewLogFile(info.LogPath, capval, maxFiles, compress, decodeFunc, 0640, getTailReader)
+	writer, err := loggerutils.NewLogFile(info.LogPath, capval, maxFiles, compress, decodeFunc, 0o640, getTailReader)
 	if err != nil {
 		return nil, err
 	}

@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"
 
-func (r RangeAggregationExpr) Extractor() (log.SampleExtractor, error) {
-	return r.extractor(nil)
+func (r RangeAggregationExpr) Extractors() ([]log.SampleExtractor, error) {
+	ext, err := r.extractor(nil)
+	if err != nil {
+		return []log.SampleExtractor{}, err
+	}
+	return []log.SampleExtractor{ext}, nil
 }
 
 // extractor creates a SampleExtractor but allows for the grouping to be overridden.

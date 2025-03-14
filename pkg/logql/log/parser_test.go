@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -40,6 +40,34 @@ func Test_jsonParser_Parse(t *testing.T) {
 			NoParserHints(),
 		},
 		{
+			"whitespace key value",
+			[]byte(`{" ": {"foo":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("foo", "bar"),
+			NoParserHints(),
+		},
+		{
+			"whitespace key and whitespace subkey values",
+			[]byte(`{" ": {" ":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
+			NoParserHints(),
+		},
+		{
+			"whitespace key and empty subkey values",
+			[]byte(`{" ": {"":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
+			NoParserHints(),
+		},
+		{
+			"empty key and empty subkey values",
+			[]byte(`{"": {"":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
+			NoParserHints(),
+		},
+		{
 			"escaped",
 			[]byte(`{"counter":1,"foo":"foo\\\"bar", "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
@@ -55,7 +83,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1",
 				"price__net_", "5.56909",
-				"foo", "",
+				"foo", " ",
 			),
 			NoParserHints(),
 		},
@@ -213,25 +241,32 @@ func (p *fakeParseHints) ShouldExtract(key string) bool {
 	p.checkCount++
 	return key == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) ShouldExtractPrefix(prefix string) bool {
 	return prefix == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
+
 func (p *fakeParseHints) RecordExtracted(_ string) {
 	p.count++
 }
+
 func (p *fakeParseHints) AllRequiredExtracted() bool {
 	return !p.extractAll && p.count == 1
 }
+
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
 }
+
 func (p *fakeParseHints) PreserveError() bool {
 	return false
 }
+
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
 	return p.keepGoing
 }
@@ -338,6 +373,26 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("param", "1"),
+			NoParserHints(),
+		},
+		{
+			"object element not present",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("undefined", `pod[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("undefined", ""),
+			NoParserHints(),
+		},
+		{
+			"accessing invalid array index",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("param", ""),
 			NoParserHints(),
 		},
 		{
@@ -494,13 +549,35 @@ func TestJSONExpressionParser(t *testing.T) {
 			),
 			NoParserHints(),
 		},
+		{
+			"nested object with escaped value",
+			[]byte(`{"app":{"name":"great \"loki\""}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
+		{
+			"field with escaped value inside the json string",
+			[]byte(`{"app":"{\"name\":\"great \\\"loki\\\"\"}"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
 	}
 	for _, tt := range tests {
-		j, err := NewJSONExpressionParser(tt.expressions)
-		if err != nil {
-			t.Fatalf("cannot create JSON expression parser: %s", err.Error())
-		}
 		t.Run(tt.name, func(t *testing.T) {
+			j, err := NewJSONExpressionParser(tt.expressions)
+			require.NoError(t, err, "cannot create JSON expression parser")
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
@@ -586,30 +663,36 @@ func Benchmark_Parser(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
+				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 
 			b.Run("labels hints", func(b *testing.B) {
+				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 
 			b.Run("inline stages", func(b *testing.B) {
+				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 		})
@@ -774,7 +857,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			"utf8 error rune",
 			[]byte(`buzz=foo bar=�f`),
 			labels.EmptyLabels(),
-			labels.FromStrings("buzz", "foo"),
+			labels.FromStrings("bar", " f", "buzz", "foo"),
 			nil,
 			NoParserHints(),
 		},
@@ -1009,7 +1092,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 			false,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"bar", "buzz"),
+				"bar", "buzz", "foo_extracted", "b r"),
 		},
 		{
 			"utf8 error rune with keep empty",
@@ -1017,7 +1100,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 			true,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"foo_extracted", "",
+				"foo_extracted", "b r",
 				"bar", "buzz"),
 		},
 	}
@@ -1181,7 +1264,6 @@ func TestXExpressionParserFailures(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
 
@@ -1358,7 +1440,6 @@ func Test_PatternParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())

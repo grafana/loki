@@ -5,7 +5,7 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
-option go_package = "github.com/grafana/loki/pkg/logproto";
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 

@@ -8,9 +8,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestFanoutEntryHandler_SuccessfulFanout(t *testing.T) {
@@ -43,7 +43,14 @@ func TestFanoutEntryHandler_SuccessfulFanout(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		return len(eh1.Received) == len(expectedLines) && len(eh2.Received) == len(expectedLines)
+		eh1.mu.Lock()
+		len1 := len(eh1.Received)
+		eh1.mu.Unlock()
+		eh2.mu.Lock()
+		len2 := len(eh2.Received)
+		eh2.mu.Unlock()
+
+		return len1 == len(expectedLines) && len2 == len(expectedLines)
 	}, time.Second*10, time.Second, "expected entries to be received by fanned out channels")
 }
 
@@ -77,6 +84,8 @@ func TestFanoutEntryHandler_TimeoutWaitingForEntriesToBeSent(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
+		controlEH.mu.Lock()
+		defer controlEH.mu.Unlock()
 		return len(controlEH.Received) == 1
 	}, time.Second*5, time.Second, "expected control entry handler to receive an entry")
 
@@ -89,6 +98,7 @@ type savingEntryHandler struct {
 	entries  chan api.Entry
 	Received []api.Entry
 	wg       sync.WaitGroup
+	mu       sync.Mutex
 }
 
 func newSavingEntryHandler() *savingEntryHandler {
@@ -99,7 +109,9 @@ func newSavingEntryHandler() *savingEntryHandler {
 	eh.wg.Add(1)
 	go func() {
 		for e := range eh.entries {
+			eh.mu.Lock()
 			eh.Received = append(eh.Received, e)
+			eh.mu.Unlock()
 		}
 		eh.wg.Done()
 	}()

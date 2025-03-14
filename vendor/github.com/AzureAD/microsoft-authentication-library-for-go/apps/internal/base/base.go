@@ -54,6 +54,7 @@ type AcquireTokenSilentParameters struct {
 	UserAssertion     string
 	AuthorizationType authority.AuthorizeType
 	Claims            string
+	AuthnScheme       authority.AuthenticationScheme
 }
 
 // AcquireTokenAuthCodeParameters contains the parameters required to acquire an access token using the auth code flow.
@@ -88,7 +89,22 @@ type AuthResult struct {
 	ExpiresOn      time.Time
 	GrantedScopes  []string
 	DeclinedScopes []string
+	Metadata       AuthResultMetadata
 }
+
+// AuthResultMetadata which contains meta data for the AuthResult
+type AuthResultMetadata struct {
+	TokenSource TokenSource
+}
+
+type TokenSource int
+
+// These are all the types of token flows.
+const (
+	SourceUnknown    TokenSource = 0
+	IdentityProvider TokenSource = 1
+	Cache            TokenSource = 2
+)
 
 // AuthResultFromStorage creates an AuthResult from a storage token response (which is generated from the cache).
 func AuthResultFromStorage(storageTokenResponse storage.TokenResponse) (AuthResult, error) {
@@ -108,7 +124,17 @@ func AuthResultFromStorage(storageTokenResponse storage.TokenResponse) (AuthResu
 			return AuthResult{}, fmt.Errorf("problem decoding JWT token: %w", err)
 		}
 	}
-	return AuthResult{account, idToken, accessToken, storageTokenResponse.AccessToken.ExpiresOn.T, grantedScopes, nil}, nil
+	return AuthResult{
+		Account:        account,
+		IDToken:        idToken,
+		AccessToken:    accessToken,
+		ExpiresOn:      storageTokenResponse.AccessToken.ExpiresOn.T,
+		GrantedScopes:  grantedScopes,
+		DeclinedScopes: nil,
+		Metadata: AuthResultMetadata{
+			TokenSource: Cache,
+		},
+	}, nil
 }
 
 // NewAuthResult creates an AuthResult.
@@ -122,6 +148,9 @@ func NewAuthResult(tokenResponse accesstokens.TokenResponse, account shared.Acco
 		AccessToken:   tokenResponse.AccessToken,
 		ExpiresOn:     tokenResponse.ExpiresOn.T,
 		GrantedScopes: tokenResponse.GrantedScopes.Slice,
+		Metadata: AuthResultMetadata{
+			TokenSource: IdentityProvider,
+		},
 	}, nil
 }
 
@@ -289,6 +318,9 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	authParams.AuthorizationType = silent.AuthorizationType
 	authParams.Claims = silent.Claims
 	authParams.UserAssertion = silent.UserAssertion
+	if silent.AuthnScheme != nil {
+		authParams.AuthnScheme = silent.AuthnScheme
+	}
 
 	m := b.pmanager
 	if authParams.AuthorizationType != authority.ATOnBehalfOf {
@@ -313,6 +345,7 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	if silent.Claims == "" {
 		ar, err = AuthResultFromStorage(storageTokenResponse)
 		if err == nil {
+			ar.AccessToken, err = authParams.AuthnScheme.FormatAccessToken(ar.AccessToken)
 			return ar, err
 		}
 	}
@@ -417,6 +450,11 @@ func (b Client) AuthResultFromToken(ctx context.Context, authParams authority.Au
 	if err == nil && b.cacheAccessor != nil {
 		err = b.cacheAccessor.Export(ctx, b.manager, cache.ExportHints{PartitionKey: key})
 	}
+	if err != nil {
+		return AuthResult{}, err
+	}
+
+	ar.AccessToken, err = authParams.AuthnScheme.FormatAccessToken(ar.AccessToken)
 	return ar, err
 }
 

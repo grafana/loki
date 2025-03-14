@@ -13,14 +13,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type IndexWriter interface {
@@ -84,6 +84,13 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 
 	var indices []Index
 	opts := DefaultIndexClientOptions()
+
+	// early return in case index shipper is disabled.
+	if indexShipperCfg.Mode == indexshipper.ModeDisabled {
+		s.indexWriter = noopIndexWriter{}
+		s.Reader = NewIndexClient(NoopIndex{}, opts, limits)
+		return nil
+	}
 
 	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
@@ -171,4 +178,10 @@ type failingIndexWriter struct{}
 
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
+}
+
+type noopIndexWriter struct{}
+
+func (f noopIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
+	return nil
 }

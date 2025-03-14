@@ -5,16 +5,16 @@ description: The 'structured_metadata' Promtail pipeline stage
 
 # structured_metadata
 
-{{% admonition type="warning" %}}
-Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
-{{% /admonition %}}
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 The `structured_metadata` stage is an action stage that takes data from the extracted map and
-modifies the [structured metadata]({{< relref "../../../get-started/labels/structured-metadata" >}}) that is sent to Loki with the log entry.
+modifies the [structured metadata](../../../../get-started/labels/structured-metadata/) that is sent to Loki with the log entry.
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Structured metadata will be rejected by Loki unless you enable the `allow_structured_metadata` per tenant configuration (in the `limits_config`).
-{{% /admonition %}}
+
+Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to **13**. (See Schema Config for more details about schema versions. )
+{{< /admonition >}}
 
 ## Schema
 
@@ -47,7 +47,7 @@ For the given pipeline:
 Given the following log line:
 
 ```json
-{"log":"log message\n","stream":"stderr","traceID":"0242ac120002",time":"2019-04-30T02:12:41.8443515Z"}
+{"log":"log message\n","stream":"stderr","traceID":"0242ac120002","time":"2019-04-30T02:12:41.8443515Z"}
 ```
 
 The first stage would extract `stream` with a value of `stderr` and `traceID` with a value of `0242ac120002` into

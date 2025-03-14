@@ -1,7 +1,7 @@
 // Package aws provides the core SDK's utilities and shared types. Use this package's
 // utilities to simplify setting and reading API operations parameters.
 //
-// Value and Pointer Conversion Utilities
+// # Value and Pointer Conversion Utilities
 //
 // This package includes a helper conversion utility for each scalar type the SDK's
 // API use. These utilities make getting a pointer of the scalar, and dereferencing
@@ -16,33 +16,33 @@
 // to get pointer of a literal string value, because getting the address of a
 // literal requires assigning the value to a variable first.
 //
-//    var strPtr *string
+//	var strPtr *string
 //
-//    // Without the SDK's conversion functions
-//    str := "my string"
-//    strPtr = &str
+//	// Without the SDK's conversion functions
+//	str := "my string"
+//	strPtr = &str
 //
-//    // With the SDK's conversion functions
-//    strPtr = aws.String("my string")
+//	// With the SDK's conversion functions
+//	strPtr = aws.String("my string")
 //
-//    // Convert *string to string value
-//    str = aws.StringValue(strPtr)
+//	// Convert *string to string value
+//	str = aws.StringValue(strPtr)
 //
 // In addition to scalars the aws package also includes conversion utilities for
 // map and slice for commonly types used in API parameters. The map and slice
 // conversion functions use similar naming pattern as the scalar conversion
 // functions.
 //
-//    var strPtrs []*string
-//    var strs []string = []string{"Go", "Gophers", "Go"}
+//	var strPtrs []*string
+//	var strs []string = []string{"Go", "Gophers", "Go"}
 //
-//    // Convert []string to []*string
-//    strPtrs = aws.StringSlice(strs)
+//	// Convert []string to []*string
+//	strPtrs = aws.StringSlice(strs)
 //
-//    // Convert []*string to []string
-//    strs = aws.StringValueSlice(strPtrs)
+//	// Convert []*string to []string
+//	strs = aws.StringValueSlice(strPtrs)
 //
-// SDK Default HTTP Client
+// # SDK Default HTTP Client
 //
 // The SDK will use the http.DefaultClient if a HTTP client is not provided to
 // the SDK's Session, or service client constructor. This means that if the

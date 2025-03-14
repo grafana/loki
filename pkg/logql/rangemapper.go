@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var splittableVectorOp = map[string]struct{}{
@@ -179,6 +179,11 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		return e, nil
 	case *syntax.VectorExpr:
 		return e, nil
+	case *syntax.MultiVariantExpr:
+		// TODO(twhitney): we should be able to handle multi-variant expressions but creating
+		// multiple expression with of() statements that match the sub-range and concatenating
+		// the result
+		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
@@ -208,7 +213,7 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 		switch concrete := e.(type) {
 		case *syntax.LogfmtParserExpr:
 			found = true
-		case *syntax.LabelParserExpr:
+		case *syntax.LineParserExpr:
 			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
 			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
 			if concrete.Op == syntax.OpParserTypeJSON {

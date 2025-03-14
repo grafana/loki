@@ -1,6 +1,6 @@
 package logql
 
-import "github.com/grafana/loki/pkg/logql/syntax"
+import "github.com/grafana/loki/v3/pkg/logql/syntax"
 
 // optimizeSampleExpr Attempt to optimize the SampleExpr to another that will run faster but will produce the same result.
 func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
@@ -8,7 +8,7 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e syntax.Expr) {
 		switch e.(type) {
-		case *ConcatSampleExpr, DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
+		case *ConcatSampleExpr, DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr, *MergeFirstOverTimeExpr, *MergeLastOverTimeExpr:
 			skip = true
 			return
 		}
@@ -55,7 +55,7 @@ func removeLineformat(expr syntax.SampleExpr) {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LineParserExpr); ok {
 					found = true
 					break
 				}
@@ -63,11 +63,11 @@ func removeLineformat(expr syntax.SampleExpr) {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.JSONExpressionParser); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.JSONExpressionParserExpr); ok {
 					found = true
 					break
 				}
-				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtExpressionParser); ok {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtExpressionParserExpr); ok {
 					found = true
 					break
 				}

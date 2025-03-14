@@ -5,7 +5,7 @@ package resultscache;
 import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
 
-option go_package = "github.com/grafana/loki/pkg/storage/chunk/cache/resultscache";
+option go_package = "github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 

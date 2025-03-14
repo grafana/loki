@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	kitlog "github.com/go-kit/log"
@@ -315,7 +316,7 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 			ext.Error.Set(cfg.Logger.Span, true)
 		}
 
-		contextTracker.cancelAllContexts(cancellation.NewErrorf(cause))
+		contextTracker.cancelAllContexts(cancellation.NewError(errors.New(cause)))
 		cleanupResultsAlreadyReceived()
 		return nil, err
 	}
@@ -388,6 +389,111 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 	return results, nil
 }
 
+// DoMultiUntilQuorumWithoutSuccessfulContextCancellation behaves similar to DoUntilQuorumWithoutSuccessfulContextCancellation
+// with the following exceptions:
+//
+//   - This function calls DoUntilQuorumWithoutSuccessfulContextCancellation for each input ReplicationSet and requires
+//     DoUntilQuorumWithoutSuccessfulContextCancellation to successfully run for each of them. Execution breaks on the
+//     first error returned by DoUntilQuorumWithoutSuccessfulContextCancellation on any ReplicationSet.
+//
+//   - This function requires that the callback function f always call context.CancelCauseFunc once done. Failing to
+//     cancel the context will leak resources.
+func DoMultiUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Context, sets []ReplicationSet, cfg DoUntilQuorumConfig, f func(context.Context, *InstanceDesc, context.CancelCauseFunc) (T, error), cleanupFunc func(T)) ([]T, error) {
+	if len(sets) == 0 {
+		return nil, errors.New("no replication sets")
+	}
+	if len(sets) == 1 {
+		return DoUntilQuorumWithoutSuccessfulContextCancellation[T](ctx, sets[0], cfg, f, cleanupFunc)
+	}
+
+	results, _, err := doMultiUntilQuorumWithoutSuccessfulContextCancellation[T](ctx, sets, cfg, f, cleanupFunc)
+	return results, err
+}
+
+// See DoMultiUntilQuorumWithoutSuccessfulContextCancellation().
+//
+// The returned context.Context is the internal context used by workers and it's used for testing purposes.
+func doMultiUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Context, sets []ReplicationSet, cfg DoUntilQuorumConfig, f func(context.Context, *InstanceDesc, context.CancelCauseFunc) (T, error), cleanupFunc func(T)) ([]T, context.Context, error) {
+	var (
+		returnResultsMx = sync.Mutex{}
+		returnResults   = make([]T, 0, len(sets)*len(sets[0].Instances)) // Assume all replication sets have the same number of instances.
+
+		returnErrOnce sync.Once
+		returnErr     error // The first error occurred.
+
+		workersGroup                 = sync.WaitGroup{}
+		workersCtx, cancelWorkersCtx = context.WithCancelCause(ctx)
+
+		inflightTracker = newInflightInstanceTracker(sets)
+	)
+
+	cancelWorkersCtxIfSafe := func() {
+		if inflightTracker.allInstancesCompleted() {
+			cancelWorkersCtx(errors.New("all requests completed"))
+		}
+	}
+
+	// Start a worker for each set. A worker is responsible to call DoUntilQuorumWithoutSuccessfulContextCancellation()
+	// for the given replication set and handle the result.
+	workersGroup.Add(len(sets))
+
+	for idx, set := range sets {
+		go func(idx int, set ReplicationSet) {
+			defer workersGroup.Done()
+
+			wrappedFn := func(ctx context.Context, instance *InstanceDesc, cancelCtx context.CancelCauseFunc) (T, error) {
+				// The callback function has been called, so we need to track it.
+				inflightTracker.addInstance(idx, instance)
+
+				// Inject custom logic in the context.CancelCauseFunc.
+				return f(ctx, instance, func(cause error) {
+					// Call the original one.
+					cancelCtx(cause)
+
+					// The callback has done, so we can remove it from tracker and then check if it's safe
+					// to cancel the workers context.
+					inflightTracker.removeInstance(idx, instance)
+					cancelWorkersCtxIfSafe()
+				})
+			}
+
+			setResults, setErr := DoUntilQuorumWithoutSuccessfulContextCancellation[T](workersCtx, set, cfg, wrappedFn, cleanupFunc)
+
+			if setErr != nil {
+				returnErrOnce.Do(func() {
+					returnErr = setErr
+
+					// Interrupt the execution of all workers.
+					cancelWorkersCtx(setErr)
+				})
+
+				return
+			}
+
+			// Keep track of the results.
+			returnResultsMx.Lock()
+			returnResults = append(returnResults, setResults...)
+			returnResultsMx.Unlock()
+		}(idx, set)
+	}
+
+	// Wait until all goroutines have terminated.
+	workersGroup.Wait()
+
+	// All workers completed, so it's guaranteed returnResults and returnErr won't be accessed by workers anymore,
+	// and it's safe to read them with no locking.
+	if returnErr != nil {
+		return nil, workersCtx, returnErr
+	}
+
+	// No error occurred. It means workers context hasn't been canceled yet, and we don't expect more callbacks
+	// to get tracked, so we can check if the cancelling condition has already been reached and eventually do it.
+	inflightTracker.allInstancesAdded()
+	cancelWorkersCtxIfSafe()
+
+	return returnResults, workersCtx, nil
+}
+
 type instanceResult[T any] struct {
 	result   T
 	err      error
@@ -403,6 +509,16 @@ func (r ReplicationSet) Includes(addr string) bool {
 	}
 
 	return false
+}
+
+// GetIDs returns the IDs of all instances within the replication set. Returned slice
+// order is not guaranteed.
+func (r ReplicationSet) GetIDs() []string {
+	ids := make([]string, 0, len(r.Instances))
+	for _, desc := range r.Instances {
+		ids = append(ids, desc.Id)
+	}
+	return ids
 }
 
 // GetAddresses returns the addresses of all instances within the replication set. Returned slice
@@ -468,6 +584,17 @@ func HasReplicationSetChangedWithoutState(before, after ReplicationSet) bool {
 	})
 }
 
+// Has HasReplicationSetChangedWithoutStateOrAddr returns false if two replications sets
+// are the same (with possibly different timestamps, instance states, and ip addresses),
+// true if they differ in any other way (number of instances, tokens, zones, ...).
+func HasReplicationSetChangedWithoutStateOrAddr(before, after ReplicationSet) bool {
+	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
+		i.Timestamp = 0
+		i.State = PENDING
+		i.Addr = ""
+	})
+}
+
 // Do comparison of replicasets, but apply a function first
 // to be able to exclude (reset) some values
 func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude func(*InstanceDesc)) bool {
@@ -478,8 +605,8 @@ func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude fun
 		return true
 	}
 
-	sort.Sort(ByAddr(beforeInstances))
-	sort.Sort(ByAddr(afterInstances))
+	sort.Sort(ByID(beforeInstances))
+	sort.Sort(ByID(afterInstances))
 
 	for i := 0; i < len(beforeInstances); i++ {
 		b := beforeInstances[i]

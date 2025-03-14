@@ -19,10 +19,8 @@ package wrr
 
 import (
 	"fmt"
+	rand "math/rand/v2"
 	"sort"
-	"sync"
-
-	"google.golang.org/grpc/internal/grpcrand"
 )
 
 // weightedItem is a wrapped weighted item that is used to implement weighted random algorithm.
@@ -38,7 +36,6 @@ func (w *weightedItem) String() string {
 
 // randomWRR is a struct that contains weighted items implement weighted random algorithm.
 type randomWRR struct {
-	mu    sync.RWMutex
 	items []*weightedItem
 	// Are all item's weights equal
 	equalWeights bool
@@ -49,21 +46,19 @@ func NewRandom() WRR {
 	return &randomWRR{}
 }
 
-var grpcrandInt63n = grpcrand.Int63n
+var randInt64n = rand.Int64N
 
 func (rw *randomWRR) Next() (item any) {
-	rw.mu.RLock()
-	defer rw.mu.RUnlock()
 	if len(rw.items) == 0 {
 		return nil
 	}
 	if rw.equalWeights {
-		return rw.items[grpcrandInt63n(int64(len(rw.items)))].item
+		return rw.items[randInt64n(int64(len(rw.items)))].item
 	}
 
 	sumOfWeights := rw.items[len(rw.items)-1].accumulatedWeight
 	// Random number in [0, sumOfWeights).
-	randomWeight := grpcrandInt63n(sumOfWeights)
+	randomWeight := randInt64n(sumOfWeights)
 	// Item's accumulated weights are in ascending order, because item's weight >= 0.
 	// Binary search rw.items to find first item whose accumulatedWeight > randomWeight
 	// The return i is guaranteed to be in range [0, len(rw.items)) because randomWeight < last item's accumulatedWeight
@@ -72,8 +67,6 @@ func (rw *randomWRR) Next() (item any) {
 }
 
 func (rw *randomWRR) Add(item any, weight int64) {
-	rw.mu.Lock()
-	defer rw.mu.Unlock()
 	accumulatedWeight := weight
 	equalWeights := true
 	if len(rw.items) > 0 {

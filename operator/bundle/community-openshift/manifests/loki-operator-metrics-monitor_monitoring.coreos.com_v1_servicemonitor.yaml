@@ -2,24 +2,32 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.5.0
+    app.kubernetes.io/instance: loki-operator-v0.7.1
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.5.0
+    app.kubernetes.io/version: 0.7.1
     name: loki-operator
   name: loki-operator-metrics-monitor
 spec:
   endpoints:
-  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  - authorization:
+      credentials:
+        key: token
+        name: loki-operator-controller-manager-metrics-token
+      type: bearer
     interval: 30s
     path: /metrics
     scheme: https
     scrapeTimeout: 10s
     targetPort: 8443
     tlsConfig:
-      caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
+      ca:
+        secret:
+          key: service-ca.crt
+          name: loki-operator-controller-manager-metrics-token
       serverName: loki-operator-controller-manager-metrics-service.kubernetes-operators.svc
   selector:
     matchLabels:
+      app.kubernetes.io/component: metrics
       app.kubernetes.io/name: loki-operator

@@ -12,8 +12,8 @@ import (
 	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
 
-	_ "github.com/grafana/loki/pkg/util/build"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const socketAddress = "/run/docker/plugins/loki.sock"
@@ -40,7 +40,7 @@ func main() {
 	pprofPort := os.Getenv("PPROF_PORT")
 	if pprofPort != "" {
 		go func() {
-			err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil)
+			err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil) //#nosec G114 -- This is a debug feature that must be intentionally enabled and is not used in prod, DOS is not a concern.
 			logger.Log("msg", "http server stopped", "err", err)
 		}()
 	}

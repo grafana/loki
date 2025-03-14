@@ -12,7 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 )
 
 const credNameDeviceCode = "DeviceCodeCredential"
@@ -21,18 +21,39 @@ const credNameDeviceCode = "DeviceCodeCredential"
 type DeviceCodeCredentialOptions struct {
 	azcore.ClientOptions
 
-	// AdditionallyAllowedTenants specifies additional tenants for which the credential may acquire
-	// tokens. Add the wildcard value "*" to allow the credential to acquire tokens for any tenant.
+	// AdditionallyAllowedTenants specifies tenants to which the credential may authenticate, in addition to
+	// TenantID. When TenantID is empty, this option has no effect and the credential will authenticate to
+	// any requested tenant. Add the wildcard value "*" to allow the credential to authenticate to any tenant.
 	AdditionallyAllowedTenants []string
-	// ClientID is the ID of the application users will authenticate to.
-	// Defaults to the ID of an Azure development application.
+
+	// AuthenticationRecord returned by a call to a credential's Authenticate method. Set this option
+	// to enable the credential to use data from a previous authentication.
+	AuthenticationRecord AuthenticationRecord
+
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
+
+	// ClientID is the ID of the application to which users will authenticate. When not set, users
+	// will authenticate to an Azure development application, which isn't recommended for production
+	// scenarios. In production, developers should instead register their applications and assign
+	// appropriate roles. See https://aka.ms/azsdk/identity/AppRegistrationAndRoleAssignment for more
+	// information.
 	ClientID string
+
+	// DisableAutomaticAuthentication prevents the credential from automatically prompting the user to authenticate.
+	// When this option is true, GetToken will return AuthenticationRequiredError when user interaction is necessary
+	// to acquire a token.
+	DisableAutomaticAuthentication bool
+
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
-	// private clouds such as Azure Stack. It determines whether the credential requests Azure AD instance metadata
+	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
-	// TenantID is the Azure Active Directory tenant the credential authenticates in. Defaults to the
+
+	// TenantID is the Microsoft Entra tenant the credential authenticates in. Defaults to the
 	// "organizations" tenant, which can authenticate work and school accounts. Required for single-tenant
 	// applications.
 	TenantID string
@@ -64,20 +85,17 @@ type DeviceCodeMessage struct {
 	UserCode string `json:"user_code"`
 	// VerificationURL is the URL at which the user must authenticate.
 	VerificationURL string `json:"verification_uri"`
-	// Message is user instruction from Azure Active Directory.
+	// Message is user instruction from Microsoft Entra ID.
 	Message string `json:"message"`
 }
 
 // DeviceCodeCredential acquires tokens for a user via the device code flow, which has the
-// user browse to an Azure Active Directory URL, enter a code, and authenticate. It's useful
+// user browse to a Microsoft Entra URL, enter a code, and authenticate. It's useful
 // for authenticating a user in an environment without a web browser, such as an SSH session.
-// If a web browser is available, InteractiveBrowserCredential is more convenient because it
+// If a web browser is available, [InteractiveBrowserCredential] is more convenient because it
 // automatically opens a browser to the login page.
 type DeviceCodeCredential struct {
-	account public.Account
-	client  publicClient
-	s       *syncer
-	prompt  func(context.Context, DeviceCodeMessage) error
+	client *publicClient
 }
 
 // NewDeviceCodeCredential creates a DeviceCodeCredential. Pass nil to accept default options.
@@ -87,50 +105,41 @@ func NewDeviceCodeCredential(options *DeviceCodeCredentialOptions) (*DeviceCodeC
 		cp = *options
 	}
 	cp.init()
-	c, err := getPublicClient(
-		cp.ClientID, cp.TenantID, &cp.ClientOptions, public.WithInstanceDiscovery(!cp.DisableInstanceDiscovery),
-	)
+	msalOpts := publicClientOptions{
+		AdditionallyAllowedTenants:     cp.AdditionallyAllowedTenants,
+		Cache:                          cp.Cache,
+		ClientOptions:                  cp.ClientOptions,
+		DeviceCodePrompt:               cp.UserPrompt,
+		DisableAutomaticAuthentication: cp.DisableAutomaticAuthentication,
+		DisableInstanceDiscovery:       cp.DisableInstanceDiscovery,
+		Record:                         cp.AuthenticationRecord,
+	}
+	c, err := newPublicClient(cp.TenantID, cp.ClientID, credNameDeviceCode, msalOpts)
 	if err != nil {
 		return nil, err
 	}
-	cred := DeviceCodeCredential{client: c, prompt: cp.UserPrompt}
-	cred.s = newSyncer(credNameDeviceCode, cp.TenantID, cp.AdditionallyAllowedTenants, cred.requestToken, cred.silentAuth)
-	return &cred, nil
+	c.name = credNameDeviceCode
+	return &DeviceCodeCredential{client: c}, nil
 }
 
-// GetToken requests an access token from Azure Active Directory. It will begin the device code flow and poll until the user completes authentication.
+// Authenticate prompts a user to log in via the device code flow. Subsequent
+// GetToken calls will automatically use the returned AuthenticationRecord.
+func (c *DeviceCodeCredential) Authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (AuthenticationRecord, error) {
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameDeviceCode+"."+traceOpAuthenticate, c.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+	tk, err := c.client.Authenticate(ctx, opts)
+	return tk, err
+}
+
+// GetToken requests an access token from Microsoft Entra ID. It will begin the device code flow and poll until the user completes authentication.
 // This method is called automatically by Azure SDK clients.
 func (c *DeviceCodeCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return c.s.GetToken(ctx, opts)
-}
-
-func (c *DeviceCodeCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	dc, err := c.client.AcquireTokenByDeviceCode(ctx, opts.Scopes, public.WithTenantID(opts.TenantID))
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	err = c.prompt(ctx, DeviceCodeMessage{
-		Message:         dc.Result.Message,
-		UserCode:        dc.Result.UserCode,
-		VerificationURL: dc.Result.VerificationURL,
-	})
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	ar, err := dc.AuthenticationResult(ctx)
-	if err != nil {
-		return azcore.AccessToken{}, err
-	}
-	c.account = ar.Account
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
-}
-
-func (c *DeviceCodeCredential) silentAuth(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenSilent(ctx, opts.Scopes,
-		public.WithSilentAccount(c.account),
-		public.WithTenantID(opts.TenantID),
-	)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameDeviceCode+"."+traceOpGetToken, c.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+	tk, err := c.client.GetToken(ctx, opts)
+	return tk, err
 }
 
 var _ azcore.TokenCredential = (*DeviceCodeCredential)(nil)

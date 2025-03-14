@@ -15,15 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var nilMetrics = NewSplitByMetrics(nil)
@@ -500,8 +500,7 @@ func Test_splitQuery(t *testing.T) {
 						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
 					}
 
-					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
-					require.NoError(t, err)
+					splits := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
 					assertSplits(t, want, splits)
 				})
 			}
@@ -738,8 +737,7 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
 					}
 
-					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
-					require.NoError(t, err)
+					splits := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
 					assertSplits(t, want, splits)
 				})
 			}
@@ -1136,7 +1134,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
-					StartTs: time.Date(2023, 1, 15, 7, 05, 30, 0, time.UTC), // start time is aligned down to step of 15s
+					StartTs: time.Date(2023, 1, 15, 7, 0o5, 30, 0, time.UTC), // start time is aligned down to step of 15s
 					EndTs:   time.Date(2023, 1, 15, 7, 29, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
@@ -1349,8 +1347,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				ms = tc.splitter.(*metricQuerySplitter)
 			}
 
-			splits, err := ms.split(refTime, []string{tenantID}, tc.input, tc.splitInterval)
-			require.NoError(t, err)
+			splits := ms.split(refTime, []string{tenantID}, tc.input, tc.splitInterval)
 			if !assert.Equal(t, tc.expected, splits) {
 				t.Logf("expected and actual do not match\n")
 				defer t.Fail()
@@ -1550,7 +1547,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 
 func Test_series_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
@@ -1653,14 +1650,15 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 
-		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{bar="baz"}`, Volume: 28},
 					},
-					Limit: 2},
+					Limit: 2,
+				},
 				Headers: nil,
 			}, nil
 		})
@@ -1691,7 +1689,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	t.Run("volumes with limits", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
-		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -1700,7 +1698,8 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{fizz="buzz"}`, Volume: 28},
 					},
-					Limit: 1},
+					Limit: 1,
+				},
 				Headers: nil,
 			}, nil
 		})
@@ -1733,14 +1732,15 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	t.Run("volumes with a query split by of 0", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
-		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{bar="baz"}`, Volume: 28},
 					},
-					Limit: 2},
+					Limit: 2,
+				},
 				Headers: nil,
 			}, nil
 		})
@@ -1852,7 +1852,11 @@ func Test_ExitEarly(t *testing.T) {
 
 	res, err := split.Do(ctx, req)
 
-	require.Equal(t, int(req.Limit), callCt)
+	mtx.Lock()
+	count := callCt
+	mtx.Unlock()
+
+	require.Equal(t, int(req.Limit), count)
 	require.NoError(t, err)
 	require.Equal(t, expected, res)
 }

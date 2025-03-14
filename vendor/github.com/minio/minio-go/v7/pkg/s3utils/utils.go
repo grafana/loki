@@ -118,52 +118,57 @@ func GetRegionFromURL(endpointURL url.URL) string {
 	if endpointURL == sentinelURL {
 		return ""
 	}
-	if endpointURL.Host == "s3-external-1.amazonaws.com" {
+	if endpointURL.Hostname() == "s3-external-1.amazonaws.com" {
 		return ""
 	}
-	if IsAmazonGovCloudEndpoint(endpointURL) {
-		return "us-gov-west-1"
-	}
+
 	// if elb's are used we cannot calculate which region it may be, just return empty.
-	if elbAmazonRegex.MatchString(endpointURL.Host) || elbAmazonCnRegex.MatchString(endpointURL.Host) {
+	if elbAmazonRegex.MatchString(endpointURL.Hostname()) || elbAmazonCnRegex.MatchString(endpointURL.Hostname()) {
 		return ""
 	}
-	parts := amazonS3HostDualStack.FindStringSubmatch(endpointURL.Host)
+
+	// We check for FIPS dualstack matching first to avoid the non-greedy
+	// regex for FIPS non-dualstack matching a dualstack URL
+	parts := amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	if IsAmazonFIPSUSEastWestEndpoint(endpointURL) {
-		// We check for FIPS dualstack matching first to avoid the non-greedy
-		// regex for FIPS non-dualstack matching a dualstack URL
-		parts = amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Host)
-		if len(parts) > 1 {
-			return parts[1]
-		}
-		parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Host)
-		if len(parts) > 1 {
-			return parts[1]
-		}
-	}
-	parts = amazonS3HostHyphen.FindStringSubmatch(endpointURL.Host)
+
+	parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	parts = amazonS3ChinaHost.FindStringSubmatch(endpointURL.Host)
+
+	parts = amazonS3HostDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	parts = amazonS3ChinaHostDualStack.FindStringSubmatch(endpointURL.Host)
+
+	parts = amazonS3HostHyphen.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	parts = amazonS3HostDot.FindStringSubmatch(endpointURL.Host)
+
+	parts = amazonS3ChinaHost.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	parts = amazonS3HostPrivateLink.FindStringSubmatch(endpointURL.Host)
+
+	parts = amazonS3ChinaHostDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
+	parts = amazonS3HostDot.FindStringSubmatch(endpointURL.Hostname())
+	if len(parts) > 1 {
+		return parts[1]
+	}
+
+	parts = amazonS3HostPrivateLink.FindStringSubmatch(endpointURL.Hostname())
+	if len(parts) > 1 {
+		return parts[1]
+	}
+
 	return ""
 }
 
@@ -186,45 +191,25 @@ func IsAmazonGovCloudEndpoint(endpointURL url.URL) bool {
 		return false
 	}
 	return (endpointURL.Host == "s3-us-gov-west-1.amazonaws.com" ||
+		endpointURL.Host == "s3-us-gov-east-1.amazonaws.com" ||
 		IsAmazonFIPSGovCloudEndpoint(endpointURL))
 }
 
-// IsAmazonFIPSGovCloudEndpoint - Match if it is exactly Amazon S3 FIPS GovCloud endpoint.
-// See https://aws.amazon.com/compliance/fips.
+// IsAmazonFIPSGovCloudEndpoint - match if the endpoint is FIPS and GovCloud.
 func IsAmazonFIPSGovCloudEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return endpointURL.Host == "s3-fips-us-gov-west-1.amazonaws.com" ||
-		endpointURL.Host == "s3-fips.us-gov-west-1.amazonaws.com" ||
-		endpointURL.Host == "s3-fips.dualstack.us-gov-west-1.amazonaws.com"
-}
-
-// IsAmazonFIPSUSEastWestEndpoint - Match if it is exactly Amazon S3 FIPS US East/West endpoint.
-// See https://aws.amazon.com/compliance/fips.
-func IsAmazonFIPSUSEastWestEndpoint(endpointURL url.URL) bool {
-	if endpointURL == sentinelURL {
-		return false
-	}
-	switch endpointURL.Host {
-	case "s3-fips.us-east-2.amazonaws.com":
-	case "s3-fips.dualstack.us-west-1.amazonaws.com":
-	case "s3-fips.dualstack.us-west-2.amazonaws.com":
-	case "s3-fips.dualstack.us-east-2.amazonaws.com":
-	case "s3-fips.dualstack.us-east-1.amazonaws.com":
-	case "s3-fips.us-west-1.amazonaws.com":
-	case "s3-fips.us-west-2.amazonaws.com":
-	case "s3-fips.us-east-1.amazonaws.com":
-	default:
-		return false
-	}
-	return true
+	return IsAmazonFIPSEndpoint(endpointURL) && strings.Contains(endpointURL.Host, "us-gov-")
 }
 
 // IsAmazonFIPSEndpoint - Match if it is exactly Amazon S3 FIPS endpoint.
 // See https://aws.amazon.com/compliance/fips.
 func IsAmazonFIPSEndpoint(endpointURL url.URL) bool {
-	return IsAmazonFIPSUSEastWestEndpoint(endpointURL) || IsAmazonFIPSGovCloudEndpoint(endpointURL)
+	if endpointURL == sentinelURL {
+		return false
+	}
+	return strings.HasPrefix(endpointURL.Host, "s3-fips") && strings.HasSuffix(endpointURL.Host, ".amazonaws.com")
 }
 
 // IsAmazonPrivateLinkEndpoint - Match if it is exactly Amazon S3 PrivateLink interface endpoint
@@ -233,7 +218,7 @@ func IsAmazonPrivateLinkEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return amazonS3HostPrivateLink.MatchString(endpointURL.Host)
+	return amazonS3HostPrivateLink.MatchString(endpointURL.Hostname())
 }
 
 // IsGoogleEndpoint - Match if it is exactly Google cloud storage endpoint.
@@ -241,7 +226,7 @@ func IsGoogleEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return endpointURL.Host == "storage.googleapis.com"
+	return endpointURL.Hostname() == "storage.googleapis.com"
 }
 
 // Expects ascii encoded strings - from output of urlEncodePath
@@ -274,44 +259,6 @@ func QueryEncode(v url.Values) string {
 		}
 	}
 	return buf.String()
-}
-
-// TagDecode - decodes canonical tag into map of key and value.
-func TagDecode(ctag string) map[string]string {
-	if ctag == "" {
-		return map[string]string{}
-	}
-	tags := strings.Split(ctag, "&")
-	tagMap := make(map[string]string, len(tags))
-	var err error
-	for _, tag := range tags {
-		kvs := strings.SplitN(tag, "=", 2)
-		if len(kvs) == 0 {
-			return map[string]string{}
-		}
-		if len(kvs) == 1 {
-			return map[string]string{}
-		}
-		tagMap[kvs[0]], err = url.PathUnescape(kvs[1])
-		if err != nil {
-			continue
-		}
-	}
-	return tagMap
-}
-
-// TagEncode - encodes tag values in their URL encoded form. In
-// addition to the percent encoding performed by urlEncodePath() used
-// here, it also percent encodes '/' (forward slash)
-func TagEncode(tags map[string]string) string {
-	if tags == nil {
-		return ""
-	}
-	values := url.Values{}
-	for k, v := range tags {
-		values[k] = []string{v}
-	}
-	return QueryEncode(values)
 }
 
 // if object matches reserved string, no need to encode them

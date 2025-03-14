@@ -13,16 +13,26 @@ import (
 type Logs internal.Logs
 
 func newLogs(orig *otlpcollectorlog.ExportLogsServiceRequest) Logs {
-	return Logs(internal.NewLogs(orig))
+	state := internal.StateMutable
+	return Logs(internal.NewLogs(orig, &state))
 }
 
 func (ms Logs) getOrig() *otlpcollectorlog.ExportLogsServiceRequest {
 	return internal.GetOrigLogs(internal.Logs(ms))
 }
 
+func (ms Logs) getState() *internal.State {
+	return internal.GetLogsState(internal.Logs(ms))
+}
+
 // NewLogs creates a new Logs struct.
 func NewLogs() Logs {
 	return newLogs(&otlpcollectorlog.ExportLogsServiceRequest{})
+}
+
+// IsReadOnly returns true if this Logs instance is read-only.
+func (ms Logs) IsReadOnly() bool {
+	return *ms.getState() == internal.StateReadOnly
 }
 
 // CopyTo copies the Logs instance overriding the destination.
@@ -47,5 +57,10 @@ func (ms Logs) LogRecordCount() int {
 
 // ResourceLogs returns the ResourceLogsSlice associated with this Logs.
 func (ms Logs) ResourceLogs() ResourceLogsSlice {
-	return newResourceLogsSlice(&ms.getOrig().ResourceLogs)
+	return newResourceLogsSlice(&ms.getOrig().ResourceLogs, internal.GetLogsState(internal.Logs(ms)))
+}
+
+// MarkReadOnly marks the Logs as shared so that no further modifications can be done on it.
+func (ms Logs) MarkReadOnly() {
+	internal.SetLogsState(internal.Logs(ms), internal.StateReadOnly)
 }

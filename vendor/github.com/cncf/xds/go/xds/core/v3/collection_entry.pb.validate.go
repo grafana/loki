@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,21 +32,66 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on CollectionEntry with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *CollectionEntry) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CollectionEntry with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CollectionEntryMultiError, or nil if none found.
+func (m *CollectionEntry) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CollectionEntry) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
-	switch m.ResourceSpecifier.(type) {
+	var errors []error
 
+	oneofResourceSpecifierPresent := false
+	switch v := m.ResourceSpecifier.(type) {
 	case *CollectionEntry_Locator:
+		if v == nil {
+			err := CollectionEntryValidationError{
+				field:  "ResourceSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofResourceSpecifierPresent = true
 
-		if v, ok := interface{}(m.GetLocator()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetLocator()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, CollectionEntryValidationError{
+						field:  "Locator",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, CollectionEntryValidationError{
+						field:  "Locator",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetLocator()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return CollectionEntryValidationError{
 					field:  "Locator",
@@ -56,8 +102,38 @@ func (m *CollectionEntry) Validate() error {
 		}
 
 	case *CollectionEntry_InlineEntry_:
+		if v == nil {
+			err := CollectionEntryValidationError{
+				field:  "ResourceSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofResourceSpecifierPresent = true
 
-		if v, ok := interface{}(m.GetInlineEntry()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetInlineEntry()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, CollectionEntryValidationError{
+						field:  "InlineEntry",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, CollectionEntryValidationError{
+						field:  "InlineEntry",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetInlineEntry()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return CollectionEntryValidationError{
 					field:  "InlineEntry",
@@ -68,15 +144,42 @@ func (m *CollectionEntry) Validate() error {
 		}
 
 	default:
-		return CollectionEntryValidationError{
+		_ = v // ensures v is used
+	}
+	if !oneofResourceSpecifierPresent {
+		err := CollectionEntryValidationError{
 			field:  "ResourceSpecifier",
 			reason: "value is required",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
+	if len(errors) > 0 {
+		return CollectionEntryMultiError(errors)
 	}
 
 	return nil
 }
+
+// CollectionEntryMultiError is an error wrapping multiple validation errors
+// returned by CollectionEntry.ValidateAll() if the designated constraints
+// aren't met.
+type CollectionEntryMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CollectionEntryMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CollectionEntryMultiError) AllErrors() []error { return m }
 
 // CollectionEntryValidationError is the validation error returned by
 // CollectionEntry.Validate if the designated constraints aren't met.
@@ -134,22 +237,59 @@ var _ interface {
 
 // Validate checks the field values on CollectionEntry_InlineEntry with the
 // rules defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *CollectionEntry_InlineEntry) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CollectionEntry_InlineEntry with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CollectionEntry_InlineEntryMultiError, or nil if none found.
+func (m *CollectionEntry_InlineEntry) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CollectionEntry_InlineEntry) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if !_CollectionEntry_InlineEntry_Name_Pattern.MatchString(m.GetName()) {
-		return CollectionEntry_InlineEntryValidationError{
+		err := CollectionEntry_InlineEntryValidationError{
 			field:  "Name",
 			reason: "value does not match regex pattern \"^[0-9a-zA-Z_\\\\-\\\\.~:]+$\"",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	// no validation rules for Version
 
-	if v, ok := interface{}(m.GetResource()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetResource()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CollectionEntry_InlineEntryValidationError{
+					field:  "Resource",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CollectionEntry_InlineEntryValidationError{
+					field:  "Resource",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetResource()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return CollectionEntry_InlineEntryValidationError{
 				field:  "Resource",
@@ -159,8 +299,29 @@ func (m *CollectionEntry_InlineEntry) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return CollectionEntry_InlineEntryMultiError(errors)
+	}
+
 	return nil
 }
+
+// CollectionEntry_InlineEntryMultiError is an error wrapping multiple
+// validation errors returned by CollectionEntry_InlineEntry.ValidateAll() if
+// the designated constraints aren't met.
+type CollectionEntry_InlineEntryMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CollectionEntry_InlineEntryMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CollectionEntry_InlineEntryMultiError) AllErrors() []error { return m }
 
 // CollectionEntry_InlineEntryValidationError is the validation error returned
 // by CollectionEntry_InlineEntry.Validate if the designated constraints

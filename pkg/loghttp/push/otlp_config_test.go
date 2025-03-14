@@ -3,10 +3,17 @@ package push
 import (
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 )
+
+var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
+
+func init() {
+	flagext.DefaultValues(&defaultGlobalOTLPConfig)
+}
 
 func TestUnmarshalOTLPConfig(t *testing.T) {
 	for _, tc := range []struct {
@@ -25,7 +32,7 @@ resource_attributes:
 			expectedCfg: OTLPConfig{
 				ResourceAttributes: ResourceAttributesConfig{
 					AttributesConfig: []AttributesConfig{
-						DefaultOTLPConfig.ResourceAttributes.AttributesConfig[0],
+						DefaultOTLPConfig(defaultGlobalOTLPConfig).ResourceAttributes.AttributesConfig[0],
 						{
 							Action: IndexLabel,
 							Regex:  relabel.MustNewRegexp("foo"),
@@ -66,7 +73,7 @@ scope_attributes:
 					AttributesConfig: []AttributesConfig{
 						{
 							Action:     IndexLabel,
-							Attributes: blessedAttributes,
+							Attributes: defaultGlobalOTLPConfig.DefaultOTLPResourceAttributesAsIndexLabels,
 						},
 					},
 				},
@@ -96,7 +103,7 @@ log_attributes:
 			expectedCfg: OTLPConfig{
 				ResourceAttributes: ResourceAttributesConfig{
 					AttributesConfig: []AttributesConfig{
-						DefaultOTLPConfig.ResourceAttributes.AttributesConfig[0],
+						DefaultOTLPConfig(defaultGlobalOTLPConfig).ResourceAttributes.AttributesConfig[0],
 						{
 							Action: IndexLabel,
 							Regex:  relabel.MustNewRegexp("foo"),
@@ -151,6 +158,7 @@ log_attributes:
 				require.ErrorIs(t, err, tc.expectedErr)
 				return
 			}
+			cfg.ApplyGlobalOTLPConfig(defaultGlobalOTLPConfig)
 			require.Equal(t, tc.expectedCfg, cfg)
 		})
 	}
@@ -171,7 +179,7 @@ func TestOTLPConfig(t *testing.T) {
 	}{
 		{
 			name:       "default OTLPConfig",
-			otlpConfig: DefaultOTLPConfig,
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			resAttrs: []attrAndExpAction{
 				{
 					attr:           attrServiceName,

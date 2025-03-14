@@ -17,16 +17,18 @@ package tsdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
-	"github.com/pkg/errors"
-	"golang.org/x/exp/slices"
+
+	"github.com/prometheus/common/promslog"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -76,9 +78,22 @@ type IndexReader interface {
 	// during background garbage collections.
 	Postings(ctx context.Context, name string, values ...string) (index.Postings, error)
 
+	// PostingsForLabelMatching returns a sorted iterator over postings having a label with the given name and a value for which match returns true.
+	// If no postings are found having at least one matching label, an empty iterator is returned.
+	PostingsForLabelMatching(ctx context.Context, name string, match func(value string) bool) index.Postings
+
+	// PostingsForAllLabelValues returns a sorted iterator over all postings having a label with the given name.
+	// If no postings are found with the label in question, an empty iterator is returned.
+	PostingsForAllLabelValues(ctx context.Context, name string) index.Postings
+
 	// SortedPostings returns a postings list that is reordered to be sorted
 	// by the label set of the underlying series.
 	SortedPostings(index.Postings) index.Postings
+
+	// ShardedPostings returns a postings list filtered by the provided shardIndex
+	// out of shardCount. For a given posting, its shard MUST be computed hashing
+	// the series labels mod shardCount, using a hash function which is consistent over time.
+	ShardedPostings(p index.Postings, shardIndex, shardCount uint64) index.Postings
 
 	// Series populates the given builder and chunk metas for the series identified
 	// by the reference.
@@ -93,9 +108,9 @@ type IndexReader interface {
 	// storage.ErrNotFound is returned as error.
 	LabelValueFor(ctx context.Context, id storage.SeriesRef, label string) (string, error)
 
-	// LabelNamesFor returns all the label names for the series referred to by IDs.
+	// LabelNamesFor returns all the label names for the series referred to by the postings.
 	// The names returned are sorted.
-	LabelNamesFor(ctx context.Context, ids ...storage.SeriesRef) ([]string, error)
+	LabelNamesFor(ctx context.Context, postings index.Postings) ([]string, error)
 
 	// Close releases the underlying resources of the reader.
 	Close() error
@@ -116,8 +131,19 @@ type ChunkWriter interface {
 
 // ChunkReader provides reading access of serialized time series data.
 type ChunkReader interface {
-	// Chunk returns the series data chunk with the given reference.
-	Chunk(meta chunks.Meta) (chunkenc.Chunk, error)
+	// ChunkOrIterable returns the series data for the given chunks.Meta.
+	// Either a single chunk will be returned, or an iterable.
+	// A single chunk should be returned if chunks.Meta maps to a chunk that
+	// already exists and doesn't need modifications.
+	// An iterable should be returned if chunks.Meta maps to a subset of the
+	// samples in a stored chunk, or multiple chunks. (E.g. OOOHeadChunkReader
+	// could return an iterable where multiple histogram samples have counter
+	// resets. There can only be one counter reset per histogram chunk so
+	// multiple chunks would be created from the iterable in this case.)
+	// Only one of chunk or iterable should be returned. In some cases you may
+	// always expect a chunk to be returned. You can check that iterable is nil
+	// in those cases.
+	ChunkOrIterable(meta chunks.Meta) (chunkenc.Chunk, chunkenc.Iterable, error)
 
 	// Close releases all underlying resources of the reader.
 	Close() error
@@ -195,7 +221,7 @@ type BlockMetaCompaction struct {
 }
 
 func (bm *BlockMetaCompaction) SetOutOfOrder() {
-	if bm.containsHint(CompactionHintFromOutOfOrder) {
+	if bm.FromOutOfOrder() {
 		return
 	}
 	bm.Hints = append(bm.Hints, CompactionHintFromOutOfOrder)
@@ -203,16 +229,7 @@ func (bm *BlockMetaCompaction) SetOutOfOrder() {
 }
 
 func (bm *BlockMetaCompaction) FromOutOfOrder() bool {
-	return bm.containsHint(CompactionHintFromOutOfOrder)
-}
-
-func (bm *BlockMetaCompaction) containsHint(hint string) bool {
-	for _, h := range bm.Hints {
-		if h == hint {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(bm.Hints, CompactionHintFromOutOfOrder)
 }
 
 const (
@@ -238,13 +255,13 @@ func readMetaFile(dir string) (*BlockMeta, int64, error) {
 		return nil, 0, err
 	}
 	if m.Version != metaVersion1 {
-		return nil, 0, errors.Errorf("unexpected meta file version %d", m.Version)
+		return nil, 0, fmt.Errorf("unexpected meta file version %d", m.Version)
 	}
 
 	return &m, int64(len(b)), nil
 }
 
-func writeMetaFile(logger log.Logger, dir string, meta *BlockMeta) (int64, error) {
+func writeMetaFile(logger *slog.Logger, dir string, meta *BlockMeta) (int64, error) {
 	meta.Version = metaVersion1
 
 	// Make any changes to the file appear atomic.
@@ -252,7 +269,7 @@ func writeMetaFile(logger log.Logger, dir string, meta *BlockMeta) (int64, error
 	tmp := path + ".tmp"
 	defer func() {
 		if err := os.RemoveAll(tmp); err != nil {
-			level.Error(logger).Log("msg", "remove tmp file", "err", err.Error())
+			logger.Error("remove tmp file", "err", err.Error())
 		}
 	}()
 
@@ -298,7 +315,7 @@ type Block struct {
 	indexr     IndexReader
 	tombstones tombstones.Reader
 
-	logger log.Logger
+	logger *slog.Logger
 
 	numBytesChunks    int64
 	numBytesIndex     int64
@@ -308,9 +325,9 @@ type Block struct {
 
 // OpenBlock opens the block in the directory. It can be passed a chunk pool, which is used
 // to instantiate chunk structs.
-func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, err error) {
+func OpenBlock(logger *slog.Logger, dir string, pool chunkenc.Pool, postingsDecoderFactory PostingsDecoderFactory) (pb *Block, err error) {
 	if logger == nil {
-		logger = log.NewNopLogger()
+		logger = promslog.NewNopLogger()
 	}
 	var closers []io.Closer
 	defer func() {
@@ -329,7 +346,11 @@ func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, er
 	}
 	closers = append(closers, cr)
 
-	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename))
+	decoder := index.DecodePostingsRaw
+	if postingsDecoderFactory != nil {
+		decoder = postingsDecoderFactory(meta)
+	}
+	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename), decoder)
 	if err != nil {
 		return nil, err
 	}
@@ -467,14 +488,19 @@ func (r blockIndexReader) SortedLabelValues(ctx context.Context, name string, ma
 			slices.Sort(st)
 		}
 	}
-
-	return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+	if err != nil {
+		return st, fmt.Errorf("block: %s: %w", r.b.Meta().ULID, err)
+	}
+	return st, nil
 }
 
 func (r blockIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) == 0 {
 		st, err := r.ir.LabelValues(ctx, name)
-		return st, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+		if err != nil {
+			return st, fmt.Errorf("block: %s: %w", r.b.Meta().ULID, err)
+		}
+		return st, nil
 	}
 
 	return labelValuesWithMatchers(ctx, r.ir, name, matchers...)
@@ -491,18 +517,30 @@ func (r blockIndexReader) LabelNames(ctx context.Context, matchers ...*labels.Ma
 func (r blockIndexReader) Postings(ctx context.Context, name string, values ...string) (index.Postings, error) {
 	p, err := r.ir.Postings(ctx, name, values...)
 	if err != nil {
-		return p, errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+		return p, fmt.Errorf("block: %s: %w", r.b.Meta().ULID, err)
 	}
 	return p, nil
+}
+
+func (r blockIndexReader) PostingsForLabelMatching(ctx context.Context, name string, match func(string) bool) index.Postings {
+	return r.ir.PostingsForLabelMatching(ctx, name, match)
+}
+
+func (r blockIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
+	return r.ir.PostingsForAllLabelValues(ctx, name)
 }
 
 func (r blockIndexReader) SortedPostings(p index.Postings) index.Postings {
 	return r.ir.SortedPostings(p)
 }
 
+func (r blockIndexReader) ShardedPostings(p index.Postings, shardIndex, shardCount uint64) index.Postings {
+	return r.ir.ShardedPostings(p, shardIndex, shardCount)
+}
+
 func (r blockIndexReader) Series(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {
 	if err := r.ir.Series(ref, builder, chks); err != nil {
-		return errors.Wrapf(err, "block: %s", r.b.Meta().ULID)
+		return fmt.Errorf("block: %s: %w", r.b.Meta().ULID, err)
 	}
 	return nil
 }
@@ -517,10 +555,10 @@ func (r blockIndexReader) LabelValueFor(ctx context.Context, id storage.SeriesRe
 	return r.ir.LabelValueFor(ctx, id, label)
 }
 
-// LabelNamesFor returns all the label names for the series referred to by IDs.
+// LabelNamesFor returns all the label names for the series referred to by the postings.
 // The names returned are sorted.
-func (r blockIndexReader) LabelNamesFor(ctx context.Context, ids ...storage.SeriesRef) ([]string, error) {
-	return r.ir.LabelNamesFor(ctx, ids...)
+func (r blockIndexReader) LabelNamesFor(ctx context.Context, postings index.Postings) ([]string, error) {
+	return r.ir.LabelNamesFor(ctx, postings)
 }
 
 type blockTombstoneReader struct {
@@ -554,7 +592,7 @@ func (pb *Block) Delete(ctx context.Context, mint, maxt int64, ms ...*labels.Mat
 
 	p, err := PostingsForMatchers(ctx, pb.indexr, ms...)
 	if err != nil {
-		return errors.Wrap(err, "select series")
+		return fmt.Errorf("select series: %w", err)
 	}
 
 	ir := pb.indexr
@@ -612,10 +650,10 @@ Outer:
 }
 
 // CleanTombstones will remove the tombstones and rewrite the block (only if there are any tombstones).
-// If there was a rewrite, then it returns the ULID of the new block written, else nil.
-// If the resultant block is empty (tombstones covered the whole block), then it deletes the new block and return nil UID.
+// If there was a rewrite, then it returns the ULID of new blocks written, else nil.
+// If a resultant block is empty (tombstones covered the whole block), then it returns an empty slice.
 // It returns a boolean indicating if the parent block can be deleted safely of not.
-func (pb *Block) CleanTombstones(dest string, c Compactor) (*ulid.ULID, bool, error) {
+func (pb *Block) CleanTombstones(dest string, c Compactor) ([]ulid.ULID, bool, error) {
 	numStones := 0
 
 	if err := pb.tombstones.Iter(func(id storage.SeriesRef, ivs tombstones.Intervals) error {
@@ -630,24 +668,24 @@ func (pb *Block) CleanTombstones(dest string, c Compactor) (*ulid.ULID, bool, er
 	}
 
 	meta := pb.Meta()
-	uid, err := c.Write(dest, pb, pb.meta.MinTime, pb.meta.MaxTime, &meta)
+	uids, err := c.Write(dest, pb, pb.meta.MinTime, pb.meta.MaxTime, &meta)
 	if err != nil {
 		return nil, false, err
 	}
 
-	return &uid, true, nil
+	return uids, true, nil
 }
 
 // Snapshot creates snapshot of the block into dir.
 func (pb *Block) Snapshot(dir string) error {
 	blockDir := filepath.Join(dir, pb.meta.ULID.String())
 	if err := os.MkdirAll(blockDir, 0o777); err != nil {
-		return errors.Wrap(err, "create snapshot block dir")
+		return fmt.Errorf("create snapshot block dir: %w", err)
 	}
 
 	chunksDir := chunkDir(blockDir)
 	if err := os.MkdirAll(chunksDir, 0o777); err != nil {
-		return errors.Wrap(err, "create snapshot chunk dir")
+		return fmt.Errorf("create snapshot chunk dir: %w", err)
 	}
 
 	// Hardlink meta, index and tombstones
@@ -657,7 +695,7 @@ func (pb *Block) Snapshot(dir string) error {
 		tombstones.TombstonesFilename,
 	} {
 		if err := os.Link(filepath.Join(pb.dir, fname), filepath.Join(blockDir, fname)); err != nil {
-			return errors.Wrapf(err, "create snapshot %s", fname)
+			return fmt.Errorf("create snapshot %s: %w", fname, err)
 		}
 	}
 
@@ -665,13 +703,13 @@ func (pb *Block) Snapshot(dir string) error {
 	curChunkDir := chunkDir(pb.dir)
 	files, err := os.ReadDir(curChunkDir)
 	if err != nil {
-		return errors.Wrap(err, "ReadDir the current chunk dir")
+		return fmt.Errorf("ReadDir the current chunk dir: %w", err)
 	}
 
 	for _, f := range files {
 		err := os.Link(filepath.Join(curChunkDir, f.Name()), filepath.Join(chunksDir, f.Name()))
 		if err != nil {
-			return errors.Wrap(err, "hardlink a chunk")
+			return fmt.Errorf("hardlink a chunk: %w", err)
 		}
 	}
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 
 	iointernal "github.com/aws/smithy-go/transport/http/internal/io"
 )
@@ -31,6 +31,14 @@ func NewStackRequest() interface{} {
 			ContentLength: -1, // default to unknown length
 		},
 	}
+}
+
+// IsHTTPS returns if the request is HTTPS. Returns false if no endpoint URL is set.
+func (r *Request) IsHTTPS() bool {
+	if r.URL == nil {
+		return false
+	}
+	return strings.EqualFold(r.URL.Scheme, "https")
 }
 
 // Clone returns a deep copy of the Request for the new context. A reference to
@@ -158,7 +166,7 @@ func (r *Request) Build(ctx context.Context) *http.Request {
 
 	switch stream := r.stream.(type) {
 	case *io.PipeReader:
-		req.Body = ioutil.NopCloser(stream)
+		req.Body = io.NopCloser(stream)
 		req.ContentLength = -1
 	default:
 		// HTTP Client Request must only have a non-nil body if the
@@ -166,7 +174,7 @@ func (r *Request) Build(ctx context.Context) *http.Request {
 		// Client will interpret a non-nil body and ContentLength 0 as
 		// "unknown". This is unwanted behavior.
 		if req.ContentLength != 0 && r.stream != nil {
-			req.Body = iointernal.NewSafeReadCloser(ioutil.NopCloser(stream))
+			req.Body = iointernal.NewSafeReadCloser(io.NopCloser(stream))
 		}
 	}
 

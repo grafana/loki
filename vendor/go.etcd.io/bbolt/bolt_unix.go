@@ -1,4 +1,4 @@
-// +build !windows,!plan9,!solaris,!aix
+//go:build !windows && !plan9 && !solaris && !aix && !android
 
 package bbolt
 
@@ -9,6 +9,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"go.etcd.io/bbolt/errors"
 )
 
 // flock acquires an advisory lock on a file descriptor.
@@ -35,7 +37,7 @@ func flock(db *DB, exclusive bool, timeout time.Duration) error {
 
 		// If we timed out then return an error.
 		if timeout != 0 && time.Since(t) > timeout-flockRetryTimeout {
-			return ErrTimeout
+			return errors.ErrTimeout
 		}
 
 		// Wait for a bit and try again.

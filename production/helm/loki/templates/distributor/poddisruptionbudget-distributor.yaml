@@ -1,0 +1,21 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.distributor.replicas) 1) }}
+{{- if kindIs "invalid" .Values.distributor.maxUnavailable }}
+{{- fail "`.Values.distributor.maxUnavailable` must be set when `.Values.distributor.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.distributorFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.distributorLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.distributorSelectorLabels" . | nindent 6 }}
+  {{- with .Values.distributor.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

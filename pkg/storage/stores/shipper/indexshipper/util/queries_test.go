@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type mockTableQuerier struct {
@@ -64,7 +64,7 @@ func TestDoParallelQueries(t *testing.T) {
 				queries: map[string]index.Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(_ index.Query, _ index.ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)

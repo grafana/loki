@@ -6,7 +6,7 @@ package regexp
 
 import (
 	"regexp/syntax"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -33,11 +33,11 @@ type onePassInst struct {
 	Next []uint32
 }
 
-// OnePassPrefix returns a literal string that all matches for the
+// onePassPrefix returns a literal string that all matches for the
 // regexp must start with. Complete is true if the prefix
 // is the entire match. Pc is the index of the last rune instruction
-// in the string. The OnePassPrefix skips over the mandatory
-// EmptyBeginText
+// in the string. The onePassPrefix skips over the mandatory
+// EmptyBeginText.
 func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, pc uint32) {
 	i := &p.Inst[p.Start]
 	if i.Op != syntax.InstEmptyWidth || (syntax.EmptyOp(i.Arg))&syntax.EmptyBeginText == 0 {
@@ -68,7 +68,7 @@ func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, pc uint32) {
 	return buf.String(), complete, pc
 }
 
-// OnePassNext selects the next actionable state of the prog, based on the input character.
+// onePassNext selects the next actionable state of the prog, based on the input character.
 // It should only be called when i.Op == InstAlt or InstAltMatch, and from the one-pass machine.
 // One of the alternates may ultimately lead without input to end of line. If the instruction
 // is InstAltMatch the path to the InstMatch is in i.Out, the normal node in i.Next.
@@ -218,7 +218,7 @@ func cleanupOnePass(prog *onePassProg, original *syntax.Prog) {
 	}
 }
 
-// onePassCopy creates a copy of the original Prog, as we'll be modifying it
+// onePassCopy creates a copy of the original Prog, as we'll be modifying it.
 func onePassCopy(prog *syntax.Prog) *onePassProg {
 	p := &onePassProg{
 		Start:  prog.Start,
@@ -281,13 +281,6 @@ func onePassCopy(prog *syntax.Prog) *onePassProg {
 	}
 	return p
 }
-
-// runeSlice exists to permit sorting the case-folded rune sets.
-type runeSlice []rune
-
-func (p runeSlice) Len() int           { return len(p) }
-func (p runeSlice) Less(i, j int) bool { return p[i] < p[j] }
-func (p runeSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 var anyRuneNotNL = []rune{0, '\n' - 1, '\n' + 1, unicode.MaxRune}
 var anyRune = []rune{0, unicode.MaxRune}
@@ -383,7 +376,7 @@ func makeOnePass(p *onePassProg) *onePassProg {
 				for r1 := unicode.SimpleFold(r0); r1 != r0; r1 = unicode.SimpleFold(r1) {
 					runes = append(runes, r1, r1)
 				}
-				sort.Sort(runeSlice(runes))
+				slices.Sort(runes)
 			} else {
 				runes = append(runes, inst.Rune...)
 			}
@@ -407,7 +400,7 @@ func makeOnePass(p *onePassProg) *onePassProg {
 				for r1 := unicode.SimpleFold(r0); r1 != r0; r1 = unicode.SimpleFold(r1) {
 					runes = append(runes, r1, r1)
 				}
-				sort.Sort(runeSlice(runes))
+				slices.Sort(runes)
 			} else {
 				runes = append(runes, inst.Rune[0], inst.Rune[0])
 			}

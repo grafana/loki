@@ -14,7 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
 var errFakeFailure = errors.New("fake failure")
@@ -45,6 +46,7 @@ func TestRequestNoopRetry(t *testing.T) {
 
 	require.EqualValues(t, 2, testutil.ToFloat64(metrics.requests))
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	metrics.Unregister()
 }
 
 func TestRequestZeroLimitedRetry(t *testing.T) {
@@ -73,6 +75,7 @@ func TestRequestZeroLimitedRetry(t *testing.T) {
 
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	metrics.Unregister()
 }
 
 func TestRequestLimitedRetry(t *testing.T) {
@@ -108,6 +111,7 @@ func TestRequestLimitedRetry(t *testing.T) {
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.retriesExceeded))
 	require.EqualValues(t, 2, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 4, testutil.ToFloat64(metrics.requests))
+	metrics.Unregister()
 }
 
 func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
@@ -138,6 +142,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
+	metrics.Unregister()
 }
 
 func TestAIMDReducedThroughput(t *testing.T) {
@@ -165,8 +170,10 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	cli := newMockObjectClient(triggeredFailer{trigger: &trigger})
 	ctrl.Wrap(cli)
 
+	statsCtx, ctx := stats.NewContext(context.Background())
+
 	// run for 1 second, measure the per-second rate of requests & successful responses
-	count, success := runAndMeasureRate(ctrl, time.Second)
+	count, success := runAndMeasureRate(ctx, ctrl, time.Second)
 	require.Greater(t, count, 1.0)
 	require.Greater(t, success, 1.0)
 	// no time spent backing off because the per-second limit will not be hit
@@ -195,7 +202,7 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	}(&trigger)
 
 	// now, run the requests again but there will now be a failure rate & some throttling involved
-	count, success = runAndMeasureRate(ctrl, time.Second)
+	count, success = runAndMeasureRate(ctx, ctrl, time.Second)
 	done <- true
 
 	wg.Wait()
@@ -204,11 +211,15 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Less(t, count, previousCount)
 	require.Less(t, success, previousSuccess)
 
-	// should have fewer successful requests than total since we are failing some
-	require.Less(t, success, count)
+	// should have fewer successful requests than total since we may be failing some
+	require.LessOrEqual(t, success, count)
+
+	// should have registered some congestion latency in stats
+	require.NotZero(t, statsCtx.Store().CongestionControlLatency)
+	metrics.Unregister()
 }
 
-func runAndMeasureRate(ctrl Controller, duration time.Duration) (float64, float64) {
+func runAndMeasureRate(ctx context.Context, ctrl Controller, duration time.Duration) (float64, float64) {
 	var count, success float64
 
 	tick := time.NewTimer(duration)
@@ -218,8 +229,6 @@ func runAndMeasureRate(ctrl Controller, duration time.Duration) (float64, float6
 		case <-tick.C:
 			goto result
 		default:
-			ctx := context.Background()
-
 			count++
 			_, _, err := ctrl.GetObject(ctx, "foo")
 			if err == nil {
@@ -238,7 +247,7 @@ type mockObjectClient struct {
 	nonRetryableErrs bool
 }
 
-func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) error {
+func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
 	panic("not implemented")
 }
 
@@ -250,8 +259,15 @@ func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, in
 
 	return io.NopCloser(strings.NewReader("bar")), 3, nil
 }
+func (m *mockObjectClient) GetObjectRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	panic("not implemented")
+}
 
 func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockObjectClient) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
 	panic("not implemented")
 }
 

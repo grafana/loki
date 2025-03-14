@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -12,8 +13,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // Builder is a helper used to create tsdb indices.
@@ -107,16 +108,51 @@ func (b *Builder) Build(
 	}
 
 	// First write tenant/index-bounds-random.staging
-	rng := rand.Int63()
+	rng := rand.Int63() //#nosec G404 -- just generating a random filename in a slightly unidiomatic way. Collision resistance is not a concern.
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
-	var writer *index.Writer
-
-	writer, err = index.NewWriterWithVersion(ctx, b.version, tmpPath)
+	writer, err := index.NewFileWriterWithVersion(ctx, b.version, tmpPath)
 	if err != nil {
 		return id, err
 	}
+
+	if _, err := b.build(writer, false); err != nil {
+		return id, err
+	}
+
+	reader, err := index.NewFileReader(tmpPath)
+	if err != nil {
+		return id, err
+	}
+
+	from, through := reader.Bounds()
+
+	// load the newly compacted index to grab checksum, promptly close
+	dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
+
+	reader.Close()
+	defer func() {
+		if err != nil {
+			os.RemoveAll(tmpPath)
+		}
+	}()
+
+	if err := chunk_util.EnsureDirectory(filepath.Dir(dst.Path())); err != nil {
+		return id, err
+	}
+	dstPath := dst.Path()
+	if err := os.Rename(tmpPath, dstPath); err != nil {
+		return id, err
+	}
+
+	return dst, nil
+}
+
+func (b *Builder) build(
+	writer *index.Creator,
+	reader bool, // whether to return the ReadCloser of the underlying DB
+) (io.ReadCloser, error) {
 	// TODO(owen-d): multithread
 
 	// Sort series
@@ -155,7 +191,7 @@ func (b *Builder) Build(
 	// Add symbols
 	for _, symbol := range symbols {
 		if err := writer.AddSymbol(symbol); err != nil {
-			return id, err
+			return nil, err
 		}
 	}
 
@@ -165,38 +201,45 @@ func (b *Builder) Build(
 			s.chunks = s.chunks.Finalize()
 		}
 		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks...); err != nil {
-			return id, err
+			return nil, err
 		}
 	}
 
-	if err := writer.Close(); err != nil {
-		return id, err
+	return writer.Close(reader)
+}
+
+func (b *Builder) BuildInMemory(
+	ctx context.Context,
+	// Determines how to create the resulting Identifier and file name.
+	// This is variable as we use Builder for multiple reasons,
+	// such as building multi-tenant tsdbs on the ingester
+	// and per tenant ones during compaction
+	createFn func(from, through model.Time, checksum uint32) Identifier,
+) (id Identifier, data []byte, err error) {
+	writer, err := index.NewMemWriterWithVersion(ctx, b.version)
+	if err != nil {
+		return id, nil, err
 	}
 
-	reader, err := index.NewFileReader(tmpPath)
+	readCloser, err := b.build(writer, true)
 	if err != nil {
-		return id, err
+		return id, nil, err
 	}
+	defer readCloser.Close()
+
+	data, err = io.ReadAll(readCloser)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	reader, err := index.NewReader(index.RealByteSlice(data))
+	if err != nil {
+		return id, nil, err
+	}
+	defer reader.Close()
 
 	from, through := reader.Bounds()
+	id = createFn(model.Time(from), model.Time(through), reader.Checksum())
 
-	// load the newly compacted index to grab checksum, promptly close
-	dst := createFn(model.Time(from), model.Time(through), reader.Checksum())
-
-	reader.Close()
-	defer func() {
-		if err != nil {
-			os.RemoveAll(tmpPath)
-		}
-	}()
-
-	if err := chunk_util.EnsureDirectory(filepath.Dir(dst.Path())); err != nil {
-		return id, err
-	}
-	dstPath := dst.Path()
-	if err := os.Rename(tmpPath, dstPath); err != nil {
-		return id, err
-	}
-
-	return dst, nil
+	return id, data, nil
 }

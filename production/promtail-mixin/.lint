@@ -1,0 +1,33 @@
+exclusions:
+  template-job-rule:
+    reason: "Prometheus datasource variable is being named as prometheus_datasource now while linter expects 'datasource'"
+    entries:
+      - dashboard: "Loki / Promtail"
+  panel-datasource-rule:
+    reason: "Loki datasource variable is being named as loki_datasource now while linter expects 'datasource'"
+    entries:
+      - dashboard: "Loki / Promtail"
+  template-datasource-rule:
+    reason: "Based on new convention we are using variable names prometheus_datasource and loki_datasource where as linter expects 'datasource'"
+    entries:
+      - dashboard: "Loki / Promtail"
+  template-instance-rule:
+    reason: "These dashboards are cluster overview dashboards, whereas the instance refers to specific pods or nodes"
+    entries:
+      - dashboard: "Loki / Promtail"
+  target-instance-rule:
+    reason: "These dashboards are cluster overview dashboards, whereas the instance refers to specific pods or nodes"
+    entries:
+      - dashboard: "Loki / Promtail"
+  target-job-rule:
+    reason: "We don't have/need a job template selector for this dashboard"
+    entries:
+      - dashboard: "Loki / Promtail"
+  panel-title-description-rule:
+    reason: "Panel descriptions are not very useful here"
+    entries:
+      - dashboard: "Loki / Promtail"
+  template-on-time-change-reload-rule:
+    reason: "Fixing this correctly is an upstream jsonnet library change"
+  panel-units-rule:
+    reason: "Fixing this correctly is an upstream jsonnet library change"

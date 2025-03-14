@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func TestClone(t *testing.T) {
@@ -63,6 +63,15 @@ func TestClone(t *testing.T) {
 		},
 		"true filter": {
 			query: `{ foo = "bar" } | foo =~".*"`,
+		},
+		"multiple variants": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with aggregation": {
+			query: `variants(sum by (app) (bytes_over_time({foo="bar"}[5m])), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with filters": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"} | logfmt[5m])`,
 		},
 	}
 

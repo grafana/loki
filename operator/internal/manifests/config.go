@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
@@ -194,6 +194,7 @@ func ConfigOptions(opt Options) config.Options {
 		ObjectStorage:         opt.ObjectStorage,
 		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
+		DiscoverLogLevels:     discoverLogLevels(&opt.Stack),
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
 			RulesStorageDirectory: rulesStorageDirectory,
@@ -202,8 +203,9 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
-		Retention: retentionConfig(&opt.Stack),
-		Overrides: overrides,
+		Retention:      retentionConfig(&opt.Stack),
+		OTLPAttributes: otlpAttributeConfig(&opt.Stack),
+		Overrides:      overrides,
 	}
 }
 
@@ -248,10 +250,11 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 		conf.Notifier = &config.NotifierConfig{}
 		if tls := clt.TLS; tls != nil {
 			conf.Notifier.TLS = config.TLSConfig{
-				CAPath:     tls.CAPath,
-				ServerName: tls.ServerName,
-				CertPath:   tls.CertPath,
-				KeyPath:    tls.KeyPath,
+				CAPath:             tls.CAPath,
+				ServerName:         tls.ServerName,
+				InsecureSkipVerify: tls.InsecureSkipVerify,
+				CertPath:           tls.CertPath,
+				KeyPath:            tls.KeyPath,
 			}
 		}
 
@@ -364,11 +367,13 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 	return c
 }
 
-var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
-	lokiv1.SizeOneXDemo:       10,
-	lokiv1.SizeOneXExtraSmall: 10,
-	lokiv1.SizeOneXSmall:      150,
-	lokiv1.SizeOneXMedium:     150,
+func deleteWorkerCount(size lokiv1.LokiStackSizeType) uint {
+	switch size {
+	case lokiv1.SizeOneXSmall, lokiv1.SizeOneXMedium:
+		return 150
+	default:
+		return 10
+	}
 }
 
 func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
@@ -391,6 +396,19 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 
 	return config.RetentionOptions{
 		Enabled:           true,
-		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
+		DeleteWorkerCount: deleteWorkerCount(ls.Size),
 	}
+}
+
+func discoverLogLevels(ls *lokiv1.LokiStackSpec) bool {
+	if ls.Tenants == nil {
+		return true
+	}
+
+	if ls.Tenants.Mode == lokiv1.OpenshiftLogging ||
+		ls.Tenants.Mode == lokiv1.OpenshiftNetwork {
+		return false
+	}
+
+	return true
 }

@@ -1,0 +1,44 @@
+name: Helm tagged release PR
+
+on:
+  release:
+    types:
+      - released
+
+  workflow_dispatch: # for manual testing
+
+jobs:
+  weekly-release-pr:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
+      BUILD_IN_CONTAINER: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gabe565/setup-helm-docs-action@v1
+        with:
+          version: v1.11.2
+
+      - id: "get_github_app_token"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: Update/regenerate files
+        id: update
+        run: |
+          bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
+          body: Automated PR created by [helm-tagged-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-tagged-release-pr.yaml)
+          commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
+          branch: helm-chart-tagged-${{ steps.update.outputs.new_chart_version }}
+          base: main
+          labels: helm

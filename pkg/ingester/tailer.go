@@ -8,13 +8,14 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -46,6 +47,7 @@ type tailer struct {
 	// and the loop and senders should stop
 	closeChan chan struct{}
 	closeOnce sync.Once
+	closed    atomic.Bool
 
 	blockedAt         *time.Time
 	blockedMtx        sync.RWMutex
@@ -74,6 +76,7 @@ func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDr
 		maxDroppedStreams: maxDroppedStreams,
 		id:                generateUniqueID(orgID, expr.String()),
 		closeChan:         make(chan struct{}),
+		closed:            atomic.Bool{},
 		pipeline:          pipeline,
 	}, nil
 }
@@ -227,17 +230,13 @@ func isMatching(lbs labels.Labels, matchers []*labels.Matcher) bool {
 }
 
 func (t *tailer) isClosed() bool {
-	select {
-	case <-t.closeChan:
-		return true
-	default:
-		return false
-	}
+	return t.closed.Load()
 }
 
 func (t *tailer) close() {
 	t.closeOnce.Do(func() {
-		// Signal the close channel
+		// Signal the close channel & flip the atomic bool so tailers will exit
+		t.closed.Store(true)
 		close(t.closeChan)
 
 		// We intentionally do not close sendChan in order to avoid a panic on

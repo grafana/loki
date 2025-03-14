@@ -14,14 +14,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	lokiClient "github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/serverutils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Target struct {
@@ -68,7 +68,7 @@ func (h *Target) run() error {
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 
 	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
-	if !model.IsValidMetricName(model.LabelValue(tentativeServerMetricNamespace)) {
+	if !model.LabelName(tentativeServerMetricNamespace).IsValidLegacy() {
 		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
 	}
 	h.config.Server.MetricsNamespace = tentativeServerMetricNamespace

@@ -9,7 +9,7 @@ import (
 
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 const maxStackSize = 8 * 1024
@@ -82,11 +82,11 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 // }
 
 func GetUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
+	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated
 }
 
 func GetUnsafeString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
 }
 
 func logPanic(p interface{}) {

@@ -17,21 +17,22 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/querylimits"
-	"github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 const (
 	JSONType     = `application/json; charset=utf-8`
+	ParquetType  = `application/vnd.apache.parquet`
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
@@ -72,6 +73,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeVector,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -87,6 +89,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -103,6 +106,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					ResultType: loghttp.ResultTypeScalar,
 					Result:     sampleStream,
 				},
+				Warnings: result.Warnings,
 			},
 			Statistics: result.Statistics,
 		}, nil
@@ -115,15 +119,31 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 				Result:     data,
 			},
 			Status:     "success",
+			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, nil
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
-		return &TopKSketchesResponse{Response: sk}, err
+		return &TopKSketchesResponse{
+			Response:   sk,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	case logql.ProbabilisticQuantileMatrix:
 		r := data.ToProto()
 		data.Release()
-		return &QuantileSketchResponse{Response: r}, nil
+		return &QuantileSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, nil
+	case logql.CountMinSketchVector:
+		r, err := data.ToProto()
+		return &CountMinSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -146,6 +166,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Statistics: r.Statistics,
 			Data:       streams,
 			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
 		}, nil
 
 	case *LokiPromResponse:
@@ -157,12 +178,14 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 				Statistics: r.Statistics,
 				Data:       sampleStreamToVector(r.Response.Data.Result),
 				Headers:    resp.GetHeaders(),
+				Warnings:   r.Response.Warnings,
 			}, nil
 		}
 		return logqlmodel.Result{
 			Statistics: r.Statistics,
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 			Headers:    resp.GetHeaders(),
+			Warnings:   r.Response.Warnings,
 		}, nil
 	case *TopKSketchesResponse:
 		matrix, err := sketch.TopKMatrixFromProto(r.Response)
@@ -171,8 +194,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		}
 
 		return logqlmodel.Result{
-			Data:    matrix,
-			Headers: resp.GetHeaders(),
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	case *QuantileSketchResponse:
 		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
@@ -180,8 +205,21 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
 		return logqlmodel.Result{
-			Data:    matrix,
-			Headers: resp.GetHeaders(),
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
+		}, nil
+	case *CountMinSketchResponse:
+		cms, err := logql.CountMinSketchVectorFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode count min sketch vector: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:       cms,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
@@ -200,6 +238,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_ShardsResponse:
+		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
 		return concrete.Prom, nil
 	case *QueryResponse_Streams:
@@ -210,6 +250,14 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.TopkSketches, nil
 	case *QueryResponse_QuantileSketches:
 		return concrete.QuantileSketches, nil
+	case *QueryResponse_PatternsResponse:
+		return concrete.PatternsResponse, nil
+	case *QueryResponse_DetectedLabels:
+		return concrete.DetectedLabels, nil
+	case *QueryResponse_DetectedFields:
+		return concrete.DetectedFields, nil
+	case *QueryResponse_CountMinSketches:
+		return concrete.CountMinSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -243,6 +291,16 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
 		p.Response = &QueryResponse_QuantileSketches{response}
+	case *ShardsResponse:
+		p.Response = &QueryResponse_ShardsResponse{response}
+	case *QueryPatternsResponse:
+		p.Response = &QueryResponse_PatternsResponse{response}
+	case *DetectedLabelsResponse:
+		p.Response = &QueryResponse_DetectedLabels{response}
+	case *DetectedFieldsResponse:
+		p.Response = &QueryResponse_DetectedFields{response}
+	case *CountMinSketchResponse:
+		p.Response = &QueryResponse_CountMinSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -272,6 +330,11 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		ctx = httpreq.InjectActorPath(ctx, actor)
 	}
 
+	// Add disable wrappers
+	if disableWrappers, ok := req.Metadata[httpreq.LokiDisablePipelineWrappersHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
+	}
+
 	// Add limits
 	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
 		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
@@ -296,7 +359,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Instant.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Instant.Plan = &plan.QueryPlan{
 				AST: parsed,
@@ -306,13 +369,15 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
+	case *QueryRequest_ShardsRequest:
+		return concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
 		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
 		if concrete.Streams.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Streams.Plan = &plan.QueryPlan{
 				AST: parsed,
@@ -324,13 +389,22 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &LabelRequest{
 			LabelRequest: *concrete.Labels,
 		}, ctx, nil
+	case *QueryRequest_PatternsRequest:
+		return concrete.PatternsRequest, ctx, nil
+	case *QueryRequest_DetectedLabels:
+		return &DetectedLabelsRequest{
+			DetectedLabelsRequest: *concrete.DetectedLabels,
+		}, ctx, nil
+	case *QueryRequest_DetectedFields:
+		return &DetectedFieldsRequest{
+			DetectedFieldsRequest: *concrete.DetectedFields,
+		}, ctx, nil
 	default:
-		return nil, ctx, fmt.Errorf("unsupported request type, got (%T)", req.Request)
+		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
 	}
 }
 
 func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
-
 	result := &QueryRequest{
 		Metadata: make(map[string]string),
 	}
@@ -348,8 +422,16 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Instant{Instant: req}
 	case *LokiRequest:
 		result.Request = &QueryRequest_Streams{Streams: req}
+	case *logproto.ShardsRequest:
+		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
+	case *logproto.QueryPatternsRequest:
+		result.Request = &QueryRequest_PatternsRequest{PatternsRequest: req}
+	case *DetectedLabelsRequest:
+		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
+	case *DetectedFieldsRequest:
+		result.Request = &QueryRequest_DetectedFields{DetectedFields: &req.DetectedFieldsRequest}
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
+		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}
 
 	// Add query tags
@@ -362,6 +444,12 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		result.Metadata[httpreq.LokiActorPathHeader] = actor
+	}
+
+	// Keep disable wrappers
+	disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
+	if disableWrappers != "" {
+		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
 	}
 
 	// Add limits

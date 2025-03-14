@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type contextKey int
@@ -55,7 +55,7 @@ func InjectCacheGenNumber(ctx context.Context, cacheGen string) context.Context 
 	return context.WithValue(ctx, interface{}(cacheGenContextKey), cacheGen)
 }
 
-// ExtractCacheGenNumbersFromHeaders gets the cache gen from the context.
+// ExtractCacheGenNumber gets the cache gen from the context.
 func ExtractCacheGenNumber(ctx context.Context) string {
 	cacheGenNumber, ok := ctx.Value(cacheGenContextKey).(string)
 	if !ok {

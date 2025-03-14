@@ -11,11 +11,12 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	querier_stats "github.com/grafana/loki/pkg/querier/stats"
-	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
+	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
 )
 
 var (
@@ -30,7 +31,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, co
 		log:            log,
 		handler:        handler,
 		codec:          codec,
-		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
+		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
 }
@@ -83,8 +84,8 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 // process loops processing requests on an established stream.
 func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
-	ctx, cancel := context.WithCancel(c.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(c.Context())
+	defer cancel(errors.New("frontend processor process finished"))
 
 	for {
 		request, err := c.Recv()

@@ -9,6 +9,8 @@ weight:
 
 # drop
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `drop` stage is a filtering stage that lets you drop logs based on several options.
 
 It's important to note that if you provide multiple options they will be treated like an AND clause,
@@ -126,9 +128,9 @@ Would drop this log line:
 
 #### Drop old log lines
 
-{{% admonition type="note" %}}
-For `older_than` to work, you must be using the [timestamp]({{< relref "./timestamp" >}}) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
-{{% /admonition %}}
+{{< admonition type="note" >}}
+For `older_than` to work, you must be using the [timestamp](../timestamp/) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
+{{< /admonition >}}
 
 Given the pipeline:
 

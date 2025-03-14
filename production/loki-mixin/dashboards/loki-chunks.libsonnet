@@ -6,7 +6,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     'loki-chunks.json': {
                           local cfg = self,
-                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'),
+                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (
+                            if $._config.meta_monitoring.enabled
+                            then '(ingester.*|partition-ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
+                            else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'
+                          ),
                         } +
                         $.dashboard('Loki / Chunks', uid='chunks')
                         .addCluster()
@@ -15,11 +19,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row('Active Series / Chunks')
                           .addPanel(
-                            $.panel('Series') +
+                            $.newQueryPanel('Series') +
                             $.queryPanel('sum(loki_ingester_memory_chunks{%s})' % dashboards['loki-chunks.json'].labelsSelector, 'series'),
                           )
                           .addPanel(
-                            $.panel('Chunks per series') +
+                            $.newQueryPanel('Chunks per series') +
                             $.queryPanel(
                               'sum(loki_ingester_memory_chunks{%s}) / sum(loki_ingester_memory_streams{%s})' % [
                                 dashboards['loki-chunks.json'].labelsSelector,
@@ -32,26 +36,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row('Flush Stats')
                           .addPanel(
-                            $.panel('Utilization') +
-                            $.latencyPanel('loki_ingester_chunk_utilization', '{%s}' % dashboards['loki-chunks.json'].labelsSelector, multiplier='1') +
-                            { yaxes: $.yaxes('percentunit') },
+                            $.newQueryPanel('Utilization', 'percentunit') +
+                            $.latencyPanel('loki_ingester_chunk_utilization', '{%s}' % dashboards['loki-chunks.json'].labelsSelector, multiplier='1'),
                           )
                           .addPanel(
-                            $.panel('Age') +
+                            $.newQueryPanel('Age') +
                             $.latencyPanel('loki_ingester_chunk_age_seconds', '{%s}' % dashboards['loki-chunks.json'].labelsSelector),
                           ),
                         )
                         .addRow(
                           $.row('Flush Stats')
                           .addPanel(
-                            $.panel('Log Entries Per Chunk') +
-                            $.latencyPanel('loki_ingester_chunk_entries', '{%s}' % dashboards['loki-chunks.json'].labelsSelector, multiplier='1') +
-                            { yaxes: $.yaxes('short') },
+                            $.newQueryPanel('Log Entries Per Chunk', 'short') +
+                            $.latencyPanel('loki_ingester_chunk_entries', '{%s}' % dashboards['loki-chunks.json'].labelsSelector, multiplier='1'),
                           )
                           .addPanel(
-                            $.panel('Index Entries Per Chunk') +
+                            $.newQueryPanel('Index Entries Per Chunk') +
                             $.queryPanel(
-                              'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[5m]))' % [
+                              'sum(rate(loki_chunk_store_index_entries_per_chunk_sum{%s}[$__rate_interval])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{%s}[$__rate_interval]))' % [
                                 dashboards['loki-chunks.json'].labelsSelector,
                                 dashboards['loki-chunks.json'].labelsSelector,
                               ],
@@ -62,22 +64,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row('Flush Stats')
                           .addPanel(
-                            $.panel('Queue Length') +
+                            $.newQueryPanel('Queue Length') +
                             $.queryPanel('loki_ingester_flush_queue_length{%(label)s} or cortex_ingester_flush_queue_length{%(label)s}' % { label: dashboards['loki-chunks.json'].labelsSelector }, '{{pod}}'),
                           )
                           .addPanel(
-                            $.panel('Flush Rate') +
-                            $.qpsPanel('loki_ingester_chunk_age_seconds_count{%s}' % dashboards['loki-chunks.json'].labelsSelector,),
+                            $.newQueryPanel('Flush Rate') +
+                            $.newQpsPanel('loki_ingester_chunk_age_seconds_count{%s}' % dashboards['loki-chunks.json'].labelsSelector,),
                           ),
                         )
                         .addRow(
                           $.row('Flush Stats')
                           .addPanel(
-                            $.panel('Chunks Flushed/Second') +
+                            $.newQueryPanel('Chunks Flushed/Second') +
                             $.queryPanel('sum(rate(loki_ingester_chunks_flushed_total{%s}[$__rate_interval]))' % dashboards['loki-chunks.json'].labelsSelector, '{{pod}}'),
                           )
                           .addPanel(
-                            $.panel('Chunk Flush Reason') +
+                            $.newQueryPanel('Chunk Flush Reason') +
                             $.queryPanel('sum by (reason) (rate(loki_ingester_chunks_flushed_total{%s}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{%s}[$__rate_interval]))' % [dashboards['loki-chunks.json'].labelsSelector, dashboards['loki-chunks.json'].labelsSelector], '{{reason}}') + {
                               stack: true,
                               yaxes: [
@@ -138,32 +140,30 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row('Utilization')
                           .addPanel(
-                            $.panel('Chunk Size Quantiles') +
+                            $.newQueryPanel('Chunk Size Quantiles', 'bytes') +
                             $.queryPanel(
                               [
-                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[1m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.90, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.50, sum(rate(loki_ingester_chunk_size_bytes_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
                               ],
                               [
                                 'p99',
                                 'p90',
                                 'p50',
                               ],
-                            ) + {
-                              yaxes: $.yaxes('bytes'),
-                            },
+                            ),
                           )
                         )
                         .addRow(
                           $.row('Duration')
                           .addPanel(
-                            $.panel('Chunk Duration hours (end-start)') +
+                            $.newQueryPanel('Chunk Duration hours (end-start)') +
                             $.queryPanel(
                               [
-                                'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[5m])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
-                                'sum(rate(loki_ingester_chunk_bounds_hours_sum{%s}[5m])) / sum(rate(loki_ingester_chunk_bounds_hours_count{%s}[5m]))' % [
+                                'histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{%s}[$__rate_interval])) by (le))' % dashboards['loki-chunks.json'].labelsSelector,
+                                'sum(rate(loki_ingester_chunk_bounds_hours_sum{%s}[$__rate_interval])) / sum(rate(loki_ingester_chunk_bounds_hours_count{%s}[$__rate_interval]))' % [
                                   dashboards['loki-chunks.json'].labelsSelector,
                                   dashboards['loki-chunks.json'].labelsSelector,
                                 ],

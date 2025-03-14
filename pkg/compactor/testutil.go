@@ -17,12 +17,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/testutil"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
 )
 
 const (
@@ -81,7 +81,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 	idx := 0
 	for filename, content := range commonIndexes {
 		filePath := filepath.Join(path, strings.TrimSuffix(filename, ".gz"))
-		require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
 		if strings.HasSuffix(filename, ".gz") {
 			compressFile(t, filePath)
 		}
@@ -92,7 +92,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
 		for filename, content := range files {
 			filePath := filepath.Join(path, userID, strings.TrimSuffix(filename, ".gz"))
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
+			require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
 			if strings.HasSuffix(filename, ".gz") {
 				compressFile(t, filePath)
 			}

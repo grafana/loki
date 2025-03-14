@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
 func TestRuler_PrometheusRules(t *testing.T) {
@@ -559,7 +559,7 @@ func TestRuler_PrometheusAlerts(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
 	r := newTestRuler(t, cfg)
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
@@ -593,7 +593,7 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
 	r := newTestRuler(t, cfg)
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 

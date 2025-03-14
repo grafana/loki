@@ -11,9 +11,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/validation"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -21,31 +22,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTailHandler(t *testing.T) {
+func TestInstantQueryHandler(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
+	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
+		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
-	req, err := http.NewRequest("GET", `/`, nil)
-	require.NoError(t, err)
-	q := req.URL.Query()
-	q.Add("query", `{app="loki"}`)
-	req.URL.RawQuery = q.Encode()
-	err = req.ParseForm()
-	require.NoError(t, err)
+		ctx := user.InjectOrgID(context.Background(), "user")
+		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
+		require.NoError(t, err)
 
-	ctx := user.InjectOrgID(req.Context(), "1|2")
-	req = req.WithContext(ctx)
-	require.NoError(t, err)
+		q := req.URL.Query()
+		q.Add("query", `{app="loki"}`)
+		req.URL.RawQuery = q.Encode()
+		err = req.ParseForm()
+		require.NoError(t, err)
 
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(api.TailHandler)
+		rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Equal(t, "multiple org IDs present", rr.Body.String())
+		handler := NewQuerierHandler(api)
+		httpHandler := NewQuerierHTTPHandler(handler)
+
+		httpHandler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Equal(t, logqlmodel.ErrUnsupportedSyntaxForInstantQuery.Error(), rr.Body.String())
+	})
 }
 
 type slowConnectionSimulator struct {
@@ -58,7 +61,6 @@ func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	if err := ctx.Err(); err != nil {
 		panic(fmt.Sprintf("context already errored: %s", err))
-
 	}
 	time.Sleep(s.sleepFor)
 
@@ -191,6 +193,7 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 }
+
 func TestVolumeHandler(t *testing.T) {
 	ret := &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{

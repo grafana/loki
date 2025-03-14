@@ -10,11 +10,10 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestExplain(t *testing.T) {
-
 	query := `topk(5, avg_over_time({app="loki"} |= "caller=metrics.go" | logfmt | unwrap bytes [5s]))`
 
 	// TODO(karsten): Ideally the querier and downstreamer are not required
@@ -25,10 +24,11 @@ func TestExplain(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	defaultEv := NewDefaultEvaluator(querier, 30*time.Second)
+	defaultEv := NewDefaultEvaluator(querier, 30*time.Second, 10_000)
 	downEv := &DownstreamEvaluator{Downstreamer: MockDownstreamer{regular}, defaultEvaluator: defaultEv}
 
-	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{ShardQuantileOverTime})
+	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
+	mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 	_, _, expr, err := mapper.Parse(syntax.MustParseExpr(query))
 	require.NoError(t, err)
 
@@ -45,8 +45,7 @@ func TestExplain(t *testing.T) {
 	tree := NewTree()
 	ev.Explain(tree)
 
-	expected :=
-		`[topk,  by ()] VectorAgg
+	expected := `[topk,  by ()] VectorAgg
  └── Concat
       ├── VectorStep
       ├── ...

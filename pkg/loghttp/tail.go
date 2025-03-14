@@ -10,9 +10,9 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 const (
@@ -83,7 +83,7 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 
 	req.Query, err = parseRegexQuery(r)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	req.Limit, err = limit(r)

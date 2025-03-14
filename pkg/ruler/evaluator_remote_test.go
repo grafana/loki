@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockClient struct {
@@ -45,7 +45,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// sleep for slightly longer than the timeout
 			time.Sleep(timeout + (100 * time.Millisecond))
 			return &httpgrpc.HTTPResponse{
@@ -61,6 +61,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.Error(t, err)
@@ -79,7 +80,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// generate a response of random bytes that's just too big for the max response size
 			var resp = make([]byte, exceededSize)
 			_, err = rand.Read(resp)
@@ -98,6 +99,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.Error(t, err)
@@ -116,7 +118,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 	)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -146,6 +148,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "19", now)
 	require.NoError(t, err)
@@ -162,7 +165,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -189,13 +192,14 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.NoError(t, err)
 	require.Empty(t, res.Data)
 }
 
-// TestRemoteEvalEmptyVectorResponse validates that an empty vector response is valid and does not cause an error
+// TestRemoteEvalVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
@@ -205,7 +209,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	value := 35891
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -247,6 +251,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", now)
 	require.NoError(t, err)
@@ -267,7 +272,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -294,6 +299,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.NoError(t, err)
@@ -307,7 +313,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 	var respErr = fmt.Errorf("some error occurred")
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return nil, respErr
 		},
 	}
@@ -317,6 +323,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, "rule evaluation failed")
@@ -331,7 +338,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 	const httpErr = http.StatusInternalServerError
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return &httpgrpc.HTTPResponse{
 				Code: httpErr,
 			}, nil
@@ -343,6 +350,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, fmt.Sprintf("unsuccessful/unexpected response - status code %d", httpErr))
@@ -354,7 +362,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return &httpgrpc.HTTPResponse{
 				Code: http.StatusOK,
 				Body: []byte("this is not json"),
@@ -367,6 +375,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, "unexpected body encoding, not valid JSON")
@@ -378,7 +387,7 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -406,6 +415,7 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, fmt.Sprintf("unsupported result type: %q", loghttp.ResultTypeStream))

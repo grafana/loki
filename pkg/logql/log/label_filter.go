@@ -10,7 +10,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var (
@@ -173,10 +173,6 @@ func NewBytesLabelFilter(t LabelFilterType, name string, b uint64) *BytesLabelFi
 }
 
 func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.HasErr() {
-		// if there's an error only the string matchers can filter it out.
-		return line, true
-	}
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
@@ -184,8 +180,11 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	}
 	value, err := humanize.ParseBytes(v)
 	if err != nil {
-		lbs.SetErr(errLabelFilter)
-		lbs.SetErrorDetails(err.Error())
+		// Don't overwrite what might be a more useful error
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+			lbs.SetErrorDetails(err.Error())
+		}
 		return line, true
 	}
 	switch d.Type {
@@ -202,7 +201,9 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= d.Value
 	default:
-		lbs.SetErr(errLabelFilter)
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+		}
 		return line, true
 	}
 }
@@ -240,10 +241,6 @@ func NewDurationLabelFilter(t LabelFilterType, name string, d time.Duration) *Du
 }
 
 func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.HasErr() {
-		// if there's an error only the string matchers can filter out.
-		return line, true
-	}
 	v, ok := lbs.Get(d.Name)
 	if !ok {
 		// we have not found this label.
@@ -251,8 +248,11 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	}
 	value, err := time.ParseDuration(v)
 	if err != nil {
-		lbs.SetErr(errLabelFilter)
-		lbs.SetErrorDetails(err.Error())
+		// Don't overwrite what might be a more useful error
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+			lbs.SetErrorDetails(err.Error())
+		}
 		return line, true
 	}
 	switch d.Type {
@@ -269,7 +269,9 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= d.Value
 	default:
-		lbs.SetErr(errLabelFilter)
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+		}
 		return line, true
 	}
 }
@@ -302,10 +304,6 @@ func NewNumericLabelFilter(t LabelFilterType, name string, v float64) *NumericLa
 }
 
 func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if lbs.HasErr() {
-		// if there's an error only the string matchers can filter out.
-		return line, true
-	}
 	v, ok := lbs.Get(n.Name)
 	if !ok {
 		// we have not found this label.
@@ -313,8 +311,11 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 	}
 	value, err := strconv.ParseFloat(v, 64)
 	if err != nil {
-		lbs.SetErr(errLabelFilter)
-		lbs.SetErrorDetails(err.Error())
+		// Don't overwrite what might be a more useful error
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+			lbs.SetErrorDetails(err.Error())
+		}
 		return line, true
 	}
 	switch n.Type {
@@ -331,7 +332,9 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 	case LabelFilterLesserThanOrEqual:
 		return line, value <= n.Value
 	default:
-		lbs.SetErr(errLabelFilter)
+		if !lbs.HasErr() {
+			lbs.SetErr(errLabelFilter)
+		}
 		return line, true
 	}
 

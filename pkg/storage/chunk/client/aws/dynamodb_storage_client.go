@@ -28,15 +28,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
-	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	client_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -194,7 +193,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			return request.Send()
 		})
 		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
@@ -324,7 +323,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
 	}
-	return err
+	return nil
 }
 
 type dynamoDBRequest interface {
@@ -450,7 +449,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			return request.Send()
 		})
 		response := request.Data().(*dynamodb.BatchGetItemOutput)
@@ -538,7 +537,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	return result, nil
 }
 
-// PutChunkAndIndex implements chunk.ObjectAndIndexClient
+// PutChunksAndIndex implements chunk.ObjectAndIndexClient
 // Combine both sets of writes before sending to DynamoDB, for performance
 func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
@@ -692,16 +691,16 @@ func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byt
 	})
 }
 
-// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs), toFill)
+			taken := min(len(fromReqs), toFill)
 			if taken > 0 {
 				b[tableName] = append(b[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]
@@ -739,16 +738,16 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'b' with ReadRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
+// Fill 'b' with ReadRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs.Keys), toFill)
+			taken := min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
 					b[tableName] = &dynamodb.KeysAndAttributes{

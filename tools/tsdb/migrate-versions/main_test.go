@@ -14,13 +14,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	shipperstorage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	shipperstorage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -52,7 +52,7 @@ func TestMigrateTables(t *testing.T) {
 	}
 	clientMetrics := storage.NewClientMetrics()
 
-	objClient, err := storage.NewObjectClient(pcfg.ObjectType, storageCfg, clientMetrics)
+	objClient, err := storage.NewObjectClient(pcfg.ObjectType, "test", storageCfg, clientMetrics)
 	require.NoError(t, err)
 	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pcfg.IndexTables.PathPrefix)
 
@@ -141,4 +141,5 @@ func TestMigrateTables(t *testing.T) {
 			}
 		})
 	}
+	clientMetrics.Unregister()
 }

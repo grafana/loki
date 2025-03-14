@@ -1,6 +1,6 @@
 {{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: {{ if not .Values.rbac.namespaced }}Cluster{{ end }}Role
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
   namespace: {{ $.Release.Namespace }}

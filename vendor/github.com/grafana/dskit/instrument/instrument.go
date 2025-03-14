@@ -75,7 +75,7 @@ func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, sec
 	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
 		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
 			seconds,
-			prometheus.Labels{"traceID": traceID},
+			prometheus.Labels{"trace_id": traceID, "traceID": traceID},
 		)
 		return
 	}

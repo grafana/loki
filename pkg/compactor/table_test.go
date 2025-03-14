@@ -12,10 +12,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 const (
@@ -305,7 +305,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := os.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
@@ -325,7 +325,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
@@ -345,12 +345,11 @@ func TestTable_CompactionRetention(t *testing.T) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
 		} {
-			tt := tt
 			commonDBsConfig := IndexesConfig{
 				NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
 				NumUnCompactedFiles: tt.dbsSetup.numUnCompactedCommonDBs,
@@ -377,7 +376,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 
 				table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
 					newTestIndexCompactor(), config.PeriodConfig{},
-					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
+					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(_ model.Interval, _ string) bool {
 						return true
 					}), 10)
 				require.NoError(t, err)

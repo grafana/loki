@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
@@ -10,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/querytee"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/tools/querytee"
 )
 
 type Config struct {
@@ -62,6 +63,7 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		Tolerance:         cfg.ProxyConfig.ValueComparisonTolerance,
 		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
 		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
+		SkipSamplesBefore: time.Time(cfg.ProxyConfig.SkipSamplesBefore),
 	})
 
 	return []querytee.Route{

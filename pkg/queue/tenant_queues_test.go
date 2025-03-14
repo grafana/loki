@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/scheduler/limits"
+	"github.com/grafana/loki/v3/pkg/scheduler/limits"
 )
 
 var noQueueLimits = limits.NewQueueLimits(nil)

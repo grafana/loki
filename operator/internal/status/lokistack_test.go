@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
@@ -64,8 +64,8 @@ func TestGenerateCondition(t *testing.T) {
 		{
 			desc: "container pending",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodPending: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodPending: {
 						"pod-0",
 					},
 				},
@@ -75,8 +75,8 @@ func TestGenerateCondition(t *testing.T) {
 		{
 			desc: "container failed",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodFailed: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodFailed: {
 						"pod-0",
 					},
 				},
@@ -86,8 +86,8 @@ func TestGenerateCondition(t *testing.T) {
 		{
 			desc: "degraded error",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodRunning: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodRunning: {
 						"pod-0",
 					},
 				},
@@ -105,7 +105,6 @@ func TestGenerateCondition(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -155,13 +154,12 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
 			componentStatus := &lokiv1.LokiStackComponentStatus{
-				Ingester: map[corev1.PodPhase][]string{
-					corev1.PodPending: {
+				Ingester: lokiv1.PodStatusMap{
+					lokiv1.PodPending: {
 						"pod-0",
 					},
 				},
@@ -274,7 +272,6 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			condition := generateWarnings(tc.schemas)

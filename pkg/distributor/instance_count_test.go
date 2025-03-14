@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestInstanceCountDelegateCounting(t *testing.T) {
@@ -111,7 +111,7 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.NoError(t, err)
 
 	ingesters := ring.NewDesc()
-	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now())
+	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now(), false, time.Now())
 
 	// initial state.
 	require.Equal(t, 0, sentry1["Heartbeat"])

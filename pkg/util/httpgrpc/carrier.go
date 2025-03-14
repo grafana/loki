@@ -4,7 +4,7 @@ import (
 	weaveworks_httpgrpc "github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 )
 
 type Request interface {

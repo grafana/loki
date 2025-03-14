@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // expression type used in metrics
@@ -42,9 +42,10 @@ func newMapperMetrics(registerer prometheus.Registerer, mapper string) *MapperMe
 			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}, []string{"type"}),
 		DownstreamFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace:   constants.Loki,
-			Name:        "query_frontend_shard_factor",
-			Help:        "Number of downstream queries per request",
+			Namespace: constants.Loki,
+			Name:      "query_frontend_shard_factor",
+			Help:      "Number of downstream queries per request",
+			// 1 -> 65k shards
 			Buckets:     prometheus.ExponentialBuckets(1, 4, 8),
 			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}),

@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
@@ -18,11 +19,12 @@ import (
 // Must use NewHistogram function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Histogram struct {
-	orig *otlpmetrics.Histogram
+	orig  *otlpmetrics.Histogram
+	state *internal.State
 }
 
-func newHistogram(orig *otlpmetrics.Histogram) Histogram {
-	return Histogram{orig}
+func newHistogram(orig *otlpmetrics.Histogram, state *internal.State) Histogram {
+	return Histogram{orig: orig, state: state}
 }
 
 // NewHistogram creates a new empty Histogram.
@@ -30,12 +32,15 @@ func newHistogram(orig *otlpmetrics.Histogram) Histogram {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewHistogram() Histogram {
-	return newHistogram(&otlpmetrics.Histogram{})
+	state := internal.StateMutable
+	return newHistogram(&otlpmetrics.Histogram{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms Histogram) MoveTo(dest Histogram) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Histogram{}
 }
@@ -47,16 +52,18 @@ func (ms Histogram) AggregationTemporality() AggregationTemporality {
 
 // SetAggregationTemporality replaces the aggregationtemporality associated with this Histogram.
 func (ms Histogram) SetAggregationTemporality(v AggregationTemporality) {
+	ms.state.AssertMutable()
 	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
 }
 
 // DataPoints returns the DataPoints associated with this Histogram.
 func (ms Histogram) DataPoints() HistogramDataPointSlice {
-	return newHistogramDataPointSlice(&ms.orig.DataPoints)
+	return newHistogramDataPointSlice(&ms.orig.DataPoints, ms.state)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Histogram) CopyTo(dest Histogram) {
+	dest.state.AssertMutable()
 	dest.SetAggregationTemporality(ms.AggregationTemporality())
 	ms.DataPoints().CopyTo(dest.DataPoints())
 }

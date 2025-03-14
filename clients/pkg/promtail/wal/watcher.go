@@ -14,7 +14,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -160,7 +161,7 @@ func (w *Watcher) watch(segmentNum int) error {
 	}
 	defer segment.Close()
 
-	reader := wlog.NewLiveReader(w.logger, nil, segment)
+	reader := wlog.NewLiveReader(util_log.SlogFromGoKit(w.logger), nil, segment)
 
 	readTimer := newBackoffTimer(w.minReadFreq, w.maxReadFreq)
 

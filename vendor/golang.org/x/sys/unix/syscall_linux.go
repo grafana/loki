@@ -1295,6 +1295,48 @@ func GetsockoptTCPInfo(fd, level, opt int) (*TCPInfo, error) {
 	return &value, err
 }
 
+// GetsockoptTCPCCVegasInfo returns algorithm specific congestion control information for a socket using the "vegas"
+// algorithm.
+//
+// The socket's congestion control algorighm can be retrieved via [GetsockoptString] with the [TCP_CONGESTION] option:
+//
+//	algo, err := unix.GetsockoptString(fd, unix.IPPROTO_TCP, unix.TCP_CONGESTION)
+func GetsockoptTCPCCVegasInfo(fd, level, opt int) (*TCPVegasInfo, error) {
+	var value [SizeofTCPCCInfo / 4]uint32 // ensure proper alignment
+	vallen := _Socklen(SizeofTCPCCInfo)
+	err := getsockopt(fd, level, opt, unsafe.Pointer(&value[0]), &vallen)
+	out := (*TCPVegasInfo)(unsafe.Pointer(&value[0]))
+	return out, err
+}
+
+// GetsockoptTCPCCDCTCPInfo returns algorithm specific congestion control information for a socket using the "dctp"
+// algorithm.
+//
+// The socket's congestion control algorighm can be retrieved via [GetsockoptString] with the [TCP_CONGESTION] option:
+//
+//	algo, err := unix.GetsockoptString(fd, unix.IPPROTO_TCP, unix.TCP_CONGESTION)
+func GetsockoptTCPCCDCTCPInfo(fd, level, opt int) (*TCPDCTCPInfo, error) {
+	var value [SizeofTCPCCInfo / 4]uint32 // ensure proper alignment
+	vallen := _Socklen(SizeofTCPCCInfo)
+	err := getsockopt(fd, level, opt, unsafe.Pointer(&value[0]), &vallen)
+	out := (*TCPDCTCPInfo)(unsafe.Pointer(&value[0]))
+	return out, err
+}
+
+// GetsockoptTCPCCBBRInfo returns algorithm specific congestion control information for a socket using the "bbr"
+// algorithm.
+//
+// The socket's congestion control algorighm can be retrieved via [GetsockoptString] with the [TCP_CONGESTION] option:
+//
+//	algo, err := unix.GetsockoptString(fd, unix.IPPROTO_TCP, unix.TCP_CONGESTION)
+func GetsockoptTCPCCBBRInfo(fd, level, opt int) (*TCPBBRInfo, error) {
+	var value [SizeofTCPCCInfo / 4]uint32 // ensure proper alignment
+	vallen := _Socklen(SizeofTCPCCInfo)
+	err := getsockopt(fd, level, opt, unsafe.Pointer(&value[0]), &vallen)
+	out := (*TCPBBRInfo)(unsafe.Pointer(&value[0]))
+	return out, err
+}
+
 // GetsockoptString returns the string value of the socket option opt for the
 // socket associated with fd at the given socket level.
 func GetsockoptString(fd, level, opt int) (string, error) {
@@ -1818,6 +1860,7 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
 //sys	ClockAdjtime(clockid int32, buf *Timex) (state int, err error)
 //sys	ClockGetres(clockid int32, res *Timespec) (err error)
 //sys	ClockGettime(clockid int32, time *Timespec) (err error)
+//sys	ClockSettime(clockid int32, time *Timespec) (err error)
 //sys	ClockNanosleep(clockid int32, flags int, request *Timespec, remain *Timespec) (err error)
 //sys	Close(fd int) (err error)
 //sys	CloseRange(first uint, last uint, flags uint) (err error)
@@ -1849,6 +1892,105 @@ func Dup2(oldfd, newfd int) error {
 //sys	Fsmount(fd int, flags int, mountAttrs int) (fsfd int, err error)
 //sys	Fsopen(fsName string, flags int) (fd int, err error)
 //sys	Fspick(dirfd int, pathName string, flags int) (fd int, err error)
+
+//sys	fsconfig(fd int, cmd uint, key *byte, value *byte, aux int) (err error)
+
+func fsconfigCommon(fd int, cmd uint, key string, value *byte, aux int) (err error) {
+	var keyp *byte
+	if keyp, err = BytePtrFromString(key); err != nil {
+		return
+	}
+	return fsconfig(fd, cmd, keyp, value, aux)
+}
+
+// FsconfigSetFlag is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_FLAG.
+//
+// fd is the filesystem context to act upon.
+// key the parameter key to set.
+func FsconfigSetFlag(fd int, key string) (err error) {
+	return fsconfigCommon(fd, FSCONFIG_SET_FLAG, key, nil, 0)
+}
+
+// FsconfigSetString is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_STRING.
+//
+// fd is the filesystem context to act upon.
+// key the parameter key to set.
+// value is the parameter value to set.
+func FsconfigSetString(fd int, key string, value string) (err error) {
+	var valuep *byte
+	if valuep, err = BytePtrFromString(value); err != nil {
+		return
+	}
+	return fsconfigCommon(fd, FSCONFIG_SET_STRING, key, valuep, 0)
+}
+
+// FsconfigSetBinary is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_BINARY.
+//
+// fd is the filesystem context to act upon.
+// key the parameter key to set.
+// value is the parameter value to set.
+func FsconfigSetBinary(fd int, key string, value []byte) (err error) {
+	if len(value) == 0 {
+		return EINVAL
+	}
+	return fsconfigCommon(fd, FSCONFIG_SET_BINARY, key, &value[0], len(value))
+}
+
+// FsconfigSetPath is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_PATH.
+//
+// fd is the filesystem context to act upon.
+// key the parameter key to set.
+// path is a non-empty path for specified key.
+// atfd is a file descriptor at which to start lookup from or AT_FDCWD.
+func FsconfigSetPath(fd int, key string, path string, atfd int) (err error) {
+	var valuep *byte
+	if valuep, err = BytePtrFromString(path); err != nil {
+		return
+	}
+	return fsconfigCommon(fd, FSCONFIG_SET_PATH, key, valuep, atfd)
+}
+
+// FsconfigSetPathEmpty is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_PATH_EMPTY. The same as
+// FconfigSetPath but with AT_PATH_EMPTY implied.
+func FsconfigSetPathEmpty(fd int, key string, path string, atfd int) (err error) {
+	var valuep *byte
+	if valuep, err = BytePtrFromString(path); err != nil {
+		return
+	}
+	return fsconfigCommon(fd, FSCONFIG_SET_PATH_EMPTY, key, valuep, atfd)
+}
+
+// FsconfigSetFd is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_SET_FD.
+//
+// fd is the filesystem context to act upon.
+// key the parameter key to set.
+// value is a file descriptor to be assigned to specified key.
+func FsconfigSetFd(fd int, key string, value int) (err error) {
+	return fsconfigCommon(fd, FSCONFIG_SET_FD, key, nil, value)
+}
+
+// FsconfigCreate is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_CMD_CREATE.
+//
+// fd is the filesystem context to act upon.
+func FsconfigCreate(fd int) (err error) {
+	return fsconfig(fd, FSCONFIG_CMD_CREATE, nil, nil, 0)
+}
+
+// FsconfigReconfigure is equivalent to fsconfig(2) called
+// with cmd == FSCONFIG_CMD_RECONFIGURE.
+//
+// fd is the filesystem context to act upon.
+func FsconfigReconfigure(fd int) (err error) {
+	return fsconfig(fd, FSCONFIG_CMD_RECONFIGURE, nil, nil, 0)
+}
+
 //sys	Getdents(fd int, buf []byte) (n int, err error) = SYS_GETDENTS64
 //sysnb	Getpgid(pid int) (pgid int, err error)
 
@@ -1860,7 +2002,26 @@ func Getpgrp() (pid int) {
 //sysnb	Getpid() (pid int)
 //sysnb	Getppid() (ppid int)
 //sys	Getpriority(which int, who int) (prio int, err error)
-//sys	Getrandom(buf []byte, flags int) (n int, err error)
+
+func Getrandom(buf []byte, flags int) (n int, err error) {
+	vdsoRet, supported := vgetrandom(buf, uint32(flags))
+	if supported {
+		if vdsoRet < 0 {
+			return 0, errnoErr(syscall.Errno(-vdsoRet))
+		}
+		return vdsoRet, nil
+	}
+	var p *byte
+	if len(buf) > 0 {
+		p = &buf[0]
+	}
+	r, _, e := Syscall(SYS_GETRANDOM, uintptr(unsafe.Pointer(p)), uintptr(len(buf)), uintptr(flags))
+	if e != 0 {
+		return 0, errnoErr(e)
+	}
+	return int(r), nil
+}
+
 //sysnb	Getrusage(who int, rusage *Rusage) (err error)
 //sysnb	Getsid(pid int) (sid int, err error)
 //sysnb	Gettid() (tid int)
@@ -2493,3 +2654,4 @@ func SchedGetAttr(pid int, flags uint) (*SchedAttr, error) {
 }
 
 //sys	Cachestat(fd uint, crange *CachestatRange, cstat *Cachestat_t, flags uint) (err error)
+//sys	Mseal(b []byte, flags uint) (err error)

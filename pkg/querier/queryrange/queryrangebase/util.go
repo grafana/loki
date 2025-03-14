@@ -3,7 +3,7 @@ package queryrangebase
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 // RequestResponse contains a request response and the respective request that was used.

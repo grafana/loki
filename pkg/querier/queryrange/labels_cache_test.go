@@ -11,12 +11,12 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestCacheKeyLabels_GenerateCacheKey(t *testing.T) {
@@ -43,13 +43,17 @@ func TestCacheKeyLabels_GenerateCacheKey(t *testing.T) {
 	expectedInterval := testTime.UnixMilli() / time.Hour.Milliseconds()
 
 	t.Run("labels", func(t *testing.T) {
-		require.Equal(t, fmt.Sprintf(`labels:fake:%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", &req))
+		require.Equal(t, fmt.Sprintf(`labels:fake::%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", &req))
+
+		req.Query = `{cluster="eu-west1"}`
+		require.Equal(t, fmt.Sprintf(`labels:fake:{cluster="eu-west1"}:%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", &req))
 	})
 
 	t.Run("label values", func(t *testing.T) {
 		req := req
 		req.Name = "foo"
 		req.Values = true
+		req.Query = ``
 		require.Equal(t, fmt.Sprintf(`labelvalues:fake:foo::%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", &req))
 
 		req.Query = `{cluster="eu-west1"}`
@@ -361,20 +365,20 @@ func TestLabelQueryCacheKey(t *testing.T) {
 			t.Run(fmt.Sprintf("%s (values: %v)", tc.name, values), func(t *testing.T) {
 				keyGen := cacheKeyLabels{tc.limits, nil}
 
+				const labelName = "foo"
+				const query = `{cluster="eu-west1"}`
+
 				r := &LabelRequest{
 					LabelRequest: logproto.LabelRequest{
 						Start: &tc.start,
 						End:   &tc.end,
+						Query: query,
 					},
 				}
-
-				const labelName = "foo"
-				const query = `{cluster="eu-west1"}`
 
 				if values {
 					r.LabelRequest.Values = true
 					r.LabelRequest.Name = labelName
-					r.LabelRequest.Query = query
 				}
 
 				// we use regex here because cache key always refers to the current time to get the ingester query window,
@@ -383,7 +387,7 @@ func TestLabelQueryCacheKey(t *testing.T) {
 				if values {
 					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
 				} else {
-					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:(\d+):%d`, tenantID, tc.expectedSplit))
+					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:%s:(\d+):%d`, tenantID, regexp.QuoteMeta(query), tc.expectedSplit))
 				}
 
 				require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tenantID, r))

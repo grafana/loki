@@ -1,3 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - ../../crd
 - ../../rbac
@@ -16,14 +19,14 @@ namespace: loki-operator
 namePrefix: loki-operator-
 
 labels:
-- pairs:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/managed-by: operator-lifecycle-manager
-  includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.5.0
-    app.kubernetes.io/version: "0.5.0"
+    app.kubernetes.io/instance: loki-operator-v0.7.1
+    app.kubernetes.io/version: 0.7.1
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -33,44 +36,117 @@ configMapGenerator:
   - controller_manager_config.yaml
   name: manager-config
 
-patchesStrategicMerge:
-- manager_auth_proxy_patch.yaml
-- manager_related_image_patch.yaml
-- manager_run_flags_patch.yaml
-- manager_webhook_patch.yaml
-- webhookcainjection_patch.yaml
 
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.5.0
+  newTag: 0.7.1
 
 # the following config is for teaching kustomize how to do var substitution
-vars:
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
-- name: CERTIFICATE_NAMESPACE # namespace of the certificate CR
-  objref:
-    kind: Certificate
-    group: cert-manager.io
-    version: v1
-    name: serving-cert # this name should match the one in certificate.yaml
-  fieldref:
-    fieldpath: metadata.namespace
-- name: CERTIFICATE_NAME
-  objref:
-    kind: Certificate
-    group: cert-manager.io
-    version: v1
-    name: serving-cert # this name should match the one in certificate.yaml
-- name: SERVICE_NAMESPACE # namespace of the service
-  objref:
-    kind: Service
-    version: v1
-    name: webhook-service
-  fieldref:
-    fieldpath: metadata.namespace
-- name: SERVICE_NAME
-  objref:
-    kind: Service
-    version: v1
-    name: webhook-service
+patches:
+- path: manager_auth_proxy_patch.yaml
+- path: manager_related_image_patch.yaml
+- path: manager_resource_reqs_patch.yaml
+- path: manager_run_flags_patch.yaml
+- path: manager_webhook_patch.yaml
+- path: webhookcainjection_patch.yaml
+# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
+# Uncomment the following replacements to add the cert-manager CA injection annotations
+replacements:
+ - source: # Add cert-manager annotation to ValidatingWebhookConfiguration, MutatingWebhookConfiguration and CRDs
+     kind: Certificate
+     group: cert-manager.io
+     version: v1
+     name: serving-cert # this name should match the one in certificate.yaml
+     fieldPath: .metadata.namespace # namespace of the certificate CR
+   targets:
+     - select:
+         kind: ValidatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+     - select:
+         kind: MutatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+     - select:
+         kind: CustomResourceDefinition
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+ - source:
+     kind: Certificate
+     group: cert-manager.io
+     version: v1
+     name: serving-cert # this name should match the one in certificate.yaml
+     fieldPath: .metadata.name
+   targets:
+     - select:
+         kind: ValidatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+     - select:
+         kind: MutatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+     - select:
+         kind: CustomResourceDefinition
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+ - source: # Add cert-manager annotation to the webhook Service
+     kind: Service
+     version: v1
+     name: webhook-service
+     fieldPath: .metadata.name # namespace of the service
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 0
+         create: true
+ - source:
+     kind: Service
+     version: v1
+     name: webhook-service
+     fieldPath: .metadata.namespace # namespace of the service
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 1
+         create: true

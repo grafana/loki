@@ -16,3 +16,4 @@ scrape_configs:
     labels:
       job: varlogs
       __path__: /var/log/*log
+      stream: stdout

@@ -1,4 +1,4 @@
-// Copyright 2023 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,19 +17,33 @@
 // Package storage is an auto-generated package for the
 // Cloud Storage API.
 //
-// Lets you store and retrieve potentially-large, immutable data objects.
-//
-//	NOTE: This package is in alpha. It is not stable, and is likely to change.
+// This folder contains protocol buffer definitions for an API only
+// accessible to select customers. Customers not participating should not
+// depend on this file. Please contact Google Cloud sales if you are
+// interested. Unless told otherwise by a Google Cloud representative, do not
+// use or otherwise rely on any of the contents of this folder. If you would
+// like to use Cloud Storage, please consult our official documentation (at
+// https://cloud.google.com/storage/docs/apis) for details on our XML and
+// JSON APIs, or else consider one of our client libraries (at
+// https://cloud.google.com/storage/docs/reference/libraries).
 //
 // # General documentation
 //
-// For information about setting deadlines, reusing contexts, and more
-// please visit https://pkg.go.dev/cloud.google.com/go.
+// For information that is relevant for all client libraries please reference
+// https://pkg.go.dev/cloud.google.com/go#pkg-overview. Some information on this
+// page includes:
+//
+//   - [Authentication and Authorization]
+//   - [Timeouts and Cancellation]
+//   - [Testing against Client Libraries]
+//   - [Debugging Client Libraries]
+//   - [Inspecting errors]
 //
 // # Example usage
 //
 // To get started with this package, create a client.
 //
+//	// go get cloud.google.com/go/storage/internal/apiv2@latest
 //	ctx := context.Background()
 //	// This snippet has been automatically generated and should be regarded as a code template only.
 //	// It will require modifications to work:
@@ -48,27 +62,33 @@
 //
 // # Using the Client
 //
-// The following is an example of making an API call with the newly created client.
+// The following is an example of making an API call with the newly created client, mentioned above.
 //
-//	ctx := context.Background()
-//	// This snippet has been automatically generated and should be regarded as a code template only.
-//	// It will require modifications to work:
-//	// - It may require correct/in-range values for request initialization.
-//	// - It may require specifying regional endpoints when creating the service client as shown in:
-//	//   https://pkg.go.dev/cloud.google.com/go#hdr-Client_Options
-//	c, err := storage.NewClient(ctx)
+//	stream, err := c.BidiReadObject(ctx)
 //	if err != nil {
 //		// TODO: Handle error.
 //	}
-//	defer c.Close()
-//
-//	req := &storagepb.DeleteBucketRequest{
-//		// TODO: Fill request struct fields.
-//		// See https://pkg.go.dev/cloud.google.com/go/storage/internal/apiv2/stubs#DeleteBucketRequest.
-//	}
-//	err = c.DeleteBucket(ctx, req)
-//	if err != nil {
-//		// TODO: Handle error.
+//	go func() {
+//		reqs := []*storagepb.BidiReadObjectRequest{
+//			// TODO: Create requests.
+//		}
+//		for _, req := range reqs {
+//			if err := stream.Send(req); err != nil {
+//				// TODO: Handle error.
+//			}
+//		}
+//		stream.CloseSend()
+//	}()
+//	for {
+//		resp, err := stream.Recv()
+//		if err == io.EOF {
+//			break
+//		}
+//		if err != nil {
+//			// TODO: handle error.
+//		}
+//		// TODO: Use resp.
+//		_ = resp
 //	}
 //
 // # Use of Context
@@ -78,99 +98,10 @@
 // Individual methods on the client use the ctx given to them.
 //
 // To close the open connection, use the Close() method.
+//
+// [Authentication and Authorization]: https://pkg.go.dev/cloud.google.com/go#hdr-Authentication_and_Authorization
+// [Timeouts and Cancellation]: https://pkg.go.dev/cloud.google.com/go#hdr-Timeouts_and_Cancellation
+// [Testing against Client Libraries]: https://pkg.go.dev/cloud.google.com/go#hdr-Testing
+// [Debugging Client Libraries]: https://pkg.go.dev/cloud.google.com/go#hdr-Debugging
+// [Inspecting errors]: https://pkg.go.dev/cloud.google.com/go#hdr-Inspecting_errors
 package storage // import "cloud.google.com/go/storage/internal/apiv2"
-
-import (
-	"context"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"unicode"
-
-	"google.golang.org/api/option"
-	"google.golang.org/grpc/metadata"
-)
-
-// For more information on implementing a client constructor hook, see
-// https://github.com/googleapis/google-cloud-go/wiki/Customizing-constructors.
-type clientHookParams struct{}
-type clientHook func(context.Context, clientHookParams) ([]option.ClientOption, error)
-
-var versionClient string
-
-func getVersionClient() string {
-	if versionClient == "" {
-		return "UNKNOWN"
-	}
-	return versionClient
-}
-
-func insertMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
-	out, _ := metadata.FromOutgoingContext(ctx)
-	out = out.Copy()
-	for _, md := range mds {
-		for k, v := range md {
-			out[k] = append(out[k], v...)
-		}
-	}
-	return metadata.NewOutgoingContext(ctx, out)
-}
-
-func checkDisableDeadlines() (bool, error) {
-	raw, ok := os.LookupEnv("GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE")
-	if !ok {
-		return false, nil
-	}
-
-	b, err := strconv.ParseBool(raw)
-	return b, err
-}
-
-// DefaultAuthScopes reports the default set of authentication scopes to use with this package.
-func DefaultAuthScopes() []string {
-	return []string{
-		"https://www.googleapis.com/auth/cloud-platform",
-		"https://www.googleapis.com/auth/cloud-platform.read-only",
-		"https://www.googleapis.com/auth/devstorage.full_control",
-		"https://www.googleapis.com/auth/devstorage.read_only",
-		"https://www.googleapis.com/auth/devstorage.read_write",
-	}
-}
-
-// versionGo returns the Go runtime version. The returned string
-// has no whitespace, suitable for reporting in header.
-func versionGo() string {
-	const develPrefix = "devel +"
-
-	s := runtime.Version()
-	if strings.HasPrefix(s, develPrefix) {
-		s = s[len(develPrefix):]
-		if p := strings.IndexFunc(s, unicode.IsSpace); p >= 0 {
-			s = s[:p]
-		}
-		return s
-	}
-
-	notSemverRune := func(r rune) bool {
-		return !strings.ContainsRune("0123456789.", r)
-	}
-
-	if strings.HasPrefix(s, "go1") {
-		s = s[2:]
-		var prerelease string
-		if p := strings.IndexFunc(s, notSemverRune); p >= 0 {
-			s, prerelease = s[:p], s[p:]
-		}
-		if strings.HasSuffix(s, ".") {
-			s += "0"
-		} else if strings.Count(s, ".") < 2 {
-			s += ".0"
-		}
-		if prerelease != "" {
-			s += "-" + prerelease
-		}
-		return s
-	}
-	return "UNKNOWN"
-}

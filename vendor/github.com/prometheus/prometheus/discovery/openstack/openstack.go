@@ -17,13 +17,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack"
 	"github.com/mwitkow/go-conntrack"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
@@ -65,12 +66,19 @@ type SDConfig struct {
 	Availability                string           `yaml:"availability,omitempty"`
 }
 
+// NewDiscovererMetrics implements discovery.Config.
+func (*SDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+	return &openstackMetrics{
+		refreshMetrics: rmi,
+	}
+}
+
 // Name returns the name of the Config.
 func (*SDConfig) Name() string { return "openstack" }
 
 // NewDiscoverer returns a Discoverer for the Config.
 func (c *SDConfig) NewDiscoverer(opts discovery.DiscovererOptions) (discovery.Discoverer, error) {
-	return NewDiscovery(c, opts.Logger)
+	return NewDiscovery(c, opts.Logger, opts.Metrics)
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -89,6 +97,9 @@ const (
 	// OpenStack document reference
 	// https://docs.openstack.org/horizon/pike/user/launch-instances.html
 	OpenStackRoleInstance Role = "instance"
+	// Openstack document reference
+	// https://docs.openstack.org/openstacksdk/rocky/user/resources/load_balancer/index.html
+	OpenStackRoleLoadBalancer Role = "loadbalancer"
 )
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -97,7 +108,7 @@ func (c *Role) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	switch *c {
-	case OpenStackRoleHypervisor, OpenStackRoleInstance:
+	case OpenStackRoleHypervisor, OpenStackRoleInstance, OpenStackRoleLoadBalancer:
 		return nil
 	default:
 		return fmt.Errorf("unknown OpenStack SD role %q", *c)
@@ -120,7 +131,7 @@ func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if c.Role == "" {
-		return errors.New("role missing (one of: instance, hypervisor)")
+		return errors.New("role missing (one of: instance, hypervisor, loadbalancer)")
 	}
 	if c.Region == "" {
 		return errors.New("openstack SD configuration requires a region")
@@ -134,20 +145,28 @@ type refresher interface {
 }
 
 // NewDiscovery returns a new OpenStack Discoverer which periodically refreshes its targets.
-func NewDiscovery(conf *SDConfig, l log.Logger) (*refresh.Discovery, error) {
+func NewDiscovery(conf *SDConfig, l *slog.Logger, metrics discovery.DiscovererMetrics) (*refresh.Discovery, error) {
+	m, ok := metrics.(*openstackMetrics)
+	if !ok {
+		return nil, errors.New("invalid discovery metrics type")
+	}
+
 	r, err := newRefresher(conf, l)
 	if err != nil {
 		return nil, err
 	}
 	return refresh.NewDiscovery(
-		l,
-		"openstack",
-		time.Duration(conf.RefreshInterval),
-		r.refresh,
+		refresh.Options{
+			Logger:              l,
+			Mech:                "openstack",
+			Interval:            time.Duration(conf.RefreshInterval),
+			RefreshF:            r.refresh,
+			MetricsInstantiator: m.refreshMetrics,
+		},
 	), nil
 }
 
-func newRefresher(conf *SDConfig, l log.Logger) (refresher, error) {
+func newRefresher(conf *SDConfig, l *slog.Logger) (refresher, error) {
 	var opts gophercloud.AuthOptions
 	if conf.IdentityEndpoint == "" {
 		var err error
@@ -195,6 +214,8 @@ func newRefresher(conf *SDConfig, l log.Logger) (refresher, error) {
 		return newHypervisorDiscovery(client, &opts, conf.Port, conf.Region, availability, l), nil
 	case OpenStackRoleInstance:
 		return newInstanceDiscovery(client, &opts, conf.Port, conf.Region, conf.AllTenants, availability, l), nil
+	case OpenStackRoleLoadBalancer:
+		return newLoadBalancerDiscovery(client, &opts, conf.Region, availability, l), nil
 	}
 	return nil, errors.New("unknown OpenStack discovery role")
 }

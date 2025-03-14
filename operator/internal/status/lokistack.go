@@ -8,14 +8,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 const (
 	messageReady                           = "All components ready"
-	messageFailed                          = "Some LokiStack components failed"
-	messagePending                         = "Some LokiStack components pending on dependencies"
+	messageFailed                          = "One or more LokiStack components failed"
+	messagePending                         = "One or more LokiStack components pending on dependencies"
+	messageRunning                         = "All components are running, but some readiness checks are failing"
 	messageDegradedMissingNodes            = "Cluster contains no nodes matching the labels used for zone-awareness"
 	messageDegradedEmptyNodeLabel          = "No value for the labels used for zone-awareness"
 	messageWarningNeedsSchemaVersionUpdate = "The schema configuration does not contain the most recent schema version and needs an update"
@@ -30,6 +31,11 @@ var (
 	conditionPending = metav1.Condition{
 		Type:    string(lokiv1.ConditionPending),
 		Message: messagePending,
+		Reason:  string(lokiv1.ReasonPendingComponents),
+	}
+	conditionRunning = metav1.Condition{
+		Type:    string(lokiv1.ConditionPending),
+		Message: messageRunning,
 		Reason:  string(lokiv1.ReasonPendingComponents),
 	}
 	conditionReady = metav1.Condition{
@@ -82,28 +88,28 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 	}
 
 	// Check for failed pods first
-	failed := len(cs.Compactor[corev1.PodFailed]) +
-		len(cs.Distributor[corev1.PodFailed]) +
-		len(cs.Ingester[corev1.PodFailed]) +
-		len(cs.Querier[corev1.PodFailed]) +
-		len(cs.QueryFrontend[corev1.PodFailed]) +
-		len(cs.Gateway[corev1.PodFailed]) +
-		len(cs.IndexGateway[corev1.PodFailed]) +
-		len(cs.Ruler[corev1.PodFailed])
+	failed := len(cs.Compactor[lokiv1.PodFailed]) +
+		len(cs.Distributor[lokiv1.PodFailed]) +
+		len(cs.Ingester[lokiv1.PodFailed]) +
+		len(cs.Querier[lokiv1.PodFailed]) +
+		len(cs.QueryFrontend[lokiv1.PodFailed]) +
+		len(cs.Gateway[lokiv1.PodFailed]) +
+		len(cs.IndexGateway[lokiv1.PodFailed]) +
+		len(cs.Ruler[lokiv1.PodFailed])
 
 	if failed != 0 {
 		return conditionFailed, nil
 	}
 
 	// Check for pending pods
-	pending := len(cs.Compactor[corev1.PodPending]) +
-		len(cs.Distributor[corev1.PodPending]) +
-		len(cs.Ingester[corev1.PodPending]) +
-		len(cs.Querier[corev1.PodPending]) +
-		len(cs.QueryFrontend[corev1.PodPending]) +
-		len(cs.Gateway[corev1.PodPending]) +
-		len(cs.IndexGateway[corev1.PodPending]) +
-		len(cs.Ruler[corev1.PodPending])
+	pending := len(cs.Compactor[lokiv1.PodPending]) +
+		len(cs.Distributor[lokiv1.PodPending]) +
+		len(cs.Ingester[lokiv1.PodPending]) +
+		len(cs.Querier[lokiv1.PodPending]) +
+		len(cs.QueryFrontend[lokiv1.PodPending]) +
+		len(cs.Gateway[lokiv1.PodPending]) +
+		len(cs.IndexGateway[lokiv1.PodPending]) +
+		len(cs.Ruler[lokiv1.PodPending])
 
 	if pending != 0 {
 		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
@@ -124,6 +130,20 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 		}
 
 		return conditionPending, nil
+	}
+
+	// Check if there are pods that are running but not ready
+	running := len(cs.Compactor[lokiv1.PodRunning]) +
+		len(cs.Distributor[lokiv1.PodRunning]) +
+		len(cs.Ingester[lokiv1.PodRunning]) +
+		len(cs.Querier[lokiv1.PodRunning]) +
+		len(cs.QueryFrontend[lokiv1.PodRunning]) +
+		len(cs.Gateway[lokiv1.PodRunning]) +
+		len(cs.IndexGateway[lokiv1.PodRunning]) +
+		len(cs.Ruler[lokiv1.PodRunning])
+
+	if running > 0 {
+		return conditionRunning, nil
 	}
 
 	return conditionReady, nil

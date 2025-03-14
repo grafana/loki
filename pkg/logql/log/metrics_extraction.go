@@ -22,7 +22,7 @@ const (
 type LineExtractor func([]byte) float64
 
 var (
-	CountExtractor LineExtractor = func(line []byte) float64 { return 1. }
+	CountExtractor LineExtractor = func(_ []byte) float64 { return 1. }
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
 )
 
@@ -283,7 +283,7 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 		}
 	}
 
-	return sp.extractor.Process(ts, line)
+	return sp.extractor.Process(ts, line, structuredMetadata...)
 }
 
 func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
@@ -319,4 +319,80 @@ func convertBytes(v string) (float64, error) {
 		return 0, err
 	}
 	return float64(b), nil
+}
+
+type variantsSampleExtractorWrapper struct {
+	SampleExtractor
+	index int
+}
+
+func NewVariantsSampleExtractorWrapper(
+	index int,
+	extractor SampleExtractor,
+) SampleExtractor {
+	return &variantsSampleExtractorWrapper{
+		SampleExtractor: extractor,
+		index:           index,
+	}
+}
+
+func (v *variantsSampleExtractorWrapper) ForStream(labels labels.Labels) StreamSampleExtractor {
+	return NewVariantsStreamSampleExtractorWrapper(v.index, v.SampleExtractor.ForStream(labels))
+}
+
+type variantsStreamSampleExtractorWrapper struct {
+	StreamSampleExtractor
+	index int
+}
+
+func NewVariantsStreamSampleExtractorWrapper(
+	index int,
+	extractor StreamSampleExtractor,
+) StreamSampleExtractor {
+	return &variantsStreamSampleExtractorWrapper{
+		StreamSampleExtractor: extractor,
+		index:                 index,
+	}
+}
+
+func (v *variantsStreamSampleExtractorWrapper) BaseLabels() LabelsResult {
+	return appendVariantLabel(v.StreamSampleExtractor.BaseLabels(), v.index)
+}
+
+func (v *variantsStreamSampleExtractorWrapper) Process(
+	ts int64,
+	line []byte,
+	structuredMetadata ...labels.Label,
+) (float64, LabelsResult, bool) {
+	n, lbls, ok := v.StreamSampleExtractor.Process(ts, line, structuredMetadata...)
+	if !ok {
+		return n, lbls, ok
+	}
+
+	return n, appendVariantLabel(lbls, v.index), ok
+}
+
+func (v *variantsStreamSampleExtractorWrapper) ProcessString(
+	ts int64,
+	line string,
+	structuredMetadata ...labels.Label,
+) (float64, LabelsResult, bool) {
+	n, lbls, ok := v.StreamSampleExtractor.ProcessString(ts, line, structuredMetadata...)
+	if !ok {
+		return n, lbls, ok
+	}
+
+	return n, appendVariantLabel(lbls, v.index), ok
+}
+
+func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
+	newLbls := lbls.Stream()
+	newLbls = append(newLbls, labels.Label{
+		Name:  "__variant__",
+		Value: strconv.Itoa(variantIndex),
+	})
+	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
+	builder.Add(StructuredMetadataLabel, lbls.StructuredMetadata()...)
+	builder.Add(ParsedLabel, lbls.Parsed()...)
+	return builder.LabelsResult()
 }

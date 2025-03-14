@@ -16,13 +16,14 @@
 package record
 
 import (
+	"errors"
+	"fmt"
 	"math"
 
-	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -51,6 +52,10 @@ const (
 	HistogramSamples Type = 7
 	// FloatHistogramSamples is used to match WAL records of type Float Histograms.
 	FloatHistogramSamples Type = 8
+	// CustomBucketsHistogramSamples is used to match WAL records of type Histogram with custom buckets.
+	CustomBucketsHistogramSamples Type = 9
+	// CustomBucketsFloatHistogramSamples is used to match WAL records of type Float Histogram with custom buckets.
+	CustomBucketsFloatHistogramSamples Type = 10
 )
 
 func (rt Type) String() string {
@@ -67,6 +72,10 @@ func (rt Type) String() string {
 		return "histogram_samples"
 	case FloatHistogramSamples:
 		return "float_histogram_samples"
+	case CustomBucketsHistogramSamples:
+		return "custom_buckets_histogram_samples"
+	case CustomBucketsFloatHistogramSamples:
+		return "custom_buckets_float_histogram_samples"
 	case MmapMarkers:
 		return "mmapmarkers"
 	case Metadata:
@@ -90,45 +99,45 @@ const (
 	Stateset        MetricType = 7
 )
 
-func GetMetricType(t textparse.MetricType) uint8 {
+func GetMetricType(t model.MetricType) uint8 {
 	switch t {
-	case textparse.MetricTypeCounter:
+	case model.MetricTypeCounter:
 		return uint8(Counter)
-	case textparse.MetricTypeGauge:
+	case model.MetricTypeGauge:
 		return uint8(Gauge)
-	case textparse.MetricTypeHistogram:
+	case model.MetricTypeHistogram:
 		return uint8(HistogramSample)
-	case textparse.MetricTypeGaugeHistogram:
+	case model.MetricTypeGaugeHistogram:
 		return uint8(GaugeHistogram)
-	case textparse.MetricTypeSummary:
+	case model.MetricTypeSummary:
 		return uint8(Summary)
-	case textparse.MetricTypeInfo:
+	case model.MetricTypeInfo:
 		return uint8(Info)
-	case textparse.MetricTypeStateset:
+	case model.MetricTypeStateset:
 		return uint8(Stateset)
 	default:
 		return uint8(UnknownMT)
 	}
 }
 
-func ToTextparseMetricType(m uint8) textparse.MetricType {
+func ToMetricType(m uint8) model.MetricType {
 	switch m {
 	case uint8(Counter):
-		return textparse.MetricTypeCounter
+		return model.MetricTypeCounter
 	case uint8(Gauge):
-		return textparse.MetricTypeGauge
+		return model.MetricTypeGauge
 	case uint8(HistogramSample):
-		return textparse.MetricTypeHistogram
+		return model.MetricTypeHistogram
 	case uint8(GaugeHistogram):
-		return textparse.MetricTypeGaugeHistogram
+		return model.MetricTypeGaugeHistogram
 	case uint8(Summary):
-		return textparse.MetricTypeSummary
+		return model.MetricTypeSummary
 	case uint8(Info):
-		return textparse.MetricTypeInfo
+		return model.MetricTypeInfo
 	case uint8(Stateset):
-		return textparse.MetricTypeStateset
+		return model.MetricTypeStateset
 	default:
-		return textparse.MetricTypeUnknown
+		return model.MetricTypeUnknown
 	}
 }
 
@@ -162,7 +171,7 @@ type RefMetadata struct {
 	Help string
 }
 
-// RefExemplar is an exemplar with it's labels, timestamp, value the exemplar was collected/observed with, and a reference to a series.
+// RefExemplar is an exemplar with the labels, timestamp, value the exemplar was collected/observed with, and a reference to a series.
 type RefExemplar struct {
 	Ref    chunks.HeadSeriesRef
 	T      int64
@@ -191,9 +200,12 @@ type RefMmapMarker struct {
 }
 
 // Decoder decodes series, sample, metadata and tombstone records.
-// The zero value is ready to use.
 type Decoder struct {
 	builder labels.ScratchBuilder
+}
+
+func NewDecoder(t *labels.SymbolTable) Decoder { // FIXME remove t
+	return Decoder{builder: labels.NewScratchBuilder(0)}
 }
 
 // Type returns the type of the record.
@@ -203,7 +215,7 @@ func (d *Decoder) Type(rec []byte) Type {
 		return Unknown
 	}
 	switch t := Type(rec[0]); t {
-	case Series, Samples, Tombstones, Exemplars, MmapMarkers, Metadata, HistogramSamples, FloatHistogramSamples:
+	case Series, Samples, Tombstones, Exemplars, MmapMarkers, Metadata, HistogramSamples, FloatHistogramSamples, CustomBucketsHistogramSamples, CustomBucketsFloatHistogramSamples:
 		return t
 	}
 	return Unknown
@@ -229,7 +241,7 @@ func (d *Decoder) Series(rec []byte, series []RefSeries) ([]RefSeries, error) {
 		return nil, dec.Err()
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return series, nil
 }
@@ -272,20 +284,19 @@ func (d *Decoder) Metadata(rec []byte, metadata []RefMetadata) ([]RefMetadata, e
 		return nil, dec.Err()
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return metadata, nil
 }
 
 // DecodeLabels decodes one set of labels from buf.
 func (d *Decoder) DecodeLabels(dec *encoding.Decbuf) labels.Labels {
-	// TODO: reconsider if this function could be pushed down into labels.Labels to be more efficient.
 	d.builder.Reset()
 	nLabels := dec.Uvarint()
 	for i := 0; i < nLabels; i++ {
-		lName := dec.UvarintStr()
-		lValue := dec.UvarintStr()
-		d.builder.Add(lName, lValue)
+		lName := dec.UvarintBytes()
+		lValue := dec.UvarintBytes()
+		d.builder.UnsafeAddBytes(lName, lValue)
 	}
 	return d.builder.Labels()
 }
@@ -304,6 +315,10 @@ func (d *Decoder) Samples(rec []byte, samples []RefSample) ([]RefSample, error) 
 		baseRef  = dec.Be64()
 		baseTime = dec.Be64int64()
 	)
+	// Allow 1 byte for each varint and 8 for the value; the output slice must be at least that big.
+	if minSize := dec.Len() / (1 + 1 + 8); cap(samples) < minSize {
+		samples = make([]RefSample, 0, minSize)
+	}
 	for len(dec.B) > 0 && dec.Err() == nil {
 		dref := dec.Varint64()
 		dtime := dec.Varint64()
@@ -317,10 +332,10 @@ func (d *Decoder) Samples(rec []byte, samples []RefSample) ([]RefSample, error) 
 	}
 
 	if dec.Err() != nil {
-		return nil, errors.Wrapf(dec.Err(), "decode error after %d samples", len(samples))
+		return nil, fmt.Errorf("decode error after %d samples: %w", len(samples), dec.Err())
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return samples, nil
 }
@@ -344,7 +359,7 @@ func (d *Decoder) Tombstones(rec []byte, tstones []tombstones.Stone) ([]tombston
 		return nil, dec.Err()
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return tstones, nil
 }
@@ -382,10 +397,10 @@ func (d *Decoder) ExemplarsFromBuffer(dec *encoding.Decbuf, exemplars []RefExemp
 	}
 
 	if dec.Err() != nil {
-		return nil, errors.Wrapf(dec.Err(), "decode error after %d exemplars", len(exemplars))
+		return nil, fmt.Errorf("decode error after %d exemplars: %w", len(exemplars), dec.Err())
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return exemplars, nil
 }
@@ -410,10 +425,10 @@ func (d *Decoder) MmapMarkers(rec []byte, markers []RefMmapMarker) ([]RefMmapMar
 	}
 
 	if dec.Err() != nil {
-		return nil, errors.Wrapf(dec.Err(), "decode error after %d mmap markers", len(markers))
+		return nil, fmt.Errorf("decode error after %d mmap markers: %w", len(markers), dec.Err())
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return markers, nil
 }
@@ -421,7 +436,7 @@ func (d *Decoder) MmapMarkers(rec []byte, markers []RefMmapMarker) ([]RefMmapMar
 func (d *Decoder) HistogramSamples(rec []byte, histograms []RefHistogramSample) ([]RefHistogramSample, error) {
 	dec := encoding.Decbuf{B: rec}
 	t := Type(dec.Byte())
-	if t != HistogramSamples {
+	if t != HistogramSamples && t != CustomBucketsHistogramSamples {
 		return nil, errors.New("invalid record type")
 	}
 	if dec.Len() == 0 {
@@ -446,10 +461,10 @@ func (d *Decoder) HistogramSamples(rec []byte, histograms []RefHistogramSample) 
 	}
 
 	if dec.Err() != nil {
-		return nil, errors.Wrapf(dec.Err(), "decode error after %d histograms", len(histograms))
+		return nil, fmt.Errorf("decode error after %d histograms: %w", len(histograms), dec.Err())
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return histograms, nil
 }
@@ -498,12 +513,22 @@ func DecodeHistogram(buf *encoding.Decbuf, h *histogram.Histogram) {
 	for i := range h.NegativeBuckets {
 		h.NegativeBuckets[i] = buf.Varint64()
 	}
+
+	if histogram.IsCustomBucketsSchema(h.Schema) {
+		l = buf.Uvarint()
+		if l > 0 {
+			h.CustomValues = make([]float64, l)
+		}
+		for i := range h.CustomValues {
+			h.CustomValues[i] = buf.Be64Float64()
+		}
+	}
 }
 
 func (d *Decoder) FloatHistogramSamples(rec []byte, histograms []RefFloatHistogramSample) ([]RefFloatHistogramSample, error) {
 	dec := encoding.Decbuf{B: rec}
 	t := Type(dec.Byte())
-	if t != FloatHistogramSamples {
+	if t != FloatHistogramSamples && t != CustomBucketsFloatHistogramSamples {
 		return nil, errors.New("invalid record type")
 	}
 	if dec.Len() == 0 {
@@ -528,15 +553,15 @@ func (d *Decoder) FloatHistogramSamples(rec []byte, histograms []RefFloatHistogr
 	}
 
 	if dec.Err() != nil {
-		return nil, errors.Wrapf(dec.Err(), "decode error after %d histograms", len(histograms))
+		return nil, fmt.Errorf("decode error after %d histograms: %w", len(histograms), dec.Err())
 	}
 	if len(dec.B) > 0 {
-		return nil, errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return nil, fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return histograms, nil
 }
 
-// Decode decodes a Histogram from a byte slice.
+// DecodeFloatHistogram decodes a Histogram from a byte slice.
 func DecodeFloatHistogram(buf *encoding.Decbuf, fh *histogram.FloatHistogram) {
 	fh.CounterResetHint = histogram.CounterResetHint(buf.Byte())
 
@@ -579,6 +604,16 @@ func DecodeFloatHistogram(buf *encoding.Decbuf, fh *histogram.FloatHistogram) {
 	}
 	for i := range fh.NegativeBuckets {
 		fh.NegativeBuckets[i] = buf.Be64Float64()
+	}
+
+	if histogram.IsCustomBucketsSchema(fh.Schema) {
+		l = buf.Uvarint()
+		if l > 0 {
+			fh.CustomValues = make([]float64, l)
+		}
+		for i := range fh.CustomValues {
+			fh.CustomValues[i] = buf.Be64Float64()
+		}
 	}
 }
 
@@ -709,9 +744,43 @@ func (e *Encoder) MmapMarkers(markers []RefMmapMarker, b []byte) []byte {
 	return buf.Get()
 }
 
-func (e *Encoder) HistogramSamples(histograms []RefHistogramSample, b []byte) []byte {
+func (e *Encoder) HistogramSamples(histograms []RefHistogramSample, b []byte) ([]byte, []RefHistogramSample) {
 	buf := encoding.Encbuf{B: b}
 	buf.PutByte(byte(HistogramSamples))
+
+	if len(histograms) == 0 {
+		return buf.Get(), nil
+	}
+	var customBucketHistograms []RefHistogramSample
+
+	// Store base timestamp and base reference number of first histogram.
+	// All histograms encode their timestamp and ref as delta to those.
+	first := histograms[0]
+	buf.PutBE64(uint64(first.Ref))
+	buf.PutBE64int64(first.T)
+
+	for _, h := range histograms {
+		if h.H.UsesCustomBuckets() {
+			customBucketHistograms = append(customBucketHistograms, h)
+			continue
+		}
+		buf.PutVarint64(int64(h.Ref) - int64(first.Ref))
+		buf.PutVarint64(h.T - first.T)
+
+		EncodeHistogram(&buf, h.H)
+	}
+
+	// Reset buffer if only custom bucket histograms existed in list of histogram samples.
+	if len(histograms) == len(customBucketHistograms) {
+		buf.Reset()
+	}
+
+	return buf.Get(), customBucketHistograms
+}
+
+func (e *Encoder) CustomBucketsHistogramSamples(histograms []RefHistogramSample, b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(CustomBucketsHistogramSamples))
 
 	if len(histograms) == 0 {
 		return buf.Get()
@@ -765,11 +834,53 @@ func EncodeHistogram(buf *encoding.Encbuf, h *histogram.Histogram) {
 	for _, b := range h.NegativeBuckets {
 		buf.PutVarint64(b)
 	}
+
+	if histogram.IsCustomBucketsSchema(h.Schema) {
+		buf.PutUvarint(len(h.CustomValues))
+		for _, v := range h.CustomValues {
+			buf.PutBEFloat64(v)
+		}
+	}
 }
 
-func (e *Encoder) FloatHistogramSamples(histograms []RefFloatHistogramSample, b []byte) []byte {
+func (e *Encoder) FloatHistogramSamples(histograms []RefFloatHistogramSample, b []byte) ([]byte, []RefFloatHistogramSample) {
 	buf := encoding.Encbuf{B: b}
 	buf.PutByte(byte(FloatHistogramSamples))
+
+	if len(histograms) == 0 {
+		return buf.Get(), nil
+	}
+
+	var customBucketsFloatHistograms []RefFloatHistogramSample
+
+	// Store base timestamp and base reference number of first histogram.
+	// All histograms encode their timestamp and ref as delta to those.
+	first := histograms[0]
+	buf.PutBE64(uint64(first.Ref))
+	buf.PutBE64int64(first.T)
+
+	for _, h := range histograms {
+		if h.FH.UsesCustomBuckets() {
+			customBucketsFloatHistograms = append(customBucketsFloatHistograms, h)
+			continue
+		}
+		buf.PutVarint64(int64(h.Ref) - int64(first.Ref))
+		buf.PutVarint64(h.T - first.T)
+
+		EncodeFloatHistogram(&buf, h.FH)
+	}
+
+	// Reset buffer if only custom bucket histograms existed in list of histogram samples
+	if len(histograms) == len(customBucketsFloatHistograms) {
+		buf.Reset()
+	}
+
+	return buf.Get(), customBucketsFloatHistograms
+}
+
+func (e *Encoder) CustomBucketsFloatHistogramSamples(histograms []RefFloatHistogramSample, b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(CustomBucketsFloatHistogramSamples))
 
 	if len(histograms) == 0 {
 		return buf.Get()
@@ -791,7 +902,7 @@ func (e *Encoder) FloatHistogramSamples(histograms []RefFloatHistogramSample, b 
 	return buf.Get()
 }
 
-// Encode encodes the Float Histogram into a byte slice.
+// EncodeFloatHistogram encodes the Float Histogram into a byte slice.
 func EncodeFloatHistogram(buf *encoding.Encbuf, h *histogram.FloatHistogram) {
 	buf.PutByte(byte(h.CounterResetHint))
 
@@ -822,5 +933,12 @@ func EncodeFloatHistogram(buf *encoding.Encbuf, h *histogram.FloatHistogram) {
 	buf.PutUvarint(len(h.NegativeBuckets))
 	for _, b := range h.NegativeBuckets {
 		buf.PutBEFloat64(b)
+	}
+
+	if histogram.IsCustomBucketsSchema(h.Schema) {
+		buf.PutUvarint(len(h.CustomValues))
+		for _, v := range h.CustomValues {
+			buf.PutBEFloat64(v)
+		}
 	}
 }

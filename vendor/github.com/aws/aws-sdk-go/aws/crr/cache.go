@@ -8,12 +8,12 @@ import (
 // based on some key. The datastructure makes use of a read write
 // mutex to enable asynchronous use.
 type EndpointCache struct {
-	endpoints     syncMap
-	endpointLimit int64
 	// size is used to count the number elements in the cache.
 	// The atomic package is used to ensure this size is accurate when
 	// using multiple goroutines.
-	size int64
+	size          int64
+	endpoints     syncMap
+	endpointLimit int64
 }
 
 // NewEndpointCache will return a newly initialized cache with a limit

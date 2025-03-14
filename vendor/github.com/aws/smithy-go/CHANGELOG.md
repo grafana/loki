@@ -1,3 +1,178 @@
+# Release (2025-01-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.2
+  * **Bug Fix**: Fix HTTP metrics data race.
+  * **Bug Fix**: Replace usages of deprecated ioutil package.
+
+# Release (2024-11-15)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.1
+  * **Bug Fix**: Fix failure to replace URI path segments when their names overlap.
+
+# Release (2024-10-03)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.0
+  * **Feature**: Add HTTP client metrics.
+
+# Release (2024-09-25)
+
+## Module Highlights
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.0.0](aws-http-auth/CHANGELOG.md#v100-2024-09-25)
+  * **Release**: Initial release of module aws-http-auth, which implements generically consumable SigV4 and SigV4a request signing.
+
+# Release (2024-09-19)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.21.0
+  * **Feature**: Add tracing and metrics APIs, and builtin instrumentation for both, in generated clients.
+* `github.com/aws/smithy-go/metrics/smithyotelmetrics`: [v1.0.0](metrics/smithyotelmetrics/CHANGELOG.md#v100-2024-09-19)
+  * **Release**: Initial release of `smithyotelmetrics` module, which is used to adapt an OpenTelemetry SDK meter provider to be used with Smithy clients.
+* `github.com/aws/smithy-go/tracing/smithyoteltracing`: [v1.0.0](tracing/smithyoteltracing/CHANGELOG.md#v100-2024-09-19)
+  * **Release**: Initial release of `smithyoteltracing` module, which is used to adapt an OpenTelemetry SDK tracer provider to be used with Smithy clients.
+
+# Release (2024-08-14)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.20.4
+  * **Dependency Update**: Bump minimum Go version to 1.21.
+
+# Release (2024-06-27)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.20.3
+  * **Bug Fix**: Fix encoding/cbor test overflow on x86.
+
+# Release (2024-03-29)
+
+* No change notes available for this release.
+
+# Release (2024-02-21)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.20.1
+  * **Bug Fix**: Remove runtime dependency on go-cmp.
+
+# Release (2024-02-13)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.20.0
+  * **Feature**: Add codegen definition for sigv4a trait.
+  * **Feature**: Bump minimum Go version to 1.20 per our language support policy.
+
+# Release (2023-12-07)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.19.0
+  * **Feature**: Support modeled request compression.
+
+# Release (2023-11-30)
+
+* No change notes available for this release.
+
+# Release (2023-11-29)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.18.0
+  * **Feature**: Expose Options() method on generated service clients.
+
+# Release (2023-11-15)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.17.0
+  * **Feature**: Support identity/auth components of client reference architecture.
+
+# Release (2023-10-31)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.16.0
+  * **Feature**: **LANG**: Bump minimum go version to 1.19.
+
+# Release (2023-10-06)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.15.0
+  * **Feature**: Add `http.WithHeaderComment` middleware.
+
+# Release (2023-08-18)
+
+* No change notes available for this release.
+
+# Release (2023-08-07)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.14.1
+  * **Bug Fix**: Prevent duplicated error returns in EndpointResolverV2 default implementation.
+
+# Release (2023-07-31)
+
+## General Highlights
+* **Feature**: Adds support for smithy-modeled endpoint resolution.
+
+# Release (2022-12-02)
+
+* No change notes available for this release.
+
+# Release (2022-10-24)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.13.4
+  * **Bug Fix**: fixed document type checking for encoding nested types
+
+# Release (2022-09-14)
+
+* No change notes available for this release.
+
+# Release (v1.13.2)
+
+* No change notes available for this release.
+
+# Release (v1.13.1)
+
+* No change notes available for this release.
+
+# Release (v1.13.0)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.13.0
+  * **Feature**: Adds support for the Smithy httpBearerAuth authentication trait to smithy-go. This allows the SDK to support the bearer authentication flow for API operations decorated with httpBearerAuth. An API client will need to be provided with its own bearer.TokenProvider implementation or use the bearer.StaticTokenProvider implementation.
+
+# Release (v1.12.1)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.12.1
+  * **Bug Fix**: Fixes a bug where JSON object keys were not escaped.
+
+# Release (v1.12.0)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.12.0
+  * **Feature**: `transport/http`: Add utility for setting context metadata when operation serializer automatically assigns content-type default value.
+
+# Release (v1.11.3)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.11.3
+  * **Dependency Update**: Updates smithy-go unit test dependency go-cmp to 0.5.8.
+
+# Release (v1.11.2)
+
+* No change notes available for this release.
+
 # Release (v1.11.1)
 
 ## Module Highlights

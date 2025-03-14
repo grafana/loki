@@ -7,10 +7,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants []string) error {
@@ -70,16 +70,17 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 
 				err = casted.Index.(*tsdb.TSDBIndex).ForSeries(
 					context.Background(),
-					nil,
+					"", nil,
 					model.Earliest,
 					model.Latest,
-					func(ls labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) {
+					func(_ labels.Labels, _ model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
 						if len(chks) > maxChunksPerSeries {
 							maxChunksPerSeries = len(chks)
 							if len(chks) > 1000 {
 								seriesOver1kChunks++
 							}
 						}
+						return false
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)

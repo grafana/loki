@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Not all these are tested but are here to make sure the different types marshal without error
@@ -40,7 +40,7 @@ pipeline_stages:
         ingest_timestamp: true
 `
 
-// TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestPackPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestPackPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline_deal_with_it_linter"

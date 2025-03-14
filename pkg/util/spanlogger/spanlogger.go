@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/dskit/spanlogger"
 	"github.com/grafana/dskit/tenant"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (

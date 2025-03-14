@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
@@ -18,11 +19,12 @@ import (
 // Must use NewSummary function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Summary struct {
-	orig *otlpmetrics.Summary
+	orig  *otlpmetrics.Summary
+	state *internal.State
 }
 
-func newSummary(orig *otlpmetrics.Summary) Summary {
-	return Summary{orig}
+func newSummary(orig *otlpmetrics.Summary, state *internal.State) Summary {
+	return Summary{orig: orig, state: state}
 }
 
 // NewSummary creates a new empty Summary.
@@ -30,22 +32,26 @@ func newSummary(orig *otlpmetrics.Summary) Summary {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSummary() Summary {
-	return newSummary(&otlpmetrics.Summary{})
+	state := internal.StateMutable
+	return newSummary(&otlpmetrics.Summary{}, &state)
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
 // resetting the current instance to its zero value
 func (ms Summary) MoveTo(dest Summary) {
+	ms.state.AssertMutable()
+	dest.state.AssertMutable()
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Summary{}
 }
 
 // DataPoints returns the DataPoints associated with this Summary.
 func (ms Summary) DataPoints() SummaryDataPointSlice {
-	return newSummaryDataPointSlice(&ms.orig.DataPoints)
+	return newSummaryDataPointSlice(&ms.orig.DataPoints, ms.state)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Summary) CopyTo(dest Summary) {
+	dest.state.AssertMutable()
 	ms.DataPoints().CopyTo(dest.DataPoints())
 }

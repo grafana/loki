@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -57,9 +58,10 @@ type WebIdentityResult struct {
 
 // WebIdentityToken - web identity token with expiry.
 type WebIdentityToken struct {
-	Token       string
-	AccessToken string
-	Expiry      int
+	Token        string
+	AccessToken  string
+	RefreshToken string
+	Expiry       int
 }
 
 // A STSWebIdentity retrieves credentials from MinIO service, and keeps track if
@@ -67,7 +69,8 @@ type WebIdentityToken struct {
 type STSWebIdentity struct {
 	Expiry
 
-	// Required http Client to use when connecting to MinIO STS service.
+	// Optional http Client to use when connecting to MinIO STS service.
+	// (overrides default client in CredContext)
 	Client *http.Client
 
 	// Exported STS endpoint to fetch STS credentials.
@@ -85,29 +88,53 @@ type STSWebIdentity struct {
 	// assuming.
 	RoleARN string
 
+	// Policy is the policy where the credentials should be limited too.
+	Policy string
+
 	// roleSessionName is the identifier for the assumed role session.
 	roleSessionName string
 }
 
 // NewSTSWebIdentity returns a pointer to a new
 // Credentials object wrapping the STSWebIdentity.
-func NewSTSWebIdentity(stsEndpoint string, getWebIDTokenExpiry func() (*WebIdentityToken, error)) (*Credentials, error) {
-	if stsEndpoint == "" {
-		return nil, errors.New("STS endpoint cannot be empty")
-	}
+func NewSTSWebIdentity(stsEndpoint string, getWebIDTokenExpiry func() (*WebIdentityToken, error), opts ...func(*STSWebIdentity)) (*Credentials, error) {
 	if getWebIDTokenExpiry == nil {
 		return nil, errors.New("Web ID token and expiry retrieval function should be defined")
 	}
-	return New(&STSWebIdentity{
-		Client: &http.Client{
-			Transport: http.DefaultTransport,
-		},
+	i := &STSWebIdentity{
 		STSEndpoint:         stsEndpoint,
 		GetWebIDTokenExpiry: getWebIDTokenExpiry,
-	}), nil
+	}
+	for _, o := range opts {
+		o(i)
+	}
+	return New(i), nil
 }
 
-func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSessionName string,
+// NewKubernetesIdentity returns a pointer to a new
+// Credentials object using the Kubernetes service account
+func NewKubernetesIdentity(stsEndpoint string, opts ...func(*STSWebIdentity)) (*Credentials, error) {
+	return NewSTSWebIdentity(stsEndpoint, func() (*WebIdentityToken, error) {
+		token, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+		if err != nil {
+			return nil, err
+		}
+
+		return &WebIdentityToken{
+			Token: string(token),
+		}, nil
+	}, opts...)
+}
+
+// WithPolicy option will enforce that the returned credentials
+// will be scoped down to the specified policy
+func WithPolicy(policy string) func(*STSWebIdentity) {
+	return func(i *STSWebIdentity) {
+		i.Policy = policy
+	}
+}
+
+func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSessionName string, policy string,
 	getWebIDTokenExpiry func() (*WebIdentityToken, error),
 ) (AssumeRoleWithWebIdentityResponse, error) {
 	idToken, err := getWebIDTokenExpiry()
@@ -130,8 +157,15 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 		// Usually set when server is using extended userInfo endpoint.
 		v.Set("WebIdentityAccessToken", idToken.AccessToken)
 	}
+	if idToken.RefreshToken != "" {
+		// Usually set when server is using extended userInfo endpoint.
+		v.Set("WebIdentityRefreshToken", idToken.RefreshToken)
+	}
 	if idToken.Expiry > 0 {
 		v.Set("DurationSeconds", fmt.Sprintf("%d", idToken.Expiry))
+	}
+	if policy != "" {
+		v.Set("Policy", policy)
 	}
 	v.Set("Version", STSVersion)
 
@@ -180,10 +214,29 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 	return a, nil
 }
 
-// Retrieve retrieves credentials from the MinIO service.
-// Error will be returned if the request fails.
-func (m *STSWebIdentity) Retrieve() (Value, error) {
-	a, err := getWebIdentityCredentials(m.Client, m.STSEndpoint, m.RoleARN, m.roleSessionName, m.GetWebIDTokenExpiry)
+// RetrieveWithCredContext is like Retrieve with optional cred context.
+func (m *STSWebIdentity) RetrieveWithCredContext(cc *CredContext) (Value, error) {
+	if cc == nil {
+		cc = defaultCredContext
+	}
+
+	client := m.Client
+	if client == nil {
+		client = cc.Client
+	}
+	if client == nil {
+		client = defaultCredContext.Client
+	}
+
+	stsEndpoint := m.STSEndpoint
+	if stsEndpoint == "" {
+		stsEndpoint = cc.Endpoint
+	}
+	if stsEndpoint == "" {
+		return Value{}, errors.New("STS endpoint unknown")
+	}
+
+	a, err := getWebIdentityCredentials(client, stsEndpoint, m.RoleARN, m.roleSessionName, m.Policy, m.GetWebIDTokenExpiry)
 	if err != nil {
 		return Value{}, err
 	}
@@ -195,8 +248,15 @@ func (m *STSWebIdentity) Retrieve() (Value, error) {
 		AccessKeyID:     a.Result.Credentials.AccessKey,
 		SecretAccessKey: a.Result.Credentials.SecretKey,
 		SessionToken:    a.Result.Credentials.SessionToken,
+		Expiration:      a.Result.Credentials.Expiration,
 		SignerType:      SignatureV4,
 	}, nil
+}
+
+// Retrieve retrieves credentials from the MinIO service.
+// Error will be returned if the request fails.
+func (m *STSWebIdentity) Retrieve() (Value, error) {
+	return m.RetrieveWithCredContext(nil)
 }
 
 // Expiration returns the expiration time of the credentials

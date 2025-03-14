@@ -1,0 +1,6 @@
+namespace: example_namespace
+groups:
+- name: example_rule_group
+  rules:
+  - expr: sum(up)
+    record: summed_up

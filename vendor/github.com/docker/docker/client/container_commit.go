@@ -6,21 +6,26 @@ import (
 	"errors"
 	"net/url"
 
-	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/api/types"
+	"github.com/distribution/reference"
+	"github.com/docker/docker/api/types/container"
 )
 
 // ContainerCommit applies changes to a container and creates a new tagged image.
-func (cli *Client) ContainerCommit(ctx context.Context, container string, options types.ContainerCommitOptions) (types.IDResponse, error) {
+func (cli *Client) ContainerCommit(ctx context.Context, containerID string, options container.CommitOptions) (container.CommitResponse, error) {
+	containerID, err := trimID("container", containerID)
+	if err != nil {
+		return container.CommitResponse{}, err
+	}
+
 	var repository, tag string
 	if options.Reference != "" {
 		ref, err := reference.ParseNormalizedNamed(options.Reference)
 		if err != nil {
-			return types.IDResponse{}, err
+			return container.CommitResponse{}, err
 		}
 
 		if _, isCanonical := ref.(reference.Canonical); isCanonical {
-			return types.IDResponse{}, errors.New("refusing to create a tag with a digest reference")
+			return container.CommitResponse{}, errors.New("refusing to create a tag with a digest reference")
 		}
 		ref = reference.TagNameOnly(ref)
 
@@ -31,7 +36,7 @@ func (cli *Client) ContainerCommit(ctx context.Context, container string, option
 	}
 
 	query := url.Values{}
-	query.Set("container", container)
+	query.Set("container", containerID)
 	query.Set("repo", repository)
 	query.Set("tag", tag)
 	query.Set("comment", options.Comment)
@@ -43,13 +48,13 @@ func (cli *Client) ContainerCommit(ctx context.Context, container string, option
 		query.Set("pause", "0")
 	}
 
-	var response types.IDResponse
+	var response container.CommitResponse
 	resp, err := cli.post(ctx, "/commit", query, options.Config, nil)
 	defer ensureReaderClosed(resp)
 	if err != nil {
 		return response, err
 	}
 
-	err = json.NewDecoder(resp.body).Decode(&response)
+	err = json.NewDecoder(resp.Body).Decode(&response)
 	return response, err
 }

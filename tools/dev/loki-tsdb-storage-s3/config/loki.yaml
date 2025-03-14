@@ -1,0 +1,149 @@
+auth_enabled: true 
+common:
+    compactor_address: http://compactor:8006
+chunk_store_config:
+    chunk_cache_config:
+        memcached:
+            batch_size: 256
+            parallelism: 10
+        memcached_client:
+            addresses: memcached:11211
+compactor:
+    compaction_interval: 1m
+    retention_delete_worker_count: 500
+    retention_enabled: true
+    delete_request_store: s3
+    working_directory: /data/compactor
+distributor:
+    ring:
+        kvstore:
+            consul:
+                consistent_reads: false
+                host: consul:8500
+                http_client_timeout: 20s
+                watch_burst_size: 1
+                watch_rate_limit: 1
+            store: consul
+frontend:
+    compress_responses: true
+    log_queries_longer_than: 5s
+    max_outstanding_per_tenant: 512
+    encoding: protobuf
+    scheduler_address: query-scheduler:9009
+frontend_worker:
+    grpc_client_config:
+      max_send_msg_size: 1.048576e+08
+    scheduler_address: query-scheduler:9009
+ingester:
+    chunk_block_size: 262144
+    chunk_encoding: snappy
+    chunk_idle_period: 15m
+    chunk_retain_period: 6m
+    chunk_target_size: 1.572864e+06
+    flush_op_timeout: 10m
+    lifecycler:
+        heartbeat_period: 10s
+        interface_names:
+          - eth0
+        join_after: 30s
+        num_tokens: 512
+        ring:
+            heartbeat_timeout: 10m
+            kvstore:
+                consul:
+                    consistent_reads: true
+                    host: consul:8500
+                    http_client_timeout: 20s
+                store: consul
+            replication_factor: 3
+    sync_min_utilization: 0.2
+    sync_period: 15m
+    wal:
+        dir: /data/wal
+        enabled: true
+        replay_memory_ceiling: 7GB
+ingester_client:
+    grpc_client_config:
+        max_recv_msg_size: 6.7108864e+07
+    remote_timeout: 1s
+limits_config:
+    cardinality_limit: 100000
+    ingestion_burst_size_mb: 5
+    ingestion_rate_mb: 2
+    ingestion_rate_strategy: global
+    max_concurrent_tail_requests: 5
+    max_global_streams_per_user: 5000
+    max_label_name_length: 1024
+    max_label_names_per_series: 15
+    max_label_value_length: 2048
+    max_line_size: 65536
+    max_query_length: 721h
+    max_query_lookback: 744h
+    max_query_parallelism: 32
+    max_streams_matchers_per_query: 128
+    max_streams_per_user: 0
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    split_queries_by_interval: 15m
+    shard_aggregations:
+      - approx_topk
+querier:
+    query_ingesters_within: 2h
+    multi_tenant_queries_enabled: true
+    per_request_limits_enabled: true
+    max_concurrent: 6
+query_range:
+    align_queries_with_step: true
+    cache_results: true
+    max_retries: 5
+    parallelise_shardable_queries: true
+    results_cache:
+        cache:
+            memcached_client:
+                addresses: memcached:11211
+schema_config:
+    configs:
+      - from: "2020-07-30"
+        index:
+            period: 24h
+            prefix: index_
+        object_store: s3
+        schema: v13
+        store: tsdb
+        row_shards: 4
+server:
+    graceful_shutdown_timeout: 5s
+    grpc_server_max_concurrent_streams: 1000
+    grpc_server_max_recv_msg_size: 1.048576e+08
+    grpc_server_max_send_msg_size: 1.048576e+08
+    http_listen_port: 3100
+    http_server_idle_timeout: 120s
+    http_server_write_timeout: 6m
+    log_level: debug
+storage_config:
+    boltdb_shipper:
+        active_index_directory: /data/index
+        cache_location: /data/boltdb-cache
+        index_gateway_client:
+            server_address: index-gateway:9008
+    aws:
+      s3: s3://loki:supersecret@minio:9000/loki
+      s3forcepathstyle: true
+      insecure: true
+      endpoint: minio:9000
+    index_queries_cache_config:
+        memcached:
+            batch_size: 256
+            parallelism: 10
+        memcached_client:
+            addresses: memcached:11211
+    tsdb_shipper:
+        active_index_directory: /data/tsdb-index
+        cache_location: /data/tsdb-cache
+        index_gateway_client:
+            server_address: index-gateway:9008
+table_manager:
+    creation_grace_period: 3h
+    poll_interval: 10m
+    retention_deletes_enabled: false
+    retention_period: 0

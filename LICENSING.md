@@ -10,6 +10,7 @@ The following folders and their subfolders are licensed under Apache-2.0:
 
 ```
 clients/
+pkg/framedstdcopy/
 pkg/ingester/wal
 pkg/logproto/
 pkg/loghttp/

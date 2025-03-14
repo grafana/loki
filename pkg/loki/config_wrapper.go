@@ -11,14 +11,15 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/cfg"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 )
 
 const versionFlag = "version"
@@ -124,6 +125,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
+		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -140,13 +144,13 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 
 func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.BoltDBShipperType
+		return p.IndexType == types.BoltDBShipperType
 	})
 }
 
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == config.TSDBType
+		return p.IndexType == types.TSDBType
 	})
 }
 
@@ -178,7 +182,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 	}
 }
 
-// applyCommonReplicationFactor apply the common replication factor to the Index Gateway ring.
+// applyCommonReplicationFactor apply the common replication factor to the Index Gateway and Bloom Gateway rings.
 func applyCommonReplicationFactor(r, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(r.Common.ReplicationFactor, defaults.Common.ReplicationFactor) {
 		r.IndexGateway.Ring.ReplicationFactor = r.Common.ReplicationFactor
@@ -240,6 +244,54 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
+	}
+
+	if mergeWithExisting {
+		r.Pattern.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.Pattern.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Pattern.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Pattern.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.Pattern.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Pattern.LifecyclerConfig.ID = rc.InstanceID
+		r.Pattern.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.Pattern.LifecyclerConfig.Port = rc.InstancePort
+		r.Pattern.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
+		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	// IngestLimits
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimits.LifecyclerConfig.RingConfig, defaults.IngestLimits.LifecyclerConfig.RingConfig) {
+		r.IngestLimits.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimits.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimits.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimits.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimits.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimits.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimits.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimits.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimits.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimits.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimits.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimits.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	// IngestLimitsFrontend
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimitsFrontend.LifecyclerConfig.RingConfig, defaults.IngestLimitsFrontend.LifecyclerConfig.RingConfig) {
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimitsFrontend.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimitsFrontend.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimitsFrontend.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimitsFrontend.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimitsFrontend.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimitsFrontend.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimitsFrontend.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimitsFrontend.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -302,32 +354,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
-
-	// BloomCompactor
-	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
-		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
-		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
-		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
-		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomCompactor.Ring.KVStore = rc.KVStore
-	}
-
-	// BloomGateway
-	if mergeWithExisting || reflect.DeepEqual(r.BloomGateway.Ring, defaults.BloomGateway.Ring) {
-		r.BloomGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomGateway.Ring.InstancePort = rc.InstancePort
-		r.BloomGateway.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomGateway.Ring.InstanceID = rc.InstanceID
-		r.BloomGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
-		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomGateway.Ring.KVStore = rc.KVStore
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -337,6 +363,20 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Ingester.LifecyclerConfig.TokensFilePath = f
+
+	// IngestLimits
+	f, err = tokensFile(cfg, "ingestlimits.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IngestLimits.LifecyclerConfig.TokensFilePath = f
+
+	// IngestLimitsFrontend
+	f, err = tokensFile(cfg, "ingestlimitsfrontend.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath = f
 
 	// Compactor
 	f, err = tokensFile(cfg, "compactor.tokens")
@@ -359,19 +399,12 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
-	// Bloom-Compactor
-	f, err = tokensFile(cfg, "bloom-compactor.tokens")
+	// Pattern
+	f, err = tokensFile(cfg, "pattern.tokens")
 	if err != nil {
 		return err
 	}
-	cfg.BloomCompactor.Ring.TokensFilePath = f
-
-	// Bloom-Gateway
-	f, err = tokensFile(cfg, "bloomgateway.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.BloomGateway.Ring.TokensFilePath = f
+	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
 
 	return nil
 }
@@ -406,8 +439,10 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 		if r.CompactorConfig.WorkingDirectory == defaults.CompactorConfig.WorkingDirectory {
 			r.CompactorConfig.WorkingDirectory = fmt.Sprintf("%s/compactor", prefix)
 		}
-		if r.StorageConfig.BloomShipperConfig.WorkingDirectory == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory {
-			r.StorageConfig.BloomShipperConfig.WorkingDirectory = fmt.Sprintf("%s/blooms", prefix)
+		if len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == 1 &&
+			len(r.StorageConfig.BloomShipperConfig.WorkingDirectory) == len(defaults.StorageConfig.BloomShipperConfig.WorkingDirectory) &&
+			r.StorageConfig.BloomShipperConfig.WorkingDirectory[0] == defaults.StorageConfig.BloomShipperConfig.WorkingDirectory[0] {
+			_ = r.StorageConfig.BloomShipperConfig.WorkingDirectory.Set(fmt.Sprintf("%s/blooms", prefix))
 		}
 	}
 }
@@ -424,6 +459,18 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 
 	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.IngestLimits.LifecyclerConfig.InfNames, defaults.IngestLimits.LifecyclerConfig.InfNames) {
+		cfg.IngestLimits.LifecyclerConfig.InfNames = append(cfg.IngestLimits.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames, defaults.IngestLimitsFrontend.LifecyclerConfig.InfNames) {
+		cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames = append(cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.Pattern.LifecyclerConfig.InfNames, defaults.Pattern.LifecyclerConfig.InfNames) {
+		cfg.Pattern.LifecyclerConfig.InfNames = append(cfg.Pattern.LifecyclerConfig.InfNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
@@ -453,14 +500,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
-		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
-	}
-
-	if reflect.DeepEqual(cfg.BloomGateway.Ring.InstanceInterfaceNames, defaults.BloomGateway.Ring.InstanceInterfaceNames) {
-		cfg.BloomGateway.Ring.InstanceInterfaceNames = append(cfg.BloomGateway.Ring.InstanceInterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -469,13 +508,14 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.Pattern.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
-	r.BloomGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -558,9 +598,35 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.AlibabaCloud, defaults.StorageConfig.AlibabaStorageConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "alibaba"
+			r.Ruler.StoreConfig.AlibabaCloud = r.Common.Storage.AlibabaCloud
+			r.StorageConfig.AlibabaStorageConfig = r.Common.Storage.AlibabaCloud
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.COS, defaults.StorageConfig.COSConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "cos"
+			r.Ruler.StoreConfig.COS = r.Common.Storage.COS
+			r.StorageConfig.COSConfig = r.Common.Storage.COS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 
@@ -670,8 +736,28 @@ func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 // for at least as long as the TTL on the index queries cache.
 func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-		// buffer to make sure the chunks are there until the index entries expire.
-		cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		// Only apply this change if the active index period is for boltdb-shipper
+		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
+		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
+			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
+			// buffer to make sure the chunks are there until the index entries expire.
+			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+		}
 	}
+}
+
+func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
+	usingNewFrontendCfg := !reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig)
+	usingNewSchedulerCfg := !reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig)
+	usingOldFrontendCfg := !reflect.DeepEqual(cfg.Worker.OldQueryFrontendGRPCClientConfig, defaults.Worker.OldQueryFrontendGRPCClientConfig)
+
+	if usingOldFrontendCfg {
+		if usingNewFrontendCfg || usingNewSchedulerCfg {
+			return fmt.Errorf("both `grpc_client_config` and (`query_frontend_grpc_client` or `query_scheduler_grpc_client`) are set at the same time. Please use only `query_frontend_grpc_client` and `query_scheduler_grpc_client`")
+		}
+		cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+		cfg.Worker.QuerySchedulerGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+	}
+
+	return nil
 }

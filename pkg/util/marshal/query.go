@@ -1,8 +1,11 @@
 package marshal
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
@@ -12,12 +15,22 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+)
+
+var (
+	// The rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -77,6 +90,9 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	ret := make([]loghttp.Stream, len(s))
 
 	for i, stream := range s {
+		if strings.ContainsRune(stream.Labels, utf8.RuneError) {
+			stream.Labels = string(bytes.Map(removeInvalidUtf, []byte(stream.Labels)))
+		}
 		ret[i], err = NewStream(stream)
 
 		if err != nil {
@@ -97,7 +113,7 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	// Avoid a nil entries slice to be consistent with the decoding
 	entries := []loghttp.Entry{}
 	if len(s.Entries) > 0 {
-		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries)) //#nosec G103 -- Just preventing an allocation, safe. Entry types are the same.
 	}
 
 	ret := loghttp.Stream{
@@ -176,10 +192,24 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(data parser.Value, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func EncodeResult(data parser.Value, warnings []string, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
 	s.WriteObjectStart()
 	s.WriteObjectField("status")
 	s.WriteString("success")
+
+	if len(warnings) > 0 {
+		s.WriteMore()
+
+		s.WriteObjectField("warnings")
+		s.WriteArrayStart()
+		for i, w := range warnings {
+			s.WriteString(w)
+			if i < len(warnings)-1 {
+				s.WriteMore()
+			}
+		}
+		s.WriteArrayEnd()
+	}
 
 	s.WriteMore()
 	s.WriteObjectField("data")

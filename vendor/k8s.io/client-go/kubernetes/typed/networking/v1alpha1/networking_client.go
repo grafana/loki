@@ -19,17 +19,17 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"net/http"
+	http "net/http"
 
-	v1alpha1 "k8s.io/api/networking/v1alpha1"
-	"k8s.io/client-go/kubernetes/scheme"
+	networkingv1alpha1 "k8s.io/api/networking/v1alpha1"
+	scheme "k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
 type NetworkingV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	ClusterCIDRsGetter
 	IPAddressesGetter
+	ServiceCIDRsGetter
 }
 
 // NetworkingV1alpha1Client is used to interact with features provided by the networking.k8s.io group.
@@ -37,12 +37,12 @@ type NetworkingV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkingV1alpha1Client) ClusterCIDRs() ClusterCIDRInterface {
-	return newClusterCIDRs(c)
-}
-
 func (c *NetworkingV1alpha1Client) IPAddresses() IPAddressInterface {
 	return newIPAddresses(c)
+}
+
+func (c *NetworkingV1alpha1Client) ServiceCIDRs() ServiceCIDRInterface {
+	return newServiceCIDRs(c)
 }
 
 // NewForConfig creates a new NetworkingV1alpha1Client for the given config.
@@ -90,10 +90,10 @@ func New(c rest.Interface) *NetworkingV1alpha1Client {
 }
 
 func setConfigDefaults(config *rest.Config) error {
-	gv := v1alpha1.SchemeGroupVersion
+	gv := networkingv1alpha1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	config.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme.Scheme, scheme.Codecs).WithoutConversion()
 
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"net"
 	"sort"
@@ -12,15 +13,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dstls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/dns"
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -48,7 +50,7 @@ type memcachedClient struct {
 	addresses []string
 	provider  *dns.Provider
 
-	cbs        map[ /*address*/ string]*gobreaker.CircuitBreaker
+	cbs        map[string]*gobreaker.CircuitBreaker[interface{}]
 	cbFailures uint
 	cbTimeout  time.Duration
 	cbInterval time.Duration
@@ -62,13 +64,18 @@ type memcachedClient struct {
 	skipped    prometheus.Counter
 
 	logger log.Logger
+
+	cfg MemcachedClientConfig
+
+	// DialTimeout specifies a custom dialer used to dial new connections to a server.
+	DialTimeout func(network, address string, timeout time.Duration) (net.Conn, error)
 }
 
 // MemcachedClientConfig defines how a MemcachedClient should be constructed.
 type MemcachedClientConfig struct {
 	Host           string        `yaml:"host"`
 	Service        string        `yaml:"service"`
-	Addresses      string        `yaml:"addresses"` // EXPERIMENTAL.
+	Addresses      string        `yaml:"addresses"`
 	Timeout        time.Duration `yaml:"timeout"`
 	MaxIdleConns   int           `yaml:"max_idle_conns"`
 	MaxItemSize    int           `yaml:"max_item_size"`
@@ -77,13 +84,19 @@ type MemcachedClientConfig struct {
 	CBFailures     uint          `yaml:"circuit_breaker_consecutive_failures"`
 	CBTimeout      time.Duration `yaml:"circuit_breaker_timeout"`  // reset error count after this long
 	CBInterval     time.Duration `yaml:"circuit_breaker_interval"` // remain closed for this long after CBFailures errors
+
+	// TLSEnabled enables connecting to Memcached with TLS.
+	TLSEnabled bool `yaml:"tls_enabled"`
+
+	// TLS to use to connect to the Memcached server.
+	TLS dstls.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", description+"Hostname for memcached service to use. If empty and if addresses is unset, no memcached will be used.")
 	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", description+"SRV service used to discover memcache servers.")
-	f.StringVar(&cfg.Addresses, prefix+"memcached.addresses", "", description+"EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery")
+	f.StringVar(&cfg.Addresses, prefix+"memcached.addresses", "", description+"Comma separated addresses list in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
@@ -92,6 +105,8 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.circuit-breaker-timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
 	f.DurationVar(&cfg.CBInterval, prefix+"memcached.circuit-breaker-interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
 	f.IntVar(&cfg.MaxItemSize, prefix+"memcached.max-item-size", 0, description+"The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.")
+	f.BoolVar(&cfg.TLSEnabled, prefix+"memcached.tls-enabled", false, "Enable connecting to Memcached with TLS.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"memcached.", f)
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
@@ -99,7 +114,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = DefaultMemcachedJumpHashSelector()
+		selector = jumphash.DefaultSelector("memcached")
 	} else {
 		selector = &memcache.ServerList{}
 	}
@@ -112,15 +127,32 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		"name": name,
 	}, r))
 
+	dialTimeout := net.DialTimeout
+	if cfg.TLSEnabled {
+		cfg, err := cfg.TLS.GetTLSConfig()
+		if err != nil {
+			level.Error(logger).Log("msg", "couldn't create TLS configuration", "err", err)
+		} else {
+			dialTimeout = func(network, address string, timeout time.Duration) (net.Conn, error) {
+				base := new(net.Dialer)
+				base.Timeout = timeout
+
+				return tls.DialWithDialer(base, network, address, cfg)
+			}
+		}
+	}
+
 	newClient := &memcachedClient{
+		DialTimeout: dialTimeout,
 		name:        name,
 		Client:      client,
+		cfg:         cfg,
 		serverList:  selector,
 		hostname:    cfg.Host,
 		service:     cfg.Service,
 		logger:      logger,
 		provider:    dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
-		cbs:         make(map[string]*gobreaker.CircuitBreaker),
+		cbs:         make(map[string]*gobreaker.CircuitBreaker[interface{}]),
 		cbFailures:  cfg.CBFailures,
 		cbInterval:  cfg.CBInterval,
 		cbTimeout:   cfg.CBTimeout,
@@ -143,10 +175,11 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 	if cfg.CBFailures > 0 {
 		newClient.Client.DialTimeout = newClient.dialViaCircuitBreaker
+	} else {
+		newClient.Client.DialTimeout = dialTimeout
 	}
 
 	if len(cfg.Addresses) > 0 {
-		util_log.WarnExperimentalUse("DNS-based memcached service discovery", logger)
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 
@@ -168,7 +201,7 @@ func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout
 	c.Lock()
 	cb := c.cbs[address]
 	if cb == nil {
-		cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		cb = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
 			Name:          c.name + ":" + address,
 			Interval:      c.cbInterval,
 			Timeout:       c.cbTimeout,
@@ -182,7 +215,7 @@ func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout
 	c.Unlock()
 
 	conn, err := cb.Execute(func() (interface{}, error) {
-		return net.DialTimeout(network, address, timeout)
+		return c.DialTimeout(network, address, timeout)
 	})
 	if err != nil {
 		return nil, err
@@ -262,7 +295,7 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		// Copy across circuit-breakers for current set of addresses, thus
 		// leaving behind any for servers we won't talk to again
 		c.Lock()
-		newCBs := make(map[string]*gobreaker.CircuitBreaker, len(servers))
+		newCBs := make(map[string]*gobreaker.CircuitBreaker[interface{}], len(servers))
 		for _, address := range servers {
 			if cb, exists := c.cbs[address]; exists {
 				newCBs[address] = cb

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type GroupLoader struct{}
@@ -25,7 +25,7 @@ func (GroupLoader) Parse(query string) (parser.Expr, error) {
 	return exprAdapter{expr}, nil
 }
 
-func (g GroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+func (g GroupLoader) Load(identifier string, _ bool) (*rulefmt.RuleGroups, []error) {
 	b, err := os.ReadFile(identifier)
 	if err != nil {
 		return nil, []error{errors.Wrap(err, identifier)}
@@ -70,8 +70,8 @@ func NewCachingGroupLoader(l rules.GroupLoader) *CachingGroupLoader {
 	}
 }
 
-func (l *CachingGroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
-	groups, errs := l.loader.Load(identifier)
+func (l *CachingGroupLoader) Load(identifier string, ignoreUnknownFields bool) (*rulefmt.RuleGroups, []error) {
+	groups, errs := l.loader.Load(identifier, ignoreUnknownFields)
 	if errs != nil {
 		return nil, errs
 	}

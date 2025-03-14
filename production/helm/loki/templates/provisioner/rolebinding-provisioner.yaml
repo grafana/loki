@@ -1,7 +1,7 @@
-{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled }}
+{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: {{ if not .Values.rbac.namespaced }}Cluster{{ else }}Role{{ end }}Binding
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
   namespace: {{ $.Release.Namespace }}
@@ -17,7 +17,7 @@ metadata:
     "helm.sh/hook": post-install
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: {{ if not .Values.rbac.namespaced }}Cluster{{ end }}Role
   name: {{ template "enterprise-logs.provisionerFullname" . }}
 subjects:
   - kind: ServiceAccount

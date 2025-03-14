@@ -3,7 +3,7 @@ package generationnumber
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // Make this package level because we want several instances of a loader to be able to report metrics

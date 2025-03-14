@@ -76,7 +76,7 @@ message FlowSchema {
   // `metadata` is the standard object's metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
   // +optional
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
   // `spec` is the specification of the desired behavior of a FlowSchema.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
@@ -101,7 +101,7 @@ message FlowSchemaCondition {
   optional string status = 2;
 
   // `lastTransitionTime` is the last time the condition transitioned from one status to another.
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
 
   // `reason` is a unique, one-word, CamelCase reason for the condition's last transition.
   optional string reason = 4;
@@ -115,7 +115,7 @@ message FlowSchemaList {
   // `metadata` is the standard list metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
   // +optional
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
 
   // `items` is a list of FlowSchemas.
   repeated FlowSchema items = 2;
@@ -192,7 +192,7 @@ message LimitResponse {
 message LimitedPriorityLevelConfiguration {
   // `assuredConcurrencyShares` (ACS) configures the execution
   // limit, which is a limit on the number of requests of this
-  // priority level that may be exeucting at a given time.  ACS must
+  // priority level that may be executing at a given time.  ACS must
   // be a positive number. The server's concurrency limit (SCL) is
   // divided among the concurrency-controlled priority levels in
   // proportion to their assured concurrency shares. This produces
@@ -295,7 +295,7 @@ message PriorityLevelConfiguration {
   // `metadata` is the standard object's metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
   // +optional
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
   // `spec` is the specification of the desired behavior of a "request-priority".
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
@@ -320,7 +320,7 @@ message PriorityLevelConfigurationCondition {
   optional string status = 2;
 
   // `lastTransitionTime` is the last time the condition transitioned from one status to another.
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
 
   // `reason` is a unique, one-word, CamelCase reason for the condition's last transition.
   optional string reason = 4;
@@ -334,7 +334,7 @@ message PriorityLevelConfigurationList {
   // `metadata` is the standard object's metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
   // +optional
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
 
   // `items` is a list of request-priorities.
   repeated PriorityLevelConfiguration items = 2;

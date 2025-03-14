@@ -1,4 +1,4 @@
-// +build s390x
+//go:build s390x
 
 package bbolt
 

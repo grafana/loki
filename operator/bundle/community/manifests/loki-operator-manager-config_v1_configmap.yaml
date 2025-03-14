@@ -10,8 +10,8 @@ data:
     webhook:
       port: 9443
     leaderElection:
-      leaderElect: false
-      resourceName: e3716011.grafana.com
+      leaderElect: true
+      resourceName: loki-operator.grafana.com
     featureGates:
       lokiStackGateway: true
       restrictedPodSecurityStandard: false
@@ -24,9 +24,9 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.5.0
+    app.kubernetes.io/instance: loki-operator-v0.7.1
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.5.0
+    app.kubernetes.io/version: 0.7.1
   name: loki-operator-manager-config

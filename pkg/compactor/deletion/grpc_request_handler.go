@@ -8,8 +8,8 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/compactor/client/grpc"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type GRPCRequestHandler struct {
@@ -24,7 +24,7 @@ func NewGRPCRequestHandler(deleteRequestsStore DeleteRequestsStore, limits Limit
 	}
 }
 
-func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, _ *grpc.GetDeleteRequestsRequest) (*grpc.GetDeleteRequestsResponse, error) {
+func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, req *grpc.GetDeleteRequestsRequest) (*grpc.GetDeleteRequestsResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -39,14 +39,13 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, _ *grpc.GetD
 		return nil, errors.New(deletionNotAvailableMsg)
 	}
 
-	deleteGroups, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
+	deleteGroups, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err
 	}
 
-	deletesPerRequest := partitionByRequestID(deleteGroups)
-	deleteRequests := mergeDeletes(deletesPerRequest)
+	deleteRequests := mergeDeletes(deleteGroups)
 
 	sort.Slice(deleteRequests, func(i, j int) bool {
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt

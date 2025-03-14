@@ -12,11 +12,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logql"
-	rulerbase "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logql"
+	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // TestInvalidRuleGroup tests that a validation error is raised when rule group is invalid
@@ -118,15 +118,31 @@ func TestNonMetricQuery(t *testing.T) {
 type FakeQuerier struct{}
 
 func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopEntryIterator, nil
 }
 
 func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopSampleIterator, nil
 }
 
 type fakeChecker struct{}
 
 func (f fakeChecker) isReady(_ string) bool {
 	return true
+}
+
+func TestAddAndGetRuleDetailsFromContext(t *testing.T) {
+	ctx := context.Background()
+	ruleName := "test_rule"
+	ruleType := "test_type"
+
+	// Add rule details to context
+	ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
+
+	// Retrieve rule details from context
+	retrievedRuleName, retrievedRuleType := GetRuleDetailsFromContext(ctx)
+
+	// Assert that the retrieved values match the expected values
+	assert.Equal(t, ruleName, retrievedRuleName, "Expected rule name to match")
+	assert.Equal(t, ruleType, retrievedRuleType, "Expected rule type to match")
 }

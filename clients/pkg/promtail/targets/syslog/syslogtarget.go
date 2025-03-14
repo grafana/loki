@@ -9,17 +9,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/influxdata/go-syslog/v3"
-	"github.com/influxdata/go-syslog/v3/rfc5424"
+	"github.com/leodido/go-syslog/v4"
+	"github.com/leodido/go-syslog/v4/rfc3164"
+	"github.com/leodido/go-syslog/v4/rfc5424"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var (
@@ -57,6 +58,10 @@ func NewSyslogTarget(
 	relabel []*relabel.Config,
 	config *scrapeconfig.SyslogTargetConfig,
 ) (*SyslogTarget, error) {
+
+	if config.SyslogFormat == "" {
+		config.SyslogFormat = "rfc5424"
+	}
 
 	t := &SyslogTarget{
 		metrics:       metrics,
@@ -106,7 +111,7 @@ func (t *SyslogTarget) handleMessageError(err error) {
 	t.metrics.syslogParsingErrors.Inc()
 }
 
-func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Message) {
+func (t *SyslogTarget) handleMessageRFC5424(connLabels labels.Labels, msg syslog.Message) {
 	rfc5424Msg := msg.(*rfc5424.SyslogMessage)
 
 	if rfc5424Msg.Message == nil {
@@ -171,6 +176,64 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 		}
 	}
 	t.messages <- message{filtered, m, timestamp}
+}
+
+func (t *SyslogTarget) handleMessageRFC3164(connLabels labels.Labels, msg syslog.Message) {
+	rfc3164Msg := msg.(*rfc3164.SyslogMessage)
+
+	if rfc3164Msg.Message == nil {
+		t.metrics.syslogEmptyMessages.Inc()
+		return
+	}
+
+	lb := labels.NewBuilder(connLabels)
+	if v := rfc3164Msg.SeverityLevel(); v != nil {
+		lb.Set("__syslog_message_severity", *v)
+	}
+	if v := rfc3164Msg.FacilityLevel(); v != nil {
+		lb.Set("__syslog_message_facility", *v)
+	}
+	if v := rfc3164Msg.Hostname; v != nil {
+		lb.Set("__syslog_message_hostname", *v)
+	}
+	if v := rfc3164Msg.Appname; v != nil {
+		lb.Set("__syslog_message_app_name", *v)
+	}
+	if v := rfc3164Msg.ProcID; v != nil {
+		lb.Set("__syslog_message_proc_id", *v)
+	}
+	if v := rfc3164Msg.MsgID; v != nil {
+		lb.Set("__syslog_message_msg_id", *v)
+	}
+
+	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
+
+	filtered := make(model.LabelSet)
+	for _, lbl := range processed {
+		if strings.HasPrefix(lbl.Name, "__") {
+			continue
+		}
+		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+	}
+
+	var timestamp time.Time
+	if t.config.UseIncomingTimestamp && rfc3164Msg.Timestamp != nil {
+		timestamp = *rfc3164Msg.Timestamp
+	} else {
+		timestamp = time.Now()
+	}
+
+	m := *rfc3164Msg.Message
+
+	t.messages <- message{filtered, m, timestamp}
+}
+
+func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Message) {
+	if t.config.IsRFC3164Message() {
+		t.handleMessageRFC3164(connLabels, msg)
+	} else {
+		t.handleMessageRFC5424(connLabels, msg)
+	}
 }
 
 func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {

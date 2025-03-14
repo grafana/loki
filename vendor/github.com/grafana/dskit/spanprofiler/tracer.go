@@ -41,6 +41,9 @@ func (t *tracer) StartSpan(operationName string, opts ...opentracing.StartSpanOp
 	if !ok {
 		return span
 	}
+	if !spanCtx.IsSampled() {
+		return span
+	}
 	// pprof labels are attached only once, at the span root level.
 	if !isRootSpan(opts...) {
 		return span

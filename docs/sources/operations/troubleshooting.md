@@ -1,12 +1,12 @@
 ---
-title: Troubleshooting Loki
-menuTitle:  Troubleshooting
-description: Describes how to troubleshoot Grafana Loki.
+title: Manage and debug errors
+menuTitle: Troubleshooting
+description: Describes how to troubleshoot and debug specific errors in Grafana Loki.
 weight: 
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/
 ---
-# Troubleshooting Loki
+# Manage and debug errors
 
 ## "Loki: Bad Gateway. 502"
 
@@ -62,7 +62,7 @@ can have many possible causes.
 If you have a reverse proxy in front of Loki, that is, between Loki and Grafana, then check any configured timeouts, such as an NGINX proxy read timeout.
 
 - Other causes.  To determine if the issue is related to Loki itself or another system such as Grafana or a client-side error,
-attempt to run a [LogCLI]({{< relref "../query/logcli" >}}) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
+attempt to run a [LogCLI](../../query/logcli/) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
 
     - Adjust the [Grafana dataproxy timeout](/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
     - Check timeouts for reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy (a dataproxy). Therefore, connections from your client to Grafana must have their timeout configured as well.
@@ -81,7 +81,7 @@ Loki cache generation number errors(Loki >= 2.6)
   - Check the metric `loki_delete_cache_gen_load_failures_total` on `/metrics`, which is an indicator for the occurrence of the problem. If the value is greater than 1, it means that there is a problem with that component.
 
   - Try Http GET request to route: /loki/api/v1/cache/generation_numbers
-    - If response is equal as `"deletion is not available for this tenant"`, this means the deletion API is not enabled for the tenant. To enable this api, set `allow_deletes: true` for this tenant via the configuration settings. Check more docs: /docs/loki/latest/operations/storage/logs-deletion/
+    - If response is equal as `"deletion is not available for this tenant"`, this means the deletion API is not enabled for the tenant. To enable this api, set `allow_deletes: true` for this tenant via the configuration settings. Check more [deletion docs](/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/)
 
 ## Troubleshooting targets
 
@@ -123,14 +123,14 @@ promtail -log.level=debug
 The Promtail configuration contains a `__path__` entry to a directory that
 Promtail cannot find.
 
-## Connecting to a Promtail pod to troubleshoot
+## Connecting to a Promtail Pod to troubleshoot
 
 First check [Troubleshooting targets](#troubleshooting-targets) section above.
-If that doesn't help answer your questions, you can connect to the Promtail pod
+If that doesn't help answer your questions, you can connect to the Promtail Pod
 to investigate further.
 
 If you are running Promtail as a DaemonSet in your cluster, you will have a
-Promtail pod on each node, so figure out which Promtail you need to debug first:
+Promtail Pod on each node, so figure out which Promtail you need to debug first:
 
 
 ```shell
@@ -145,10 +145,10 @@ promtail-bth9q                         1/1     Running   0          3h    10.56.
 That output is truncated to highlight just the two pods we are interested in,
 you can see with the `-o wide` flag the NODE on which they are running.
 
-You'll want to match the node for the pod you are interested in, in this example
+You'll want to match the node for the Pod you are interested in, in this example
 NGINX, to the Promtail running on the same node.
 
-To debug you can connect to the Promtail pod:
+To debug you can connect to the Promtail Pod:
 
 ```shell
 kubectl exec -it promtail-bth9q -- /bin/sh
@@ -182,12 +182,12 @@ $ helm upgrade --install loki loki/loki --set "loki.tracing.enabled=true"
 
 ## Running Loki with Istio Sidecars
 
-An Istio sidecar runs alongside a pod. It intercepts all traffic to and from the pod. 
-When a pod tries to communicate with another pod using a given protocol, Istio inspects the destination's service using [Protocol Selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/).
+An Istio sidecar runs alongside a Pod. It intercepts all traffic to and from the Pod. 
+When a Pod tries to communicate with another Pod using a given protocol, Istio inspects the destination's service using [Protocol Selection](https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/).
 This mechanism uses a convention on the port name (for example, `http-my-port` or `grpc-my-port`)
 to determine how to handle this outgoing traffic. Istio can then do operations such as authorization and smart routing.
 
-This works fine when one pod communicates with another pod using a hostname. But,
+This works fine when one Pod communicates with another Pod using a hostname. But,
 Istio does not allow pods to communicate with other pods using IP addresses,
 unless the traffic type is `tcp`.
 

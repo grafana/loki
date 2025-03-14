@@ -3,11 +3,13 @@ title: Configure Promtail
 menuTitle:  Configuration reference
 description: Configuration parameters for the Promtail agent.
 aliases: 
-- ../../clients/promtail/configuration/
+- ../../clients/promtail/configuration/ # /docs/loki/latest/clients/promtail/configuration/
 weight:  200
 ---
 
 # Configure Promtail
+
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
@@ -40,8 +42,15 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
-from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
+targets, see [Scraping](../scraping/). For more information on transforming logs
+from scraped targets, see [Pipelines](../pipelines/).
+
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
 
 ### Use environment variables in the configuration
 
@@ -66,12 +75,12 @@ ${VAR:-default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
 backslashes with single backslashes. Because of this every use of a backslash `\` needs to
 be replaced with a double backslash `\\`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Generic placeholders
 
@@ -453,7 +462,7 @@ docker_sd_configs:
 
 ### pipeline_stages
 
-[Pipeline]({{< relref "./pipelines" >}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
+[Pipeline](../pipelines/) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
 In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
@@ -599,7 +608,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{< relref "../../query" >}}) stream selector.
+a configurable [LogQL](../../../query/) stream selector.
 
 ```yaml
 match:
@@ -681,7 +690,8 @@ The metrics stage allows for defining metrics from the extracted data.
 
 Created metrics are not pushed to Loki and are instead exposed via Promtail's
 `/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
-able to retrieve the metrics configured by this stage.
+able to retrieve the metrics configured by this stage. 
+If Promtail's configuration is reloaded, all metrics will be reset.
 
 
 ```yaml
@@ -828,7 +838,9 @@ replace:
 
 The `journal` block configures reading from the systemd journal from
 Promtail. Requires a build of Promtail that has journal support _enabled_. If
-using the AMD64 Docker image, this is enabled by default.
+using the AMD64 Docker image, this is enabled by default. On some systems a 
+permission is needed for the user promtail to access journal logs.
+For Ubuntu (24.04) you need to add `promtail` to the group `systemd-journal` with `sudo usermod -a -G systemd-journal promtail`.
 
 ```yaml
 # When true, log messages from the journal are passed through the
@@ -845,21 +857,60 @@ using the AMD64 Docker image, this is enabled by default.
 labels:
   [ <labelname>: <labelvalue> ... ]
 
+# Get labels from journal, when it is not empty
+relabel_configs:
+- source_labels: ['__journal__hostname']
+  target_label: host
+- source_labels: ['__journal__systemd_unit']
+  target_label: systemd_unit
+  regex: '(.+)'
+- source_labels: ['__journal__systemd_user_unit']
+  target_label: systemd_user_unit
+  regex: '(.+)'
+- source_labels: ['__journal__transport']
+  target_label: transport
+  regex: '(.+)'
+- source_labels: ['__journal_priority_keyword']
+  target_label: severity
+  regex: '(.+)'
+
 # Path to a directory to read entries from. Defaults to system
 # paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
+#### Available Labels
 
-{{% admonition type="note" %}}
-Priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
-{{% /admonition %}}
+Labels are imported from systemd-journal fields. The label name is the field name set to lower case with **__journal_** prefix. See the man page [systemd.journal-fields](https://www.freedesktop.org/software/systemd/man/latest/systemd.journal-fields.html) for more information.
+
+For example:
+
+| journal field      | label                        |
+|--------------------|------------------------------|
+| _HOSTNAME          | __journal__hostname          |
+| _SYSTEMD_UNIT      | __journal__systemd_unit      |
+| _SYSTEMD_USER_UNIT | __journal__systemd_user_unit |
+| ERRNO              | __journal_errno              |
+
+In addition to `__journal_priority` (imported from `PRIORITY` journal field, where the value is an integer from 0 to 7), promtail adds `__journal_priority_keyword` label where the value is generated using the `makeJournalPriority` mapping function.
+
+| journal priority | keyword |
+|------------------|---------|
+| 0                | emerg   |
+| 1                | alert   |
+| 2                | crit    |
+| 3                | error   |
+| 4                | warning |
+| 5                | notice  |
+| 6                | info    |
+| 7                | debug   |
 
 ### syslog
 
 The `syslog` block configures a syslog listener allowing users to push
-logs to Promtail with the syslog protocol.
-Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
-with and without octet counting.
+logs to Promtail with the syslog protocol. Currently supported both
+[BSD syslog Protocol](https://datatracker.ietf.org/doc/html/rfc3164) and
+[IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424) with and
+without octet counting.
 
 The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
 in front of Promtail. The forwarder can take care of the various specifications
@@ -871,8 +922,8 @@ Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng]({{< relref "./scraping#syslog-ng-output-configuration" >}}) and
-[rsyslog]({{< relref "./scraping#rsyslog-output-configuration" >}}). Both configurations enable
+[syslog-ng](../scraping/#syslog-ng-output-configuration) and
+[rsyslog](../scraping/#rsyslog-output-configuration). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the Promtail process
@@ -910,6 +961,13 @@ use_incoming_timestamp: <bool>
 
 # Sets the maximum limit to the length of syslog messages
 max_message_length: <int>
+
+# Defines used Sylog format at the target. 
+syslog_format:
+ [type: <string> | default = "rfc5424"]
+
+# Defines whether the full RFC5424 formatted syslog message should be pushed to Loki
+use_rfc5424_message: <bool>
 ```
 
 #### Available Labels
@@ -926,7 +984,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1244,7 +1302,7 @@ Each GELF message received will be encoded in JSON as the log line. For example:
 {"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
 ```
 
-You can leverage [pipeline stages]({{< relref "./stages" >}}) with the GELF target,
+You can leverage [pipeline stages](../stages/) with the GELF target,
 if for example, you want to parse the log line and extract more labels or change the log line format.
 
 ```yaml
@@ -1410,7 +1468,7 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages]({{< relref "./stages" >}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages](../stages/) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### heroku_drain
 
@@ -1951,6 +2009,13 @@ or [journald](https://docs.docker.com/config/containers/logging/journald/) loggi
 Note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
+The Docker target correctly joins log segments if a long line was split into different frames by Docker.
+To avoid hypothetically unlimited line size and out-of-memory errors in Promtail, this target applies
+a default soft line size limit of 256 kiB corresponding to the default max line size in Loki.
+If the buffer increases above this size, then the line will be sent to output immediately, and the rest
+of the line discarded. To change this behaviour, set `limits_config.max_line_size` to a non-zero value
+to apply a hard limit.
+
 The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
 
 ```yaml
@@ -1970,6 +2035,11 @@ tls_config:
 
 # The host to use if the container is in host networking mode.
 [ host_networking_host: <string> | default = "localhost" ]
+
+# Sort all non-nil networks in ascending order based on network name and
+# get the first network if the container has multiple networks defined, 
+# thus avoiding collecting duplicate targets.
+[ match_first_network: <bool> | default = true ]
 
 # Optional filters to limit the discovery process to a subset of available
 # resources.
@@ -2076,6 +2146,8 @@ The optional `limits_config` block configures global limits for this instance of
 [max_streams: <int> | default = 0]
 
 # Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+# If disabled, targets may apply default buffer size safety limits. If a target implements
+# a default limit, this will be documented under the `scrape_configs` entry.
 [max_line_size: <int> | default = 0]
 # Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
 [max_line_size_truncate: <bool> | default = false]
@@ -2105,7 +2177,7 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{< relref "../../send-data/docker-driver" >}}) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../docker-driver/) for local Docker installs or Docker Compose.
 
 If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 

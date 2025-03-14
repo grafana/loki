@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type fakePusher struct {
@@ -197,7 +197,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			queries := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
-			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+			mockFunc := func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 				return promql.Vector{}, WrapQueryableErrors(tc.returnedError)
 			}
 			qf := MetricsQueryFunc(mockFunc, queries, failures)
@@ -214,7 +214,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
 
-	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+	mockFunc := func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}

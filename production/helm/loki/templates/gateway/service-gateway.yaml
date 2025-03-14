@@ -12,6 +12,9 @@ metadata:
     {{- with .Values.gateway.service.labels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
+    {{- if not (and .Values.enterprise.enabled .Values.enterprise.gelGateway) }}
+    prometheus.io/service-monitor: "false"
+    {{- end }}
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
@@ -28,9 +31,9 @@ spec:
   loadBalancerIP: {{ .Values.gateway.service.loadBalancerIP }}
   {{- end }}
   ports:
-    - name: http
+    - name: http-metrics
       port: {{ .Values.gateway.service.port }}
-      targetPort: http
+      targetPort: http-metrics
       {{- if and (eq "NodePort" .Values.gateway.service.type) .Values.gateway.service.nodePort }}
       nodePort: {{ .Values.gateway.service.nodePort }}
       {{- end }}

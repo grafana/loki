@@ -10,3 +10,4 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: loki-operator
+      app.kubernetes.io/component: metrics

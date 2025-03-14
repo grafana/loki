@@ -1,18 +1,22 @@
 package queryrange
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitter interface {
-	split(execTime time.Time, tenantIDs []string, request queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
+	split(execTime time.Time, tenantIDs []string, request queryrangebase.Request, interval time.Duration) []queryrangebase.Request
 }
 
 type defaultSplitter struct {
@@ -24,7 +28,7 @@ func newDefaultSplitter(limits Limits, iqo util.IngesterQueryOptions) *defaultSp
 	return &defaultSplitter{limits, iqo}
 }
 
-func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
 	var (
 		reqs             []queryrangebase.Request
 		factory          func(start, end time.Time)
@@ -75,6 +79,15 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				Matchers: r.GetMatchers(),
 			})
 		}
+	case *logproto.ShardsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &logproto.ShardsRequest{
+				From:                model.TimeFromUnix(start.Unix()),
+				Through:             model.TimeFromUnix(end.Unix()),
+				Query:               r.Query,
+				TargetBytesPerShard: r.TargetBytesPerShard,
+			})
+		}
 	case *logproto.VolumeRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
@@ -86,8 +99,34 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				AggregateBy:  r.AggregateBy,
 			})
 		}
+	case *DetectedFieldsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedFieldsRequest{
+				DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+					Start:     start,
+					End:       end,
+					Query:     r.GetQuery(),
+					LineLimit: r.GetLineLimit(),
+					Limit:     r.GetLimit(),
+					Step:      r.GetStep(),
+				},
+				path: r.path,
+			})
+		}
+	case *DetectedLabelsRequest:
+		factory = func(start, end time.Time) {
+			reqs = append(reqs, &DetectedLabelsRequest{
+				DetectedLabelsRequest: logproto.DetectedLabelsRequest{
+					Start: start,
+					End:   end,
+					Query: r.Query,
+				},
+				path: r.path,
+			})
+		}
 	default:
-		return nil, nil
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("splitter: unsupported request type: %T", req))
+		return nil
 	}
 
 	var (
@@ -136,7 +175,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 
 		// query only overlaps ingester query window or recent metadata query window, nothing more to do
 		if start.After(end) || start.Equal(end) {
-			return reqs, nil
+			return reqs
 		}
 
 		// copy the splits, reset the results
@@ -152,7 +191,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 
 	// move the ingester or recent metadata splits to the end to maintain correct order
 	reqs = append(reqs, splitsBeforeRebound...)
-	return reqs, nil
+	return reqs
 }
 
 type metricQuerySplitter struct {
@@ -166,15 +205,12 @@ func newMetricQuerySplitter(limits Limits, iqo util.IngesterQueryOptions) *metri
 
 // reduceSplitIntervalForRangeVector reduces the split interval for a range query based on the duration of the range vector.
 // Large range vector durations will not be split into smaller intervals because it can cause the queries to be slow by over-processing data.
-func (s *metricQuerySplitter) reduceSplitIntervalForRangeVector(r *LokiRequest, interval time.Duration) (time.Duration, error) {
-	maxRange, _, err := maxRangeVectorAndOffsetDuration(r.Plan.AST)
-	if err != nil {
-		return 0, err
-	}
+func (s *metricQuerySplitter) reduceSplitIntervalForRangeVector(r *LokiRequest, interval time.Duration) time.Duration {
+	maxRange, _ := maxRangeVectorAndOffsetDuration(r.Plan.AST)
 	if maxRange > interval {
-		return maxRange, nil
+		return maxRange
 	}
-	return interval, nil
+	return interval
 }
 
 // Round up to the step before the next interval boundary.
@@ -190,15 +226,12 @@ func (s *metricQuerySplitter) nextIntervalBoundary(t time.Time, step int64, inte
 	return time.Unix(0, target)
 }
 
-func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request, interval time.Duration) []queryrangebase.Request {
 	var reqs []queryrangebase.Request
 
 	lokiReq := r.(*LokiRequest)
 
-	interval, err := s.reduceSplitIntervalForRangeVector(lokiReq, interval)
-	if err != nil {
-		return nil, err
-	}
+	interval = s.reduceSplitIntervalForRangeVector(lokiReq, interval)
 
 	start, end := s.alignStartEnd(r.GetStep(), lokiReq.StartTs, lokiReq.EndTs)
 
@@ -223,7 +256,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	if lokiReq.Step >= interval.Milliseconds() {
 		util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, factory)
 
-		return reqs, nil
+		return reqs
 	}
 
 	var (
@@ -252,7 +285,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 
 		// query only overlaps ingester query window, nothing more to do
 		if start.After(end) || start.Equal(end) {
-			return reqs, nil
+			return reqs
 		}
 
 		// copy the splits, reset the results
@@ -269,7 +302,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	// move the ingester splits to the end to maintain correct order
 	reqs = append(reqs, ingesterSplits...)
 
-	return reqs, nil
+	return reqs
 }
 
 func (s *metricQuerySplitter) alignStartEnd(step int64, start, end time.Time) (time.Time, time.Time) {

@@ -15,16 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func Test_ChunkIterator(t *testing.T) {
 	for _, tt := range allSchemas {
-		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()
@@ -108,7 +107,6 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 
 func Test_SeriesCleaner(t *testing.T) {
 	for _, tt := range allSchemas {
-		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()

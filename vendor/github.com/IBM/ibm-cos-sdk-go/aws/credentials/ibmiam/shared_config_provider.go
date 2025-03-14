@@ -21,11 +21,14 @@ const (
 // NewSharedConfigProvider constructor of the IBM IAM provider that loads IAM Credentials
 // from shared config
 // Parameters:
-//		AWS Config
-// 		Profile filename
-//		Profile name
+//
+//	AWS Config
+//	Profile filename
+//	Profile name
+//
 // Returns:
-// 		Common Ini Provider with values
+//
+//	Common Ini Provider with values
 func NewSharedConfigProvider(config *aws.Config, filename, profilename string) *Provider {
 
 	// Sets the file name from possible locations

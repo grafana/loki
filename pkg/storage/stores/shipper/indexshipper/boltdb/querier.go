@@ -7,9 +7,9 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 type Writer interface {

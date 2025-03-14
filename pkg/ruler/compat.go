@@ -24,11 +24,12 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	rulerutil "github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -72,6 +73,12 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errNotReady
 		}
 
+		// Extract rule details
+		ruleName := detail.Name
+		ruleType := detail.Kind
+
+		// Add rule details to context
+		ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
 		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
@@ -152,18 +159,19 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		groupLoader := NewCachingGroupLoader(GroupLoader{})
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:      registry,
-			Queryable:       memStore,
-			QueryFunc:       queryFn,
-			Context:         user.InjectOrgID(ctx, userID),
-			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
-			Logger:          logger,
-			Registerer:      reg,
-			OutageTolerance: cfg.OutageTolerance,
-			ForGracePeriod:  cfg.ForGracePeriod,
-			ResendDelay:     cfg.ResendDelay,
-			GroupLoader:     groupLoader,
+			Appendable:               registry,
+			Queryable:                memStore,
+			QueryFunc:                queryFn,
+			Context:                  user.InjectOrgID(ctx, userID),
+			ExternalURL:              cfg.ExternalURL.URL,
+			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
+			Logger:                   util_log.SlogFromGoKit(logger),
+			Registerer:               reg,
+			OutageTolerance:          cfg.OutageTolerance,
+			ForGracePeriod:           cfg.ForGracePeriod,
+			ResendDelay:              cfg.ResendDelay,
+			GroupLoader:              groupLoader,
+			RuleDependencyController: &noopRuleDependencyController{},
 		})
 
 		cachingManager := &CachingRulesManager{
@@ -250,9 +258,9 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 		return errors.Errorf("field 'expr' must be set in rule")
 	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
 		if r.Record.Value != "" {
-			return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
+			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)
 		}
-		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName))
+		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName)
 	}
 
 	if r.Record.Value != "" {
@@ -299,7 +307,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 	}
 
 	// Trying to parse templates.
-	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", 0)
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
 	defs := []string{
 		"{{$labels := .Labels}}",
 		"{{$externalLabels := .ExternalLabels}}",
@@ -347,3 +355,34 @@ func (exprAdapter) PositionRange() posrange.PositionRange { return posrange.Posi
 func (exprAdapter) PromQLExpr()                           {}
 func (exprAdapter) Type() parser.ValueType                { return parser.ValueType("unimplemented") }
 func (exprAdapter) Pretty(_ int) string                   { return "" }
+
+type noopRuleDependencyController struct{}
+
+// Prometheus rules manager calls AnalyseRules to determine the dependents and dependencies of a rule
+// which it then uses to decide if a rule within a group is eligible for concurrent execution.
+// AnalyseRules is a noop for Loki since there is no dependency relation between rules.
+func (*noopRuleDependencyController) AnalyseRules([]rules.Rule) {
+	// Do nothing
+}
+
+// Define context keys to avoid collisions
+type contextKey string
+
+const (
+	ruleNameKey contextKey = "rule_name"
+	ruleTypeKey contextKey = "rule_type"
+)
+
+// AddRuleDetailsToContext adds rule details to the context
+func AddRuleDetailsToContext(ctx context.Context, ruleName string, ruleType string) context.Context {
+	ctx = context.WithValue(ctx, ruleNameKey, ruleName)
+	ctx = context.WithValue(ctx, ruleTypeKey, ruleType)
+	return ctx
+}
+
+// GetRuleDetailsFromContext retrieves rule details from the context
+func GetRuleDetailsFromContext(ctx context.Context) (string, string) {
+	ruleName, _ := ctx.Value(ruleNameKey).(string)
+	ruleType, _ := ctx.Value(ruleTypeKey).(string)
+	return ruleName, ruleType
+}

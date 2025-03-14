@@ -18,6 +18,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base"
@@ -48,8 +50,8 @@ duplication.
 
 .Net People, Take note on X509:
 This uses x509.Certificates and private keys. x509 does not store private keys. .Net
-has some x509.Certificate2 thing that has private keys, but that is just some bullcrap that .Net
-added, it doesn't exist in real life. As such I've put a PEM decoder into here.
+has a x509.Certificate2 abstraction that has private keys, but that just a strange invention.
+As such I've put a PEM decoder into here.
 */
 
 // TODO(msal): This should have example code for each method on client using Go's example doc framework.
@@ -58,6 +60,8 @@ added, it doesn't exist in real life. As such I've put a PEM decoder into here.
 // AuthResult contains the results of one token acquisition operation.
 // For details see https://aka.ms/msal-net-authenticationresult
 type AuthResult = base.AuthResult
+
+type AuthenticationScheme = authority.AuthenticationScheme
 
 type Account = shared.Account
 
@@ -301,7 +305,9 @@ func WithInstanceDiscovery(enabled bool) Option {
 // If an invalid region name is provided, the non-regional endpoint MIGHT be used or the token request MIGHT fail.
 func WithAzureRegion(val string) Option {
 	return func(o *clientOptions) {
-		o.azureRegion = val
+		if val != "" {
+			o.azureRegion = val
+		}
 	}
 }
 
@@ -313,16 +319,21 @@ func New(authority, clientID string, cred Credential, options ...Option) (Client
 	if err != nil {
 		return Client{}, err
 	}
-
+	autoEnabledRegion := os.Getenv("MSAL_FORCE_REGION")
 	opts := clientOptions{
 		authority: authority,
 		// if the caller specified a token provider, it will handle all details of authentication, using Client only as a token cache
 		disableInstanceDiscovery: cred.tokenProvider != nil,
 		httpClient:               shared.DefaultClient,
+		azureRegion:              autoEnabledRegion,
 	}
 	for _, o := range options {
 		o(&opts)
 	}
+	if strings.EqualFold(opts.azureRegion, "DisableMsalForceRegion") {
+		opts.azureRegion = ""
+	}
+
 	baseOpts := []base.Option{
 		base.WithCacheAccessor(opts.accessor),
 		base.WithClientCapabilities(opts.capabilities),
@@ -420,6 +431,7 @@ func WithClaims(claims string) interface {
 	AcquireByAuthCodeOption
 	AcquireByCredentialOption
 	AcquireOnBehalfOfOption
+	AcquireByUsernamePasswordOption
 	AcquireSilentOption
 	AuthCodeURLOption
 	options.CallOption
@@ -428,6 +440,7 @@ func WithClaims(claims string) interface {
 		AcquireByAuthCodeOption
 		AcquireByCredentialOption
 		AcquireOnBehalfOfOption
+		AcquireByUsernamePasswordOption
 		AcquireSilentOption
 		AuthCodeURLOption
 		options.CallOption
@@ -441,10 +454,39 @@ func WithClaims(claims string) interface {
 					t.claims = claims
 				case *acquireTokenOnBehalfOfOptions:
 					t.claims = claims
+				case *acquireTokenByUsernamePasswordOptions:
+					t.claims = claims
 				case *acquireTokenSilentOptions:
 					t.claims = claims
 				case *authCodeURLOptions:
 					t.claims = claims
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithAuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
+func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
+	AcquireSilentOption
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireSilentOption
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenSilentOptions:
+					t.authnScheme = authnScheme
+				case *acquireTokenByCredentialOptions:
+					t.authnScheme = authnScheme
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
 				}
@@ -460,6 +502,7 @@ func WithTenantID(tenantID string) interface {
 	AcquireByAuthCodeOption
 	AcquireByCredentialOption
 	AcquireOnBehalfOfOption
+	AcquireByUsernamePasswordOption
 	AcquireSilentOption
 	AuthCodeURLOption
 	options.CallOption
@@ -468,6 +511,7 @@ func WithTenantID(tenantID string) interface {
 		AcquireByAuthCodeOption
 		AcquireByCredentialOption
 		AcquireOnBehalfOfOption
+		AcquireByUsernamePasswordOption
 		AcquireSilentOption
 		AuthCodeURLOption
 		options.CallOption
@@ -480,6 +524,8 @@ func WithTenantID(tenantID string) interface {
 				case *acquireTokenByCredentialOptions:
 					t.tenantID = tenantID
 				case *acquireTokenOnBehalfOfOptions:
+					t.tenantID = tenantID
+				case *acquireTokenByUsernamePasswordOptions:
 					t.tenantID = tenantID
 				case *acquireTokenSilentOptions:
 					t.tenantID = tenantID
@@ -499,6 +545,7 @@ func WithTenantID(tenantID string) interface {
 type acquireTokenSilentOptions struct {
 	account          Account
 	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
 // AcquireSilentOption is implemented by options for AcquireTokenSilent
@@ -549,9 +596,50 @@ func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 		Credential:  cca.cred,
 		IsAppCache:  o.account.IsZero(),
 		TenantID:    o.tenantID,
+		AuthnScheme: o.authnScheme,
 	}
 
 	return cca.base.AcquireTokenSilent(ctx, silentParameters)
+}
+
+// acquireTokenByUsernamePasswordOptions contains optional configuration for AcquireTokenByUsernamePassword
+type acquireTokenByUsernamePasswordOptions struct {
+	claims, tenantID string
+	authnScheme      AuthenticationScheme
+}
+
+// AcquireByUsernamePasswordOption is implemented by options for AcquireTokenByUsernamePassword
+type AcquireByUsernamePasswordOption interface {
+	acquireByUsernamePasswordOption()
+}
+
+// AcquireTokenByUsernamePassword acquires a security token from the authority, via Username/Password Authentication.
+// NOTE: this flow is NOT recommended.
+//
+// Options: [WithClaims], [WithTenantID]
+func (cca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []string, username, password string, opts ...AcquireByUsernamePasswordOption) (AuthResult, error) {
+	o := acquireTokenByUsernamePasswordOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return AuthResult{}, err
+	}
+	authParams, err := cca.base.AuthParams.WithTenant(o.tenantID)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	authParams.Scopes = scopes
+	authParams.AuthorizationType = authority.ATUsernamePassword
+	authParams.Claims = o.claims
+	authParams.Username = username
+	authParams.Password = password
+	if o.authnScheme != nil {
+		authParams.AuthnScheme = o.authnScheme
+	}
+
+	token, err := cca.base.Token.UsernamePassword(ctx, authParams)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	return cca.base.AuthResultFromToken(ctx, authParams, token, true)
 }
 
 // acquireTokenByAuthCodeOptions contains the optional parameters used to acquire an access token using the authorization code flow.
@@ -614,6 +702,7 @@ func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redir
 // acquireTokenByCredentialOptions contains optional configuration for AcquireTokenByCredential
 type acquireTokenByCredentialOptions struct {
 	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
 // AcquireByCredentialOption is implemented by options for AcquireTokenByCredential
@@ -637,7 +726,9 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 	authParams.Scopes = scopes
 	authParams.AuthorizationType = authority.ATClientCredentials
 	authParams.Claims = o.claims
-
+	if o.authnScheme != nil {
+		authParams.AuthnScheme = o.authnScheme
+	}
 	token, err := cca.base.Token.Credential(ctx, authParams, cca.cred)
 	if err != nil {
 		return AuthResult{}, err

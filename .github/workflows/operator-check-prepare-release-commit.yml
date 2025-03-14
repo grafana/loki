@@ -1,0 +1,51 @@
+name: operator-check-prepare-release-commit
+
+on:
+  pull_request:
+    paths:
+      - 'operator/**'
+    branches:
+      - main
+
+jobs:
+  check-commit:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' && 
+      contains(github.event.pull_request.title, 'chore( operator): community release')
+    steps:
+      - id: "get_github_app_token"
+        name: Get GitHub Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: Extract release version
+        id: pr_semver
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          SEMVER=$(echo "$PR_TITLE" | sed -n 's/^chore( operator): community release \([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
+          echo "semver=$SEMVER" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: "release"
+
+      - name: Check main commits for prepare release commit
+        id: check_commit
+        env:
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+        working-directory: "release"
+        run: |
+          COMMIT=$(gh search commits "chore(operator): prepare community release v${{ steps.pr_semver.outputs.semver }}")
+          if [ -n "$COMMIT" ]; then
+            echo "Prepare release commit found."
+          else
+            echo "No prepare release commit found for the release version ${{ steps.pr_semver.outputs.semver }}"
+            exit 1
+          fi

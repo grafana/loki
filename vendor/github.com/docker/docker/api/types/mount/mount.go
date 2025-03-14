@@ -19,6 +19,8 @@ const (
 	TypeNamedPipe Type = "npipe"
 	// TypeCluster is the type for Swarm Cluster Volumes.
 	TypeCluster Type = "cluster"
+	// TypeImage is the type for mounting another image's filesystem
+	TypeImage Type = "image"
 )
 
 // Mount represents a mount (volume).
@@ -29,11 +31,12 @@ type Mount struct {
 	// Source is not supported for tmpfs (must be an empty value)
 	Source      string      `json:",omitempty"`
 	Target      string      `json:",omitempty"`
-	ReadOnly    bool        `json:",omitempty"`
+	ReadOnly    bool        `json:",omitempty"` // attempts recursive read-only if possible
 	Consistency Consistency `json:",omitempty"`
 
 	BindOptions    *BindOptions    `json:",omitempty"`
 	VolumeOptions  *VolumeOptions  `json:",omitempty"`
+	ImageOptions   *ImageOptions   `json:",omitempty"`
 	TmpfsOptions   *TmpfsOptions   `json:",omitempty"`
 	ClusterOptions *ClusterOptions `json:",omitempty"`
 }
@@ -85,13 +88,23 @@ type BindOptions struct {
 	Propagation      Propagation `json:",omitempty"`
 	NonRecursive     bool        `json:",omitempty"`
 	CreateMountpoint bool        `json:",omitempty"`
+	// ReadOnlyNonRecursive makes the mount non-recursively read-only, but still leaves the mount recursive
+	// (unless NonRecursive is set to true in conjunction).
+	ReadOnlyNonRecursive bool `json:",omitempty"`
+	// ReadOnlyForceRecursive raises an error if the mount cannot be made recursively read-only.
+	ReadOnlyForceRecursive bool `json:",omitempty"`
 }
 
 // VolumeOptions represents the options for a mount of type volume.
 type VolumeOptions struct {
 	NoCopy       bool              `json:",omitempty"`
 	Labels       map[string]string `json:",omitempty"`
+	Subpath      string            `json:",omitempty"`
 	DriverConfig *Driver           `json:",omitempty"`
+}
+
+type ImageOptions struct {
+	Subpath string `json:",omitempty"`
 }
 
 // Driver represents a volume driver.
@@ -113,7 +126,11 @@ type TmpfsOptions struct {
 	SizeBytes int64 `json:",omitempty"`
 	// Mode of the tmpfs upon creation
 	Mode os.FileMode `json:",omitempty"`
-
+	// Options to be passed to the tmpfs mount. An array of arrays. Flag
+	// options should be provided as 1-length arrays. Other types should be
+	// provided as 2-length arrays, where the first item is the key and the
+	// second the value.
+	Options [][]string `json:",omitempty"`
 	// TODO(stevvooe): There are several more tmpfs flags, specified in the
 	// daemon, that are accepted. Only the most basic are added for now.
 	//

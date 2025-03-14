@@ -20,8 +20,8 @@ import (
 	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -228,7 +228,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
-	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))):
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))): //#nosec G404 -- This is also just essentially jitter, no need for CSPRNG.
 	case <-ctx.Done():
 		return nil
 	}

@@ -1,4 +1,4 @@
-// +build arm64
+//go:build arm64
 
 package bbolt
 

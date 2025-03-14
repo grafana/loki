@@ -11,8 +11,8 @@ import (
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // Pull fiel numbers from protobuf message descriptions.
@@ -123,7 +123,7 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 				return false, err
 			}
 
-			err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
+			err = molecule.MessageEach(codec.NewBuffer(entry), func(_ int32, labelOrKey molecule.Value) (bool, error) {
 				s, err := labelOrKey.AsStringUnsafe()
 				if err != nil {
 					return false, err

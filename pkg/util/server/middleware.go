@@ -14,7 +14,7 @@ func NewPrepopulateMiddleware() middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			err := req.ParseForm()
 			if err != nil {
-				WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+				WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 				return
 
 			}

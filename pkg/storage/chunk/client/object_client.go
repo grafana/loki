@@ -4,24 +4,31 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
+
+type ObjectAttributes struct {
+	Size int64
+}
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
 	ObjectExists(ctx context.Context, objectKey string) (bool, error)
+	GetAttributes(ctx context.Context, objectKey string) (ObjectAttributes, error)
 
-	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
+	GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
 
 	// List objects with given prefix.
 	//
@@ -176,6 +183,12 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	defer readCloser.Close()
 
+	// reset if the size is unknown
+	// start with a buf of size bytes.MinRead since we cannot avoid allocations
+	if size < 0 {
+		size = 0
+	}
+
 	// adds bytes.MinRead to avoid allocations when the size is known.
 	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
 	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
@@ -185,7 +198,14 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 
 	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return chunk.Chunk{}, errors.WithStack(
+			fmt.Errorf(
+				"failed to decode chunk '%s' for tenant `%s`: %w",
+				key,
+				c.ChunkRef.UserID,
+				err,
+			),
+		)
 	}
 	return c, nil
 }

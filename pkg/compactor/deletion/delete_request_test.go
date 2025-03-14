@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/util/filter"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
 const (
@@ -93,7 +93,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
@@ -131,7 +131,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-2*time.Hour).UnixNano() {
 						return true
@@ -150,7 +150,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
@@ -188,7 +188,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
@@ -226,7 +226,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-(2*time.Hour+30*time.Minute)).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-(time.Hour+30*time.Minute)).UnixNano() {
 						return true
@@ -431,4 +431,145 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		// testutil.ToFloat64 panics when there are 0 metrics
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
+}
+
+func TestDeleteRequest_IsDuplicate(t *testing.T) {
+	query1 := `{foo="bar", fizz="buzz"} |= "foo"`
+	query2 := `{foo="bar", fizz="buzz2"} |= "foo"`
+
+	for _, tc := range []struct {
+		name           string
+		req1, req2     DeleteRequest
+		expIsDuplicate bool
+	}{
+		{
+			name: "not duplicate - different user id",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "1",
+				UserID:    user2,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: false,
+		},
+		{
+			name: "not duplicate - same request id",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: false,
+		},
+		{
+			name: "not duplicate - different start time",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-13 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+		},
+		{
+			name: "not duplicate - different end time",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-11 * time.Hour),
+				Query:     query1,
+			},
+		},
+		{
+			name: "not duplicate - different labels",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query2,
+			},
+		},
+		{
+			name: "duplicate - same request",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: true,
+		},
+		{
+			name: "duplicate - same request with irregularities in query",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     "{foo=\"bar\",      fizz=`buzz`}     |=     `foo`",
+			},
+			expIsDuplicate: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isDuplicate, err := tc.req1.IsDuplicate(&tc.req2)
+			require.NoError(t, err)
+			require.Equal(t, tc.expIsDuplicate, isDuplicate)
+		})
+	}
 }

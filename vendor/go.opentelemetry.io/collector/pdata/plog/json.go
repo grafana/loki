@@ -15,8 +15,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
 
+// JSONMarshaler marshals pdata.Logs to JSON bytes using the OTLP/JSON format.
 type JSONMarshaler struct{}
 
+// MarshalLogs to the OTLP/JSON format.
 func (*JSONMarshaler) MarshalLogs(ld Logs) ([]byte, error) {
 	buf := bytes.Buffer{}
 	pb := internal.LogsToProto(internal.Logs(ld))
@@ -26,8 +28,10 @@ func (*JSONMarshaler) MarshalLogs(ld Logs) ([]byte, error) {
 
 var _ Unmarshaler = (*JSONUnmarshaler)(nil)
 
+// JSONUnmarshaler unmarshals OTLP/JSON formatted-bytes to pdata.Logs.
 type JSONUnmarshaler struct{}
 
+// UnmarshalLogs from OTLP/JSON format into pdata.Logs.
 func (*JSONUnmarshaler) UnmarshalLogs(buf []byte) (Logs, error) {
 	iter := jsoniter.ConfigFastest.BorrowIterator(buf)
 	defer jsoniter.ConfigFastest.ReturnIterator(iter)
@@ -44,7 +48,7 @@ func (ms Logs) unmarshalJsoniter(iter *jsoniter.Iterator) {
 	iter.ReadObjectCB(func(iter *jsoniter.Iterator, f string) bool {
 		switch f {
 		case "resource_logs", "resourceLogs":
-			iter.ReadArrayCB(func(iterator *jsoniter.Iterator) bool {
+			iter.ReadArrayCB(func(*jsoniter.Iterator) bool {
 				ms.ResourceLogs().AppendEmpty().unmarshalJsoniter(iter)
 				return true
 			})

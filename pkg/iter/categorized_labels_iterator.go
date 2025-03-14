@@ -5,13 +5,12 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type categorizeLabelsIterator struct {
 	EntryIterator
-	currEntry        logproto.Entry
+
 	currStreamLabels string
 	currHash         uint64
 	currErr          error
@@ -28,8 +27,8 @@ func (c *categorizeLabelsIterator) Next() bool {
 		return false
 	}
 
-	c.currEntry = c.Entry()
-	if len(c.currEntry.StructuredMetadata) == 0 && len(c.currEntry.Parsed) == 0 {
+	currEntry := c.At()
+	if len(currEntry.StructuredMetadata) == 0 && len(currEntry.Parsed) == 0 {
 		c.currStreamLabels = c.EntryIterator.Labels()
 		c.currHash = c.EntryIterator.StreamHash()
 		return true
@@ -44,10 +43,10 @@ func (c *categorizeLabelsIterator) Next() bool {
 	}
 
 	builder := labels.NewBuilder(lbls)
-	for _, label := range c.currEntry.StructuredMetadata {
+	for _, label := range currEntry.StructuredMetadata {
 		builder.Del(label.Name)
 	}
-	for _, label := range c.currEntry.Parsed {
+	for _, label := range currEntry.Parsed {
 		builder.Del(label.Name)
 	}
 
@@ -58,7 +57,7 @@ func (c *categorizeLabelsIterator) Next() bool {
 	return true
 }
 
-func (c *categorizeLabelsIterator) Error() error {
+func (c *categorizeLabelsIterator) Err() error {
 	return c.currErr
 }
 
