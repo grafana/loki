@@ -155,8 +155,10 @@ loki:
       {{- toYaml . | nindent 2}}
     {{- end}}
 
+    {{- with .Values.loki.pattern_ingester }}
     pattern_ingester:
-      enabled: {{ .Values.loki.pattern_ingester.enabled }}
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     memberlist:
     {{- if .Values.loki.memberlistConfig }}
@@ -176,6 +178,11 @@ loki:
 
     {{- with .Values.loki.ingester }}
     ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
