@@ -2557,6 +2557,11 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-enabled
 [ingest_limits_enabled: <boolean> | default = false]
 
+# Enable dry-run mode where limits are checked the ingest-limits service, but
+# not enforced. Defaults to false.
+# CLI flag: -distributor.ingest-limits-dry-run-enabled
+[ingest_limits_dry_run_enabled: <boolean> | default = false]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
@@ -3490,6 +3495,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# Simulated latency to add to push requests. Used for testing. Set to 0s to
+# disable.
+# CLI flag: -limits.simulated-push-latency
+[simulated_push_latency: <duration> | default = 0s]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
