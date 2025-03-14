@@ -20,11 +20,11 @@ Compared to other log aggregation systems, Loki:
 
 A Loki-based logging stack consists of 3 components:
 
-- `promtail` is the agent, responsible for gathering logs and sending them to Loki.
-- `loki` is the main server, responsible for storing logs and processing queries.
+- [Alloy](https://github.com/grafana/alloy) is agent, responsible for gathering logs and sending them to Loki.
+- [Loki](https://github.com/grafana/loki) is the main service, responsible for storing logs and processing queries.
 - [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
 
-**Note that Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy)**
+**Note that Alloy replaced Promtail in the stack, because Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy).**
 
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
 Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
@@ -32,7 +32,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 ## Getting started
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
-* [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
+* [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
 ## Upgrading
