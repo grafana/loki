@@ -2317,7 +2317,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 	// Create a custom fakeLimits to enable multi-variant queries
 	customLimits := &fakeLimits{
 		maxSeries:               math.MaxInt32,
-		timeout:                 math.MaxInt32,
+		timeout:                 time.Hour,
 		multiVariantQueryEnable: true,
 	}
 
@@ -2487,7 +2487,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 	// Create a custom fakeLimits to enable multi-variant queries
 	customLimits := &fakeLimits{
 		maxSeries:               math.MaxInt32,
-		timeout:                 math.MaxInt32,
+		timeout:                 time.Hour,
 		multiVariantQueryEnable: true,
 	}
 
@@ -2790,7 +2790,7 @@ func TestMultiVariantQueries_Limits(t *testing.T) {
 		// Create limits with multi-variant queries disabled
 		limitsDisabled := &fakeLimits{
 			maxSeries:               math.MaxInt32,
-			timeout:                 math.MaxInt32,
+			timeout:                 time.Hour,
 			multiVariantQueryEnable: false,
 		}
 
@@ -2818,7 +2818,7 @@ func TestMultiVariantQueries_Limits(t *testing.T) {
 		// Create limits with multi-variant queries enabled
 		limitsEnabled := &fakeLimits{
 			maxSeries:               math.MaxInt32,
-			timeout:                 math.MaxInt32,
+			timeout:                 time.Hour,
 			multiVariantQueryEnable: true,
 		}
 
