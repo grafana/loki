@@ -62,6 +62,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/limits"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -115,6 +117,10 @@ const (
 	Server                   = "server"
 	InternalServer           = "internal-server"
 	Distributor              = "distributor"
+	IngestLimits             = "ingest-limits"
+	IngestLimitsRing         = "ingest-limits-ring"
+	IngestLimitsFrontend     = "ingest-limits-frontend"
+	IngestLimitsFrontendRing = "ingest-limits-frontend-ring"
 	Ingester                 = "ingester"
 	PatternIngester          = "pattern-ingester"
 	PatternRingClient        = "pattern-ring-client"
@@ -308,6 +314,8 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 
 	return t.runtimeConfig, err
 }
@@ -362,6 +370,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.MetricsNamespace,
 		t.Tee,
 		t.UsageTracker,
+		t.Cfg.IngestLimitsFrontendClient,
+		t.ingestLimitsFrontendRing,
+		t.Cfg.IngestLimits.NumPartitions,
 		logger,
 	)
 	if err != nil {
@@ -396,6 +407,118 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
+}
+
+func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	t.ingestLimitsRing, err = ring.New(
+		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
+		limits.RingName,
+		limits.RingKey,
+		util_log.Logger,
+		reg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	}
+
+	return t.ingestLimitsRing, nil
+}
+
+func (t *Loki) initIngestLimits() (services.Service, error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
+
+	ingestLimits, err := limits.NewIngestLimits(
+		t.Cfg.IngestLimits,
+		util_log.Logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.ingestLimits = ingestLimits
+
+	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
+
+	// Register HTTP handler for metadata
+	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingestLimits)
+
+	return ingestLimits, nil
+}
+
+func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	if t.ingestLimitsFrontendRing, err = ring.New(
+		t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig,
+		limits_frontend.RingName,
+		limits_frontend.RingKey,
+		util_log.Logger,
+		reg,
+	); err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits_frontend.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits-frontend/ring").
+		Methods("GET", "POST").
+		Handler(t.ingestLimitsFrontendRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits-frontend/ring").
+			Methods("GET", "POST").
+			Handler(t.ingestLimitsFrontendRing)
+	}
+
+	return t.ingestLimitsFrontendRing, nil
+}
+
+func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	// Members of the ring are expected to listen on their gRPC server port.
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	logger := log.With(util_log.Logger, "component", "ingest-limits-frontend")
+	ingestLimitsFrontend, err := limits_frontend.New(
+		t.Cfg.IngestLimitsFrontend,
+		limits.RingName,
+		t.ingestLimitsRing,
+		t.Overrides,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.ingestLimitsFrontend = ingestLimitsFrontend
+	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+
+	// Register HTTP handler to check if a tenant exceeds limits
+	// Returns a JSON response for the frontend to display which
+	// streams are rejected.
+	t.Server.HTTP.Path("/ingest/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
+
+	return ingestLimitsFrontend, nil
 }
 
 // initCodec sets the codec used to encode and decode requests.
@@ -1477,6 +1600,9 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {

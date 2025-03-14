@@ -11,9 +11,11 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
@@ -34,11 +36,13 @@ const (
 type Config struct {
 	ClientConfig     limits_client.Config  `yaml:"client_config"`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+	RecheckPeriod    time.Duration         `yaml:"recheck_period"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
+	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
 }
 
 func (cfg *Config) Validate() error {
@@ -71,7 +75,8 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 
 	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
 	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, logger, reg)
+	rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(limits), cfg.RecheckPeriod)
+	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, rateLimiter, logger, reg)
 
 	f := &Frontend{
 		cfg:    cfg,
@@ -149,6 +154,20 @@ func (f *Frontend) stopping(_ error) error {
 // ExceedsLimits implements logproto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	return f.limits.ExceedsLimits(ctx, r)
+}
+
+func (f *Frontend) CheckReady(ctx context.Context) error {
+	if f.State() != services.Running && f.State() != services.Stopping {
+		return fmt.Errorf("ingest limits frontend not ready: %v", f.State())
+	}
+
+	err := f.lifecycler.CheckReady(ctx)
+	if err != nil {
+		level.Error(f.logger).Log("msg", "ingest limits frontend not ready", "err", err)
+		return err
+	}
+
+	return nil
 }
 
 type exceedsLimitsRequest struct {

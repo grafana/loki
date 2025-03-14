@@ -1,6 +1,20 @@
 # Changes
 
 
+## [1.4.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.0...iam/v1.4.1) (2025-03-06)
+
+
+### Bug Fixes
+
+* **iam:** Fix out-of-sync version.go ([28f0030](https://github.com/googleapis/google-cloud-go/commit/28f00304ebb13abfd0da2f45b9b79de093cca1ec))
+
+## [1.4.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.1...iam/v1.4.0) (2025-02-12)
+
+
+### Features
+
+* **iam/admin:** Regenerate client ([#11570](https://github.com/googleapis/google-cloud-go/issues/11570)) ([eab87d7](https://github.com/googleapis/google-cloud-go/commit/eab87d73bea884c636ec88f03b9aa90102a2833f)), refs [#8219](https://github.com/googleapis/google-cloud-go/issues/8219)
+
 ## [1.3.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.0...iam/v1.3.1) (2025-01-02)
 
 
