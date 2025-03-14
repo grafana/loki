@@ -883,6 +883,16 @@ ingest_limits:
   # CLI flag: -ingest-limits.window-size
   [window_size: <duration> | default = 1h]
 
+  # The time window for rate calculation. This should match the window used in
+  # Prometheus rate() queries for consistency.
+  # CLI flag: -ingest-limits.rate-window
+  [rate_window: <duration> | default = 5m]
+
+  # The granularity of time buckets used for sliding window rate calculation.
+  # Smaller buckets provide more precise rate tracking but require more memory.
+  # CLI flag: -ingest-limits.bucket-duration
+  [bucket_duration: <duration> | default = 1m]
+
   lifecycler:
     ring:
       kvstore:
@@ -1185,6 +1195,10 @@ ingest_limits_frontend:
     # ID to register in the ring.
     # CLI flag: -ingest-limits-frontend.lifecycler.ID
     [id: <string> | default = "<hostname>"]
+
+  # The period to recheck per tenant ingestion rate limit configuration.
+  # CLI flag: -ingest-limits-frontend.recheck-period
+  [recheck_period: <duration> | default = 10s]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -3477,6 +3491,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Simulated latency to add to push requests. Used for testing. Set to 0s to
+# disable.
+# CLI flag: -limits.simulated-push-latency
+[simulated_push_latency: <duration> | default = 0s]
+
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
 # log entry.
@@ -5110,6 +5129,12 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
+
+# Delimiter used to replace the default delimiter ':' in chunk IDs when storing
+# chunks. This is mainly intended when you run a MinIO instance on a Windows
+# machine. You should not change this value inflight.
+# CLI flag: -<prefix>.s3.chunk-delimiter
+[chunk_delimiter: <string> | default = ""]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
