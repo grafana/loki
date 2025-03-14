@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.29.0
 
-- [CHANGE] Add `tpl()` support for `pattern_ingester` and `ingester_client` components
+- [CHANGE] Add `tpl()` support for `pattern_ingester`, `ingester_client` and `compactor_grpc_client` components
 
 ## 6.28.0
 
