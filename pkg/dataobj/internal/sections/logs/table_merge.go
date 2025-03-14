@@ -174,5 +174,6 @@ func compareRows(a, b dataset.Row) int {
 	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 		return res
 	}
-	return cmp.Compare(aTimestamp, bTimestamp)
+	// sort in descending order (newest first)
+	return cmp.Compare(bTimestamp, aTimestamp)
 }

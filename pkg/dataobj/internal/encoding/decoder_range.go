@@ -268,6 +268,26 @@ func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.Section
 	return md.Columns, nil
 }
 
+func (rd *rangeLogsDecoder) SortInfo(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnSortInfo, error) {
+	if got, want := section.Type, filemd.SECTION_TYPE_LOGS; got != want {
+		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
+	}
+	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading logs section metadata: %w", err)
+	}
+	defer rc.Close()
+
+	br, release := getBufioReader(rc)
+	defer release()
+
+	md, err := decodeLogsMetadata(br)
+	if err != nil {
+		return nil, err
+	}
+	return md.SortInfo, nil
+}
+
 func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) result.Seq[[]*logsmd.PageDesc] {
 	return result.Iter(func(yield func([]*logsmd.PageDesc) bool) error {
 		results := make([][]*logsmd.PageDesc, len(columns))

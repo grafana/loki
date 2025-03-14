@@ -8,10 +8,36 @@ import "pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd";
 
+// SortDirection represents the direction of sorting (ascending or descending).
+enum SortDirection {
+  // Sort direction is unspecified.
+  SORT_DIRECTION_UNSPECIFIED = 0;
+
+  // Sort in ascending order (smallest values first).
+  SORT_DIRECTION_ASCENDING = 1;
+
+  // Sort in descending order (largest values first).
+  SORT_DIRECTION_DESCENDING = 2;
+}
+
+// ColumnSortInfo represents a column type and its sort direction.
+message ColumnSortInfo {
+  // Type of column the sort direction applies to.
+  ColumnType column_type = 1;
+
+  // Sort direction of the column.
+  SortDirection direction = 2;
+}
+
 // Metadata describes the metadata for the logs section.
 message Metadata {
   // Columns within the logs.
   repeated ColumnDesc columns = 1;
+
+  // Sort order information for the columns in this section.
+  // The order of the ColumnSortInfo entries determines the sort precedence.
+  // Rows are sorted by the first column, then by the second column to break ties, and so on.
+  repeated ColumnSortInfo sort_info = 2;
 }
 
 // ColumnDesc describes an individual column within the logs table.

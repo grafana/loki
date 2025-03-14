@@ -9,6 +9,12 @@ import (
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
+//
+// The records are sorted by:
+// 1. StreamID (ascending)
+// 2. Timestamp (descending - newest first)
+//
+// This sort order is reflected in the section metadata using [SortColumns] field.
 func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, records []Record) *table {
 	sortRecords(records)
 
@@ -49,6 +55,7 @@ func sortRecords(records []Record) {
 		if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
 			return res
 		}
-		return a.Timestamp.Compare(b.Timestamp)
+		// sort in descending order (newest first)
+		return b.Timestamp.Compare(a.Timestamp)
 	})
 }

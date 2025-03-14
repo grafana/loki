@@ -78,14 +78,14 @@ func decodeStreamsColumnMetadata(r streamio.Reader) (*streamsmd.ColumnMetadata, 
 func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
-		return nil, fmt.Errorf("read streams section format version: %w", err)
-	} else if gotVersion != streamsFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
+		return nil, fmt.Errorf("read logs section format version: %w", err)
+	} else if gotVersion != logsFormatVersion {
+		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, logsFormatVersion)
 	}
 
 	var md logsmd.Metadata
 	if err := decodeProto(r, &md); err != nil {
-		return nil, fmt.Errorf("streams section metadata: %w", err)
+		return nil, fmt.Errorf("logs section metadata: %w", err)
 	}
 	return &md, nil
 }
@@ -94,7 +94,7 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
 	var metadata logsmd.ColumnMetadata
 	if err := decodeProto(r, &metadata); err != nil {
-		return nil, fmt.Errorf("streams column metadata: %w", err)
+		return nil, fmt.Errorf("logs column metadata: %w", err)
 	}
 	return &metadata, nil
 }

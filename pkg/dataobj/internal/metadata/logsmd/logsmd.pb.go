@@ -26,6 +26,34 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
+// SortDirection represents the direction of sorting (ascending or descending).
+type SortDirection int32
+
+const (
+	// Invalid sort direction.
+	SORT_DIRECTION_UNSPECIFIED SortDirection = 0
+	// Sort in ascending order (smallest values first).
+	SORT_DIRECTION_ASCENDING SortDirection = 1
+	// Sort in descending order (largest values first).
+	SORT_DIRECTION_DESCENDING SortDirection = 2
+)
+
+var SortDirection_name = map[int32]string{
+	0: "SORT_DIRECTION_UNSPECIFIED",
+	1: "SORT_DIRECTION_ASCENDING",
+	2: "SORT_DIRECTION_DESCENDING",
+}
+
+var SortDirection_value = map[string]int32{
+	"SORT_DIRECTION_UNSPECIFIED": 0,
+	"SORT_DIRECTION_ASCENDING":   1,
+	"SORT_DIRECTION_DESCENDING":  2,
+}
+
+func (SortDirection) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_50d9821968c7172c, []int{0}
+}
+
 // ColumnType represents the valid types that a logs column can have.
 type ColumnType int32
 
@@ -62,19 +90,75 @@ var ColumnType_value = map[string]int32{
 }
 
 func (ColumnType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_50d9821968c7172c, []int{1}
+}
+
+// ColumnSortInfo represents a column type and its sort direction.
+type ColumnSortInfo struct {
+	// The type of the column sort order applies to.
+	ColumnType ColumnType `protobuf:"varint,1,opt,name=column_type,json=columnType,proto3,enum=dataobj.metadata.logs.v1.ColumnType" json:"column_type,omitempty"`
+	// The direction to sort in.
+	Direction SortDirection `protobuf:"varint,2,opt,name=direction,proto3,enum=dataobj.metadata.logs.v1.SortDirection" json:"direction,omitempty"`
+}
+
+func (m *ColumnSortInfo) Reset()      { *m = ColumnSortInfo{} }
+func (*ColumnSortInfo) ProtoMessage() {}
+func (*ColumnSortInfo) Descriptor() ([]byte, []int) {
 	return fileDescriptor_50d9821968c7172c, []int{0}
+}
+func (m *ColumnSortInfo) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ColumnSortInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ColumnSortInfo.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ColumnSortInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ColumnSortInfo.Merge(m, src)
+}
+func (m *ColumnSortInfo) XXX_Size() int {
+	return m.Size()
+}
+func (m *ColumnSortInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_ColumnSortInfo.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ColumnSortInfo proto.InternalMessageInfo
+
+func (m *ColumnSortInfo) GetColumnType() ColumnType {
+	if m != nil {
+		return m.ColumnType
+	}
+	return COLUMN_TYPE_UNSPECIFIED
+}
+
+func (m *ColumnSortInfo) GetDirection() SortDirection {
+	if m != nil {
+		return m.Direction
+	}
+	return SORT_DIRECTION_UNSPECIFIED
 }
 
 // Metadata describes the metadata for the logs section.
 type Metadata struct {
 	// Columns within the logs.
 	Columns []*ColumnDesc `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	// Sort order information.
+	SortInfo []*ColumnSortInfo `protobuf:"bytes,2,rep,name=sort_info,json=sortInfo,proto3" json:"sort_info,omitempty"`
 }
 
 func (m *Metadata) Reset()      { *m = Metadata{} }
 func (*Metadata) ProtoMessage() {}
 func (*Metadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_50d9821968c7172c, []int{0}
+	return fileDescriptor_50d9821968c7172c, []int{1}
 }
 func (m *Metadata) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -110,6 +194,13 @@ func (m *Metadata) GetColumns() []*ColumnDesc {
 	return nil
 }
 
+func (m *Metadata) GetSortInfo() []*ColumnSortInfo {
+	if m != nil {
+		return m.SortInfo
+	}
+	return nil
+}
+
 // ColumnDesc describes an individual column within the logs table.
 type ColumnDesc struct {
 	// Information about the column.
@@ -121,7 +212,7 @@ type ColumnDesc struct {
 func (m *ColumnDesc) Reset()      { *m = ColumnDesc{} }
 func (*ColumnDesc) ProtoMessage() {}
 func (*ColumnDesc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_50d9821968c7172c, []int{1}
+	return fileDescriptor_50d9821968c7172c, []int{2}
 }
 func (m *ColumnDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -173,7 +264,7 @@ type ColumnMetadata struct {
 func (m *ColumnMetadata) Reset()      { *m = ColumnMetadata{} }
 func (*ColumnMetadata) ProtoMessage() {}
 func (*ColumnMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_50d9821968c7172c, []int{2}
+	return fileDescriptor_50d9821968c7172c, []int{3}
 }
 func (m *ColumnMetadata) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -218,7 +309,7 @@ type PageDesc struct {
 func (m *PageDesc) Reset()      { *m = PageDesc{} }
 func (*PageDesc) ProtoMessage() {}
 func (*PageDesc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_50d9821968c7172c, []int{3}
+	return fileDescriptor_50d9821968c7172c, []int{4}
 }
 func (m *PageDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -255,7 +346,9 @@ func (m *PageDesc) GetInfo() *datasetmd.PageInfo {
 }
 
 func init() {
+	proto.RegisterEnum("dataobj.metadata.logs.v1.SortDirection", SortDirection_name, SortDirection_value)
 	proto.RegisterEnum("dataobj.metadata.logs.v1.ColumnType", ColumnType_name, ColumnType_value)
+	proto.RegisterType((*ColumnSortInfo)(nil), "dataobj.metadata.logs.v1.ColumnSortInfo")
 	proto.RegisterType((*Metadata)(nil), "dataobj.metadata.logs.v1.Metadata")
 	proto.RegisterType((*ColumnDesc)(nil), "dataobj.metadata.logs.v1.ColumnDesc")
 	proto.RegisterType((*ColumnMetadata)(nil), "dataobj.metadata.logs.v1.ColumnMetadata")
@@ -267,42 +360,84 @@ func init() {
 }
 
 var fileDescriptor_50d9821968c7172c = []byte{
-	// 430 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x32, 0x2c, 0xc8, 0x4e, 0xd7,
-	0x4f, 0x49, 0x2c, 0x49, 0xcc, 0x4f, 0xca, 0xd2, 0xcf, 0xcc, 0x2b, 0x49, 0x2d, 0xca, 0x4b, 0xcc,
-	0xd1, 0xcf, 0x4d, 0x2d, 0x49, 0x04, 0x09, 0xea, 0xe7, 0xe4, 0xa7, 0x17, 0xe7, 0xa6, 0x40, 0x29,
-	0xbd, 0x82, 0xa2, 0xfc, 0x92, 0x7c, 0x21, 0x09, 0xa8, 0x72, 0x3d, 0x98, 0x2a, 0x3d, 0x90, 0xb4,
-	0x5e, 0x99, 0xa1, 0x94, 0x39, 0x7e, 0xc3, 0x40, 0x44, 0x71, 0x6a, 0x49, 0x6e, 0x0a, 0x82, 0x05,
-	0x31, 0x52, 0xc9, 0x8b, 0x8b, 0xc3, 0x17, 0xaa, 0x4a, 0xc8, 0x8e, 0x8b, 0x3d, 0x39, 0x3f, 0xa7,
-	0x34, 0x37, 0xaf, 0x58, 0x82, 0x51, 0x81, 0x59, 0x83, 0xdb, 0x48, 0x45, 0x0f, 0x97, 0x85, 0x7a,
-	0xce, 0x60, 0x85, 0x2e, 0xa9, 0xc5, 0xc9, 0x41, 0x30, 0x4d, 0x4a, 0xcd, 0x8c, 0x5c, 0x5c, 0x08,
-	0x71, 0x21, 0x6b, 0x2e, 0x96, 0xcc, 0xbc, 0xb4, 0x7c, 0x09, 0x46, 0x05, 0x46, 0x0d, 0x6e, 0x23,
-	0x75, 0x4c, 0xb3, 0xa0, 0x6e, 0x41, 0x18, 0xe7, 0x99, 0x97, 0x96, 0x1f, 0x04, 0xd6, 0x24, 0x64,
-	0xc1, 0xc5, 0x52, 0x52, 0x59, 0x90, 0x2a, 0xc1, 0xa4, 0xc0, 0xa8, 0xc1, 0x47, 0xd8, 0x21, 0x21,
-	0x95, 0x05, 0xa9, 0x41, 0x60, 0x1d, 0x4a, 0x5e, 0x5c, 0x7c, 0x10, 0x31, 0xb8, 0xbf, 0x2c, 0xb8,
-	0x58, 0x0b, 0x12, 0xd3, 0x53, 0x61, 0xbe, 0x52, 0xc2, 0x6d, 0x58, 0x40, 0x62, 0x7a, 0x2a, 0xd8,
-	0x4f, 0x10, 0x0d, 0x4a, 0xae, 0x5c, 0x1c, 0x30, 0x21, 0x21, 0x4b, 0x14, 0xef, 0xa8, 0xe2, 0xf5,
-	0x0e, 0x48, 0x13, 0xc2, 0x33, 0x5a, 0x93, 0xe0, 0x01, 0x03, 0x72, 0xa7, 0x90, 0x34, 0x97, 0xb8,
-	0xb3, 0xbf, 0x4f, 0xa8, 0xaf, 0x5f, 0x7c, 0x48, 0x64, 0x80, 0x6b, 0x7c, 0xa8, 0x5f, 0x70, 0x80,
-	0xab, 0xb3, 0xa7, 0x9b, 0xa7, 0xab, 0x8b, 0x00, 0x83, 0x90, 0x24, 0x97, 0x28, 0xb2, 0x64, 0x70,
-	0x48, 0x90, 0xab, 0xa3, 0x6f, 0xbc, 0xa7, 0x8b, 0x00, 0x23, 0xba, 0x54, 0x88, 0xa7, 0xaf, 0x6b,
-	0x70, 0x88, 0xa3, 0x6f, 0x80, 0x00, 0x93, 0x90, 0x04, 0x97, 0x08, 0xb2, 0x94, 0xaf, 0x6b, 0x88,
-	0xa3, 0x8b, 0x63, 0x88, 0xa3, 0x00, 0xb3, 0x90, 0x38, 0x97, 0x30, 0xaa, 0x4c, 0x70, 0xb0, 0xa3,
-	0xbb, 0xab, 0x00, 0x8b, 0x53, 0xe9, 0x85, 0x87, 0x72, 0x0c, 0x37, 0x1e, 0xca, 0x31, 0x7c, 0x78,
-	0x28, 0xc7, 0xd8, 0xf0, 0x48, 0x8e, 0x71, 0xc5, 0x23, 0x39, 0xc6, 0x13, 0x8f, 0xe4, 0x18, 0x2f,
-	0x3c, 0x92, 0x63, 0x7c, 0xf0, 0x48, 0x8e, 0xf1, 0xc5, 0x23, 0x39, 0x86, 0x0f, 0x8f, 0xe4, 0x18,
-	0x27, 0x3c, 0x96, 0x63, 0xb8, 0xf0, 0x58, 0x8e, 0xe1, 0xc6, 0x63, 0x39, 0x86, 0x28, 0xfb, 0xf4,
-	0xcc, 0x92, 0x8c, 0xd2, 0x24, 0xbd, 0xe4, 0xfc, 0x5c, 0xfd, 0xf4, 0xa2, 0xc4, 0xb4, 0xc4, 0x3c,
-	0x50, 0x52, 0xcd, 0xce, 0xd4, 0x2f, 0x33, 0xd6, 0x27, 0x26, 0x41, 0x27, 0xb1, 0x81, 0xd3, 0x9d,
-	0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0x86, 0xa4, 0x27, 0x0d, 0xff, 0x02, 0x00, 0x00,
+	// 547 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0xc1, 0x6e, 0xd3, 0x40,
+	0x10, 0xf5, 0xa6, 0x05, 0xca, 0x54, 0x54, 0xd6, 0x02, 0xaa, 0x5b, 0x60, 0x55, 0x59, 0x20, 0xa2,
+	0x1e, 0x6c, 0x95, 0x1e, 0x28, 0x42, 0x02, 0x99, 0x78, 0xa9, 0x8c, 0x70, 0x12, 0xd9, 0xee, 0x01,
+	0x2e, 0x96, 0x93, 0x38, 0xc6, 0x34, 0xf1, 0x46, 0xb6, 0x53, 0xa9, 0x37, 0x24, 0x7e, 0x00, 0xf8,
+	0x00, 0xce, 0x7c, 0x0a, 0xc7, 0x1c, 0x7b, 0x24, 0xce, 0x85, 0x63, 0x3f, 0x01, 0x79, 0x13, 0x27,
+	0x4d, 0x44, 0x5a, 0xb8, 0xd8, 0xa3, 0x79, 0xf3, 0xde, 0xec, 0xbc, 0xb1, 0x17, 0xf6, 0x7a, 0xc7,
+	0x81, 0xda, 0xf2, 0x52, 0x8f, 0x35, 0x3e, 0xaa, 0x61, 0x94, 0xfa, 0x71, 0xe4, 0x75, 0xd4, 0xae,
+	0x9f, 0x7a, 0x79, 0x52, 0xed, 0xb0, 0x20, 0xe9, 0xb6, 0x26, 0x2f, 0xa5, 0x17, 0xb3, 0x94, 0x61,
+	0x69, 0x52, 0xae, 0x14, 0x55, 0x4a, 0x0e, 0x2b, 0x27, 0x7b, 0xdb, 0x4f, 0x2f, 0x17, 0xcb, 0x1f,
+	0x89, 0x9f, 0x76, 0x5b, 0xb3, 0x68, 0x2c, 0x29, 0x7f, 0x47, 0xb0, 0x51, 0x61, 0x9d, 0x7e, 0x37,
+	0xb2, 0x59, 0x9c, 0x1a, 0x51, 0x9b, 0x61, 0x0a, 0xeb, 0x4d, 0x9e, 0x71, 0xd3, 0xd3, 0x9e, 0x2f,
+	0xa1, 0x1d, 0x54, 0xde, 0x78, 0xf2, 0x50, 0x59, 0xd6, 0x5b, 0x19, 0xd3, 0x9d, 0xd3, 0x9e, 0x6f,
+	0x41, 0x73, 0x1a, 0x63, 0x0a, 0x37, 0x5b, 0x61, 0xec, 0x37, 0xd3, 0x90, 0x45, 0x52, 0x89, 0x8b,
+	0x3c, 0x5e, 0x2e, 0x92, 0x77, 0xd7, 0x8b, 0x72, 0x6b, 0xc6, 0x94, 0xbf, 0x22, 0x58, 0x33, 0x27,
+	0xd5, 0xf8, 0x05, 0xdc, 0x18, 0x77, 0x48, 0x24, 0xb4, 0xb3, 0x52, 0x5e, 0xbf, 0xfa, 0x58, 0xba,
+	0x9f, 0x34, 0xad, 0x82, 0x94, 0x9f, 0x29, 0x61, 0x71, 0xea, 0x86, 0x51, 0x9b, 0x49, 0x25, 0xae,
+	0x50, 0xbe, 0x4a, 0xa1, 0xf0, 0xc5, 0x5a, 0x4b, 0x26, 0x91, 0xfc, 0x19, 0x01, 0xcc, 0xe4, 0xf1,
+	0x73, 0x58, 0xe5, 0x82, 0xb9, 0x53, 0xeb, 0x7f, 0x1b, 0x72, 0x62, 0xfa, 0x4c, 0x93, 0xeb, 0x71,
+	0x12, 0x3e, 0x80, 0x55, 0x6e, 0x73, 0xe9, 0x3f, 0x6c, 0xe6, 0x0c, 0xf9, 0x4d, 0xb1, 0xb9, 0xa9,
+	0x3d, 0x07, 0x70, 0xad, 0xe7, 0x05, 0x7e, 0x61, 0x8e, 0xbc, 0x5c, 0xac, 0xee, 0x05, 0x3e, 0xb7,
+	0x66, 0x4c, 0x90, 0x29, 0xac, 0x15, 0x29, 0xfc, 0x6c, 0x6e, 0x9c, 0x47, 0x97, 0x8e, 0x93, 0x93,
+	0x66, 0xc3, 0xec, 0x76, 0xe0, 0xd6, 0xdc, 0x22, 0x31, 0x81, 0x6d, 0xbb, 0x66, 0x39, 0xae, 0x6e,
+	0x58, 0xb4, 0xe2, 0x18, 0xb5, 0xaa, 0x7b, 0x54, 0xb5, 0xeb, 0xb4, 0x62, 0xbc, 0x36, 0xa8, 0x2e,
+	0x0a, 0xf8, 0x3e, 0x48, 0x0b, 0xb8, 0x66, 0x57, 0x68, 0x55, 0x37, 0xaa, 0x87, 0x22, 0xc2, 0x0f,
+	0x60, 0x6b, 0x01, 0xd5, 0xe9, 0x14, 0x2e, 0xed, 0x7e, 0x9b, 0xae, 0x81, 0x7f, 0x70, 0xf7, 0x60,
+	0xb3, 0x52, 0x7b, 0x7b, 0x64, 0x56, 0x5d, 0xe7, 0x5d, 0x9d, 0x2e, 0x34, 0xda, 0x82, 0xbb, 0x17,
+	0x41, 0xdb, 0xb1, 0xa8, 0x66, 0xba, 0x86, 0x2e, 0xa2, 0x45, 0xc8, 0x31, 0x4c, 0x6a, 0x3b, 0x9a,
+	0x59, 0x17, 0x4b, 0x58, 0x82, 0x3b, 0x17, 0x21, 0x93, 0x3a, 0x9a, 0xae, 0x39, 0x9a, 0xb8, 0x82,
+	0x37, 0xe1, 0xf6, 0x3c, 0x62, 0xdb, 0xda, 0x21, 0x15, 0x57, 0x5f, 0xf5, 0x07, 0x43, 0x22, 0x9c,
+	0x0d, 0x89, 0x70, 0x3e, 0x24, 0xe8, 0x53, 0x46, 0xd0, 0x8f, 0x8c, 0xa0, 0x9f, 0x19, 0x41, 0x83,
+	0x8c, 0xa0, 0x5f, 0x19, 0x41, 0xbf, 0x33, 0x22, 0x9c, 0x67, 0x04, 0x7d, 0x19, 0x11, 0x61, 0x30,
+	0x22, 0xc2, 0xd9, 0x88, 0x08, 0xef, 0x5f, 0x06, 0x61, 0xfa, 0xa1, 0xdf, 0x50, 0x9a, 0xac, 0xab,
+	0x06, 0xb1, 0xd7, 0xf6, 0xa2, 0xfc, 0x06, 0x38, 0x0e, 0xd5, 0x93, 0x7d, 0xf5, 0x5f, 0xee, 0x89,
+	0xc6, 0x75, 0xfe, 0x3b, 0xef, 0xff, 0x09, 0x00, 0x00, 0xff, 0xff, 0x4b, 0xa7, 0x26, 0xb8, 0x56,
+	0x04, 0x00, 0x00,
 }
 
+func (x SortDirection) String() string {
+	s, ok := SortDirection_name[int32(x)]
+	if ok {
+		return s
+	}
+	return strconv.Itoa(int(x))
+}
 func (x ColumnType) String() string {
 	s, ok := ColumnType_name[int32(x)]
 	if ok {
 		return s
 	}
 	return strconv.Itoa(int(x))
+}
+func (this *ColumnSortInfo) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnSortInfo)
+	if !ok {
+		that2, ok := that.(ColumnSortInfo)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ColumnType != that1.ColumnType {
+		return false
+	}
+	if this.Direction != that1.Direction {
+		return false
+	}
+	return true
 }
 func (this *Metadata) Equal(that interface{}) bool {
 	if that == nil {
@@ -328,6 +463,14 @@ func (this *Metadata) Equal(that interface{}) bool {
 	}
 	for i := range this.Columns {
 		if !this.Columns[i].Equal(that1.Columns[i]) {
+			return false
+		}
+	}
+	if len(this.SortInfo) != len(that1.SortInfo) {
+		return false
+	}
+	for i := range this.SortInfo {
+		if !this.SortInfo[i].Equal(that1.SortInfo[i]) {
 			return false
 		}
 	}
@@ -413,14 +556,28 @@ func (this *PageDesc) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *ColumnSortInfo) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&logsmd.ColumnSortInfo{")
+	s = append(s, "ColumnType: "+fmt.Sprintf("%#v", this.ColumnType)+",\n")
+	s = append(s, "Direction: "+fmt.Sprintf("%#v", this.Direction)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func (this *Metadata) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 5)
+	s := make([]string, 0, 6)
 	s = append(s, "&logsmd.Metadata{")
 	if this.Columns != nil {
 		s = append(s, "Columns: "+fmt.Sprintf("%#v", this.Columns)+",\n")
+	}
+	if this.SortInfo != nil {
+		s = append(s, "SortInfo: "+fmt.Sprintf("%#v", this.SortInfo)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -470,6 +627,39 @@ func valueToGoStringLogsmd(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
+func (m *ColumnSortInfo) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ColumnSortInfo) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ColumnSortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Direction != 0 {
+		i = encodeVarintLogsmd(dAtA, i, uint64(m.Direction))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.ColumnType != 0 {
+		i = encodeVarintLogsmd(dAtA, i, uint64(m.ColumnType))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Metadata) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -490,6 +680,20 @@ func (m *Metadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.SortInfo) > 0 {
+		for iNdEx := len(m.SortInfo) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.SortInfo[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintLogsmd(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.Columns) > 0 {
 		for iNdEx := len(m.Columns) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -630,6 +834,21 @@ func encodeVarintLogsmd(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
+func (m *ColumnSortInfo) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ColumnType != 0 {
+		n += 1 + sovLogsmd(uint64(m.ColumnType))
+	}
+	if m.Direction != 0 {
+		n += 1 + sovLogsmd(uint64(m.Direction))
+	}
+	return n
+}
+
 func (m *Metadata) Size() (n int) {
 	if m == nil {
 		return 0
@@ -638,6 +857,12 @@ func (m *Metadata) Size() (n int) {
 	_ = l
 	if len(m.Columns) > 0 {
 		for _, e := range m.Columns {
+			l = e.Size()
+			n += 1 + l + sovLogsmd(uint64(l))
+		}
+	}
+	if len(m.SortInfo) > 0 {
+		for _, e := range m.SortInfo {
 			l = e.Size()
 			n += 1 + l + sovLogsmd(uint64(l))
 		}
@@ -695,6 +920,17 @@ func sovLogsmd(x uint64) (n int) {
 func sozLogsmd(x uint64) (n int) {
 	return sovLogsmd(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
+func (this *ColumnSortInfo) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ColumnSortInfo{`,
+		`ColumnType:` + fmt.Sprintf("%v", this.ColumnType) + `,`,
+		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *Metadata) String() string {
 	if this == nil {
 		return "nil"
@@ -704,8 +940,14 @@ func (this *Metadata) String() string {
 		repeatedStringForColumns += strings.Replace(f.String(), "ColumnDesc", "ColumnDesc", 1) + ","
 	}
 	repeatedStringForColumns += "}"
+	repeatedStringForSortInfo := "[]*ColumnSortInfo{"
+	for _, f := range this.SortInfo {
+		repeatedStringForSortInfo += strings.Replace(f.String(), "ColumnSortInfo", "ColumnSortInfo", 1) + ","
+	}
+	repeatedStringForSortInfo += "}"
 	s := strings.Join([]string{`&Metadata{`,
 		`Columns:` + repeatedStringForColumns + `,`,
+		`SortInfo:` + repeatedStringForSortInfo + `,`,
 		`}`,
 	}, "")
 	return s
@@ -753,6 +995,97 @@ func valueToStringLogsmd(v interface{}) string {
 	}
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
+}
+func (m *ColumnSortInfo) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLogsmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ColumnSortInfo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ColumnSortInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ColumnType", wireType)
+			}
+			m.ColumnType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogsmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ColumnType |= ColumnType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Direction", wireType)
+			}
+			m.Direction = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogsmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Direction |= SortDirection(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLogsmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLogsmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLogsmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 func (m *Metadata) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
@@ -814,6 +1147,40 @@ func (m *Metadata) Unmarshal(dAtA []byte) error {
 			}
 			m.Columns = append(m.Columns, &ColumnDesc{})
 			if err := m.Columns[len(m.Columns)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SortInfo", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogsmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogsmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogsmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SortInfo = append(m.SortInfo, &ColumnSortInfo{})
+			if err := m.SortInfo[len(m.SortInfo)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
