@@ -16,7 +16,7 @@ const (
 	managedConfigNamespace = "openshift-config-managed"
 )
 
-func BuildDashboards(opts OptionsClusterScope) ([]client.Object, error) {
+func BuildDashboards(opts OptionsClusterScope) []client.Object {
 	ds, rules := dashboards.Content()
 
 	var objs []client.Object
@@ -24,13 +24,10 @@ func BuildDashboards(opts OptionsClusterScope) ([]client.Object, error) {
 		objs = append(objs, newDashboardConfigMap(name, content))
 	}
 
-	promRule, err := newDashboardPrometheusRule(opts.BuildOpts.OperatorNs, rules)
-	if err != nil {
-		return nil, err
-	}
+	promRule := newDashboardPrometheusRule(opts.BuildOpts.OperatorNs, rules)
 	objs = append(objs, promRule)
 
-	return objs, nil
+	return objs
 }
 
 func newDashboardConfigMap(filename string, content []byte) *corev1.ConfigMap {
@@ -54,7 +51,7 @@ func newDashboardConfigMap(filename string, content []byte) *corev1.ConfigMap {
 	}
 }
 
-func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusRuleSpec) (*monitoringv1.PrometheusRule, error) {
+func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusRuleSpec) *monitoringv1.PrometheusRule {
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PrometheusRule",
@@ -65,5 +62,5 @@ func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusR
 			Namespace: namespace,
 		},
 		Spec: *spec,
-	}, nil
+	}
 }

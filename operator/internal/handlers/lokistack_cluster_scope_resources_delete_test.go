@@ -16,12 +16,12 @@ import (
 
 func TestDeleteDashboards(t *testing.T) {
 	opts := openshift.NewOptionsClusterScope("operator-ns", nil, nil, nil)
-	objs, err := openshift.BuildDashboards(opts)
-	require.NoError(t, err)
+	objs := openshift.BuildRBAC(opts)
+	objs = append(objs, openshift.BuildDashboards(opts)...)
 
 	k := &k8sfakes.FakeClient{}
 
-	err = DeleteClusterScopedResources(context.TODO(), k, "operator-ns", v1.LokiStackList{})
+	err := DeleteClusterScopedResources(context.TODO(), k, "operator-ns", v1.LokiStackList{})
 	require.NoError(t, err)
 	require.Equal(t, k.DeleteCallCount(), len(objs))
 }

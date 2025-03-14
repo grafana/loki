@@ -7,6 +7,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client" //nolint:typecheck
@@ -37,20 +38,10 @@ func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboar
 	}
 	opts := openshift.NewOptionsClusterScope(operatorNs, manifests.ClusterScopeLabels(), gatewaySubjects, rulerSubjects)
 
-	var objs []client.Object
+	objs := openshift.BuildRBAC(opts)
 	if dashboards {
-		dashObjs, err := openshift.BuildDashboards(opts)
-		if err != nil {
-			return kverrors.Wrap(err, "failed to build dashboard manifests")
-		}
-		objs = append(objs, dashObjs...)
+		objs = append(objs, openshift.BuildDashboards(opts)...)
 	}
-
-	rbacOBjs, err := openshift.BuildRBAC(opts)
-	if err != nil {
-		return kverrors.Wrap(err, "failed to build RBAC manifests")
-	}
-	objs = append(objs, rbacOBjs...)
 
 	var errCount int32
 	for _, obj := range objs {
@@ -74,7 +65,26 @@ func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboar
 	}
 
 	if errCount > 0 {
-		return kverrors.New("failed to configure lokistack dashboard resources")
+		return kverrors.New("failed to configure lokistack cluster-scoped resources")
+	}
+
+	// Delete legacy RBAC resources
+	var legacyObjs []client.Object
+	for _, stack := range stacks.Items {
+		// This name would clash with the new cluster-scoped resources. Skip it.
+		if stack.Name == "lokistack" {
+			continue
+		}
+		legacyObjs = append(legacyObjs, openshift.LegacyRBAC(manifests.GatewayName(stack.Name), manifests.RulerName(stack.Name))...)
+	}
+	for _, obj := range legacyObjs {
+		key := client.ObjectKeyFromObject(obj)
+		if err := k.Delete(ctx, obj, &client.DeleteOptions{}); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return kverrors.Wrap(err, "failed to delete resource", "kind", obj.GetObjectKind(), "key", key)
+		}
 	}
 
 	return nil
