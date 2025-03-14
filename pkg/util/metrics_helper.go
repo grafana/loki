@@ -97,7 +97,7 @@ func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 }
 
 func (mfm MetricFamilyMap) MaxGauges(name string) float64 {
-	return max(mfm[name], gaugeValue)
+	return maxMetric(mfm[name], gaugeValue)
 }
 
 func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
@@ -416,9 +416,9 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	return result
 }
 
-// max returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
+// maxMetric returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
 // Supplied function extracts value.
-func max(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
+func maxMetric(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	result := math.NaN()
 
 	for _, m := range mf.GetMetric() {

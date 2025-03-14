@@ -100,7 +100,7 @@ func (l *GenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
 }
 
 func (l *GenNumberLoader) getCacheGenNumbersPerTenants(tenantIDs []string) string {
-	var max int
+	var maxVal int
 	for _, tenantID := range tenantIDs {
 		genNumber := l.getCacheGenNumber(tenantID)
 		if genNumber == "" {
@@ -112,15 +112,15 @@ func (l *GenNumberLoader) getCacheGenNumbersPerTenants(tenantIDs []string) strin
 			level.Error(log.Logger).Log("msg", "error parsing resultsCacheGenNumber", "user", tenantID, "err", err)
 		}
 
-		if number > max {
-			max = number
+		if number > maxVal {
+			maxVal = number
 		}
 	}
 
-	if max == 0 {
+	if maxVal == 0 {
 		return ""
 	}
-	return fmt.Sprint(max)
+	return fmt.Sprint(maxVal)
 }
 
 func (l *GenNumberLoader) getCacheGenNumber(userID string) string {

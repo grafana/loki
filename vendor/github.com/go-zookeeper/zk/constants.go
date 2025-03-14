@@ -65,6 +65,7 @@ const (
 	StateUnknown           State = -1
 	StateDisconnected      State = 0
 	StateConnecting        State = 1
+	StateSyncConnected     State = 3
 	StateAuthFailed        State = 4
 	StateConnectedReadOnly State = 5
 	StateSaslAuthenticated State = 6
@@ -72,13 +73,6 @@ const (
 
 	StateConnected  = State(100)
 	StateHasSession = State(101)
-)
-
-const (
-	// FlagEphemeral means the node is ephemeral.
-	FlagEphemeral = 1
-	FlagSequence  = 2
-	FlagTTL       = 4
 )
 
 var (
@@ -92,6 +86,7 @@ var (
 		StateConnecting:        "StateConnecting",
 		StateConnected:         "StateConnected",
 		StateHasSession:        "StateHasSession",
+		StateSyncConnected:     "StateSyncConnected",
 	}
 )
 
