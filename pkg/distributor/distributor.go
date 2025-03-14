@@ -100,9 +100,10 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
-	KafkaEnabled        bool `yaml:"kafka_writes_enabled"`
-	IngesterEnabled     bool `yaml:"ingester_writes_enabled"`
-	IngestLimitsEnabled bool `yaml:"ingest_limits_enabled"`
+	KafkaEnabled              bool `yaml:"kafka_writes_enabled"`
+	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
+	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
+	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
+	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
 }
 
 func (cfg *Config) Validate() error {
@@ -696,12 +698,15 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, _, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
+		exceedsLimits, reasons, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		}
-		if exceedsLimits {
-			level.Info(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+		} else if exceedsLimits {
+			if d.cfg.IngestLimitsDryRunEnabled {
+				level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+			} else {
+				return nil, httpgrpc.Error(http.StatusBadRequest, strings.Join(reasons, ","))
+			}
 		}
 	}
 

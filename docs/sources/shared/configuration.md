@@ -2557,6 +2557,11 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-enabled
 [ingest_limits_enabled: <boolean> | default = false]
 
+# Enable dry-run mode where limits are checked the ingest-limits service, but
+# not enforced. Defaults to false.
+# CLI flag: -distributor.ingest-limits-dry-run-enabled
+[ingest_limits_dry_run_enabled: <boolean> | default = false]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
