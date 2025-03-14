@@ -200,7 +200,7 @@ At this point, you have viewed logs using the Grafana Logs Drilldown feature. In
 
    1. View all the log lines which have the `container` label value `greenhouse-main_app-1`:
       <!-- INTERACTIVE copy START -->
-      ```bash
+      ```logql
       {container="greenhouse-main_app-1"}
       ```
       <!-- INTERACTIVE copy END -->
@@ -291,8 +291,6 @@ sum by (service_name) (rate({env="production"} | logfmt [$__auto]))
 ```
 <!-- INTERACTIVE copy END -->
 This is made possible by the `service_name` label and the `env` label that we have added to our log lines. Note that `env` is a static label that we added to all log lines as they are processed by Alloy.
-
-{{< admonition type="note" >}}
 
 <!-- INTERACTIVE page step5.md END -->
 
