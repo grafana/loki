@@ -2557,6 +2557,11 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-enabled
 [ingest_limits_enabled: <boolean> | default = false]
 
+# Enable dry-run mode where limits are checked the ingest-limits service, but
+# not enforced. Defaults to false.
+# CLI flag: -distributor.ingest-limits-dry-run-enabled
+[ingest_limits_dry_run_enabled: <boolean> | default = false]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
@@ -3490,6 +3495,17 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# Simulated latency to add to push requests. Used for testing. Set to 0s to
+# disable.
+# CLI flag: -limits.simulated-push-latency
+[simulated_push_latency: <duration> | default = 0s]
+
+# Enable experimental support for running multiple query variants over the same
+# underlying data. For example, running both a rate() and count_over_time()
+# query over the same range selector.
+# CLI flag: -limits.enable-multi-variant-queries
+[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
@@ -4431,12 +4447,6 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
-
-  # Enable experimental support for running multiple query variants over the
-  # same underlying data. For example, running both a rate() and
-  # count_over_time() query over the same range selector.
-  # CLI flag: -querier.engine.enable-multi-variant-queries
-  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

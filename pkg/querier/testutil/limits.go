@@ -17,6 +17,11 @@ type MockLimits struct {
 	MaxConcurrentTailRequestsVal  int
 	MaxEntriesLimitPerQueryVal    int
 	MaxStreamsMatchersPerQueryVal int
+	EnableMultiVariantQueriesVal  bool
+}
+
+func (m *MockLimits) EnableMultiVariantQueries(_ string) bool {
+	return m.EnableMultiVariantQueriesVal
 }
 
 func (m *MockLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {

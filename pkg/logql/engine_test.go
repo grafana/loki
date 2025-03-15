@@ -2313,6 +2313,14 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 func TestEngine_Variants_InstantQuery(t *testing.T) {
 	t.Parallel()
+
+	// Create a custom fakeLimits to enable multi-variant queries
+	customLimits := &fakeLimits{
+		maxSeries:               math.MaxInt32,
+		timeout:                 time.Hour,
+		multiVariantQueryEnable: true,
+	}
+
 	for _, test := range []struct {
 		qs        string
 		ts        time.Time
@@ -2441,11 +2449,9 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			eng := NewEngine(
-				EngineOpts{
-					EnableMutiVariantQueries: true,
-				},
+				EngineOpts{},
 				newQuerierRecorder(t, test.data, test.params),
-				NoLimits,
+				customLimits,
 				log.NewNopLogger(),
 			)
 
@@ -2477,6 +2483,14 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 
 func TestEngine_Variants_RangeQuery(t *testing.T) {
 	t.Parallel()
+
+	// Create a custom fakeLimits to enable multi-variant queries
+	customLimits := &fakeLimits{
+		maxSeries:               math.MaxInt32,
+		timeout:                 time.Hour,
+		multiVariantQueryEnable: true,
+	}
+
 	for _, test := range []struct {
 		qs        string
 		start     time.Time
@@ -2635,11 +2649,9 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(
-				EngineOpts{
-					EnableMutiVariantQueries: true,
-				},
+				EngineOpts{},
 				newQuerierRecorder(t, test.data, test.params),
-				NoLimits,
+				customLimits,
 				log.NewNopLogger(),
 			)
 
@@ -2768,6 +2780,92 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	return iter.NewSortSampleIterator(e.samples()), nil
+}
+
+func TestMultiVariantQueries_Limits(t *testing.T) {
+	variantQuery := `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`
+	testTime := time.Unix(60, 0)
+
+	t.Run("disabled", func(t *testing.T) {
+		// Create limits with multi-variant queries disabled
+		limitsDisabled := &fakeLimits{
+			maxSeries:               math.MaxInt32,
+			timeout:                 time.Hour,
+			multiVariantQueryEnable: false,
+		}
+
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, limitsDisabled, log.NewNopLogger())
+		params, err := NewLiteralParams(
+			variantQuery,
+			testTime,
+			testTime,
+			0,
+			0,
+			logproto.BACKWARD,
+			0,
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+
+		// Query should fail with variants disabled error
+		q := eng.Query(params)
+		_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+		require.ErrorIs(t, err, logqlmodel.ErrVariantsDisabled)
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		// Create limits with multi-variant queries enabled
+		limitsEnabled := &fakeLimits{
+			maxSeries:               math.MaxInt32,
+			timeout:                 time.Hour,
+			multiVariantQueryEnable: true,
+		}
+
+		// Use a fake series for the query
+		series := []logproto.Series{
+			{
+				Labels: `{app="foo"}`,
+				Samples: []logproto.Sample{
+					{Timestamp: testTime.UnixNano(), Hash: 1, Value: 5},
+				},
+			},
+		}
+
+		plan := &plan.QueryPlan{
+			AST: syntax.MustParseExpr(variantQuery),
+		}
+
+		sampleReq := &logproto.SampleQueryRequest{
+			Start:    time.Unix(0, 0),
+			End:      testTime,
+			Selector: variantQuery,
+			Plan:     plan,
+		}
+
+		data := [][]logproto.Series{series}
+		params := []SelectSampleParams{{sampleReq}}
+
+		eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, data, params), limitsEnabled, log.NewNopLogger())
+		queryParams, err := NewLiteralParams(
+			variantQuery,
+			testTime,
+			testTime,
+			0,
+			0,
+			logproto.BACKWARD,
+			0,
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
+
+		// Query should succeed with multi-variant enabled
+		q := eng.Query(queryParams)
+		result, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+		require.NoError(t, err)
+		require.NotNil(t, result.Data)
+	})
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
