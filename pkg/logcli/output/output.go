@@ -30,6 +30,7 @@ var colorList = []*color.Color{
 type LogOutput interface {
 	FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string)
 	WithWriter(w io.Writer) LogOutput
+	GetWriter() io.Writer
 }
 
 // LogOutputOptions defines options supported by LogOutput
