@@ -318,3 +318,59 @@ resource "aws_lambda_event_source_mapping" "this" {
   function_name     = aws_lambda_function.this.arn
   starting_position = "LATEST"
 }
+
+#-------------------------------------------------------------------------------
+# Subscribe to SQS
+#-------------------------------------------------------------------------------
+
+data "aws_sqs_queue" "sqs_queues" {
+  count = length(var.sqs_queues)
+  name = var.sqs_queues[count.index]
+}
+
+data "aws_iam_policy_document" "lambda_sqs" {
+  count = length(var.sqs_queues) > 0 ? 1 : 0
+
+  dynamic "statement" {
+    for_each = data.aws_sqs_queue.sqs_queues
+    content {
+      actions = [
+        "sqs:ReceiveMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:DeleteMessage"
+      ]
+      resources = [
+        statement.value["arn"]
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_sqs" {
+  count = length(var.sqs_queues) > 0 ? 1 : 0
+
+  name   = "sqs"
+  role   = aws_iam_role.this.name
+  policy = data.aws_iam_policy_document.lambda_sqs[0].json
+}
+
+resource "aws_lambda_permission" "allow_sqs_invoke_lambda_promtail" {
+  count = length(data.aws_sqs_queue.sqs_queues)
+
+  statement_id  = "lambda-promtail-allow-sqs-${data.aws_sqs_queue.sqs_queues[count.index].name}"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.this.arn
+  principal     = "sqs.amazonaws.com"
+  source_arn    = data.aws_sqs_queue.sqs_queues[count.index].arn
+
+  depends_on = [
+    data.aws_sqs_queue.sqs_queues
+  ]
+}
+
+resource "aws_lambda_event_source_mapping" "sqs_event_mapping" {
+  count = length(data.aws_sqs_queue.sqs_queues)
+
+  event_source_arn  = data.aws_sqs_queue.sqs_queues[count.index].arn
+  function_name     = aws_lambda_function.this.arn
+}
