@@ -69,6 +69,14 @@ func StringValue(v string) Value {
 	}
 }
 
+// StringValueFromBytes returns a [Value] for a byte slice representing a string.
+func StringValueFromBytes(v []byte) Value {
+	return Value{
+		num: uint64(len(v)),
+		any: (stringptr)(unsafe.SliceData(v)),
+	}
+}
+
 // IsNil returns whether v is nil.
 func (v Value) IsNil() bool {
 	return v.any == nil
@@ -124,6 +132,17 @@ func (v Value) String() string {
 		return unsafe.String(sp, v.num)
 	}
 	return v.Type().String()
+}
+
+// ByteSlice returns v's value as a byte slice. If v is not a string,
+// ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
+// underlying type of v.
+func (v Value) ByteSlice() []byte {
+	if sp, ok := v.any.(stringptr); ok {
+		return unsafe.Slice(sp, v.num)
+	}
+	// TODO(benclive): Find out I should avoid this allocation
+	return []byte(v.Type().String())
 }
 
 // MarshalBinary encodes v into a binary representation. Non-NULL values encode

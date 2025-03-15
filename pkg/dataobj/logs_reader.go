@@ -30,7 +30,7 @@ type Record struct {
 	StreamID  int64         // StreamID associated with the log record.
 	Timestamp time.Time     // Timestamp of the log record.
 	Metadata  labels.Labels // Set of metadata associated with the log record.
-	Line      string        // Line of the log record.
+	Line      []byte        // Line of the log record.
 }
 
 // LogsReader reads the set of logs from an [Object].
@@ -128,7 +128,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		s[i] = Record{
 			StreamID:  readRecord.StreamID,
 			Timestamp: readRecord.Timestamp,
-			Metadata:  convertMetadata(readRecord.Metadata),
+			Metadata:  readRecord.Metadata,
 			Line:      readRecord.Line,
 		}
 	}

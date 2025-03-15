@@ -173,7 +173,7 @@ func valueSize(v Value) int {
 
 	case datasetmd.VALUE_TYPE_STRING:
 		// Assuming that strings are PLAIN encoded using their length and bytes.
-		str := v.String()
+		str := v.ByteSlice()
 		return binary.Size(len(str)) + len(str)
 	}
 

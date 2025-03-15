@@ -195,8 +195,8 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		b.logs.Append(logs.Record{
 			StreamID:  streamID,
 			Timestamp: entry.Timestamp,
-			Metadata:  entry.StructuredMetadata,
-			Line:      entry.Line,
+			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Line:      []byte(entry.Line),
 		})
 	}
 
