@@ -31,6 +31,8 @@ const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
+	attrSdkLanguage     = "telemetry.sdk.language"
+	unknown             = "unknown"
 
 	OTLPSeverityNumber = "severity_number"
 )
@@ -208,6 +210,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			logs := sls.At(j).LogRecords()
 			scopeAttrs := scope.Attributes()
 
+			recordScopeUsage(stats, resAttrs, scope, logs.Len())
+
 			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
 			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
 				stream := pushRequestsByStream[labelsStr]
@@ -304,6 +308,36 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	}
 
 	return pr
+}
+
+func recordScopeUsage(stats *Stats, resAttrs pcommon.Map, scope pcommon.InstrumentationScope, logs int) {
+	var lang string
+	l, ok := resAttrs.Get(attrSdkLanguage)
+	if ok {
+		lang = l.AsString()
+	} else {
+		lang = unknown
+	}
+	scopeName := scope.Name()
+	if scopeName == "" {
+		scopeName = unknown
+	}
+	version := scope.Version()
+	if version == "" {
+		version = unknown
+	}
+
+	langMap, ok := stats.ScopeUsage[lang]
+	if !ok {
+		langMap = make(map[string]map[string]int64)
+		stats.ScopeUsage[lang] = langMap
+	}
+	scopeNameMap, ok := langMap[scopeName]
+	if !ok {
+		scopeNameMap = make(map[string]int64)
+		langMap[scopeName] = scopeNameMap
+	}
+	scopeNameMap[version] = scopeNameMap[version] + int64(logs)
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
