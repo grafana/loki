@@ -6,9 +6,10 @@ import "github.com/prometheus/client_golang/prometheus"
 type Metrics struct {
 	reg prometheus.Registerer
 
-	syslogEntries       prometheus.Counter
-	syslogParsingErrors prometheus.Counter
-	syslogEmptyMessages prometheus.Counter
+	syslogEntries          prometheus.Counter
+	syslogParsingErrors    prometheus.Counter
+	syslogEmptyMessages    prometheus.Counter
+	syslogEncodingFailures prometheus.Counter
 }
 
 // NewMetrics creates a new set of syslog metrics. If reg is non-nil, the
@@ -32,12 +33,18 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Name:      "syslog_empty_messages_total",
 		Help:      "Total number of empty messages receiving from syslog",
 	})
+	m.syslogEncodingFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "syslog_encoding_failures_total",
+		Help:      "Total number of encoding failures while receiving syslog messages",
+	})
 
 	if reg != nil {
 		reg.MustRegister(
 			m.syslogEntries,
 			m.syslogParsingErrors,
 			m.syslogEmptyMessages,
+			m.syslogEncodingFailures,
 		)
 	}
 
