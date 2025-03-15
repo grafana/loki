@@ -58,6 +58,7 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	// Get all metastore paths for the time range
 	var storePaths []string
 	for path := range iterStorePaths(tenantID, start, end) {
+		println(path)
 		storePaths = append(storePaths, path)
 	}
 
@@ -66,9 +67,9 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	if err != nil {
 		return nil, err
 	}
-
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
+
 	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
@@ -88,12 +89,47 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	return m.listObjectsFromStores(ctx, storePaths, start, end)
 }
 
-func (m *ObjectMetastore) Labels(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	labelNames := []string{}
+
+	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
+		labelNames = append(labelNames, label.Name)
+	}, matchers...)
+
+	return labelNames, err
 }
 
-func (m *ObjectMetastore) Values(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	values := []string{}
+
+	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
+		values = append(values, label.Value)
+	}, matchers...)
+
+	return values, err
+}
+
+func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
+	streams, err := m.Streams(ctx, start, end, matchers...)
+	if err != nil {
+		return err
+	}
+
+	for _, streamLabels := range streams {
+		if streamLabels == nil {
+			continue
+		}
+
+		for _, streamLabel := range *streamLabels {
+			for _, matcher := range matchers {
+				if matcher.Name == streamLabel.Name {
+					foreach(streamLabel)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) dataobj.StreamsPredicate {
@@ -256,6 +292,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, err
 	}
+
 	return objectPaths, nil
 }
 
