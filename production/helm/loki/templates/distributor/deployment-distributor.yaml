@@ -37,7 +37,7 @@ spec:
       labels:
         {{- include "loki.distributorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.distributor.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.distributor.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
