@@ -3,12 +3,11 @@ package syslog
 import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // SyslogTargetManager manages a series of SyslogTargets.
@@ -40,8 +39,7 @@ func NewSyslogTargetManager(
 		if err != nil {
 			return nil, err
 		}
-
-		t, err := NewSyslogTarget(metrics, logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig)
+		t, err := NewSyslogTarget(metrics, logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig, cfg.Encoding)
 		if err != nil {
 			return nil, err
 		}
