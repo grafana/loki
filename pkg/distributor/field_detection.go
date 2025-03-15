@@ -47,6 +47,9 @@ var (
 		"lvl",
 		"LVL",
 		"Lvl",
+		"severity_text",
+		"Severity_Text",
+		"SEVERITY_TEXT",
 	}
 
 	errKeyFound = errors.New("key found")
