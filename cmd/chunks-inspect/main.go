@@ -108,7 +108,11 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 
 		if printLines {
 			for _, l := range b.entries {
-				fmt.Printf("%v\t%s\n", time.Unix(0, l.timestamp).In(timezone).Format(format), strings.TrimSpace(l.line))
+				fmt.Printf("TS(%v) LINE(%s) STRUCTURED_METADATA(", time.Unix(0, l.timestamp).In(timezone).Format(format), strings.TrimSpace(l.line))
+				for _, s := range l.structuredMetadata {
+					fmt.Printf("%s=%s ", s.name, s.val)
+				}
+				fmt.Println(")")
 			}
 		}
 
