@@ -1,4 +1,4 @@
-# This file should contain a list fo deprecated config options.
+# This file should contain a list of deprecated config options.
 #
 # -- Syntax --
 # The value for a deprecated option should be a message that explains why the option is deprecated and what to use instead. E.g.
