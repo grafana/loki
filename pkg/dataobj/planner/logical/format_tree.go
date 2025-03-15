@@ -3,107 +3,66 @@ package logical
 import (
 	"fmt"
 	"strings"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/planner/internal/tree"
 )
 
-const (
-	treeNodeSignal     = "├── "
-	treeLastNodeSignal = "└── "
-	treeContinueSignal = "│   "
-	treeSpaceSignal    = "    "
-)
+// TreeFormatter formats a logical plan as a tree structure.
+type TreeFormatter struct{}
 
-// A formatter that formats a tree, similar to the `tree` command in Unix
-type treeFormatter struct {
-	node     treeNode
-	children []*treeFormatter
-	parent   *treeFormatter
-	isRoot   bool
+// Format formats a logical plan as a tree structure, similar to the Unix 'tree' command.
+// It takes a [Plan] as input and returns a string representation of the plan tree.
+func (t *TreeFormatter) Format(ast Plan) string {
+	var sb strings.Builder
+	p := tree.NewPrinter(&sb)
+	p.Print(t.convert(ast))
+	return sb.String()
 }
 
-// newTreeFormatter creates a new root treeFormatter
-func newTreeFormatter() *treeFormatter {
-	return &treeFormatter{isRoot: true}
-}
-
-// WriteNode implements Formatter
-func (t *treeFormatter) writeNode(node treeNode) *treeFormatter {
-	child := &treeFormatter{
-		node:   node,
-		parent: t,
-	}
-	t.children = append(t.children, child)
-	return child
-}
-
-// writePlan writes a plan node to the tree formatter.
-// It dispatches to the appropriate write method based on the plan type.
-func (t *treeFormatter) writePlan(ast Plan) {
+// convert dispatches to the appropriate method based on the plan type and
+// returns the newly created [tree.Node].
+func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 	switch ast.Type() {
 	case PlanTypeTable:
-		t.writeTablePlan(ast.Table())
+		return t.convertMakeTable(ast.Table())
 	case PlanTypeFilter:
-		t.writeFilterPlan(ast.Filter())
+		return t.convertFilter(ast.Filter())
 	case PlanTypeProjection:
-		t.writeProjectionPlan(ast.Projection())
+		return t.convertProjection(ast.Projection())
 	case PlanTypeAggregate:
-		t.writeAggregatePlan(ast.Aggregate())
+		return t.convertAggregation(ast.Aggregate())
 	case PlanTypeLimit:
-		t.writeLimitPlan(ast.Limit())
+		return t.convertLimit(ast.Limit())
 	case PlanTypeSort:
-		t.writeSortPlan(ast.Sort())
+		return t.convertSort(ast.Sort())
 	default:
 		panic(fmt.Sprintf("unknown plan type: %v", ast.Type()))
 	}
 }
 
-func (t *treeFormatter) writeTablePlan(ast *MakeTable) {
-	n := treeNode{
-		Singletons: []string{"MakeTable"},
-		Tuples: []treeContentTuple{{
-			Key:   "name",
-			Value: SingleContent(ast.TableName()),
-		}},
-	}
-	t.writeNode(n)
+func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
+	return tree.NewNode("MakeTable", "", tree.Property{Key: "name", Values: []any{ast.TableName()}})
 }
 
-func (t *treeFormatter) writeFilterPlan(ast *Filter) {
-	n := treeNode{
-		Singletons: []string{"Filter"},
-		Tuples: []treeContentTuple{{
-			Key:   "expr",
-			Value: SingleContent(ast.FilterExpr().ToField(ast.Child()).Name),
-		}},
-	}
-
-	nextFM := t.writeNode(n)
-	nextFM.writeExpr(ast.FilterExpr())
-	nextFM.writePlan(ast.Child())
+func (t *TreeFormatter) convertFilter(ast *Filter) *tree.Node {
+	node := tree.NewNode("Filter", "", tree.NewProperty("expr", false, ast.FilterExpr().ToField(ast.Child()).Name))
+	node.Comments = append(node.Comments, t.convertExpr(ast.FilterExpr()))
+	node.Children = append(node.Children, t.convert(ast.Child()))
+	return node
 }
 
-func (t *treeFormatter) writeProjectionPlan(ast *Projection) {
-	var tuples []treeContentTuple
+func (t *TreeFormatter) convertProjection(ast *Projection) *tree.Node {
+	node := tree.NewNode("Projection", "")
 	for _, expr := range ast.ProjectExprs() {
 		field := expr.ToField(ast.Child())
-		tuples = append(tuples, treeContentTuple{
-			Key:   field.Name,
-			Value: SingleContent(field.Type.String()),
-		})
+		node.Properties = append(node.Properties, tree.NewProperty(field.Name, false, field.Type.String()))
+		node.Comments = append(node.Comments, t.convertExpr(expr))
 	}
-
-	n := treeNode{
-		Singletons: []string{"Projection"},
-		Tuples:     tuples,
-	}
-
-	nextFM := t.writeNode(n)
-	for _, expr := range ast.ProjectExprs() {
-		nextFM.writeExpr(expr)
-	}
-	nextFM.writePlan(ast.Child())
+	node.Children = append(node.Children, t.convert(ast.Child()))
+	return node
 }
 
-func (t *treeFormatter) writeAggregatePlan(ast *Aggregate) {
+func (t *TreeFormatter) convertAggregation(ast *Aggregate) *tree.Node {
 	// Collect grouping names
 	var groupNames []string
 	for _, expr := range ast.GroupExprs() {
@@ -116,72 +75,39 @@ func (t *treeFormatter) writeAggregatePlan(ast *Aggregate) {
 		aggNames = append(aggNames, expr.ToField(ast.Child()).Name)
 	}
 
-	n := treeNode{
-		Singletons: []string{"Aggregate"},
-		Tuples: []treeContentTuple{
-			{
-				Key:   "groupings",
-				Value: treeListContentFrom(groupNames...),
-			},
-			{
-				Key:   "aggregates",
-				Value: treeListContentFrom(aggNames...),
-			},
-		},
-	}
-
-	nextFM := t.writeNode(n)
+	node := tree.NewNode("Aggregate", "",
+		tree.NewProperty("groupings", true, groupNames),
+		tree.NewProperty("aggregates", true, aggNames),
+	)
 
 	// Format grouping expressions
-	groupNode := treeNode{Singletons: []string{"GroupExprs"}}
-	groupFM := nextFM.writeNode(groupNode)
+	groupNode := tree.NewNode("GroupExpr", "")
 	for _, expr := range ast.GroupExprs() {
-		groupFM.writeExpr(expr)
+		groupNode.Children = append(groupNode.Children, t.convertExpr(expr))
 	}
+	node.Comments = append(node.Comments, groupNode)
 
 	// Format aggregate expressions
-	aggNode := treeNode{Singletons: []string{"AggregateExprs"}}
-	aggFM := nextFM.writeNode(aggNode)
+	aggNode := tree.NewNode("AggregateExpr", "")
 	for _, expr := range ast.AggregateExprs() {
-		aggFM.writeAggregateExpr(&expr)
+		aggNode.Children = append(aggNode.Children, t.convertAggregateExpr(&expr))
 	}
+	node.Comments = append(node.Comments, aggNode)
 
-	// format input plan
-	nextFM.writePlan(ast.Child())
+	node.Children = append(node.Children, t.convert(ast.Child()))
+	return node
 }
 
-// writeLimitPlan writes a limit plan node to the tree formatter.
-// It formats the limit plan with its skip and fetch values.
-//
-// The limit plan is represented in the tree as:
-//
-//	Limit offset=X fetch=Y
-//	└── [Child Plan]
-//
-// Where X is the number of rows to skip (offset) and Y is the maximum
-// number of rows to return (fetch). If offset is 0, no rows are skipped.
-// If fetch is 0, all rows are returned after applying the offset.
-func (t *treeFormatter) writeLimitPlan(ast *Limit) {
-
-	n := treeNode{
-		Singletons: []string{"Limit"},
-		Tuples: []treeContentTuple{
-			{
-				Key:   "offset",
-				Value: SingleContent(fmt.Sprintf("%d", ast.Skip())),
-			},
-			{
-				Key:   "fetch",
-				Value: SingleContent(fmt.Sprintf("%d", ast.Fetch())),
-			},
-		},
-	}
-
-	nextFM := t.writeNode(n)
-	nextFM.writePlan(ast.Child())
+func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
+	node := tree.NewNode("Limit", "",
+		tree.NewProperty("offset", false, ast.Skip()),
+		tree.NewProperty("fetch", false, ast.Fetch()),
+	)
+	node.Children = append(node.Children, t.convert(ast.Child()))
+	return node
 }
 
-func (t *treeFormatter) writeSortPlan(ast *Sort) {
+func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
 	direction := "asc"
 	if !ast.Expr().Asc() {
 		direction = "desc"
@@ -192,210 +118,60 @@ func (t *treeFormatter) writeSortPlan(ast *Sort) {
 		nullsPosition = "first"
 	}
 
-	n := treeNode{
-		Singletons: []string{"Sort"},
-		Tuples: []treeContentTuple{
-			{
-				Key:   "expr",
-				Value: SingleContent(ast.Expr().Name()),
-			},
-			{
-				Key:   "direction",
-				Value: SingleContent(direction),
-			},
-			{
-				Key:   "nulls",
-				Value: SingleContent(nullsPosition),
-			},
-		},
-	}
-
-	nextFM := t.writeNode(n)
-	nextFM.writeExpr(ast.Expr().Expr())
-	nextFM.writePlan(ast.Child())
+	node := tree.NewNode("Sort", "",
+		tree.NewProperty("expr", false, ast.Expr().Name()),
+		tree.NewProperty("direction", false, direction),
+		tree.NewProperty("nulls", false, nullsPosition),
+	)
+	node.Comments = append(node.Comments, t.convertExpr(ast.Expr().Expr()))
+	node.Children = append(node.Children, t.convert(ast.Child()))
+	return node
 }
 
-func (t *treeFormatter) writeExpr(expr Expr) {
+// convert dispatches to the appropriate method based on the expression type and
+// returns the newly created [tree.Node], which can be used as comment for the
+// parent node.
+func (t *TreeFormatter) convertExpr(expr Expr) *tree.Node {
 	switch expr.Type() {
 	case ExprTypeColumn:
-		t.writeColumnExpr(expr.Column())
+		return t.convertColumnExpr(expr.Column())
 	case ExprTypeLiteral:
-		t.writeLiteralExpr(expr.Literal())
+		return t.convertLiteralExpr(expr.Literal())
 	case ExprTypeBinaryOp:
-		t.writeBinaryOpExpr(expr.BinaryOp())
+		return t.convertBinaryOpExpr(expr.BinaryOp())
 	case ExprTypeAggregate:
-		t.writeAggregateExpr(expr.Aggregate())
+		return t.convertAggregateExpr(expr.Aggregate())
 	default:
 		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Type(), expr))
 	}
 }
 
-func (t *treeFormatter) writeColumnExpr(expr *ColumnExpr) {
-	node := treeNode{
-		Singletons: []string{"Column", fmt.Sprintf("#%s", expr.ColumnName())},
-	}
-	t.writeNode(node)
+func (t *TreeFormatter) convertColumnExpr(expr *ColumnExpr) *tree.Node {
+	return tree.NewNode("Column", expr.ColumnName())
 }
 
-func (t *treeFormatter) writeLiteralExpr(expr *LiteralExpr) {
-	node := treeNode{
-		Singletons: []string{"Literal"},
-		Tuples: []treeContentTuple{
-			{
-				Key:   "value",
-				Value: SingleContent(expr.ValueString()),
-			},
-			{
-				Key:   "type",
-				Value: SingleContent(expr.ValueType().String()),
-			},
-		},
-	}
-	t.writeNode(node)
+func (t *TreeFormatter) convertLiteralExpr(expr *LiteralExpr) *tree.Node {
+	return tree.NewNode("Literal", "",
+		tree.NewProperty("value", false, expr.ValueString()),
+		tree.NewProperty("type", false, expr.ValueType()),
+	)
 }
 
-func (t *treeFormatter) writeBinaryOpExpr(expr *BinOpExpr) {
-	wrapped := fmt.Sprintf("(%v)", expr.Op()) // for clarity
-	n := treeNode{
-		Singletons: []string{ExprTypeBinaryOp.String()},
-		Tuples: []treeContentTuple{
-			{
-				Key:   "type",
-				Value: SingleContent(expr.Type().String()),
-			},
-			{
-				Key:   "op",
-				Value: SingleContent(wrapped),
-			}, {
-				Key:   "name",
-				Value: SingleContent(expr.Name()),
-			},
-		},
-	}
-
-	nextFM := t.writeNode(n)
-	nextFM.writeExpr(expr.Left())
-	nextFM.writeExpr(expr.Right())
+func (t *TreeFormatter) convertBinaryOpExpr(expr *BinOpExpr) *tree.Node {
+	node := tree.NewNode(ExprTypeBinaryOp.String(), "",
+		tree.NewProperty("type", false, expr.Type().String()),
+		tree.NewProperty("op", false, fmt.Sprintf(`"%s"`, expr.Op())),
+		tree.NewProperty("name", false, expr.Name()),
+	)
+	node.Children = append(node.Children, t.convertExpr(expr.Left()))
+	node.Children = append(node.Children, t.convertExpr(expr.Right()))
+	return node
 }
 
-func (t *treeFormatter) writeAggregateExpr(expr *AggregateExpr) {
-	n := treeNode{
-		Singletons: []string{"AggregateExpr"},
-		Tuples: []treeContentTuple{{
-			Key:   "op",
-			Value: SingleContent(expr.Op()),
-		}},
-	}
-
-	nextFM := t.writeNode(n)
-	nextFM.writeExpr(expr.SubExpr())
-}
-
-// Format builds the tree and returns the formatted string
-func (t *treeFormatter) Format(ast Plan) string {
-	var sb strings.Builder
-	t.writePlan(ast)
-	t.format(&sb, "")
-	return sb.String()
-}
-
-func (t *treeFormatter) format(sb *strings.Builder, indent string) {
-	// Root node just formats children
-	if t.isRoot {
-		if len(t.children) > 0 {
-			t.children[0].format(sb, "")
-		}
-		return
-	}
-
-	// Write node content
-	for i, s := range t.node.Singletons {
-		if i > 0 {
-			sb.WriteByte(' ')
-		}
-		sb.WriteString(s)
-	}
-
-	if len(t.node.Tuples) > 0 {
-		if len(t.node.Singletons) > 0 {
-			sb.WriteByte(' ')
-		}
-		for i, tuple := range t.node.Tuples {
-			if i > 0 {
-				sb.WriteByte(' ')
-			}
-			sb.WriteString(tuple.Content())
-		}
-	}
-
-	// Format children with proper tree characters
-	for i, child := range t.children {
-		sb.WriteByte('\n')
-		sb.WriteString(indent)
-
-		nextIndent := indent + treeContinueSignal
-		if i == len(t.children)-1 {
-			sb.WriteString(treeLastNodeSignal)
-			nextIndent = indent + treeSpaceSignal
-		} else {
-			sb.WriteString(treeNodeSignal)
-		}
-
-		child.format(sb, nextIndent)
-	}
-}
-
-// A node to be formatted in the tree formatter
-type treeNode struct {
-	// e.g. "SELECT"
-	Singletons []string
-	// e.g. "GROUP BY (Foo, Bar)",
-	// "foo=bar"
-	Tuples []treeContentTuple
-}
-
-type treeContent interface {
-	Content() string
-}
-
-type treeContentTuple struct {
-	Key   string
-	Value treeContent
-}
-
-func (t treeContentTuple) Content() string {
-	var sb strings.Builder
-	sb.WriteString(t.Key)
-	sb.WriteString("=")
-	sb.WriteString(t.Value.Content())
-	return sb.String()
-}
-
-type treeListContent []treeContent
-
-func treeListContentFrom(values ...string) treeListContent {
-	var contents []treeContent
-	for _, value := range values {
-		contents = append(contents, SingleContent(value))
-	}
-	return treeListContent(contents)
-}
-
-func (g treeListContent) Content() string {
-	var sb strings.Builder
-	sb.WriteString("(")
-	for i, c := range g {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(c.Content())
-	}
-	sb.WriteString(")")
-	return sb.String()
-}
-
-type SingleContent string
-
-func (s SingleContent) Content() string {
-	return string(s)
+func (t *TreeFormatter) convertAggregateExpr(expr *AggregateExpr) *tree.Node {
+	node := tree.NewNode(ExprTypeAggregate.String(), "",
+		tree.NewProperty("op", false, expr.Op()),
+	)
+	node.Children = append(node.Children, t.convertExpr(expr.SubExpr()))
+	return node
 }
