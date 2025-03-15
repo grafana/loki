@@ -13,7 +13,7 @@
   then '(ingester.*|partition-ingester.*|loki-single-binary)'
   else '(ingester|partition-ingester).*',
 
-  grafanaDashboards+:: if $._config.ssd.enabled then {} else {
+  grafanaDashboards+:: if $._config.ssd.enabled || $._config.sb.enabled then {} else {
     'loki-reads-resources.json':
       ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
       .addCluster()
