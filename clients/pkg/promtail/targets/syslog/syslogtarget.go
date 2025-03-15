@@ -1,8 +1,11 @@
 package syslog
 
 import (
-	"errors"
 	"fmt"
+	"github.com/efficientgo/core/errors"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 	"net"
 	"strings"
 	"time"
@@ -42,6 +45,7 @@ type SyslogTarget struct {
 
 	messages     chan message
 	messagesDone chan struct{}
+	decoder      *encoding.Decoder
 }
 
 type message struct {
@@ -57,10 +61,21 @@ func NewSyslogTarget(
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	config *scrapeconfig.SyslogTargetConfig,
+	encodingFormat string,
 ) (*SyslogTarget, error) {
 
 	if config.SyslogFormat == "" {
 		config.SyslogFormat = "rfc5424"
+	}
+
+	var decoder *encoding.Decoder
+	if encodingFormat != "" {
+		level.Debug(logger).Log("msg", "decompressor will decode messages", "from", encodingFormat, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(encodingFormat)
+		if err != nil {
+			return nil, errors.Wrap(err, "error doing IANA encoding")
+		}
+		decoder = encoder.NewDecoder()
 	}
 
 	t := &SyslogTarget{
@@ -70,6 +85,7 @@ func NewSyslogTarget(
 		config:        config,
 		relabelConfig: relabel,
 		messagesDone:  make(chan struct{}),
+		decoder:       decoder,
 	}
 
 	switch t.transportProtocol() {
@@ -238,16 +254,38 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 
 func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 	for msg := range t.messages {
+		var line string
+		if t.decoder != nil {
+			var err error
+			line, err = t.convertToUTF8(msg.message)
+			if err != nil {
+				level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
+				t.metrics.syslogEncodingFailures.Inc()
+				line = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
+			}
+		} else {
+			line = msg.message
+		}
+
 		entries <- api.Entry{
 			Labels: msg.labels,
 			Entry: logproto.Entry{
 				Timestamp: msg.timestamp,
-				Line:      msg.message,
+				Line:      line,
 			},
 		}
 		t.metrics.syslogEntries.Inc()
 	}
 	t.messagesDone <- struct{}{}
+}
+
+func (t *SyslogTarget) convertToUTF8(text string) (string, error) {
+	res, _, err := transform.String(t.decoder, text)
+	if err != nil {
+		return "", errors.Wrap(err, "error decoding text")
+	}
+
+	return res, nil
 }
 
 // Type returns SyslogTargetType.
