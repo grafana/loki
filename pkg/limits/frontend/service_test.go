@@ -403,7 +403,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				ingestionRate:    tt.ingestionRate,
 			}
 
-			rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(mockLimits), 10*time.Second)
+			rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(mockLimits), 10*time.Second)
 
 			service := NewRingIngestLimitsService(mockRing, mockPool, mockLimits, rateLimiter, log.NewNopLogger(), prometheus.NewRegistry())
 

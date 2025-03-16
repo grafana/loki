@@ -75,7 +75,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 
 	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
 	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
-	rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(limits), cfg.RecheckPeriod)
+	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
 	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, rateLimiter, logger, reg)
 
 	f := &Frontend{
