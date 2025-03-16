@@ -28,30 +28,6 @@ const (
 	RejectedStreamReasonRateLimited = "rate_limited"
 )
 
-// Limits is the interface of the limits configuration
-// builder to be passed to the frontend service.
-type Limits interface {
-	MaxGlobalStreamsPerUser(userID string) int
-	IngestionRateBytes(userID string) float64
-	IngestionBurstSizeBytes(userID string) int
-}
-
-type ingestionRateStrategy struct {
-	limits Limits
-}
-
-func newIngestionRateStrategy(limits Limits) *ingestionRateStrategy {
-	return &ingestionRateStrategy{limits: limits}
-}
-
-func (s *ingestionRateStrategy) Limit(tenantID string) float64 {
-	return s.limits.IngestionRateBytes(tenantID)
-}
-
-func (s *ingestionRateStrategy) Burst(tenantID string) int {
-	return s.limits.IngestionBurstSizeBytes(tenantID)
-}
-
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
 // gathering and aggregating their responses (where required), and returning
