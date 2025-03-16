@@ -2,9 +2,7 @@ package frontend
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -145,12 +143,6 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 			if err != nil {
 				return err
 			}
-
-			var partitionStr strings.Builder
-			for _, partition := range partitions[instance.Addr] {
-				partitionStr.WriteString(fmt.Sprintf("%d,", partition))
-			}
-
 			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
 				return err
