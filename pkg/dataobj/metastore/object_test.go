@@ -19,9 +19,45 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-const tenantID = "test-tenant"
+const (
+	tenantID = "test-tenant"
+)
 
-// Taken from store_test.go -- we need a populated dataobj/builder/metastore to test labels and values
+var (
+	now     = time.Now().UTC()
+	streams = []logproto.Stream{
+		{
+			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Entries: []logproto.Entry{{Timestamp: now.Add(-2 * time.Hour)}},
+		},
+		{
+			Labels:  `{app="foo", env="dev"}`, // hash 2
+			Entries: []logproto.Entry{{Timestamp: now}},
+		},
+		{
+			Labels:  `{app="bar", env="prod"}`, // hash 3
+			Entries: []logproto.Entry{{Timestamp: now.Add(5 * time.Second)}},
+		},
+		{
+			Labels:  `{app="bar", env="dev"}`, // hash 4
+			Entries: []logproto.Entry{{Timestamp: now.Add(8 * time.Minute)}},
+		},
+		{
+			Labels:  `{app="baz", env="prod", team="a"}`, // hash 5
+			Entries: []logproto.Entry{{Timestamp: now.Add(12 * time.Minute)}},
+		},
+		{
+			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Entries: []logproto.Entry{{Timestamp: now.Add(-12 * time.Hour)}},
+		},
+		{
+			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Entries: []logproto.Entry{{Timestamp: now.Add(12 * time.Hour)}},
+		},
+	}
+)
+
+// Similar to store_test.go -- we need a populated dataobj/builder/metastore to test labels and values
 type testDataBuilder struct {
 	t      *testing.T
 	bucket objstore.Bucket
@@ -31,11 +67,8 @@ type testDataBuilder struct {
 	uploader *uploader.Uploader
 }
 
-func (b *testDataBuilder) addStreamAndFlush(labels string, entries ...logproto.Entry) {
-	err := b.builder.Append(logproto.Stream{
-		Labels:  labels,
-		Entries: entries,
-	})
+func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
+	err := b.builder.Append(stream)
 	require.NoError(b.t, err)
 
 	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
@@ -91,6 +124,28 @@ func TestMixedLabels(t *testing.T) {
 	})
 }
 
+func TestLabelsSingleMatcher(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
+		require.NoError(t, err)
+
+		// Match 3 streams which have unique label sets including this matcher
+		require.Len(t, matchedLabels, 3)
+	})
+}
+
+func TestLabelsEmptyMatcher(t *testing.T) {
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedLabels, err := mstore.Labels(ctx, start, end)
+		require.NoError(t, err)
+		require.Len(t, matchedLabels, 3)
+	})
+}
+
 func TestValues(t *testing.T) {
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -130,13 +185,36 @@ func TestMixedValues(t *testing.T) {
 	})
 }
 
+func TestValuesSingleMatcher(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, matchedValues, 5)
+	})
+}
+
+func TestValuesEmptyMatcher(t *testing.T) {
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedValues, err := mstore.Values(ctx, start, end)
+		require.NoError(t, err)
+		require.Len(t, matchedValues, 6)
+	})
+}
+
 func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
-	now := time.Now()
+	now := time.Now().UTC()
 	start := now.Add(-time.Hour * 5)
 	end := now.Add(time.Hour * 5)
 
 	builder := newTestDataBuilder(t, tenantID)
-	setupTestData(t, builder)
+
+	for _, stream := range streams {
+		builder.addStreamAndFlush(stream)
+	}
 
 	mstore := NewObjectMetastore(builder.bucket)
 	defer func() {
@@ -172,61 +250,4 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		meta:     meta,
 		uploader: uploader,
 	}
-}
-
-func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
-	t.Helper()
-	now := time.Now()
-	builder.addStreamAndFlush(
-		`{app="foo", env="prod"}`,
-		logproto.Entry{Timestamp: now.Add(-2 * time.Hour), Line: "foo_before1"},
-		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(30 * time.Second), Line: "foo_before2"},
-		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(45 * time.Second), Line: "foo_before3"},
-	)
-
-	// Data within query range
-	builder.addStreamAndFlush(
-		`{app="foo", env="prod"}`,
-		logproto.Entry{Timestamp: now, Line: "foo1"},
-		logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"},
-		logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"},
-		logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"},
-	)
-	builder.addStreamAndFlush(
-		`{app="foo", env="dev"}`,
-		logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"},
-		logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"},
-		logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"},
-	)
-
-	builder.addStreamAndFlush(
-		`{app="bar", env="prod"}`,
-		logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"},
-		logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"},
-		logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"},
-		logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"},
-	)
-	builder.addStreamAndFlush(
-		`{app="bar", env="dev"}`,
-		logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"},
-		logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"},
-		logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"},
-	)
-
-	builder.addStreamAndFlush(
-		`{app="baz", env="prod", team="a"}`,
-		logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"},
-		logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"},
-		logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"},
-		logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"},
-	)
-
-	builder.addStreamAndFlush(
-		`{app="foo", env="prod"}`,
-		logproto.Entry{Timestamp: now.Add(2 * time.Hour), Line: "foo_after1"},
-		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(30 * time.Second), Line: "foo_after2"},
-		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(45 * time.Second), Line: "foo_after3"},
-	)
-
-	return now
 }

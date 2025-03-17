@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -58,7 +60,6 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	// Get all metastore paths for the time range
 	var storePaths []string
 	for path := range iterStorePaths(tenantID, start, end) {
-		println(path)
 		storePaths = append(storePaths, path)
 	}
 
@@ -90,23 +91,27 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	labelNames := []string{}
+	uniqueLabels := map[string]bool{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
-		labelNames = append(labelNames, label.Name)
+		if _, ok := uniqueLabels[label.Name]; !ok {
+			uniqueLabels[label.Name] = true
+		}
 	}, matchers...)
 
-	return labelNames, err
+	return slices.Collect(maps.Keys(uniqueLabels)), err
 }
 
 func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	values := []string{}
+	values := map[string]bool{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
-		values = append(values, label.Value)
+		if _, ok := values[label.Value]; !ok {
+			values[label.Value] = true
+		}
 	}, matchers...)
 
-	return values, err
+	return slices.Collect(maps.Keys(values)), err
 }
 
 func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
@@ -121,11 +126,7 @@ func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time
 		}
 
 		for _, streamLabel := range *streamLabels {
-			for _, matcher := range matchers {
-				if matcher.Name == streamLabel.Name {
-					foreach(streamLabel)
-				}
-			}
+			foreach(streamLabel)
 		}
 	}
 
