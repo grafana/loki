@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 // Helper types
 type (
 	stringptr *byte
+	bytearray []byte
 )
 
 // A Value represents a single value within a dataset. Unlike [any], Values can
@@ -69,11 +71,11 @@ func StringValue(v string) Value {
 	}
 }
 
-// StringValueFromBytes returns a [Value] for a byte slice representing a string.
-func StringValueFromBytes(v []byte) Value {
+// ByteArrayValue returns a [Value] for a byte slice representing a string.
+func ByteArrayValue(v []byte) Value {
 	return Value{
 		num: uint64(len(v)),
-		any: (stringptr)(unsafe.SliceData(v)),
+		any: bytearray(v),
 	}
 }
 
@@ -101,6 +103,8 @@ func (v Value) Type() datasetmd.ValueType {
 		return v
 	case stringptr:
 		return datasetmd.VALUE_TYPE_STRING
+	case bytearray:
+		return datasetmd.VALUE_TYPE_BYTE_ARRAY
 	default:
 		panic(fmt.Sprintf("dataset.Value has unexpected type %T", v))
 	}
@@ -137,12 +141,11 @@ func (v Value) String() string {
 // ByteSlice returns v's value as a byte slice. If v is not a string,
 // ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
 // underlying type of v.
-func (v Value) ByteSlice() []byte {
-	if sp, ok := v.any.(stringptr); ok {
-		return unsafe.Slice(sp, v.num)
+func (v Value) ByteArray() []byte {
+	if ba, ok := v.any.(bytearray); ok {
+		return ba
 	}
-	// TODO(benclive): Find out I should avoid this allocation
-	return []byte(v.Type().String())
+	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
 }
 
 // MarshalBinary encodes v into a binary representation. Non-NULL values encode
@@ -169,6 +172,8 @@ func (v Value) MarshalBinary() (data []byte, err error) {
 	case datasetmd.VALUE_TYPE_STRING:
 		str := v.String()
 		buf = append(buf, unsafe.Slice(unsafe.StringData(str), len(str))...)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		buf = append(buf, v.ByteArray()...)
 	default:
 		return nil, fmt.Errorf("dataset.Value.MarshalBinary: unsupported type %s", v.Type())
 	}
@@ -205,6 +210,8 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 	case datasetmd.VALUE_TYPE_STRING:
 		str := string(data[n:])
 		*v = StringValue(str)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		*v = ByteArrayValue(data[n:])
 	default:
 		return fmt.Errorf("dataset.Value.UnmarshalBinary: unsupported type %s", vtyp)
 	}
@@ -240,6 +247,8 @@ func CompareValues(a, b Value) int {
 		return cmp.Compare(a.Uint64(), b.Uint64())
 	case datasetmd.VALUE_TYPE_STRING:
 		return cmp.Compare(a.String(), b.String())
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		return bytes.Compare(a.ByteArray(), b.ByteArray())
 	default:
 		panic(fmt.Sprintf("page.CompareValues: unsupported type %s", a.Type()))
 	}

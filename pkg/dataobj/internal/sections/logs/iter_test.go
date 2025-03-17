@@ -34,7 +34,7 @@ func TestDecode(t *testing.T) {
 					dataset.Int64Value(1234567890000000000),
 					dataset.StringValue("test-app"),
 					dataset.StringValue("prod"),
-					dataset.StringValue("test message"),
+					dataset.ByteArrayValue([]byte("test message")),
 				},
 			},
 			expected: Record{
@@ -57,7 +57,7 @@ func TestDecode(t *testing.T) {
 					dataset.Int64Value(123),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Value{},
-					dataset.StringValue("test message"),
+					dataset.ByteArrayValue([]byte("test message")),
 				},
 			},
 			expected: Record{

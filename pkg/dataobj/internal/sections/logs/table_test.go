@@ -87,9 +87,9 @@ func Test_mergeTables(t *testing.T) {
 
 		for _, row := range rows[:n] {
 			require.Len(t, row.Values, 3)
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, row.Values[2].Type())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, row.Values[2].Type())
 
-			actual = append(actual, row.Values[2].String())
+			actual = append(actual, string(row.Values[2].ByteArray()))
 		}
 	}
 

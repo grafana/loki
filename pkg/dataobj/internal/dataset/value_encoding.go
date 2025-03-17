@@ -34,9 +34,6 @@ type valueEncoder interface {
 // [streamio.Reader]. Implementations of encoding types must call
 // registerValueEncoding to register themselves.
 type valueDecoder interface {
-	// ValueType returns the type of values supported by the valueDecoder.
-	ValueType() datasetmd.ValueType
-
 	// EncodingType returns the encoding type used by the valueDecoder.
 	EncodingType() datasetmd.EncodingType
 

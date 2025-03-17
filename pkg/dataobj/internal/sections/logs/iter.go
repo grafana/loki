@@ -128,10 +128,10 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 			})
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Line = columnValue.ByteSlice()
+			record.Line = columnValue.ByteArray()
 		}
 	}
 
