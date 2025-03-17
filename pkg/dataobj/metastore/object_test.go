@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,34 +25,36 @@ const (
 )
 
 var (
-	now     = time.Now().UTC()
+	now = time.Now().UTC()
+
+	// our streams won't use any log lines, therefore leave them out of the Entry structs
 	streams = []logproto.Stream{
 		{
-			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(-2 * time.Hour)}},
 		},
 		{
-			Labels:  `{app="foo", env="dev"}`, // hash 2
+			Labels:  `{app="foo", env="dev"}`,
 			Entries: []logproto.Entry{{Timestamp: now}},
 		},
 		{
-			Labels:  `{app="bar", env="prod"}`, // hash 3
+			Labels:  `{app="bar", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(5 * time.Second)}},
 		},
 		{
-			Labels:  `{app="bar", env="dev"}`, // hash 4
+			Labels:  `{app="bar", env="dev"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(8 * time.Minute)}},
 		},
 		{
-			Labels:  `{app="baz", env="prod", team="a"}`, // hash 5
+			Labels:  `{app="baz", env="prod", team="a"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(12 * time.Minute)}},
 		},
 		{
-			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(-12 * time.Hour)}},
 		},
 		{
-			Labels:  `{app="foo", env="prod"}`, // hash 1
+			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(12 * time.Hour)}},
 		},
 	}
@@ -85,7 +88,6 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 }
 
 func TestLabels(t *testing.T) {
-	// filtering criteria
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
@@ -133,8 +135,10 @@ func TestLabelsSingleMatcher(t *testing.T) {
 		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
 		require.NoError(t, err)
 
-		// Match 3 streams which have unique label sets including this matcher
 		require.Len(t, matchedLabels, 3)
+		for _, expectedLabel := range []string{"env", "team", "app"} {
+			require.NotEqual(t, slices.Index(matchedLabels, expectedLabel), -1)
+		}
 	})
 }
 
@@ -202,6 +206,9 @@ func TestValuesEmptyMatcher(t *testing.T) {
 		matchedValues, err := mstore.Values(ctx, start, end)
 		require.NoError(t, err)
 		require.Len(t, matchedValues, 6)
+		for _, expectedValue := range []string{"foo", "prod", "bar", "dev", "baz", "a"} {
+			require.NotEqual(t, slices.Index(matchedValues, expectedValue), -1)
+		}
 	})
 }
 
