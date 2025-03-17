@@ -1,46 +1,52 @@
 ---
+# Sets the global scrape interval for Alloy components
+global:
+  scrapeInterval: 15s
+
+# Global Label to be added to all telemetry data. Should reflect a recognizable name for the cluster.
 cluster:
   name: loki-meta-monitoring-cluster
 
+# Destinations for telemetry data (metrics, logs)
+# The credentials are stored in the secrets metrics and logs
+# Further authentication methods are supported, see the documentation (https://github.com/grafana/k8s-monitoring-helm/tree/main/charts/k8s-monitoring/docs/examples/auth)
 destinations:
   - name: prometheus
     type: prometheus
-    url: https://prometheus-prod-36-prod-us-west-0.grafana.net/api/prom/push
+    url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
     auth:
       type: basic
-      username: ""
-      password: ""
+      usernameKey: username
+      passwordKey: password
+    secret:
+        create: false
+        name: metrics
+        namespace: meta
+
   - name: loki
     type: loki
-    url: https://logs-prod-021.grafana.net/loki/api/v1/push
+    url: https://<LOKI-ENDPOINT>/loki/api/v1/push
     auth:
       type: basic
-      username: ""
-      password: ""
-  - name: otlp
-    type: otlp
-    protocol: http
-    url: https://otlp-gateway-prod-us-west-0.grafana.net/otlp
-    auth:
-      type: basic
-      username: ""
-      password: ""
+      usernameKey: username
+      passwordKey: password
+    secret:
+        create: false
+        name: logs
+        namespace: meta
 
+# Components to be monitored by the meta-monitoring helm. 
+# Two integrations are being used:
+# - alloy: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/alloy.md 
+# - loki: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/loki.md
 integrations:
   collector: alloy-singleton
   alloy:
     instances:
-      # monitor the collector gathering and sending meta-monitoring metrics/logs to the meta-monitoring cluster
-      - name: alloy-in-logs
-        namespaces:
-          - loki
-        labelSelectors:
-          app.kubernetes.io/name: alloy-singleton
-
       # monitor the collectors gathering and sending metrics/logs to the local cluster
       - name: alloy
         labelSelectors:
-          app.kubernetes.io/name: [alloy-singleton, alloy-metrics, alloy-logs, alloy-profiles, alloy-receiver]
+          app.kubernetes.io/name: [alloy-singleton]
         namespaces:
           - meta
 
@@ -59,21 +65,25 @@ integrations:
               tenant:
               org_id:
               user:
-
+# (Optional) Kubernetes Events are captured as logs and are annotated with additional metadata to make them easier to search and filter.
 clusterEvents:
   enabled: true
   collector: alloy-singleton
   namespaces:
     - meta
     - loki
-
+# A collection of metric collectors that gather metrics from various sources in the cluster.
+# (Required) cadvisor - Used to collect Loki pod metrics. Cadvisor is automatically deployed.
+# kubelet - Kubernetes information on each node
+# kubeletResource - Scrape resource metrics from the Kubelet.
+# kube-state-metrics - A simple service that listens to the Kubernetes API server and generates metrics about the state of the objects.
 clusterMetrics:
   enabled: true
   collector: alloy-singleton
   kubelet:
-    enabled: false
+    enabled: true
   kubeletResource:
-    enabled: false
+    enabled: true
   cadvisor:
     enabled: true
     extraMetricProcessingRules: |-
@@ -116,6 +126,7 @@ clusterMetrics:
 nodeLogs:
   enabled: false
 
+# Enable pod log collection for the cluster. Will collect logs from all pods in both the meta and loki namespace. 
 podLogs:
   enabled: true
   collector: alloy-singleton
@@ -135,29 +146,9 @@ podLogs:
     - meta
     - loki
 
-applicationObservability:
-  enabled: true
-  receivers:
-    jaeger:
-      thriftHttp:
-        enabled: true
-        port: 14268
-  processors:
-    k8sattributes:
-      metadata:
-        - k8s.namespace.name
-        - k8s.pod.name
-        - k8s.deployment.name
-        - k8s.statefulset.name
-        - k8s.daemonset.name
-        - k8s.cronjob.name
-        - k8s.job.name
-        - k8s.node.name
-        - k8s.pod.uid
-        - k8s.pod.start_time
-        - k8s.container.name
-
 # Collectors
+
+# The Alloy Singleton is a single instance of the Alloy Collector that is deployed in the cluster.
 alloy-singleton:
   enabled: true
 
@@ -171,10 +162,4 @@ alloy-profiles:
   enabled: false
 
 alloy-receiver:
-  enabled: true
-  alloy:
-    extraPorts:
-      - name: jaeger-http
-        port: 14268
-        targetPort: 14268
-        protocol: TCP
+  enabled: false
