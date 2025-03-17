@@ -52,9 +52,9 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20241007172036-53283a0f6b41
+	github.com/grafana/dskit v0.0.0-20250317084829-9cdd36a91f10
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
+	github.com/grafana/gomemcache v0.0.0-20250228145437-da7b95fd2ac1
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.1
@@ -92,7 +92,7 @@ require (
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92
 	github.com/sony/gobreaker/v2 v2.1.0
-	github.com/spf13/afero v1.12.0
+	github.com/spf13/afero v1.14.0
 	github.com/stretchr/testify v1.10.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
