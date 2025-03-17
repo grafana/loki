@@ -176,7 +176,8 @@ func valueSize(v Value) int {
 		str := v.String()
 		return binary.Size(len(str)) + len(str)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		return len(v.ByteArray())
+		arr := v.ByteArray()
+		return binary.Size(len(arr)) + len(arr)
 	}
 
 	return 0
