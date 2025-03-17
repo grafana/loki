@@ -515,7 +515,7 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
-func (r *readRingMock) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 

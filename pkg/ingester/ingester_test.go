@@ -1527,7 +1527,7 @@ func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ 
 	return r.replicationSet, nil
 }
 
-func (r *readRingMock) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
