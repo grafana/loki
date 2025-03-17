@@ -19,13 +19,13 @@ import (
 )
 
 const (
-	// RejectedStreamReasonExceedsGlobalLimit is the reason for rejecting a stream
-	// because it exceeds the global per tenant limit.
-	RejectedStreamReasonExceedsGlobalLimit = "exceeds_global_limit"
+	// ReasonExceedsMaxStreams is returned when a tenant exceeds the maximum
+	// number of active streams as per their per-tenant limit.
+	ReasonExceedsMaxStreams = "exceeds_max_streams"
 
-	// RejectedStreamReasonRateLimited is the reason for rejecting a stream
-	// because it is rate limited.
-	RejectedStreamReasonRateLimited = "rate_limited"
+	// ReasonExceedsRateLimit is returned when a tenant exceeds their maximum
+	// rate limit as per their per-tenant limit.
+	ReasonExceedsRateLimit = "exceeds_rate_limit"
 )
 
 // IngestLimitsService is responsible for receiving, processing and
@@ -227,13 +227,13 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		for _, streamHash := range streamHashes {
 			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{
 				StreamHash: streamHash,
-				Reason:     RejectedStreamReasonRateLimited,
+				Reason:     ReasonExceedsRateLimit,
 			})
 		}
 
 		// Count rejections by reason
 		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonRateLimited).Add(float64(len(rateLimitedStreams)))
+		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsRateLimit).Add(float64(len(rateLimitedStreams)))
 
 		return &logproto.ExceedsLimitsResponse{
 			Tenant:          req.Tenant,
@@ -249,7 +249,7 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 					uniqueStreamHashes[unknownStream] = true
 					rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
 						StreamHash: unknownStream,
-						Reason:     RejectedStreamReasonExceedsGlobalLimit,
+						Reason:     ReasonExceedsMaxStreams,
 					})
 				}
 			}
@@ -262,13 +262,13 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		// Count rejections by reason
 		exceedsLimitCount := 0
 		for _, rejected := range rejectedStreams {
-			if rejected.Reason == RejectedStreamReasonExceedsGlobalLimit {
+			if rejected.Reason == ReasonExceedsMaxStreams {
 				exceedsLimitCount++
 			}
 		}
 
 		if exceedsLimitCount > 0 {
-			s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(exceedsLimitCount))
+			s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsMaxStreams).Add(float64(exceedsLimitCount))
 		}
 	}
 
