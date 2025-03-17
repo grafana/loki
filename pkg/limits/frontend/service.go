@@ -2,9 +2,7 @@ package frontend
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -29,30 +27,6 @@ const (
 	// because it is rate limited.
 	RejectedStreamReasonRateLimited = "rate_limited"
 )
-
-// Limits is the interface of the limits configuration
-// builder to be passed to the frontend service.
-type Limits interface {
-	MaxGlobalStreamsPerUser(userID string) int
-	IngestionRateBytes(userID string) float64
-	IngestionBurstSizeBytes(userID string) int
-}
-
-type ingestionRateStrategy struct {
-	limits Limits
-}
-
-func newIngestionRateStrategy(limits Limits) *ingestionRateStrategy {
-	return &ingestionRateStrategy{limits: limits}
-}
-
-func (s *ingestionRateStrategy) Limit(tenantID string) float64 {
-	return s.limits.IngestionRateBytes(tenantID)
-}
-
-func (s *ingestionRateStrategy) Burst(tenantID string) int {
-	return s.limits.IngestionBurstSizeBytes(tenantID)
-}
 
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
@@ -145,12 +119,6 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 			if err != nil {
 				return err
 			}
-
-			var partitionStr strings.Builder
-			for _, partition := range partitions[instance.Addr] {
-				partitionStr.WriteString(fmt.Sprintf("%d,", partition))
-			}
-
 			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
 				return err

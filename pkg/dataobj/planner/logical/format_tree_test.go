@@ -35,20 +35,21 @@ func TestFormatSimpleQuery(t *testing.T) {
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 	proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
 
-	f := newTreeFormatter()
+	var f TreeFormatter
 
 	actual := "\n" + f.Format(proj)
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
 Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
-├── Column #id
-├── Column #name
+│   ├── Column #id
+│   └── Column #name
 └── Filter expr=age_gt_21
-    ├── BinaryOp type=cmp op=(>) name=age_gt_21
-    │   ├── Column #age
-    │   └── Literal value=21 type=VALUE_TYPE_INT64
-    └── MakeTable name=users`
+    │   └── BinaryOp type=cmp op=">" name=age_gt_21
+    │       ├── Column #age
+    │       └── Literal value=21 type=VALUE_TYPE_INT64
+    └── MakeTable name=users
+`
 
 	require.Equal(t, expected, actual)
 }
@@ -86,29 +87,29 @@ func TestFormatDataFrameQuery(t *testing.T) {
 		10,
 	)
 
-	f := newTreeFormatter()
+	var f TreeFormatter
 
 	actual := "\n" + f.Format(df.LogicalPlan())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
 Limit offset=0 fetch=10
-└── Aggregate groupings=(region) aggregates=(total_sales)
-    ├── GroupExprs
-    │   └── Column #region
-    ├── AggregateExprs
-    │   └── AggregateExpr op=sum
-    │       └── Column #sales
+└── Aggregate groupings=([region]) aggregates=([total_sales])
+    │   ├── GroupExpr
+    │   │   └── Column #region
+    │   └── AggregateExpr
+    │       └── Aggregate op=sum
+    │           └── Column #sales
     └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-        ├── Column #region
-        ├── Column #sales
-        ├── Column #year
+        │   ├── Column #region
+        │   ├── Column #sales
+        │   └── Column #year
         └── Filter expr=year_2020
-            ├── BinaryOp type=cmp op=(==) name=year_2020
-            │   ├── Column #year
-            │   └── Literal value=2020 type=VALUE_TYPE_INT64
-            └── MakeTable name=orders`
-
+            │   └── BinaryOp type=cmp op="==" name=year_2020
+            │       ├── Column #year
+            │       └── Literal value=2020 type=VALUE_TYPE_INT64
+            └── MakeTable name=orders
+`
 	require.Equal(t, expected, actual)
 }
 
@@ -133,24 +134,24 @@ func TestFormatSortQuery(t *testing.T) {
 	// Sort by age ascending, nulls last
 	sortByAge := NewSort(proj, NewSortExpr("sort_by_age", Col("age"), true, false))
 
-	f := newTreeFormatter()
+	var f TreeFormatter
 
 	actual := "\n" + f.Format(sortByAge)
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
 Sort expr=sort_by_age direction=asc nulls=last
-├── Column #age
+│   └── Column #age
 └── Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING age=VALUE_TYPE_UINT64
-    ├── Column #id
-    ├── Column #name
-    ├── Column #age
+    │   ├── Column #id
+    │   ├── Column #name
+    │   └── Column #age
     └── Filter expr=age_gt_21
-        ├── BinaryOp type=cmp op=(>) name=age_gt_21
-        │   ├── Column #age
-        │   └── Literal value=21 type=VALUE_TYPE_INT64
-        └── MakeTable name=users`
-
+        │   └── BinaryOp type=cmp op=">" name=age_gt_21
+        │       ├── Column #age
+        │       └── Literal value=21 type=VALUE_TYPE_INT64
+        └── MakeTable name=users
+`
 	require.Equal(t, expected, actual)
 }
 
@@ -189,7 +190,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 		10,
 	)
 
-	f := newTreeFormatter()
+	var f TreeFormatter
 
 	actual := "\n" + f.Format(df.LogicalPlan())
 	t.Logf("Actual output:\n%s", actual)
@@ -197,22 +198,22 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 	expected := `
 Limit offset=0 fetch=10
 └── Sort expr=sort_by_sales direction=desc nulls=first
-    ├── Column #total_sales
-    └── Aggregate groupings=(region) aggregates=(total_sales)
-        ├── GroupExprs
-        │   └── Column #region
-        ├── AggregateExprs
-        │   └── AggregateExpr op=sum
-        │       └── Column #sales
+    │   └── Column #total_sales
+    └── Aggregate groupings=([region]) aggregates=([total_sales])
+        │   ├── GroupExpr
+        │   │   └── Column #region
+        │   └── AggregateExpr
+        │       └── Aggregate op=sum
+        │           └── Column #sales
         └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-            ├── Column #region
-            ├── Column #sales
-            ├── Column #year
+            │   ├── Column #region
+            │   ├── Column #sales
+            │   └── Column #year
             └── Filter expr=year_2020
-                ├── BinaryOp type=cmp op=(==) name=year_2020
-                │   ├── Column #year
-                │   └── Literal value=2020 type=VALUE_TYPE_INT64
-                └── MakeTable name=orders`
-
+                │   └── BinaryOp type=cmp op="==" name=year_2020
+                │       ├── Column #year
+                │       └── Literal value=2020 type=VALUE_TYPE_INT64
+                └── MakeTable name=orders
+`
 	require.Equal(t, expected, actual)
 }
