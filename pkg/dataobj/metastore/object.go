@@ -70,7 +70,6 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	}
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
-
 	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
@@ -293,7 +292,6 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, err
 	}
-
 	return objectPaths, nil
 }
 
