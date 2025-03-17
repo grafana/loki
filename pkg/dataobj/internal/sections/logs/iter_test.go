@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDecode(t *testing.T) {
