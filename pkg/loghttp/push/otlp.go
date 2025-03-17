@@ -31,19 +31,21 @@ const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
+	attrSdkLanguage     = "telemetry.sdk.language"
+	unknown             = "unknown"
 
 	OTLPSeverityNumber = "severity_number"
 	OTLPSeverityText   = "severity_text"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger, recordScopeUsage bool) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, streamResolver)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, streamResolver, recordScopeUsage)
 	return req, stats, nil
 }
 
@@ -94,7 +96,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, streamResolver StreamResolver) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, streamResolver StreamResolver, trackScopeUsage bool) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -213,6 +215,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			scope := sls.At(j).Scope()
 			logs := sls.At(j).LogRecords()
 			scopeAttrs := scope.Attributes()
+
+			if trackScopeUsage {
+				recordScopeUsage(stats, resAttrs, scope, logs.Len())
+			}
 
 			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
 			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
@@ -360,6 +366,36 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	}
 
 	return pr
+}
+
+func recordScopeUsage(stats *Stats, resAttrs pcommon.Map, scope pcommon.InstrumentationScope, logs int) {
+	var lang string
+	l, ok := resAttrs.Get(attrSdkLanguage)
+	if ok {
+		lang = l.AsString()
+	} else {
+		lang = unknown
+	}
+	scopeName := scope.Name()
+	if scopeName == "" {
+		scopeName = unknown
+	}
+	version := scope.Version()
+	if version == "" {
+		version = unknown
+	}
+
+	langMap, ok := stats.ScopeUsage[lang]
+	if !ok {
+		langMap = make(map[string]map[string]int64)
+		stats.ScopeUsage[lang] = langMap
+	}
+	scopeNameMap, ok := langMap[scopeName]
+	if !ok {
+		scopeNameMap = make(map[string]int64)
+		langMap[scopeName] = scopeNameMap
+	}
+	scopeNameMap[version] = scopeNameMap[version] + int64(logs)
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
