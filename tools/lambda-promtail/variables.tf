@@ -102,6 +102,12 @@ variable "batch_size" {
   default     = ""
 }
 
+variable "lambda_reserved_concurrent_executions" {
+  type        = number
+  description = "Amount of reserved concurrent executions for the Lambda function. A value of -1 removes any concurrency limitations. A value of 0 prevents the Lambda function from being triggered at all."
+  default     = -1
+}
+
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."

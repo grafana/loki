@@ -189,6 +189,8 @@ resource "aws_lambda_function" "this" {
   memory_size  = 128
   package_type = var.lambda_promtail_image == "" ? "Zip" : "Image"
 
+  reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
+
   # From the Terraform AWS Lambda docs: If both subnet_ids and security_group_ids are empty then vpc_config is considered to be empty or unset.
   vpc_config {
     # Every subnet should be able to reach an EFS mount target in the same Availability Zone. Cross-AZ mounts are not permitted.
