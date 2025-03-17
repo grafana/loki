@@ -13,7 +13,7 @@ import (
 // Helper types
 type (
 	stringptr *byte
-	bytearray []byte
+	bytearray *byte
 )
 
 // A Value represents a single value within a dataset. Unlike [any], Values can
@@ -75,7 +75,7 @@ func StringValue(v string) Value {
 func ByteArrayValue(v []byte) Value {
 	return Value{
 		num: uint64(len(v)),
-		any: bytearray(v),
+		any: (bytearray)(unsafe.SliceData(v)),
 	}
 }
 
@@ -143,7 +143,7 @@ func (v Value) String() string {
 // underlying type of v.
 func (v Value) ByteArray() []byte {
 	if ba, ok := v.any.(bytearray); ok {
-		return ba
+		return unsafe.Slice(ba, v.num)
 	}
 	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
 }
