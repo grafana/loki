@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/middleware"
+
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
