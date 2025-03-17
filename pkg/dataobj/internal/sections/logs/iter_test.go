@@ -56,7 +56,7 @@ func TestDecode(t *testing.T) {
 				Values: []dataset.Value{
 					dataset.Int64Value(123),
 					dataset.Int64Value(1234567890000000000),
-					dataset.Value{},
+					{},
 					dataset.ByteArrayValue([]byte("test message")),
 				},
 			},
