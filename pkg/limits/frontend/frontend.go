@@ -7,9 +7,7 @@ package frontend
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -20,33 +18,12 @@ import (
 
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
 	RingKey  = "ingest-limits-frontend"
 	RingName = "ingest-limits-frontend"
 )
-
-// Config contains the config for an ingest-limits-frontend.
-type Config struct {
-	ClientConfig     limits_client.Config  `yaml:"client_config"`
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-	RecheckPeriod    time.Duration         `yaml:"recheck_period"`
-}
-
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
-	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
-}
-
-func (cfg *Config) Validate() error {
-	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
-		return fmt.Errorf("invalid gRPC client config: %w", err)
-	}
-	return nil
-}
 
 // Frontend is the limits-frontend service, and acts a service wrapper for
 // all components needed to run the limits-frontend.
