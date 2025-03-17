@@ -1527,6 +1527,10 @@ func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ 
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
