@@ -143,6 +143,10 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 type readLifecyclerMock struct {
 	mock.Mock
 	addr string
