@@ -2,9 +2,7 @@ package frontend
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,38 +19,14 @@ import (
 )
 
 const (
-	// RejectedStreamReasonExceedsGlobalLimit is the reason for rejecting a stream
-	// because it exceeds the global per tenant limit.
-	RejectedStreamReasonExceedsGlobalLimit = "exceeds_global_limit"
+	// ReasonExceedsMaxStreams is returned when a tenant exceeds the maximum
+	// number of active streams as per their per-tenant limit.
+	ReasonExceedsMaxStreams = "exceeds_max_streams"
 
-	// RejectedStreamReasonRateLimited is the reason for rejecting a stream
-	// because it is rate limited.
-	RejectedStreamReasonRateLimited = "rate_limited"
+	// ReasonExceedsRateLimit is returned when a tenant exceeds their maximum
+	// rate limit as per their per-tenant limit.
+	ReasonExceedsRateLimit = "exceeds_rate_limit"
 )
-
-// Limits is the interface of the limits configuration
-// builder to be passed to the frontend service.
-type Limits interface {
-	MaxGlobalStreamsPerUser(userID string) int
-	IngestionRateBytes(userID string) float64
-	IngestionBurstSizeBytes(userID string) int
-}
-
-type ingestionRateStrategy struct {
-	limits Limits
-}
-
-func newIngestionRateStrategy(limits Limits) *ingestionRateStrategy {
-	return &ingestionRateStrategy{limits: limits}
-}
-
-func (s *ingestionRateStrategy) Limit(tenantID string) float64 {
-	return s.limits.IngestionRateBytes(tenantID)
-}
-
-func (s *ingestionRateStrategy) Burst(tenantID string) int {
-	return s.limits.IngestionBurstSizeBytes(tenantID)
-}
 
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
@@ -145,12 +119,6 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 			if err != nil {
 				return err
 			}
-
-			var partitionStr strings.Builder
-			for _, partition := range partitions[instance.Addr] {
-				partitionStr.WriteString(fmt.Sprintf("%d,", partition))
-			}
-
 			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
 				return err
@@ -259,13 +227,13 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		for _, streamHash := range streamHashes {
 			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{
 				StreamHash: streamHash,
-				Reason:     RejectedStreamReasonRateLimited,
+				Reason:     ReasonExceedsRateLimit,
 			})
 		}
 
 		// Count rejections by reason
 		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonRateLimited).Add(float64(len(rateLimitedStreams)))
+		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsRateLimit).Add(float64(len(rateLimitedStreams)))
 
 		return &logproto.ExceedsLimitsResponse{
 			Tenant:          req.Tenant,
@@ -281,7 +249,7 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 					uniqueStreamHashes[unknownStream] = true
 					rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
 						StreamHash: unknownStream,
-						Reason:     RejectedStreamReasonExceedsGlobalLimit,
+						Reason:     ReasonExceedsMaxStreams,
 					})
 				}
 			}
@@ -294,13 +262,13 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		// Count rejections by reason
 		exceedsLimitCount := 0
 		for _, rejected := range rejectedStreams {
-			if rejected.Reason == RejectedStreamReasonExceedsGlobalLimit {
+			if rejected.Reason == ReasonExceedsMaxStreams {
 				exceedsLimitCount++
 			}
 		}
 
 		if exceedsLimitCount > 0 {
-			s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(exceedsLimitCount))
+			s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsMaxStreams).Add(float64(exceedsLimitCount))
 		}
 	}
 
