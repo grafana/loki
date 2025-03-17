@@ -601,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.0
+    tag: 3.4.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -1735,6 +1735,8 @@ backend:
   extraEnvFrom: []
   # -- Init containers to add to the backend pods
   initContainers: []
+  # -- Containers to add to the backend pods
+  extraContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
