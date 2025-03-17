@@ -1054,7 +1054,6 @@ github.com/grafana/ckit/shard
 github.com/grafana/cloudflare-go
 # github.com/grafana/dskit v0.0.0-20241007172036-53283a0f6b41
 ## explicit; go 1.21
-github.com/grafana/dskit/aws
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/cancellation
 github.com/grafana/dskit/concurrency

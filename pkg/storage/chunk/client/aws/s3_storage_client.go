@@ -20,14 +20,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	awscommon "github.com/grafana/dskit/aws"
-
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -194,7 +191,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 
 	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
 	if cfg.S3.URL != nil {
-		s3Config, err = awscommon.ConfigFromURL(cfg.S3.URL)
+		s3Config, err = ConfigFromURL(cfg.S3.URL)
 		if err != nil {
 			return nil, err
 		}
