@@ -6,7 +6,7 @@ The Span Profiler for OpenTracing-Go is a package that seamlessly integrates `op
 profiling through the use of pprof labels.
 
 Accessing trace span profiles is made convenient through the Grafana Explore view. You can find a complete example setup
-with Grafana Tempo in the [Pyroscope repository](https://github.com/grafana/pyroscope/tree/main/examples/tracing/tempo):
+with Grafana Tempo in the [Pyroscope repository](https://github.com/grafana/pyroscope/tree/main/examples/tracing/golang-push):
 
 ![image](https://github.com/grafana/otel-profiling-go/assets/12090599/31e33cd1-818b-4116-b952-c9ec7b1fb593)
 
