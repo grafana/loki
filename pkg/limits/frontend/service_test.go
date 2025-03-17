@@ -178,8 +178,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 6, Reason: RejectedStreamReasonExceedsGlobalLimit},
-				{StreamHash: 7, Reason: RejectedStreamReasonExceedsGlobalLimit},
+				{StreamHash: 6, Reason: ReasonExceedsMaxStreams},
+				{StreamHash: 7, Reason: ReasonExceedsMaxStreams},
 			},
 		},
 		{
@@ -213,8 +213,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 6, Reason: RejectedStreamReasonExceedsGlobalLimit},
-				{StreamHash: 7, Reason: RejectedStreamReasonExceedsGlobalLimit},
+				{StreamHash: 6, Reason: ReasonExceedsMaxStreams},
+				{StreamHash: 7, Reason: ReasonExceedsMaxStreams},
 			},
 		},
 		{
@@ -286,8 +286,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 1, Reason: RejectedStreamReasonRateLimited},
-				{StreamHash: 2, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 1, Reason: ReasonExceedsRateLimit},
+				{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 			},
 		},
 		{
@@ -324,8 +324,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 1, Reason: RejectedStreamReasonRateLimited},
-				{StreamHash: 2, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 1, Reason: ReasonExceedsRateLimit},
+				{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 			},
 		},
 		{
@@ -353,8 +353,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 6, Reason: RejectedStreamReasonRateLimited},
-				{StreamHash: 7, Reason: RejectedStreamReasonRateLimited},
+				{StreamHash: 6, Reason: ReasonExceedsRateLimit},
+				{StreamHash: 7, Reason: ReasonExceedsRateLimit},
 			},
 		},
 	}
