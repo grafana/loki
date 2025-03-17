@@ -100,14 +100,19 @@ var (
 	}
 
 	blockBorder = Border{
-		Top:         "█",
-		Bottom:      "█",
-		Left:        "█",
-		Right:       "█",
-		TopLeft:     "█",
-		TopRight:    "█",
-		BottomLeft:  "█",
-		BottomRight: "█",
+		Top:          "█",
+		Bottom:       "█",
+		Left:         "█",
+		Right:        "█",
+		TopLeft:      "█",
+		TopRight:     "█",
+		BottomLeft:   "█",
+		BottomRight:  "█",
+		MiddleLeft:   "█",
+		MiddleRight:  "█",
+		Middle:       "█",
+		MiddleTop:    "█",
+		MiddleBottom: "█",
 	}
 
 	outerHalfBlockBorder = Border{
@@ -179,6 +184,38 @@ var (
 		MiddleTop:    " ",
 		MiddleBottom: " ",
 	}
+
+	markdownBorder = Border{
+		Top:          "-",
+		Bottom:       "-",
+		Left:         "|",
+		Right:        "|",
+		TopLeft:      "|",
+		TopRight:     "|",
+		BottomLeft:   "|",
+		BottomRight:  "|",
+		MiddleLeft:   "|",
+		MiddleRight:  "|",
+		Middle:       "|",
+		MiddleTop:    "|",
+		MiddleBottom: "|",
+	}
+
+	asciiBorder = Border{
+		Top:          "-",
+		Bottom:       "-",
+		Left:         "|",
+		Right:        "|",
+		TopLeft:      "+",
+		TopRight:     "+",
+		BottomLeft:   "+",
+		BottomRight:  "+",
+		MiddleLeft:   "+",
+		MiddleRight:  "+",
+		Middle:       "+",
+		MiddleTop:    "+",
+		MiddleBottom: "+",
+	}
 )
 
 // NormalBorder returns a standard-type border with a normal weight and 90
@@ -224,6 +261,21 @@ func DoubleBorder() Border {
 // color to a hidden border.
 func HiddenBorder() Border {
 	return hiddenBorder
+}
+
+// MarkdownBorder return a table border in markdown style.
+//
+// Make sure to disable top and bottom border for the best result. This will
+// ensure that the output is valid markdown.
+//
+//	table.New().Border(lipgloss.MarkdownBorder()).BorderTop(false).BorderBottom(false)
+func MarkdownBorder() Border {
+	return markdownBorder
+}
+
+// ASCIIBorder returns a table border with ASCII characters.
+func ASCIIBorder() Border {
+	return asciiBorder
 }
 
 func (s Style) applyBorder(str string) string {

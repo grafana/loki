@@ -7,50 +7,23 @@ package frontend
 
 import (
 	"context"
-	"encoding/json"
-	"flag"
 	"fmt"
-	"net/http"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
 	RingKey  = "ingest-limits-frontend"
 	RingName = "ingest-limits-frontend"
 )
-
-// Config contains the config for an ingest-limits-frontend.
-type Config struct {
-	ClientConfig     limits_client.Config  `yaml:"client_config"`
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-	RecheckPeriod    time.Duration         `yaml:"recheck_period"`
-}
-
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
-	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
-}
-
-func (cfg *Config) Validate() error {
-	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
-		return fmt.Errorf("invalid gRPC client config: %w", err)
-	}
-	return nil
-}
 
 // Frontend is the limits-frontend service, and acts a service wrapper for
 // all components needed to run the limits-frontend.
@@ -75,7 +48,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 
 	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
 	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
-	rateLimiter := limiter.NewRateLimiter(newIngestionRateStrategy(limits), cfg.RecheckPeriod)
+	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
 	limitsSrv := NewRingIngestLimitsService(limitsRing, pool, limits, rateLimiter, logger, reg)
 
 	f := &Frontend{
@@ -106,14 +79,6 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
 
 	return f, nil
-}
-
-// Flush implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (f *Frontend) Flush() {}
-
-// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (f *Frontend) TransferOut(_ context.Context) error {
-	return nil
 }
 
 // starting implements services.Service.
@@ -170,58 +135,12 @@ func (f *Frontend) CheckReady(ctx context.Context) error {
 	return nil
 }
 
-type exceedsLimitsRequest struct {
-	TenantID     string   `json:"tenantID"`
-	StreamHashes []uint64 `json:"streamHashes"`
-}
+// Flush implements ring.FlushTransferer. It transfers state to another ingest
+// limits frontend instance.
+func (f *Frontend) Flush() {}
 
-type exceedsLimitsResponse struct {
-	RejectedStreams []*logproto.RejectedStream `json:"rejectedStreams,omitempty"`
-}
-
-// ServeHTTP implements http.Handler.
-func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var req exceedsLimitsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		level.Error(f.logger).Log("msg", "error unmarshalling request body", "err", err)
-		http.Error(w, "error unmarshalling request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.TenantID == "" {
-		http.Error(w, "tenantID is required", http.StatusBadRequest)
-		return
-	}
-
-	// Convert request to protobuf format
-	protoReq := &logproto.ExceedsLimitsRequest{
-		Tenant:  req.TenantID,
-		Streams: make([]*logproto.StreamMetadata, len(req.StreamHashes)),
-	}
-	for i, hash := range req.StreamHashes {
-		protoReq.Streams[i] = &logproto.StreamMetadata{
-			StreamHash: hash,
-		}
-	}
-
-	ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(r.Context(), req.TenantID))
-	if err != nil {
-		http.Error(w, "failed to inject org ID", http.StatusInternalServerError)
-		return
-	}
-
-	// Call the service
-	resp, err := f.limits.ExceedsLimits(ctx, protoReq)
-	if err != nil {
-		level.Error(f.logger).Log("msg", "error checking limits", "err", err)
-		http.Error(w, "error checking limits", http.StatusInternalServerError)
-		return
-	}
-
-	// Convert response to JSON format
-	jsonResp := exceedsLimitsResponse{
-		RejectedStreams: resp.RejectedStreams,
-	}
-
-	util.WriteJSONResponse(w, jsonResp)
+// TransferOut implements ring.FlushTransferer. It transfers state to another
+// ingest limits frontend instance.
+func (f *Frontend) TransferOut(_ context.Context) error {
+	return nil
 }

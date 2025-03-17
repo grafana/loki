@@ -35,7 +35,7 @@ func (NoColor) color(*Renderer) termenv.Color {
 //
 // Deprecated.
 func (n NoColor) RGBA() (r, g, b, a uint32) {
-	return 0x0, 0x0, 0x0, 0xFFFF //nolint:gomnd
+	return 0x0, 0x0, 0x0, 0xFFFF //nolint:mnd
 }
 
 // Color specifies a color by hex or ANSI value. For example:

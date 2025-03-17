@@ -151,10 +151,6 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
-
-	// EnableMutiVariantQueries enables support for running multiple query variants over the same underlying data.
-	// For example, running both a rate() and count_over_time() query over the same range selector.
-	EnableMutiVariantQueries bool `yaml:"enable_multi_variant_queries"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -169,12 +165,6 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 		prefix+".engine.max-count-min-sketch-heap-size",
 		10_000,
 		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
-	)
-	f.BoolVar(
-		&opts.EnableMutiVariantQueries,
-		prefix+".engine.enable-multi-variant-queries",
-		false,
-		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -217,7 +207,6 @@ func (ng *Engine) Query(params Params) Query {
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
-		multiVariant: ng.opts.EnableMutiVariantQueries,
 	}
 }
 
@@ -234,7 +223,6 @@ type query struct {
 	evaluator    EvaluatorFactory
 	record       bool
 	logExecQuery bool
-	multiVariant bool
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -330,7 +318,16 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	switch e := q.params.GetExpression().(type) {
 	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
 	case syntax.VariantsExpr:
-		if !q.multiVariant {
+		tenants, _ := tenant.TenantIDs(ctx)
+		multiVariantEnabled := false
+		for _, t := range tenants {
+			if q.limits.EnableMultiVariantQueries(t) {
+				multiVariantEnabled = true
+				break
+			}
+		}
+
+		if !multiVariantEnabled {
 			return nil, logqlmodel.ErrVariantsDisabled
 		}
 

@@ -311,7 +311,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
 		middleware.UnaryClientInstrumentInterceptor(sp.metrics.frontendClientRequestDuration),
-	}, nil)
+	}, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

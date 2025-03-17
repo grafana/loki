@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/cellbuf"
 	"github.com/muesli/termenv"
 )
 
@@ -364,7 +365,7 @@ func (s Style) Render(strs ...string) string {
 	// Word wrap
 	if !inline && width > 0 {
 		wrapAt := width - leftPadding - rightPadding
-		str = ansi.Wrap(str, wrapAt, "")
+		str = cellbuf.Wrap(str, wrapAt, "")
 	}
 
 	// Render core text
@@ -431,7 +432,7 @@ func (s Style) Render(strs ...string) string {
 	{
 		numLines := strings.Count(str, "\n")
 
-		if !(numLines == 0 && width == 0) {
+		if numLines != 0 || width != 0 {
 			var st *termenv.Style
 			if colorWhitespace || styleWhitespace {
 				st = &teWhitespace

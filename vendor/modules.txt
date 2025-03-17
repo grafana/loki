@@ -540,7 +540,10 @@ github.com/charmbracelet/bubbles/viewport
 # github.com/charmbracelet/bubbletea v1.3.4
 ## explicit; go 1.18
 github.com/charmbracelet/bubbletea
-# github.com/charmbracelet/lipgloss v1.0.1-0.20250110214317-ecc1bd014d51
+# github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc
+## explicit; go 1.18
+github.com/charmbracelet/colorprofile
+# github.com/charmbracelet/lipgloss v1.1.0
 ## explicit; go 1.18
 github.com/charmbracelet/lipgloss
 # github.com/charmbracelet/x/ansi v0.8.0
@@ -548,6 +551,9 @@ github.com/charmbracelet/lipgloss
 github.com/charmbracelet/x/ansi
 github.com/charmbracelet/x/ansi/kitty
 github.com/charmbracelet/x/ansi/parser
+# github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd
+## explicit; go 1.18
+github.com/charmbracelet/x/cellbuf
 # github.com/charmbracelet/x/term v0.2.1
 ## explicit; go 1.18
 github.com/charmbracelet/x/term
@@ -1046,16 +1052,17 @@ github.com/grafana/ckit/shard
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20241007172036-53283a0f6b41
+# github.com/grafana/dskit v0.0.0-20250317084829-9cdd36a91f10
 ## explicit; go 1.21
-github.com/grafana/dskit/aws
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/cancellation
+github.com/grafana/dskit/clusterutil
 github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/crypto/tls
 github.com/grafana/dskit/dns
 github.com/grafana/dskit/dns/godns
 github.com/grafana/dskit/dns/miekgdns
+github.com/grafana/dskit/dns/miekgdns2
 github.com/grafana/dskit/flagext
 github.com/grafana/dskit/grpcclient
 github.com/grafana/dskit/grpcencoding/snappy
@@ -1094,8 +1101,8 @@ github.com/grafana/dskit/user
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
-## explicit; go 1.18
+# github.com/grafana/gomemcache v0.0.0-20250228145437-da7b95fd2ac1
+## explicit; go 1.21
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
@@ -1396,7 +1403,7 @@ github.com/muesli/ansi/compressor
 # github.com/muesli/cancelreader v0.2.2
 ## explicit; go 1.17
 github.com/muesli/cancelreader
-# github.com/muesli/termenv v0.15.3-0.20241211131612-0d230cb6eb15
+# github.com/muesli/termenv v0.16.0
 ## explicit; go 1.17
 github.com/muesli/termenv
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
@@ -1717,8 +1724,8 @@ github.com/sony/gobreaker/v2
 # github.com/spaolacci/murmur3 v1.1.0
 ## explicit
 github.com/spaolacci/murmur3
-# github.com/spf13/afero v1.12.0
-## explicit; go 1.21
+# github.com/spf13/afero v1.14.0
+## explicit; go 1.23.0
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
 github.com/spf13/afero/mem
@@ -1833,6 +1840,9 @@ github.com/xdg-go/stringprep
 # github.com/xhit/go-str2duration/v2 v2.1.0
 ## explicit; go 1.13
 github.com/xhit/go-str2duration/v2
+# github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
+## explicit; go 1.19
+github.com/xo/terminfo
 # github.com/yuin/gopher-lua v1.1.1
 ## explicit; go 1.17
 github.com/yuin/gopher-lua
@@ -2144,7 +2154,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.225.0
+# google.golang.org/api v0.226.0
 ## explicit; go 1.23.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1

@@ -10,6 +10,8 @@ func (o Output) TemplateFuncs() template.FuncMap {
 }
 
 // TemplateFuncs contains a few useful template helpers.
+//
+//nolint:mnd
 func TemplateFuncs(p Profile) template.FuncMap {
 	if p == Ascii {
 		return noopTemplateFuncs
