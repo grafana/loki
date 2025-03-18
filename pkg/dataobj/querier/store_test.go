@@ -32,13 +32,6 @@ type sampleWithLabels struct {
 	Samples logproto.Sample
 }
 
-type testItem struct {
-	line       string // For line filters
-	labelName  string // For label filters
-	labelValue string // For label filters
-	desc       string // Description for better error messages
-}
-
 func TestStore_SelectSamples(t *testing.T) {
 	const testTenant = "test-tenant"
 	builder := newTestDataBuilder(t, testTenant)
@@ -168,6 +161,18 @@ func TestStore_SelectSamples(t *testing.T) {
 			end:      now.Add(time.Hour),
 			want: []sampleWithLabels{
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
+			},
+		},
+		{
+			name:     "select all samples in range with multiple line filters",
+			selector: `rate({app=~".+"} != "bar" |~ "foo[3-6]"[1h])`,
+			start:    now,
+			end:      now.Add(time.Hour),
+			want: []sampleWithLabels{
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
 	}
@@ -320,6 +325,20 @@ func TestStore_SelectLogs(t *testing.T) {
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
 				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+			},
+		},
+		{
+			name:      "select with multiple line filters",
+			selector:  `{app=~".+"} != "bar" |~ "foo[3-6]"`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
 		},
 	}
