@@ -11,18 +11,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-type exceedsLimitsRequest struct {
+type httpExceedsLimitsRequest struct {
 	TenantID     string   `json:"tenantID"`
 	StreamHashes []uint64 `json:"streamHashes"`
 }
 
-type exceedsLimitsResponse struct {
+type httpExceedsLimitsResponse struct {
 	RejectedStreams []*logproto.RejectedStream `json:"rejectedStreams,omitempty"`
 }
 
 // ServeHTTP implements http.Handler.
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var req exceedsLimitsRequest
+	var req httpExceedsLimitsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "JSON is invalid or does not match expected schema", http.StatusBadRequest)
 		return
@@ -57,7 +57,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	util.WriteJSONResponse(w, exceedsLimitsResponse{
+	util.WriteJSONResponse(w, httpExceedsLimitsResponse{
 		RejectedStreams: resp.RejectedStreams,
 	})
 }
