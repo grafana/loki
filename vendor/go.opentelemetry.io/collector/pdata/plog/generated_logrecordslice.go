@@ -7,6 +7,7 @@
 package plog
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -54,6 +55,21 @@ func (es LogRecordSlice) Len() int {
 //	}
 func (es LogRecordSlice) At(i int) LogRecord {
 	return newLogRecord((*es.orig)[i], es.state)
+}
+
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es LogRecordSlice) All() iter.Seq2[int, LogRecord] {
+	return func(yield func(int, LogRecord) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
