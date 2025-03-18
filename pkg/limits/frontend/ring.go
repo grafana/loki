@@ -56,7 +56,7 @@ func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStrea
 }
 
 func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitions, err := g.perReplicaSetPartitions(ctx, replicaSet)
+	partitions, err := g.getConsumedPartitions(ctx, replicaSet)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, replic
 	return responses, nil
 }
 
-func (g *RingStreamUsageGatherer) perReplicaSetPartitions(ctx context.Context, replicaSet ring.ReplicationSet) (map[string][]int32, error) {
+func (g *RingStreamUsageGatherer) getConsumedPartitions(ctx context.Context, replicaSet ring.ReplicationSet) (map[string][]int32, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make(map[string]*logproto.GetAssignedPartitionsResponse)
 	// Get the partitions assigned to each instance.
