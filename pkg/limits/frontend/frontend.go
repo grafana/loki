@@ -20,7 +20,6 @@ import (
 
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -42,19 +41,16 @@ type metrics struct {
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
 		tenantExceedsLimits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_exceeds_limits_total",
-			Help:      "The total number of requests that exceeded limits per tenant.",
+			Name: "loki_ingest_limits_frontend_exceeds_limits_total",
+			Help: "The total number of requests that exceeded limits per tenant.",
 		}, []string{"tenant"}),
 		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_streams_active",
-			Help:      "The current number of active streams (seen within the window) per tenant.",
+			Name: "loki_ingest_limits_frontend_streams_active",
+			Help: "The current number of active streams (seen within the window) per tenant.",
 		}, []string{"tenant"}),
 		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_streams_rejected_total",
-			Help:      "The total number of rejected streams per tenant when the global limit is exceeded.",
+			Name: "loki_ingest_limits_frontend_streams_rejected_total",
+			Help: "The total number of rejected streams per tenant when the global limit is exceeded.",
 		}, []string{"tenant", "reason"}),
 	}
 }
