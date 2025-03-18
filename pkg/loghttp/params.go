@@ -175,24 +175,24 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	// 1 to 9-digit numbers are considered second precision
 	// 10 to 18-digit numbers are considered nanosecond precision
 	if strings.Contains(value, ".") {
-		if t, err := strconv.ParseFloat(value, 64); err != nil {
+		t, err := strconv.ParseFloat(value, 64)
+		if err != nil {
 			return time.Time{}, err
-		} else {
-			if math.IsNaN(t) || math.IsInf(t, 0) {
-				return time.Time{}, fmt.Errorf("floating point timestamp is NaN or Inf")
-			}
-			high, low := math.Modf(t)
-			if high > math.MaxInt64 || high < math.MinInt64 {
-				return time.Time{}, fmt.Errorf("floating point timestamp exceeds integer range")
-			}
-			// treat high as seconds
-			if high <= 1e10 {
-				low = math.Round(low*1000) / 1000
-				return time.Unix(int64(high), int64(low*float64(time.Second))), nil
-			}
-			// treat high as nanoseconds and discard low
-			return time.Unix(0, int64(high)), nil
 		}
+		if math.IsNaN(t) || math.IsInf(t, 0) {
+			return time.Time{}, fmt.Errorf("floating point timestamp is NaN or Inf")
+		}
+		high, low := math.Modf(t)
+		if high > math.MaxInt64 || high < math.MinInt64 {
+			return time.Time{}, fmt.Errorf("floating point timestamp exceeds integer range")
+		}
+		// treat high as seconds
+		if high <= 1e10 {
+			low = math.Round(low*1000) / 1000
+			return time.Unix(int64(high), int64(low*float64(time.Second))), nil
+		}
+		// treat high as nanoseconds and discard low
+		return time.Unix(0, int64(high)), nil
 	}
 
 	// Parse an integer value string, can be either regular or scientific notation.
