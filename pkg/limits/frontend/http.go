@@ -50,7 +50,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := f.limits.ExceedsLimits(ctx, protoReq)
+	resp, err := f.ExceedsLimits(ctx, protoReq)
 	if err != nil {
 		level.Error(f.logger).Log("msg", "failed to check limits", "err", err)
 		http.Error(w, "an unexpected error occurred while checking limits", http.StatusInternalServerError)
