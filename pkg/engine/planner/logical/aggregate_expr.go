@@ -1,8 +1,7 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 // AggregateOp represents the type of aggregation operation to perform.
@@ -103,7 +102,7 @@ func (a AggregateExpr) ToField(p Plan) schema.ColumnSchema {
 // based on the input field type and the aggregation operation.
 // Currently, this is a placeholder that always returns int64, but it should be
 // implemented to handle different input types and operations correctly.
-func determineAggregationTypeFromFieldType(_ datasetmd.ValueType, _ AggregateOp) datasetmd.ValueType {
+func determineAggregationTypeFromFieldType(_ schema.ValueType, _ AggregateOp) schema.ValueType {
 	// TODO: implement
-	return datasetmd.VALUE_TYPE_INT64
+	return schema.ValueTypeInt64
 }

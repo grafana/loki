@@ -1,6 +1,6 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/dataobj/planner/logical"
+import "github.com/grafana/loki/v3/pkg/engine/planner/logical"
 
 // Context holds meta information needed to create a physical plan.
 type Context struct{}

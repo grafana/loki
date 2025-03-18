@@ -1,7 +1,7 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 // Limit represents a plan node that limits the number of rows returned.

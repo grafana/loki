@@ -1,7 +1,7 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 // DataFrame provides an ergonomic interface for building logical query plans.

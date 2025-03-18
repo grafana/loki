@@ -7,8 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 func TestConvertSimpleQueryToSSA(t *testing.T) {
@@ -18,9 +17,9 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 		name: "users",
 		schema: schema.Schema{
 			Columns: []schema.ColumnSchema{
-				{Name: "id", Type: datasetmd.VALUE_TYPE_UINT64},
-				{Name: "name", Type: datasetmd.VALUE_TYPE_STRING},
-				{Name: "age", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "id", Type: schema.ValueTypeUint64},
+				{Name: "name", Type: schema.ValueTypeString},
+				{Name: "age", Type: schema.ValueTypeUint64},
 			},
 		},
 	}
@@ -69,9 +68,9 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 		name: "orders",
 		schema: schema.Schema{
 			Columns: []schema.ColumnSchema{
-				{Name: "region", Type: datasetmd.VALUE_TYPE_STRING},
-				{Name: "sales", Type: datasetmd.VALUE_TYPE_UINT64},
-				{Name: "year", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "region", Type: schema.ValueTypeString},
+				{Name: "sales", Type: schema.ValueTypeUint64},
+				{Name: "year", Type: schema.ValueTypeUint64},
 			},
 		},
 	}
@@ -143,9 +142,9 @@ func TestConvertSortQueryToSSA(t *testing.T) {
 		name: "users",
 		schema: schema.Schema{
 			Columns: []schema.ColumnSchema{
-				{Name: "id", Type: datasetmd.VALUE_TYPE_UINT64},
-				{Name: "name", Type: datasetmd.VALUE_TYPE_STRING},
-				{Name: "age", Type: datasetmd.VALUE_TYPE_UINT64},
+				{Name: "id", Type: schema.ValueTypeUint64},
+				{Name: "name", Type: schema.ValueTypeString},
+				{Name: "age", Type: schema.ValueTypeUint64},
 			},
 		},
 	}
