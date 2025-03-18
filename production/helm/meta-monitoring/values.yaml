@@ -35,7 +35,7 @@ destinations:
         name: logs
         namespace: meta
 
-# Components to be monitored by the meta-monitoring helm. 
+# Components to be monitored by the meta-monitoring Helm chart. 
 # Two integrations are being used:
 # - alloy: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/alloy.md 
 # - loki: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/loki.md
@@ -65,7 +65,7 @@ integrations:
               tenant:
               org_id:
               user:
-# (Optional) Kubernetes Events are captured as logs and are annotated with additional metadata to make them easier to search and filter.
+# (Optional) Kubernetes events are captured as logs and are annotated with additional metadata to make them easier to search and filter.
 clusterEvents:
   enabled: true
   collector: alloy-singleton

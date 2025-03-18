@@ -125,11 +125,11 @@ curl -X POST http://prometheus:9090/-/reload
 
 ## Components Monitored
 
-The Meta Monitoring chart monitors:
+The meta-monitoring chart monitors:
 
 - Loki components via label selection (`app.kubernetes.io/name: loki`)
-- Alloy collectors in the meta namespace
-- Kubernetes resources in the loki and meta namespaces
+- Alloy collectors in the `meta` namespace
+- Kubernetes resources in the `loki` and `meta` namespaces
 
 ## Advanced Configuration
 
