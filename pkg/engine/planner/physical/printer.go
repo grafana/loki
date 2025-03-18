@@ -3,7 +3,7 @@ package physical
 import (
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/internal/tree"
+	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure

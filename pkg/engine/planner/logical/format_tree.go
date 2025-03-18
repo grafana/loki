@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/internal/tree"
+	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
 
 // TreeFormatter formats a logical plan as a tree structure.

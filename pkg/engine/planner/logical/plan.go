@@ -6,7 +6,7 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 // PlanType is an enum representing the type of plan node.

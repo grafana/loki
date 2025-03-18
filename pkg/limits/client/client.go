@@ -23,13 +23,13 @@ import (
 )
 
 var (
-	backendClients = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingest_limits_backend_clients",
-		Help: "The current number of ingest limits backend clients.",
+	numClients = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingest_limits_clients",
+		Help: "The current number of ingest limits clients.",
 	})
-	backendRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "loki_ingest_limits_backend_client_request_duration_seconds",
-		Help:    "Time spent doing ingest limits backend requests.",
+	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "loki_ingest_limits_client_request_duration_seconds",
+		Help:    "Time spent doing ingest limits requests.",
 		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 	}, []string{"operation", "status_code"})
 )
@@ -109,7 +109,7 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	}
-	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(backendRequestDuration))
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(requestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
@@ -118,7 +118,7 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	}
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(backendRequestDuration))
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(requestDuration))
 
 	return unaryInterceptors, streamInterceptors
 }
@@ -141,7 +141,7 @@ func NewPool(
 		poolCfg,
 		ring_client.NewRingServiceDiscovery(ring),
 		factory,
-		backendClients,
+		numClients,
 		logger,
 	)
 }

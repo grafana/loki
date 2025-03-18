@@ -3,8 +3,7 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
 // LiteralType is an enum representing the type of a literal value.
@@ -68,14 +67,14 @@ func (l LiteralExpr) ToField(_ Plan) schema.ColumnSchema {
 	}
 }
 
-// ValueType returns the datasetmd.ValueType corresponding to this literal type.
+// ValueType returns the schema.ValueType corresponding to this literal type.
 // This is used to determine the type of the column in the output schema.
-func (l LiteralExpr) ValueType() datasetmd.ValueType {
+func (l LiteralExpr) ValueType() schema.ValueType {
 	switch l.ty {
 	case LiteralTypeString:
-		return datasetmd.VALUE_TYPE_STRING
+		return schema.ValueTypeString
 	case LiteralTypeInt64:
-		return datasetmd.VALUE_TYPE_INT64
+		return schema.ValueTypeInt64
 	default:
 		panic(fmt.Sprintf("unsupported literal type: %d", l.ty))
 	}
