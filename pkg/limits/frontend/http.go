@@ -33,7 +33,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streams := make([]*logproto.StreamMetadata, len(req.StreamHashes))
+	streams := make([]*logproto.StreamMetadata, 0, len(req.StreamHashes))
 	for _, streamHash := range req.StreamHashes {
 		streams = append(streams, &logproto.StreamMetadata{
 			StreamHash: streamHash,

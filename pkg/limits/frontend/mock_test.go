@@ -16,6 +16,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+// mockStreamUsageGatherer mocks a StreamUsageGatherer. It avoids having to
+// set up a mock ring to test the frontend.
+type mockStreamUsageGatherer struct {
+	t *testing.T
+
+	expectedRequest *GetStreamUsageRequest
+	responses       []GetStreamUsageResponse
+}
+
+func (g *mockStreamUsageGatherer) GetStreamUsage(_ context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
+	if expected := g.expectedRequest; expected != nil {
+		require.Equal(g.t, *expected, r)
+	}
+	return g.responses, nil
+}
+
 // mockIngestLimitsClient mocks logproto.IngestLimitsClient.
 type mockIngestLimitsClient struct {
 	logproto.IngestLimitsClient
