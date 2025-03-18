@@ -278,8 +278,7 @@ func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredi
 	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.BinOpExpr:
-			// TODO: we may need to use different predicates for either sides of the binary operation
-			// It should be easy to support binary op with a literal on one side. skip applying predicates for now
+			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
 			skip = true
 			return
 		case *syntax.RangeAggregationExpr:
@@ -352,8 +351,9 @@ Outer:
 	return predicate, pipelineExpr
 }
 
+// we may not need this once https://github.com/grafana/loki/pull/16747/ is merged
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {

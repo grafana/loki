@@ -90,22 +90,22 @@ type (
 	}
 )
 
-func (AndPredicate[P]) isPredicate()          {}
-func (OrPredicate[P]) isPredicate()           {}
-func (NotPredicate[P]) isPredicate()          {}
-func (TimeRangePredicate[P]) isPredicate()    {}
-func (LabelMatcherPredicate) isPredicate()    {}
-func (LabelFilterPredicate) isPredicate()     {}
-func (MetadataMatcherPredicate) isPredicate() {}
-func (MetadataFilterPredicate) isPredicate()  {}
-func (LogMessageFilterPredicate) isPredicate()   {}
+func (AndPredicate[P]) isPredicate()           {}
+func (OrPredicate[P]) isPredicate()            {}
+func (NotPredicate[P]) isPredicate()           {}
+func (TimeRangePredicate[P]) isPredicate()     {}
+func (LabelMatcherPredicate) isPredicate()     {}
+func (LabelFilterPredicate) isPredicate()      {}
+func (MetadataMatcherPredicate) isPredicate()  {}
+func (MetadataFilterPredicate) isPredicate()   {}
+func (LogMessageFilterPredicate) isPredicate() {}
 
-func (AndPredicate[P]) predicateKind(P)                      {}
-func (OrPredicate[P]) predicateKind(P)                       {}
-func (NotPredicate[P]) predicateKind(P)                      {}
-func (TimeRangePredicate[P]) predicateKind(P)                {}
-func (LabelMatcherPredicate) predicateKind(StreamsPredicate) {}
-func (LabelFilterPredicate) predicateKind(StreamsPredicate)  {}
-func (MetadataMatcherPredicate) predicateKind(LogsPredicate) {}
-func (MetadataFilterPredicate) predicateKind(LogsPredicate)  {}
-func (LogMessageFilterPredicate) predicateKind(LogsPredicate)   {}
+func (AndPredicate[P]) predicateKind(P)                       {}
+func (OrPredicate[P]) predicateKind(P)                        {}
+func (NotPredicate[P]) predicateKind(P)                       {}
+func (TimeRangePredicate[P]) predicateKind(P)                 {}
+func (LabelMatcherPredicate) predicateKind(StreamsPredicate)  {}
+func (LabelFilterPredicate) predicateKind(StreamsPredicate)   {}
+func (MetadataMatcherPredicate) predicateKind(LogsPredicate)  {}
+func (MetadataFilterPredicate) predicateKind(LogsPredicate)   {}
+func (LogMessageFilterPredicate) predicateKind(LogsPredicate) {}

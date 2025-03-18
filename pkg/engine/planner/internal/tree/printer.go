@@ -52,7 +52,7 @@ type Node struct {
 	Children []*Node
 	// Comments, like Children, are child nodes of the node, with the difference
 	// that comments are indented a level deeper than children. A common use-case
-	// for comments are tree-style properies of a node, such as expressions of a
+	// for comments are tree-style properties of a node, such as expressions of a
 	// physical plan node.
 	Comments []*Node
 }
