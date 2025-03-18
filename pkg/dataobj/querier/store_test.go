@@ -818,8 +818,8 @@ func TestShardSections(t *testing.T) {
 }
 
 func TestBuildLogsPredicateFromPipeline(t *testing.T) {
-	var evalPredicate func(p dataobj.Predicate, item string) bool
-	evalPredicate = func(p dataobj.Predicate, line string) bool {
+	var evalPredicate func(p dataobj.Predicate, item []byte) bool
+	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
 		switch p := p.(type) {
 		case dataobj.LogMessageFilterPredicate:
 			return p.Keep(line)
@@ -832,7 +832,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 	}
 
 	// helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData []string, expected []bool) {
+	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
 		t.Helper()
 		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
 
@@ -843,11 +843,11 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 	}
 
 	// Create test data sets
-	testData := []string{
-		"this is an error message",
-		"this is a critical error",
-		"this is a success message",
-		"this is a warning message",
+	testData := [][]byte{
+		[]byte("this is an error message"),
+		[]byte("this is a critical error"),
+		[]byte("this is a success message"),
+		[]byte("this is a warning message"),
 	}
 
 	for _, tt := range []struct {
