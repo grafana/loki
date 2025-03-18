@@ -76,8 +76,6 @@ func NewSyslogTarget(
 			return nil, errors.Wrap(err, "failed to identify character set")
 		}
 		textDecoder = encoder
-	} else {
-		textDecoder = encoding.Nop
 	}
 
 	decoder := textDecoder.NewDecoder()
@@ -258,9 +256,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 
 func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 	for msg := range t.messages {
-		var line string
-		var err error
-		line, err = t.convertToUTF8(msg.message)
+		line, err := t.convertToUTF8(msg.message)
 		if err != nil {
 			level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
 			t.metrics.syslogEncodingFailures.Inc()
