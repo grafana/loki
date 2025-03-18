@@ -59,6 +59,7 @@ func NewGRPCTransportFromAddress(
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientInstrumentInterceptor(metrics.requestLatency),
 		},
+		middleware.NoOpInvalidClusterValidationReporter,
 	)
 	if err != nil {
 		return nil, err

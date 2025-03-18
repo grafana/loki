@@ -17,11 +17,12 @@ draft: false
 **Status:** Draft
 
 **Related issues/PRs:**
-- https://github.com/grafana/loki/issues/13631
-- https://github.com/grafana/loki/issues/15881
-- https://github.com/grafana/loki/issues/11820
-- https://github.com/grafana/loki/issues/11806
-- https://github.com/grafana/loki/issues/7730
+
+- [Issue #15881](https://github.com/grafana/loki/issues/15881)
+- [Issue #13631](https://github.com/grafana/loki/issues/13631)
+- [Issue #11820](https://github.com/grafana/loki/issues/11820)
+- [Issue #11806](https://github.com/grafana/loki/issues/11806)
+- [Issue #7730](https://github.com/grafana/loki/issues/7730)
 - and more ...
 
 **Thread from [mailing list](https://groups.google.com/forum/#!forum/lokiproject):** N/A
@@ -44,7 +45,8 @@ A good example of that would be the "job" label used everywhere:
 
 Usually the job label refer to the task name used to scrape the targets, as per [Prometheus documentation](https://prometheus.io/docs/concepts/jobs_instances/), and
 in k8s, if you are not using `prometheus-operator` with `ServiceMonitor`, it's pretty common to have something like this as a scraping config:
-```
+
+```yaml
         - job_name: "kubernetes-pods" # Can actually be anything you want.
           kubernetes_sd_configs:
             - role: pod
@@ -54,18 +56,20 @@ in k8s, if you are not using `prometheus-operator` with `ServiceMonitor`, it's p
               replacement: '${cluster_label}'
             ...
 ```
+
 which would scrape all pods and yield something like:
+
 ```
 up{job="kubernetes-pods", ...}
 ```
+
 Right off the bat, that makes the dashboards unusable because it's incompatible with what is **hardcoded** in the dashboards and alerts.
 
 ## Goals
 
 Ideally, selectors should default to the values required internally by Grafana but remain configurable so users can tailor them to their setup.
 
-A good example of this is how [kubernetes-monitoring/kubernetes-mixin](kubernetes-monitoring) did it:
-https://github.com/kubernetes-monitoring/kubernetes-mixin/blob/1fa3b6731c93eac6d5b8c3c3b087afab2baabb42/config.libsonnet#L20-L33
+A good example of this is how [kubernetes-monitoring/kubernetes-mixin](https://github.com/kubernetes-monitoring/kubernetes-mixin/blob/1fa3b6731c93eac6d5b8c3c3b087afab2baabb42/config.libsonnet#L20-L33) did it:
 Every possible selector is configurable and thus allow for various setup to properly work.
 
 The structure is already there to support this. It just has not been leveraged properly.

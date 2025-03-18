@@ -12,6 +12,7 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
@@ -74,7 +75,8 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +103,8 @@ func newStorageClientV1(cfg Config, schemaCfg config.SchemaConfig, client *bigta
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

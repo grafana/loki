@@ -7,6 +7,8 @@
 package pmetric
 
 import (
+	"iter"
+
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
@@ -52,6 +54,21 @@ func (es ExemplarSlice) Len() int {
 //	}
 func (es ExemplarSlice) At(i int) Exemplar {
 	return newExemplar(&(*es.orig)[i], es.state)
+}
+
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es ExemplarSlice) All() iter.Seq2[int, Exemplar] {
+	return func(yield func(int, Exemplar) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
