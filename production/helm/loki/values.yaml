@@ -1122,6 +1122,36 @@ gateway:
       - secretName: loki-gateway-tls
         hosts:
           - gateway.loki.example.com
+  # -- Gateway API Routes configuration
+  route:
+    main:
+      # -- Enables or disables the route
+      enabled: false
+
+      # -- Set the route apiVersion, e.g. gateway.networking.k8s.io/v1 or gateway.networking.k8s.io/v1alpha2
+      apiVersion: gateway.networking.k8s.io/v1
+      # -- Set the route kind
+      # Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute
+      kind: HTTPRoute
+
+      annotations: {}
+      labels: {}
+
+      hostnames: []
+      # - my-filter.example.com
+      parentRefs: []
+      # - name: acme-gw
+
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+      ## Filters define the filters that are applied to requests that match this rule.
+      filters: []
+
+      ## Additional custom rules that can be added to the route
+      additionalRules: []
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway

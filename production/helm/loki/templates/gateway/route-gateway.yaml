@@ -1,0 +1,45 @@
+{{- if .Values.gateway.enabled -}}
+{{- range $name, $route := .Values.gateway.route }}
+  {{- if $route.enabled -}}
+---
+apiVersion: {{ $route.apiVersion | default "gateway.networking.k8s.io/v1" }}
+kind: {{ $route.kind | default "HTTPRoute" }}
+metadata:
+  name: {{ include "loki.gatewayFullname" $ }}{{ if ne $name "main" }}-{{ $name }}{{ end }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.gatewayLabels" $ | nindent 4 }}
+    {{- with $route.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $route.hostnames }}
+  hostnames:
+    {{- tpl (toYaml .) $ | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if $route.additionalRules }}
+    {{- tpl (toYaml $route.additionalRules) $ | nindent 4 }}
+    {{- end }}
+    - backendRefs:
+        - name: {{ include "loki.gatewayFullname" $ }}
+          port: {{ $.Values.service.port }}
+      {{- with $route.filters }}
+      filters:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $route.matches }}
+      matches:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
