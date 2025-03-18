@@ -65,7 +65,7 @@ type Frontend struct {
 
 	limits      Limits
 	rateLimiter *limiter.RateLimiter
-	gatherer    StreamUsageGatherer
+	streamUsage StreamUsageGatherer
 	metrics     *metrics
 
 	subservices        *services.Manager
@@ -82,14 +82,14 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
 	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	gatherer := NewRingStreamUsageGatherer(limitsRing, pool, logger)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, pool, logger)
 
 	f := &Frontend{
 		cfg:         cfg,
 		logger:      logger,
 		limits:      limits,
 		rateLimiter: rateLimiter,
-		gatherer:    gatherer,
+		streamUsage: streamUsage,
 		metrics:     newMetrics(reg),
 	}
 
@@ -158,7 +158,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 	for _, stream := range req.Streams {
 		streamHashes = append(streamHashes, stream.StreamHash)
 	}
-	resps, err := f.gatherer.GetStreamUsage(ctx, GetStreamUsageRequest{
+	resps, err := f.streamUsage.GetStreamUsage(ctx, GetStreamUsageRequest{
 		Tenant:       req.Tenant,
 		StreamHashes: streamHashes,
 	})

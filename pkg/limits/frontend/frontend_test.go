@@ -289,7 +289,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				gatherer:    NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 
