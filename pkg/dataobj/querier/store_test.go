@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,13 @@ import (
 type sampleWithLabels struct {
 	Labels  string
 	Samples logproto.Sample
+}
+
+type testItem struct {
+	line       string // For line filters
+	labelName  string // For label filters
+	labelValue string // For label filters
+	desc       string // Description for better error messages
 }
 
 func TestStore_SelectSamples(t *testing.T) {
@@ -787,6 +795,227 @@ func TestShardSections(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+
+func TestBuildPredicate(t *testing.T) {
+	type testItem struct {
+		line       string // For line filters
+		labelName  string // For label filters
+		labelValue string // For label filters
+		desc       string // Description for better error messages
+	}
+
+	var evalPredicate func(p dataobj.Predicate, item testItem) bool
+	evalPredicate = func(p dataobj.Predicate, item testItem) bool {
+		switch p := p.(type) {
+		case dataobj.LogLineFilterPredicate:
+			return p.Keep(item.line)
+		case dataobj.LabelFilterPredicate:
+			return p.Keep(item.labelName, item.labelValue)
+		case dataobj.AndPredicate[dataobj.Predicate]:
+			return evalPredicate(p.Left, item) && evalPredicate(p.Right, item)
+		case dataobj.OrPredicate[dataobj.Predicate]:
+			return evalPredicate(p.Left, item) || evalPredicate(p.Right, item)
+		default:
+			t.Fatalf("unsupported predicate type: %T", p)
+			return false
+		}
+	}
+
+	// Create a helper function to test predicates against sample data
+	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData []testItem, expected []bool) {
+		t.Helper()
+		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
+
+		// Evaluate the predicate for each test item
+		for i, item := range testData {
+			result := evalPredicate(pred, item)
+			require.Equal(t, expected[i], result, "predicate mismatch for item: %+v", item)
+		}
+	}
+
+	// Create test data sets
+	lineTestData := []testItem{
+		{line: "this is an error message", desc: "error message"},
+		{line: "this is a critical error", desc: "critical error"},
+		{line: "this is a success message", desc: "success message"},
+		{line: "this is a warning message", desc: "warning message"},
+	}
+
+	labelTestData := []testItem{
+		{labelName: "status", labelValue: "error", desc: "status=error"},
+		{labelName: "status", labelValue: "critical", desc: "status=critical"},
+		{labelName: "status", labelValue: "success", desc: "status=success"},
+		{labelName: "status", labelValue: "warning", desc: "status=warning"},
+		{labelName: "level", labelValue: "info", desc: "level=info"},
+		{labelName: "level", labelValue: "error", desc: "level=error"},
+	}
+
+	// Combined test data for AND/OR predicates
+	combinedTestData := []testItem{
+		{line: "this is an error message", labelName: "status", labelValue: "error", desc: "error message + status=error"},
+		{line: "this is a critical error", labelName: "status", labelValue: "critical", desc: "critical error + status=critical"},
+		{line: "this is a success message", labelName: "status", labelValue: "success", desc: "success message + status=success"},
+		{line: "this is a warning message", labelName: "status", labelValue: "warning", desc: "warning message + status=warning"},
+	}
+
+	for _, tt := range []struct {
+		name         string
+		query        string
+		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		expectedExpr string // Expected string representation of the expression after predicate extraction
+	}{
+		{
+			name:         "single line match equal filter",
+			query:        `{app="foo"} |= "error"`,
+			expectedExpr: `{app="foo"}`, // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+
+				// Verify the predicate works correctly
+				expected := []bool{true, true, false, false}
+				testPredicate(t, pred, lineTestData, expected)
+			},
+		},
+		{
+			name:         "single line match not equal filter",
+			query:        `{app="foo"} != "error"`,
+			expectedExpr: `{app="foo"}`, // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+
+				// Verify the predicate works correctly
+				expected := []bool{false, false, true, true}
+				testPredicate(t, pred, lineTestData, expected)
+			},
+		},
+		{
+			name:         "multiple line filters",
+			query:        `{app="foo"} |= "error" |= "critical"`,
+			expectedExpr: `{app="foo"}`, // Both line filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+
+				// The result should match logs containing both "error" and "critical"
+				expected := []bool{false, true, false, false}
+				testPredicate(t, pred, lineTestData, expected)
+			},
+		},
+		{
+			name:         "line filter stage after line_format",
+			query:        `{app="foo"} | line_format "{{.message}}" |= "error"`,
+			expectedExpr: `{app="foo"} | line_format "{{.message}}" |= "error"`, // No filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				// Line filters after stages that mutate the line should be ignored
+				require.Nil(t, pred, "expected nil predicate for line filter after parser")
+			},
+		},
+		{
+			name:         "no line filter",
+			query:        `{app="foo"}`,
+			expectedExpr: `{app="foo"}`, // No filters to remove
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.Nil(t, pred, "expected nil predicate for query without line filter")
+			},
+		},
+		{
+			name:         "line filter stage after label_fmt",
+			query:        `{app="foo"} | label_format foo=bar |= "error"`,
+			expectedExpr: `{app="foo"} | label_format foo=bar`, // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+
+				// Verify the predicate works correctly
+				expected := []bool{true, true, false, false}
+				testPredicate(t, pred, lineTestData, expected)
+			},
+		},
+		{
+			name:         "label filter with equals",
+			query:        `{app="foo"} | status="error"`,
+			expectedExpr: `{app="foo"}`, // Label filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
+
+				expected := []bool{true, false, false, false, true, true}
+				testPredicate(t, pred, labelTestData, expected)
+			},
+		},
+		{
+			name:         "label filter with not equals",
+			query:        `{app="foo"} | status!="success"`,
+			expectedExpr: `{app="foo"}`, // Label filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
+
+				expected := []bool{true, true, false, true, true, true}
+				testPredicate(t, pred, labelTestData, expected)
+			},
+		},
+		{
+			name:         "label filter with regex",
+			query:        `{app="foo"} | status=~"err.*"`,
+			expectedExpr: `{app="foo"}`, // Label filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
+
+				expected := []bool{true, false, false, false, true, true}
+				testPredicate(t, pred, labelTestData, expected)
+			},
+		},
+		{
+			name:         "combined line and label filters",
+			query:        `{app="foo"} |= "error" | status="critical"`,
+			expectedExpr: `{app="foo"}`, // Both filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.AndPredicate[dataobj.Predicate]{}, pred, "expected AndPredicate")
+
+				// For combined predicates, we need to test with combined data
+				expected := []bool{false, true, false, false}
+				testPredicate(t, pred, combinedTestData, expected)
+			},
+		},
+		{
+			name:         "label filter after parser",
+			query:        `{app="foo"} | json | status="error"`,
+			expectedExpr: `{app="foo"} | json | status="error"`, // No filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				// Label filters after stages that modify labels should be ignored
+				require.Nil(t, pred, "expected nil predicate for label filter after parser")
+			},
+		},
+		{
+			name:         "mixed filters with some removable",
+			query:        `{app="foo"} |= "error" | json | status="critical" |= "critical"`,
+			expectedExpr: `{app="foo"} | json | status="critical"`,
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.AndPredicate[dataobj.Predicate]{}, pred, "expected AndPredicate")
+				expected := []bool{false, true, false, false}
+				testPredicate(t, pred, combinedTestData, expected)
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			expr, err := syntax.ParseLogSelector(tt.query, false)
+			require.NoError(t, err)
+
+			p, expr, err := buildPredicate(expr)
+			require.NoError(t, err)
+
+			tt.testFunc(t, p)
+
+			// Verify the final expression string directly
+			require.Equal(t, tt.expectedExpr, strings.TrimSpace(expr.String()), "unexpected expression after predicate extraction")
 		})
 	}
 }

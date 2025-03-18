@@ -65,6 +65,12 @@ type (
 		Keep func(name, value string) bool
 	}
 
+	// A LogLineFilterPredicate is a [LogsPredicate] that requires that log line
+	// of the entry to pass the Keep function.
+	LogLineFilterPredicate struct {
+		Keep func(line string) bool
+	}
+
 	// A MetadataMatcherPredicate is a [LogsPredicate] that requires a metadata
 	// key named Key to exist with a value of Value.
 	MetadataMatcherPredicate struct{ Key, Value string }
@@ -92,6 +98,7 @@ func (LabelMatcherPredicate) isPredicate()    {}
 func (LabelFilterPredicate) isPredicate()     {}
 func (MetadataMatcherPredicate) isPredicate() {}
 func (MetadataFilterPredicate) isPredicate()  {}
+func (LogLineFilterPredicate) isPredicate()   {}
 
 func (AndPredicate[P]) predicateKind(P)                      {}
 func (OrPredicate[P]) predicateKind(P)                       {}
@@ -101,3 +108,4 @@ func (LabelMatcherPredicate) predicateKind(StreamsPredicate) {}
 func (LabelFilterPredicate) predicateKind(StreamsPredicate)  {}
 func (MetadataMatcherPredicate) predicateKind(LogsPredicate) {}
 func (MetadataFilterPredicate) predicateKind(LogsPredicate)  {}
+func (LogLineFilterPredicate) predicateKind(LogsPredicate)   {}

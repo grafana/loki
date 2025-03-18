@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -258,6 +260,169 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 	}
 
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
+}
+
+func buildPredicate(expr syntax.LogSelectorExpr) (dataobj.Predicate, syntax.LogSelectorExpr, error) {
+	var predicate dataobj.Predicate
+
+	// Check if the expression is a PipelineExpr, other implementations use a NoopPipeline
+	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
+	if !ok {
+		return predicate, expr, nil
+	}
+
+	// Keep track of whether we've seen stages that modify lines or labels
+	var seenLineFmt bool
+	var seenLabelFmt bool
+
+	// Iterate through the stages
+	var remainingStages []syntax.StageExpr
+	for _, stage := range pipelineExpr.MultiStages {
+		switch s := stage.(type) {
+		// Stages that modify the log line
+		case *syntax.LineFmtExpr:
+			seenLineFmt = true
+			remainingStages = append(remainingStages, s)
+		// Stages that modify labels
+		case *syntax.LabelFmtExpr, *syntax.LineParserExpr, *syntax.LogfmtParserExpr,
+			*syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+			seenLabelFmt = true
+			remainingStages = append(remainingStages, s)
+
+		// Label filter stages
+		case *syntax.LabelFilterExpr:
+			if seenLabelFmt {
+				// If we've seen a label format stage, we can't apply this filter as a predicate
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Convert the label filter to a predicate
+			lf := createLabelFilterPredicate(s.LabelFilterer)
+			if lf == nil {
+				// If we couldn't convert it, keep it in the stages
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Add the predicate
+			if predicate == nil {
+				predicate = lf
+			} else {
+				predicate = dataobj.AndPredicate[dataobj.Predicate]{
+					Left:  predicate,
+					Right: lf,
+				}
+			}
+		// Line filter stages
+		case *syntax.LineFilterExpr:
+			if seenLineFmt {
+				// If we've seen a line format stage, we can't apply this filter as a predicate
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Convert the line filter to a predicate
+			f, err := s.Filter()
+			if err != nil {
+				// If there's an error, keep it in the stages
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Create a line filter predicate
+			lf := dataobj.LogLineFilterPredicate{
+				Keep: func(line string) bool {
+					return f.Filter(unsafeGetBytes(line))
+				},
+			}
+
+			// Add the predicate
+			if predicate == nil {
+				predicate = lf
+			} else {
+				predicate = dataobj.AndPredicate[dataobj.Predicate]{
+					Left:  predicate,
+					Right: lf,
+				}
+			}
+
+		// Any other stage types
+		default:
+			remainingStages = append(remainingStages, s)
+		}
+	}
+
+	pipelineExpr.MultiStages = remainingStages
+
+	if len(pipelineExpr.MultiStages) == 0 {
+		return predicate, pipelineExpr.Left, nil
+	}
+
+	return predicate, pipelineExpr, nil
+}
+
+// createLabelFilterPredicate creates a dataobj.LogsPredicate from a log.LabelFilterer.
+func createLabelFilterPredicate(lf logqllog.LabelFilterer) dataobj.Predicate {
+	if lf == nil {
+		return nil
+	}
+
+	switch lf := lf.(type) {
+	case *logqllog.StringLabelFilter:
+		return dataobj.LabelFilterPredicate{
+			Name: lf.Name,
+			Keep: func(name, value string) bool {
+				if name != lf.Name {
+					return true // Only filter the specified label
+				}
+				return lf.Matcher.Matches(value)
+			},
+		}
+	case *logqllog.LineFilterLabelFilter:
+		return dataobj.LabelFilterPredicate{
+			Name: lf.Name,
+			Keep: func(name, value string) bool {
+				if name != lf.Name {
+					return true // Only filter the specified label
+				}
+				return lf.Filter.Filter(unsafeGetBytes(value))
+			},
+		}
+	case *logqllog.BinaryLabelFilter:
+		// Handle binary label filter (AND/OR)
+		// Recursively create predicates for left and right sides
+		leftPred := createLabelFilterPredicate(lf.Left)
+		rightPred := createLabelFilterPredicate(lf.Right)
+
+		if leftPred == nil && rightPred == nil {
+			return nil
+		} else if leftPred == nil {
+			return rightPred
+		} else if rightPred == nil {
+			return leftPred
+		}
+
+		if lf.And {
+			return dataobj.AndPredicate[dataobj.Predicate]{
+				Left:  leftPred,
+				Right: rightPred,
+			}
+		} else {
+			return dataobj.OrPredicate[dataobj.Predicate]{
+				Left:  leftPred,
+				Right: rightPred,
+			}
+		}
+	default:
+		// Unsupported label filter type for this iteration
+		return nil
+	}
+}
+
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
