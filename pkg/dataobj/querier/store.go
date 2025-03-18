@@ -270,92 +270,6 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredicate, syntax.SampleExpr) {
-	var (
-		predicate dataobj.LogsPredicate
-		skip      bool
-	)
-	expr.Walk(func(e syntax.Expr) {
-		switch e := e.(type) {
-		case *syntax.BinOpExpr:
-			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
-			skip = true
-			return
-		case *syntax.RangeAggregationExpr:
-			if skip {
-				return
-			}
-
-			predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
-		}
-	})
-
-	return predicate, expr
-}
-
-func buildLogsPredicateFromPipeline(expr syntax.LogSelectorExpr) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
-	// Check if expr is a PipelineExpr, other implementations have no stages
-	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
-	if !ok {
-		return nil, expr
-	}
-
-	var (
-		predicate       dataobj.LogsPredicate
-		remainingStages = make([]syntax.StageExpr, 0, len(pipelineExpr.MultiStages))
-		appendPredicate = func(p dataobj.LogsPredicate) {
-			if predicate == nil {
-				predicate = p
-			} else {
-				predicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
-					Left:  predicate,
-					Right: p,
-				}
-			}
-		}
-	)
-
-Outer:
-	for i, stage := range pipelineExpr.MultiStages {
-		switch s := stage.(type) {
-		case *syntax.LineFmtExpr:
-			// modifies the log line, break early as we cannot apply any more predicates
-			remainingStages = append(remainingStages, pipelineExpr.MultiStages[i:]...)
-			break Outer
-
-		case *syntax.LineFilterExpr:
-			// Convert the line filter to a predicate
-			f, err := s.Filter()
-			if err != nil {
-				remainingStages = append(remainingStages, s)
-				continue
-			}
-
-			// Create a line filter predicate
-			appendPredicate(dataobj.LogMessageFilterPredicate{
-				Keep: func(line string) bool {
-					return f.Filter(unsafeGetBytes(line))
-				},
-			})
-
-		default:
-			remainingStages = append(remainingStages, s)
-		}
-	}
-
-	if len(remainingStages) == 0 {
-		return predicate, pipelineExpr.Left // return MatchersExpr
-	}
-	pipelineExpr.MultiStages = remainingStages
-
-	return predicate, pipelineExpr
-}
-
-// we may not need this once https://github.com/grafana/loki/pull/16747/ is merged
-func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
-
 func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
 	shardedObjects, err := shardObjects(ctx, objects, shard, logger)
 	if err != nil {
@@ -736,4 +650,90 @@ func parseShards(shards []string) (logql.Shard, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", parsed[0].Variant())
 	}
 	return parsed[0], nil
+}
+
+func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredicate, syntax.SampleExpr) {
+	var (
+		predicate dataobj.LogsPredicate
+		skip      bool
+	)
+	expr.Walk(func(e syntax.Expr) {
+		switch e := e.(type) {
+		case *syntax.BinOpExpr:
+			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
+			skip = true
+			return
+		case *syntax.RangeAggregationExpr:
+			if skip {
+				return
+			}
+
+			predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
+		}
+	})
+
+	return predicate, expr
+}
+
+func buildLogsPredicateFromPipeline(expr syntax.LogSelectorExpr) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
+	// Check if expr is a PipelineExpr, other implementations have no stages
+	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
+	if !ok {
+		return nil, expr
+	}
+
+	var (
+		predicate       dataobj.LogsPredicate
+		remainingStages = make([]syntax.StageExpr, 0, len(pipelineExpr.MultiStages))
+		appendPredicate = func(p dataobj.LogsPredicate) {
+			if predicate == nil {
+				predicate = p
+			} else {
+				predicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+					Left:  predicate,
+					Right: p,
+				}
+			}
+		}
+	)
+
+Outer:
+	for i, stage := range pipelineExpr.MultiStages {
+		switch s := stage.(type) {
+		case *syntax.LineFmtExpr:
+			// modifies the log line, break early as we cannot apply any more predicates
+			remainingStages = append(remainingStages, pipelineExpr.MultiStages[i:]...)
+			break Outer
+
+		case *syntax.LineFilterExpr:
+			// Convert the line filter to a predicate
+			f, err := s.Filter()
+			if err != nil {
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Create a line filter predicate
+			appendPredicate(dataobj.LogMessageFilterPredicate{
+				Keep: func(line string) bool {
+					return f.Filter(unsafeGetBytes(line))
+				},
+			})
+
+		default:
+			remainingStages = append(remainingStages, s)
+		}
+	}
+
+	if len(remainingStages) == 0 {
+		return predicate, pipelineExpr.Left // return MatchersExpr
+	}
+	pipelineExpr.MultiStages = remainingStages
+
+	return predicate, pipelineExpr
+}
+
+// we may not need this once https://github.com/grafana/loki/pull/16747/ is merged
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
