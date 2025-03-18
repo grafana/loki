@@ -68,7 +68,7 @@ type (
 	// A LogMessageFilterPredicate is a [LogsPredicate] that requires the log message
 	// of the entry to pass a Keep function.
 	LogMessageFilterPredicate struct {
-		Keep func(line string) bool
+		Keep func(line []byte) bool
 	}
 
 	// A MetadataMatcherPredicate is a [LogsPredicate] that requires a metadata

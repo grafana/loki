@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -715,8 +714,8 @@ Outer:
 
 			// Create a line filter predicate
 			appendPredicate(dataobj.LogMessageFilterPredicate{
-				Keep: func(line string) bool {
-					return f.Filter(unsafeGetBytes(line))
+				Keep: func(line []byte) bool {
+					return f.Filter(line)
 				},
 			})
 
@@ -731,9 +730,4 @@ Outer:
 	pipelineExpr.MultiStages = remainingStages
 
 	return predicate, pipelineExpr
-}
-
-// we may not need this once https://github.com/grafana/loki/pull/16747/ is merged
-func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

@@ -307,7 +307,12 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				return p.Keep(valueToString(value))
+				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+					// To handle older dataobjs that still use string type for message column. This can be removed in future.
+					return p.Keep([]byte(value.String()))
+				}
+
+				return p.Keep(value.ByteArray())
 			},
 		}
 
