@@ -2,10 +2,6 @@ package syslog
 
 import (
 	"fmt"
-	"github.com/efficientgo/core/errors"
-	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/ianaindex"
-	"golang.org/x/text/transform"
 	"net"
 	"strings"
 	"time"
@@ -15,9 +11,13 @@ import (
 	"github.com/leodido/go-syslog/v4"
 	"github.com/leodido/go-syslog/v4/rfc3164"
 	"github.com/leodido/go-syslog/v4/rfc5424"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/transform"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
@@ -61,22 +61,26 @@ func NewSyslogTarget(
 	handler api.EntryHandler,
 	relabel []*relabel.Config,
 	config *scrapeconfig.SyslogTargetConfig,
-	encodingFormat string,
+	textEncoding string,
 ) (*SyslogTarget, error) {
 
 	if config.SyslogFormat == "" {
 		config.SyslogFormat = "rfc5424"
 	}
 
-	var decoder *encoding.Decoder
-	if encodingFormat != "" {
-		level.Debug(logger).Log("msg", "decompressor will decode messages", "from", encodingFormat, "to", "UTF8")
-		encoder, err := ianaindex.IANA.Encoding(encodingFormat)
+	var textDecoder = encoding.Nop
+	if textEncoding != "" {
+		level.Debug(logger).Log("msg", "converting message text encoding", "from", textEncoding, "to", "UTF8")
+		encoder, err := ianaindex.IANA.Encoding(textEncoding)
 		if err != nil {
-			return nil, errors.Wrap(err, "error doing IANA encoding")
+			return nil, errors.Wrap(err, "failed to identify character set")
 		}
-		decoder = encoder.NewDecoder()
+		textDecoder = encoder
+	} else {
+		textDecoder = encoding.Nop
 	}
+
+	decoder := textDecoder.NewDecoder()
 
 	t := &SyslogTarget{
 		metrics:       metrics,
@@ -255,16 +259,12 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 func (t *SyslogTarget) messageSender(entries chan<- api.Entry) {
 	for msg := range t.messages {
 		var line string
-		if t.decoder != nil {
-			var err error
-			line, err = t.convertToUTF8(msg.message)
-			if err != nil {
-				level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
-				t.metrics.syslogEncodingFailures.Inc()
-				line = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
-			}
-		} else {
-			line = msg.message
+		var err error
+		line, err = t.convertToUTF8(msg.message)
+		if err != nil {
+			level.Debug(t.logger).Log("msg", "failed to convert encoding", "error", err)
+			t.metrics.syslogEncodingFailures.Inc()
+			line = fmt.Sprintf("the requested encoding conversion for this line failed in Promtail/Grafana Agent: %s", err.Error())
 		}
 
 		entries <- api.Entry{
