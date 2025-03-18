@@ -21,8 +21,6 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-type getStreamUsageFunc func(context.Context, logproto.IngestLimitsClient, *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error)
-
 // RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
 // limits instances.
 type RingStreamUsageGatherer struct {
@@ -45,25 +43,19 @@ func (g *RingStreamUsageGatherer) GetStreamUsage(ctx context.Context, r GetStrea
 	if len(r.StreamHashes) == 0 {
 		return nil, nil
 	}
-	return g.forAllBackends(ctx, r, func(
-		ctx context.Context,
-		client logproto.IngestLimitsClient,
-		r *logproto.GetStreamUsageRequest,
-	) (*logproto.GetStreamUsageResponse, error) {
-		return client.GetStreamUsage(ctx, r)
-	})
+	return g.forAllBackends(ctx, r)
 }
 
 // TODO(grobinson): Need to rename this to something more accurate.
-func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStreamUsageRequest, f getStreamUsageFunc) ([]GetStreamUsageResponse, error) {
+func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
 	replicaSet, err := g.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
-	return g.forGivenReplicaSet(ctx, replicaSet, r, f)
+	return g.forGivenReplicaSet(ctx, replicaSet, r)
 }
 
-func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, r GetStreamUsageRequest, f getStreamUsageFunc) ([]GetStreamUsageResponse, error) {
+func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
 	partitions, err := g.perReplicaSetPartitions(ctx, replicaSet)
 	if err != nil {
 		return nil, err
@@ -85,7 +77,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, replic
 				Partitions:   partitions[instance.Addr],
 			}
 
-			resp, err := f(ctx, client.(logproto.IngestLimitsClient), protoReq)
+			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
 				return err
 			}
