@@ -77,12 +77,19 @@ type Frontend struct {
 
 // New returns a new Frontend.
 func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
-	var servs []services.Service
+	// Set up a client pool for the limits service. The frontend will use this
+	// to make RPCs that get the current stream usage to checks per-tenant limits.
+	clientPoolFactory := limits_client.NewPoolFactory(cfg.ClientConfig)
+	clientPool := limits_client.NewPool(
+		ringName,
+		cfg.ClientConfig.PoolConfig,
+		limitsRing,
+		clientPoolFactory,
+		logger,
+	)
 
-	factory := limits_client.NewPoolFactory(cfg.ClientConfig)
-	pool := limits_client.NewPool(ringName, cfg.ClientConfig.PoolConfig, limitsRing, factory, logger)
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, pool, logger)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger)
 
 	f := &Frontend{
 		cfg:         cfg,
@@ -93,17 +100,16 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 		metrics:     newMetrics(reg),
 	}
 
-	var err error
-	f.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
+	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
+	f.lifecycler = lifecycler
 	// Watch the lifecycler
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
 
-	servs = append(servs, f.lifecycler)
-	servs = append(servs, pool)
+	servs := []services.Service{lifecycler, clientPool}
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
 		return nil, err
