@@ -3,11 +3,12 @@ package syslog
 import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // SyslogTargetManager manages a series of SyslogTargets.
