@@ -91,11 +91,11 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	uniqueLabels := map[string]bool{}
+	uniqueLabels := map[string]struct{}{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
 		if _, ok := uniqueLabels[label.Name]; !ok {
-			uniqueLabels[label.Name] = true
+			uniqueLabels[label.Name] = struct{}{}
 		}
 	}, matchers...)
 
@@ -103,11 +103,11 @@ func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matc
 }
 
 func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	values := map[string]bool{}
+	values := map[string]struct{}{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
 		if _, ok := values[label.Value]; !ok {
-			values[label.Value] = true
+			values[label.Value] = struct{}{}
 		}
 	}, matchers...)
 
