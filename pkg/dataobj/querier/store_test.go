@@ -788,7 +788,7 @@ func TestShardSections(t *testing.T) {
 
 				// Verify each section is assigned exactly once
 				for metaIdx, meta := range tt.metadatas {
-					for section := 0; section < meta.LogsSections; section++ {
+					for section := range meta.LogsSections {
 						key := sectionKey{metaIdx: metaIdx, section: section}
 						count := sectionCounts[key]
 						require.Equal(t, 1, count, "section %d in metadata %d was assigned %d times", section, metaIdx, count)
@@ -799,66 +799,37 @@ func TestShardSections(t *testing.T) {
 	}
 }
 
-func TestBuildPredicate(t *testing.T) {
-	type testItem struct {
-		line       string // For line filters
-		labelName  string // For label filters
-		labelValue string // For label filters
-		desc       string // Description for better error messages
-	}
-
-	var evalPredicate func(p dataobj.Predicate, item testItem) bool
-	evalPredicate = func(p dataobj.Predicate, item testItem) bool {
+func TestBuildLogsPredicateFromPipeline(t *testing.T) {
+	var evalPredicate func(p dataobj.Predicate, item string) bool
+	evalPredicate = func(p dataobj.Predicate, line string) bool {
 		switch p := p.(type) {
-		case dataobj.LogLineFilterPredicate:
-			return p.Keep(item.line)
-		case dataobj.LabelFilterPredicate:
-			return p.Keep(item.labelName, item.labelValue)
-		case dataobj.AndPredicate[dataobj.Predicate]:
-			return evalPredicate(p.Left, item) && evalPredicate(p.Right, item)
-		case dataobj.OrPredicate[dataobj.Predicate]:
-			return evalPredicate(p.Left, item) || evalPredicate(p.Right, item)
+		case dataobj.LogMessageFilterPredicate:
+			return p.Keep(line)
+		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
 		default:
 			t.Fatalf("unsupported predicate type: %T", p)
 			return false
 		}
 	}
 
-	// Create a helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData []testItem, expected []bool) {
+	// helper function to test predicates against sample data
+	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData []string, expected []bool) {
 		t.Helper()
 		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
 
-		// Evaluate the predicate for each test item
-		for i, item := range testData {
-			result := evalPredicate(pred, item)
-			require.Equal(t, expected[i], result, "predicate mismatch for item: %+v", item)
+		for i, line := range testData {
+			result := evalPredicate(pred, line)
+			require.Equal(t, expected[i], result, "predicate mismatch for line: %s", line)
 		}
 	}
 
 	// Create test data sets
-	lineTestData := []testItem{
-		{line: "this is an error message", desc: "error message"},
-		{line: "this is a critical error", desc: "critical error"},
-		{line: "this is a success message", desc: "success message"},
-		{line: "this is a warning message", desc: "warning message"},
-	}
-
-	labelTestData := []testItem{
-		{labelName: "status", labelValue: "error", desc: "status=error"},
-		{labelName: "status", labelValue: "critical", desc: "status=critical"},
-		{labelName: "status", labelValue: "success", desc: "status=success"},
-		{labelName: "status", labelValue: "warning", desc: "status=warning"},
-		{labelName: "level", labelValue: "info", desc: "level=info"},
-		{labelName: "level", labelValue: "error", desc: "level=error"},
-	}
-
-	// Combined test data for AND/OR predicates
-	combinedTestData := []testItem{
-		{line: "this is an error message", labelName: "status", labelValue: "error", desc: "error message + status=error"},
-		{line: "this is a critical error", labelName: "status", labelValue: "critical", desc: "critical error + status=critical"},
-		{line: "this is a success message", labelName: "status", labelValue: "success", desc: "success message + status=success"},
-		{line: "this is a warning message", labelName: "status", labelValue: "warning", desc: "warning message + status=warning"},
+	testData := []string{
+		"this is an error message",
+		"this is a critical error",
+		"this is a success message",
+		"this is a warning message",
 	}
 
 	for _, tt := range []struct {
@@ -873,11 +844,11 @@ func TestBuildPredicate(t *testing.T) {
 			expectedExpr: `{app="foo"}`, // Line filter should be removed
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
-				testPredicate(t, pred, lineTestData, expected)
+				testPredicate(t, pred, testData, expected)
 			},
 		},
 		{
@@ -886,11 +857,11 @@ func TestBuildPredicate(t *testing.T) {
 			expectedExpr: `{app="foo"}`, // Line filter should be removed
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{false, false, true, true}
-				testPredicate(t, pred, lineTestData, expected)
+				testPredicate(t, pred, testData, expected)
 			},
 		},
 		{
@@ -899,10 +870,13 @@ func TestBuildPredicate(t *testing.T) {
 			expectedExpr: `{app="foo"}`, // Both line filters should be removed
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.NotNil(t, pred)
+				// we might expect AND predicate here, but the original expression
+				// only contains a single Filterer stage with chained OR filters
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
 
 				// The result should match logs containing both "error" and "critical"
 				expected := []bool{false, true, false, false}
-				testPredicate(t, pred, lineTestData, expected)
+				testPredicate(t, pred, testData, expected)
 			},
 		},
 		{
@@ -916,8 +890,8 @@ func TestBuildPredicate(t *testing.T) {
 		},
 		{
 			name:         "no line filter",
-			query:        `{app="foo"}`,
-			expectedExpr: `{app="foo"}`, // No filters to remove
+			query:        `{app="foo"} | json | bar>100`,
+			expectedExpr: `{app="foo"} | json | bar>100`, // No filters to remove
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.Nil(t, pred, "expected nil predicate for query without line filter")
 			},
@@ -928,69 +902,11 @@ func TestBuildPredicate(t *testing.T) {
 			expectedExpr: `{app="foo"} | label_format foo=bar`, // Line filter should be removed
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogLineFilterPredicate{}, pred, "expected LogLineFilterPredicate")
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
-				testPredicate(t, pred, lineTestData, expected)
-			},
-		},
-		{
-			name:         "label filter with equals",
-			query:        `{app="foo"} | status="error"`,
-			expectedExpr: `{app="foo"}`, // Label filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
-
-				expected := []bool{true, false, false, false, true, true}
-				testPredicate(t, pred, labelTestData, expected)
-			},
-		},
-		{
-			name:         "label filter with not equals",
-			query:        `{app="foo"} | status!="success"`,
-			expectedExpr: `{app="foo"}`, // Label filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
-
-				expected := []bool{true, true, false, true, true, true}
-				testPredicate(t, pred, labelTestData, expected)
-			},
-		},
-		{
-			name:         "label filter with regex",
-			query:        `{app="foo"} | status=~"err.*"`,
-			expectedExpr: `{app="foo"}`, // Label filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LabelFilterPredicate{}, pred, "expected LabelFilterPredicate")
-
-				expected := []bool{true, false, false, false, true, true}
-				testPredicate(t, pred, labelTestData, expected)
-			},
-		},
-		{
-			name:         "combined line and label filters",
-			query:        `{app="foo"} |= "error" | status="critical"`,
-			expectedExpr: `{app="foo"}`, // Both filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.Predicate]{}, pred, "expected AndPredicate")
-
-				// For combined predicates, we need to test with combined data
-				expected := []bool{false, true, false, false}
-				testPredicate(t, pred, combinedTestData, expected)
-			},
-		},
-		{
-			name:         "label filter after parser",
-			query:        `{app="foo"} | json | status="error"`,
-			expectedExpr: `{app="foo"} | json | status="error"`, // No filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				// Label filters after stages that modify labels should be ignored
-				require.Nil(t, pred, "expected nil predicate for label filter after parser")
+				testPredicate(t, pred, testData, expected)
 			},
 		},
 		{
@@ -999,9 +915,9 @@ func TestBuildPredicate(t *testing.T) {
 			expectedExpr: `{app="foo"} | json | status="critical"`,
 			testFunc: func(t *testing.T, pred dataobj.Predicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.Predicate]{}, pred, "expected AndPredicate")
+				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
 				expected := []bool{false, true, false, false}
-				testPredicate(t, pred, combinedTestData, expected)
+				testPredicate(t, pred, testData, expected)
 			},
 		},
 	} {
@@ -1009,13 +925,71 @@ func TestBuildPredicate(t *testing.T) {
 			expr, err := syntax.ParseLogSelector(tt.query, false)
 			require.NoError(t, err)
 
-			p, expr, err := buildPredicate(expr)
+			p, expr := buildLogsPredicateFromPipeline(expr)
 			require.NoError(t, err)
 
 			tt.testFunc(t, p)
 
-			// Verify the final expression string directly
-			require.Equal(t, tt.expectedExpr, strings.TrimSpace(expr.String()), "unexpected expression after predicate extraction")
+			// Verify the updated expression
+			require.Equal(t, tt.expectedExpr, strings.TrimSpace(expr.String()), "incorrect expression after predicate extraction")
+		})
+	}
+}
+
+func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		query        string
+		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		expectedExpr string // Expected string representation of the expression after predicate extraction
+	}{
+		{
+			name:         "range aggregation with line filter",
+			query:        `count_over_time({app="foo"} |= "error" [5m])`,
+			expectedExpr: `count_over_time({app="foo"}[5m])`,
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+		{
+			name:         "vector aggregation with line filter",
+			query:        `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`,
+			expectedExpr: `sum by (app)(count_over_time({app="foo"}[5m]))`,
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+		{
+			name:         "binary expressions are not modified",
+			query:        `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`,
+			expectedExpr: `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`,
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.Nil(t, p)
+			},
+		},
+		{
+			name:         "label replace with line filter",
+			query:        `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`,
+			expectedExpr: `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`,
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			expr, err := syntax.ParseSampleExpr(tt.query)
+			require.NoError(t, err)
+
+			p, expr := buildLogsPredicateFromSampleExpr(expr)
+			require.NoError(t, err)
+
+			tt.testFunc(t, p)
+
+			// Verify the updated expression
+			require.Equal(t, tt.expectedExpr, strings.TrimSpace(expr.String()), "incorrect expression after predicate extraction")
 		})
 	}
 }

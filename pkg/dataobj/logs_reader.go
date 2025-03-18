@@ -296,7 +296,7 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		}
 		return convertLogsTimePredicate(p, timeColumn)
 
-	case LogLineFilterPredicate:
+	case LogMessageFilterPredicate:
 		messageColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
 			return desc.Type == logsmd.COLUMN_TYPE_MESSAGE
 		})
