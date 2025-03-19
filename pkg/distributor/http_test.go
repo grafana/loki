@@ -80,7 +80,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError)
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, false)
 
 		// unprocessable code because there are no streams in the request.
 		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
@@ -107,7 +107,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		parser.parseErr = push.ErrAllLogsFiltered
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError)
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, false)
 
 		require.True(t, called)
 		require.Equal(t, http.StatusNoContent, rec.Code)
@@ -130,6 +130,7 @@ func (p *fakeParser) parseRequest(
 	_ push.StreamResolver,
 	_ bool,
 	_ log.Logger,
+	_ bool,
 ) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
 }
