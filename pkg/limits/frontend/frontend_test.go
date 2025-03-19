@@ -280,6 +280,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		maxGlobalStreams: 5,
 		ingestionRate:    100,
 		expected: []*logproto.RejectedStream{
+			{StreamHash: 0x6, Reason: ReasonExceedsMaxStreams},
+			{StreamHash: 0x7, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 0x6, Reason: ReasonExceedsRateLimit},
 			{StreamHash: 0x7, Reason: ReasonExceedsRateLimit},
 		},
