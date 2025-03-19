@@ -58,6 +58,8 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	var rows int
 
 	tree := loser.New(tableSequences, maxValue, tableSequenceValue, rowResultLess, tableSequenceStop)
+	defer tree.Close()
+
 	for tree.Next() {
 		seq := tree.Winner()
 
