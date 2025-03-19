@@ -25,6 +25,8 @@ var metastoreBuilderCfg = dataobj.BuilderConfig{
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
 	TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
+
+	SectionStripeMergeLimit: 2,
 }
 
 type Updater struct {
