@@ -37,7 +37,7 @@ func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 }
 
 func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
-	return tree.NewNode("MakeTable", "", tree.Property{Key: "name", Values: []any{ast.Name}})
+	return tree.NewNode("MakeTable", "", tree.Property{Key: "name", Values: []any{ast.TableName}})
 }
 
 func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {

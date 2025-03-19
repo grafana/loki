@@ -63,7 +63,7 @@ func (p Plan) Type() PlanType {
 func (p Plan) Schema() schema.Schema {
 	switch p.ty {
 	case PlanTypeMakeTable:
-		return p.val.(*MakeTable).Schema()
+		return *(p.val.(*MakeTable).Schema())
 	case PlanTypeSelect:
 		return p.val.(*Select).Schema()
 	case PlanTypeLimit:
