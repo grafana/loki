@@ -267,7 +267,7 @@ func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, err
 // The Limit node references its input plan as a dependency.
 func (b *ssaBuilder) processLimitPlan(plan *Limit) (int, error) {
 	// Process the input plan
-	inputID, err := b.processPlan(plan.Child())
+	inputID, err := b.processPlan(plan.Input)
 	if err != nil {
 		return 0, fmt.Errorf("failed to process limit input plan: %w", err)
 	}
@@ -276,11 +276,11 @@ func (b *ssaBuilder) processLimitPlan(plan *Limit) (int, error) {
 	tuples := []nodeProperty{
 		{
 			Key:   "Skip",
-			Value: fmt.Sprintf("%d", plan.Skip()),
+			Value: fmt.Sprintf("%d", plan.Skip),
 		},
 		{
 			Key:   "Fetch",
-			Value: fmt.Sprintf("%d", plan.Fetch()),
+			Value: fmt.Sprintf("%d", plan.Fetch),
 		},
 	}
 

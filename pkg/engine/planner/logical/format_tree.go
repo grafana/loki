@@ -49,10 +49,10 @@ func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
 
 func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
 	node := tree.NewNode("Limit", "",
-		tree.NewProperty("offset", false, ast.Skip()),
-		tree.NewProperty("fetch", false, ast.Fetch()),
+		tree.NewProperty("offset", false, ast.Skip),
+		tree.NewProperty("fetch", false, ast.Fetch),
 	)
-	node.Children = append(node.Children, t.convert(ast.Child()))
+	node.Children = append(node.Children, t.convert(ast.Input))
 	return node
 }
 

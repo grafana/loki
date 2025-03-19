@@ -12,14 +12,16 @@ import (
 // after filtering, projection, and aggregation. It's useful for pagination
 // and for reducing the amount of data returned to the client.
 type Limit struct {
-	// input is the child plan node providing data to limit
-	input Plan
-	// skip is the number of rows to skip before returning results (OFFSET)
-	// A value of 0 means no rows are skipped
-	skip uint64
-	// fetch is the maximum number of rows to return (LIMIT)
-	// A value of 0 means all rows are returned (after applying skip)
-	fetch uint64
+	// Input is the child plan node which provides the data to limit.
+	Input Plan
+
+	// Skip is the number of rows to skip before returning results. A value of 0
+	// means no rows are skipped.
+	Skip uint64
+
+	// Fetch is the maximum number of rows to return. A value of 0 means all rows
+	// are returned (after applying Skip).
+	Fetch uint64
 }
 
 // Special values for skip and fetch
@@ -47,9 +49,9 @@ const (
 //	limit := newLimit(inputPlan, 100, 0)
 func newLimit(input Plan, skip uint64, fetch uint64) *Limit {
 	return &Limit{
-		input: input,
-		skip:  skip,
-		fetch: fetch,
+		Input: input,
+		Skip:  skip,
+		Fetch: fetch,
 	}
 }
 
@@ -57,29 +59,10 @@ func newLimit(input Plan, skip uint64, fetch uint64) *Limit {
 // The schema is the same as the input plan's schema since limiting
 // only affects the number of rows, not their structure.
 func (l *Limit) Schema() schema.Schema {
-	return l.input.Schema()
+	return l.Input.Schema()
 }
 
 // Type returns the plan type for this node.
 func (l *Limit) Type() PlanType {
 	return PlanTypeLimit
-}
-
-// Child returns the input plan.
-func (l *Limit) Child() Plan {
-	return l.input
-}
-
-// Skip returns the number of rows to skip.
-// This is used for implementing the OFFSET clause in SQL.
-// A value of 0 means no rows are skipped.
-func (l *Limit) Skip() uint64 {
-	return l.skip
-}
-
-// Fetch returns the maximum number of rows to return.
-// This is used for implementing the LIMIT clause in SQL.
-// A value of 0 means all rows are returned (after applying skip).
-func (l *Limit) Fetch() uint64 {
-	return l.fetch
 }
