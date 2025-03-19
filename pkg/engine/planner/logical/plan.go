@@ -15,11 +15,11 @@ import (
 type PlanType int
 
 const (
-	PlanTypeInvalid PlanType = iota // Invalid or uninitialized plan
-	PlanTypeTable                   // Represents a table scan operation
-	PlanTypeFilter                  // Represents a filter operation
-	PlanTypeLimit                   // Represents a limit operation
-	PlanTypeSort                    // Represents a sort operation
+	PlanTypeInvalid   PlanType = iota // Invalid or uninitialized plan
+	PlanTypeMakeTable                 // Represents an operation to make a table relation.
+	PlanTypeFilter                    // Represents a filter operation
+	PlanTypeLimit                     // Represents a limit operation
+	PlanTypeSort                      // Represents a sort operation
 )
 
 // String returns a string representation of the plan type.
@@ -28,8 +28,8 @@ func (t PlanType) String() string {
 	switch t {
 	case PlanTypeInvalid:
 		return "Invalid"
-	case PlanTypeTable:
-		return "Table"
+	case PlanTypeMakeTable:
+		return "MakeTable"
 	case PlanTypeFilter:
 		return "Filter"
 	case PlanTypeLimit:
@@ -62,7 +62,7 @@ func (p Plan) Type() PlanType {
 // It delegates to the appropriate concrete plan type based on the plan type.
 func (p Plan) Schema() schema.Schema {
 	switch p.ty {
-	case PlanTypeTable:
+	case PlanTypeMakeTable:
 		return p.val.(*MakeTable).Schema()
 	case PlanTypeFilter:
 		return p.val.(*Filter).Schema()
@@ -75,11 +75,11 @@ func (p Plan) Schema() schema.Schema {
 	}
 }
 
-// Table returns the concrete table plan if this is a table plan.
-// Panics if this is not a table plan.
-func (p Plan) Table() *MakeTable {
-	if p.ty != PlanTypeTable {
-		panic(fmt.Sprintf("not a table plan: %v", p.ty))
+// MakeTable returns the concrete table plan if this is a table plan.
+// Panics if this is not a maketable plan.
+func (p Plan) MakeTable() *MakeTable {
+	if p.ty != PlanTypeMakeTable {
+		panic(fmt.Sprintf("not a maketable plan: %v", p.ty))
 	}
 	return p.val.(*MakeTable)
 }
@@ -120,11 +120,10 @@ func newPlan(ty PlanType, val any) Plan {
 	}
 }
 
-// NewScan creates a new table scan plan.
-// This is the entry point for building a query plan, as all queries
-// start with scanning a table.
-func NewScan(name string, schema schema.Schema) Plan {
-	return newPlan(PlanTypeTable, makeTable(name, schema))
+// NewMakeTable creates a new make table plan. This is the entry point for
+// building a query plan, as all queries start with a base table relation.
+func NewMakeTable(name string, schema schema.Schema) Plan {
+	return newPlan(PlanTypeMakeTable, makeTable(name, schema))
 }
 
 // NewFilter creates a new filter plan.

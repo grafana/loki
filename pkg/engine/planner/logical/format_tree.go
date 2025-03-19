@@ -23,8 +23,8 @@ func (t *TreeFormatter) Format(ast Plan) string {
 // returns the newly created [tree.Node].
 func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 	switch ast.Type() {
-	case PlanTypeTable:
-		return t.convertMakeTable(ast.Table())
+	case PlanTypeMakeTable:
+		return t.convertMakeTable(ast.MakeTable())
 	case PlanTypeFilter:
 		return t.convertFilter(ast.Filter())
 	case PlanTypeLimit:

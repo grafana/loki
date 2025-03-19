@@ -30,7 +30,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewScan(ds.Name(), ds.Schema())
+	scan := NewMakeTable(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	var f TreeFormatter
@@ -63,7 +63,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewScan(ds.Name(), ds.Schema()),
+		NewMakeTable(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Limit(
@@ -101,7 +101,7 @@ func TestFormatSortQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewScan(ds.Name(), ds.Schema())
+	scan := NewMakeTable(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Sort by age ascending, nulls last
@@ -138,7 +138,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewScan(ds.Name(), ds.Schema()),
+		NewMakeTable(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Sort(

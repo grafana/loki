@@ -97,8 +97,8 @@ func (b *ssaBuilder) getID() int {
 // processPlan processes a logical plan and returns the ID of the resulting SSA node.
 func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 	switch plan.Type() {
-	case PlanTypeTable:
-		return b.processTablePlan(plan.Table())
+	case PlanTypeMakeTable:
+		return b.processMakeTablePlan(plan.MakeTable())
 	case PlanTypeFilter:
 		return b.processFilterPlan(plan.Filter())
 	case PlanTypeLimit:
@@ -110,9 +110,9 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 	}
 }
 
-// processTablePlan processes a table plan node
+// processMakeTablePlan processes a maketable plan node
 // It creates a MakeTable node with the table name
-func (b *ssaBuilder) processTablePlan(plan *MakeTable) (int, error) {
+func (b *ssaBuilder) processMakeTablePlan(plan *MakeTable) (int, error) {
 	// Create a node for the table
 	id := b.getID()
 	node := SSANode{
