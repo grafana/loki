@@ -94,7 +94,7 @@ func (t *TreeFormatter) convertExpr(expr Expr) *tree.Node {
 }
 
 func (t *TreeFormatter) convertColumnExpr(expr *ColumnExpr) *tree.Node {
-	return tree.NewNode("Column", expr.ColumnName())
+	return tree.NewNode("Column", expr.Name)
 }
 
 func (t *TreeFormatter) convertLiteralExpr(expr *LiteralExpr) *tree.Node {
