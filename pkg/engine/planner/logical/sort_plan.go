@@ -35,8 +35,3 @@ func newSort(input Plan, expr SortExpr) *Sort {
 func (s *Sort) Schema() schema.Schema {
 	return s.Input.Schema()
 }
-
-// Type returns the plan type for this node.
-func (s *Sort) Type() PlanType {
-	return PlanTypeSort
-}

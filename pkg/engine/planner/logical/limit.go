@@ -61,8 +61,3 @@ func newLimit(input Plan, skip uint64, fetch uint64) *Limit {
 func (l *Limit) Schema() schema.Schema {
 	return l.Input.Schema()
 }
-
-// Type returns the plan type for this node.
-func (l *Limit) Type() PlanType {
-	return PlanTypeLimit
-}

@@ -30,8 +30,3 @@ func newSelect(input Plan, expr Expr) *Select {
 func (f *Select) Schema() schema.Schema {
 	return f.Input.Schema()
 }
-
-// Type implements the Plan interface
-func (f *Select) Type() PlanType {
-	return PlanTypeSelect
-}
