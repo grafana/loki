@@ -58,22 +58,22 @@ func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
 
 func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
 	direction := "asc"
-	if !ast.Expr().Ascending {
+	if !ast.Expr.Ascending {
 		direction = "desc"
 	}
 
 	nullsPosition := "last"
-	if ast.Expr().NullsFirst {
+	if ast.Expr.NullsFirst {
 		nullsPosition = "first"
 	}
 
 	node := tree.NewNode("Sort", "",
-		tree.NewProperty("expr", false, ast.Expr().Name),
+		tree.NewProperty("expr", false, ast.Expr.Name),
 		tree.NewProperty("direction", false, direction),
 		tree.NewProperty("nulls", false, nullsPosition),
 	)
-	node.Comments = append(node.Comments, t.convertExpr(ast.Expr().Expr))
-	node.Children = append(node.Children, t.convert(ast.Child()))
+	node.Comments = append(node.Comments, t.convertExpr(ast.Expr.Expr))
+	node.Children = append(node.Children, t.convert(ast.Input))
 	return node
 }
 

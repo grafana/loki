@@ -306,25 +306,25 @@ func (b *ssaBuilder) processLimitPlan(plan *Limit) (int, error) {
 // The Sort node references its input plan and sort expression as dependencies.
 func (b *ssaBuilder) processSortPlan(plan *Sort) (int, error) {
 	// Process the child plan first
-	childID, err := b.processPlan(plan.Child())
+	childID, err := b.processPlan(plan.Input)
 	if err != nil {
 		return 0, err
 	}
 
 	// Process the sort expression
-	exprID, err := b.processExpr(plan.Expr().Expr, plan.Child())
+	exprID, err := b.processExpr(plan.Expr.Expr, plan.Input)
 	if err != nil {
 		return 0, err
 	}
 
 	// Create direction and nulls position properties
 	direction := "asc"
-	if !plan.Expr().Ascending {
+	if !plan.Expr.Ascending {
 		direction = "desc"
 	}
 
 	nullsPosition := "last"
-	if plan.Expr().NullsFirst {
+	if plan.Expr.NullsFirst {
 		nullsPosition = "first"
 	}
 
@@ -334,7 +334,7 @@ func (b *ssaBuilder) processSortPlan(plan *Sort) (int, error) {
 		ID:       id,
 		NodeType: "Sort",
 		Tuples: []nodeProperty{
-			{Key: "expr", Value: plan.Expr().Name},
+			{Key: "expr", Value: plan.Expr.Name},
 			{Key: "direction", Value: direction},
 			{Key: "nulls", Value: nullsPosition},
 		},
