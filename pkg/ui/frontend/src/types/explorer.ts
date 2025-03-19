@@ -43,12 +43,18 @@ export interface SectionMetadata {
   totalUncompressedSize: number;
   columnCount: number;
   columns: ColumnInfo[];
+  maxTimestamp: string;
+  minTimestamp: string;
+  distribution: number[];
 }
 
 export interface FileMetadataResponse {
   sections: SectionMetadata[];
   error?: string;
   lastModified: string;
+  minTimestamp: string;
+  maxTimestamp: string;
+  distribution: number[];
 }
 
 interface ColumnStatistics {

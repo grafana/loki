@@ -22,6 +22,8 @@
         <th>Key</th>
         <th>Codec</th>
         <th>Version</th>
+        <th>Deleted</th>
+        <th>Update Time</th>
         <th>Actions</th>
     </tr>
     </thead>
@@ -32,6 +34,8 @@
             <td>{{ $k }}</td>
             <td>{{ $v.CodecID }}</td>
             <td>{{ $v.Version }}</td>
+            <td>{{ $v.Deleted }}</td>
+            <td>{{ $v.UpdateTime }}</td>
             <td>
                 <a href="?viewKey={{ $k }}&format=json">json</a>
                 | <a href="?viewKey={{ $k }}&format=json-pretty">json-pretty</a>

@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -80,7 +80,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			}
 
 			for _, row := range rows[:n] {
-				record, err := decodeRecord(streamsColumns, row)
+				record, err := Decode(streamsColumns, row)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -89,11 +89,14 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 	})
 }
 
-func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
+// Decode decodes a record from a [dataset.Row], using the provided columns to
+// determine the column type. The list of columns must match the columns used
+// to create the row.
+func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 	record := Record{
 		// Preallocate metadata to exact number of metadata columns to avoid
 		// oversizing.
-		Metadata: make(push.LabelsAdapter, 0, metadataColumns(columns)),
+		Metadata: make(labels.Labels, 0, metadataColumns(columns)),
 	}
 
 	for columnIndex, columnValue := range row.Values {
@@ -119,23 +122,23 @@ func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error)
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
 				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Metadata = append(record.Metadata, push.LabelAdapter{
+			record.Metadata = append(record.Metadata, labels.Label{
 				Name:  column.Info.Name,
 				Value: columnValue.String(),
 			})
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Line = columnValue.String()
+			record.Line = columnValue.ByteArray()
 		}
 	}
 
 	// Metadata is originally sorted in received order; we sort it by key
 	// per-record since it might not be obvious why keys appear in a certain
 	// order.
-	slices.SortFunc(record.Metadata, func(a, b push.LabelAdapter) int {
+	slices.SortFunc(record.Metadata, func(a, b labels.Label) int {
 		if res := cmp.Compare(a.Name, b.Name); res != 0 {
 			return res
 		}

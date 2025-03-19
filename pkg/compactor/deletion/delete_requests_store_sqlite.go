@@ -38,8 +38,9 @@ const (
        processed_shards INT DEFAULT 0,
        query TEXT NOT NULL
     );`
-	sqlCreateRequestsTableIndex       = `CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);`
-	sqlCreateDeleteRequestShardsTable = `CREATE TABLE IF NOT EXISTS shards (
+	sqlCreateRequestsTableIndex                = `CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id);`
+	sqlCreateRequestsTableUserCompletedAtIndex = `CREATE INDEX IF NOT EXISTS idx_requests_user_completed ON requests(user_id, completed_at);`
+	sqlCreateDeleteRequestShardsTable          = `CREATE TABLE IF NOT EXISTS shards (
        id TEXT NOT NULL,
        user_id TEXT NOT NULL,
        start_time INT NOT NULL,
@@ -71,8 +72,11 @@ const (
 	sqlSelectRequestByID     = `SELECT * FROM requests WHERE id = ? AND user_id = ?;`
 	sqlSelectRequests        = `SELECT * FROM requests;`
 	sqlSelectRequestsForUser = `SELECT * FROM requests WHERE user_id = ?;`
-	sqlSelectCacheGen        = `SELECT gen_num FROM cache_gen WHERE user_id = ?;`
-	sqlGetUnprocessedShards  = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
+	// while listing requests for query-time filtering, consider only the requests which are unprocessed or
+	// a specific duration has elapsed since they completed, to let the index updates get propagated.
+	sqlSelectUserRequestsForQueryTimeFiltering = `SELECT * FROM requests WHERE user_id = ? AND (completed_at IS NULL OR completed_at > ?);`
+	sqlSelectCacheGen                          = `SELECT gen_num FROM cache_gen WHERE user_id = ?;`
+	sqlGetUnprocessedShards                    = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
                               FROM shards sh
                               JOIN requests dr ON sh.id = dr.id`
 	sqlCountDeleteRequests = `SELECT COUNT(*) FROM requests;`
@@ -84,10 +88,11 @@ type userCacheGen struct {
 
 // deleteRequestsStoreSQLite provides all the methods required to manage lifecycle of delete request and things related to it.
 type deleteRequestsStoreSQLite struct {
-	sqliteStore *sqliteDB
+	sqliteStore                    *sqliteDB
+	indexUpdatePropagationMaxDelay time.Duration
 }
 
-func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient storage.Client) (*deleteRequestsStoreSQLite, error) {
+func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient storage.Client, indexUpdatePropagationMaxDelay time.Duration) (*deleteRequestsStoreSQLite, error) {
 	sqliteStore, err := newSQLiteDB(workingDirectory, indexStorageClient)
 	if err != nil {
 		return nil, err
@@ -97,6 +102,7 @@ func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient st
 		true,
 		sqlQuery{query: sqlCreateDeleteRequestsTable},
 		sqlQuery{query: sqlCreateRequestsTableIndex},
+		sqlQuery{query: sqlCreateRequestsTableUserCompletedAtIndex},
 		sqlQuery{query: sqlCreateDeleteRequestShardsTable},
 		sqlQuery{query: sqlCreateShardsTableIndex},
 		sqlQuery{query: sqlCreateCacheGenTable},
@@ -107,7 +113,8 @@ func newDeleteRequestsStoreSQLite(workingDirectory string, indexStorageClient st
 	}
 
 	s := &deleteRequestsStoreSQLite{
-		sqliteStore: sqliteStore,
+		sqliteStore:                    sqliteStore,
+		indexUpdatePropagationMaxDelay: indexUpdatePropagationMaxDelay,
 	}
 
 	return s, nil
@@ -396,8 +403,12 @@ func (ds *deleteRequestsStoreSQLite) GetAllRequests(ctx context.Context) ([]Dele
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
-func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
-	return ds.queryDeleteRequests(ctx, sqlSelectRequestsForUser, []any{userID})
+func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
+	if !forQuerytimeFiltering {
+		return ds.queryDeleteRequests(ctx, sqlSelectRequestsForUser, []any{userID})
+	}
+	// for time elapsed since the requests got processed, consider the given index update propagation delay
+	return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForQueryTimeFiltering, []any{userID, model.Now().Add(-ds.indexUpdatePropagationMaxDelay)})
 }
 
 func (ds *deleteRequestsStoreSQLite) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
