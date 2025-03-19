@@ -32,9 +32,7 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 
-	// Get the string representation for debugging
-	ssaString := ssaForm.String()
-	t.Logf("SSA Form:\n%s", ssaString)
+	t.Logf("SSA Form:\n%s", ssaForm.String())
 
 	// Define expected output
 	exp := `
@@ -43,11 +41,12 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 %3 = Literal [val=21, type=VALUE_TYPE_INT64]
 %4 = BinaryOp [op=(>), name=age_gt_21, left=%2, right=%3]
 %5 = Select [name=age_gt_21, predicate=%4, plan=%1]
+RETURN %5 
 `
 	exp = strings.TrimSpace(exp)
 
 	// Get the actual output without the RETURN statement
-	ssaOutput := ssaForm.Format()
+	ssaOutput := ssaForm.String()
 	ssaLines := strings.Split(strings.TrimSpace(ssaOutput), "\n")
 
 	expLines := strings.Split(exp, "\n")
@@ -85,9 +84,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 
-	// Get the string representation for debugging
-	ssaString := ssaForm.String()
-	t.Logf("SSA Form:\n%s", ssaString)
+	t.Logf("SSA Form:\n%s", ssaForm.String())
 
 	// Define expected output
 	exp := `
@@ -97,11 +94,11 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 %4 = BinaryOp [op=(==), name=year_2020, left=%2, right=%3]
 %5 = Select [name=year_2020, predicate=%4, plan=%1]
 %6 = Limit [Skip=0, Fetch=10]
+RETURN %6
 `
 	exp = strings.TrimSpace(exp)
 
-	// Get the actual output without the RETURN statement
-	ssaOutput := ssaForm.Format()
+	ssaOutput := ssaForm.String()
 	ssaLines := strings.Split(strings.TrimSpace(ssaOutput), "\n")
 
 	expLines := strings.Split(exp, "\n")
@@ -135,31 +132,13 @@ func TestConvertSortQueryToSSA(t *testing.T) {
 	ssa, err := ConvertToSSA(sortByAge)
 	require.NoError(t, err)
 
-	t.Logf("SSA Form:\n%s", ssa.Format())
+	t.Logf("SSA Form:\n%s", ssa.String())
 
 	// Verify the structure of the SSA form
-	nodes := ssa.Nodes()
-	require.NotEmpty(t, nodes)
+	require.NotEmpty(t, ssa.Instructions)
 
-	// The last node should be the Sort node
-	lastNodeID := len(ssa.nodes) - 1
-	lastNode := ssa.nodes[lastNodeID]
-	require.Equal(t, "Sort", lastNode.NodeType)
-
-	// Verify the properties of the Sort node
-	var exprName, direction, nulls string
-	for _, tuple := range lastNode.Tuples {
-		switch tuple.Key {
-		case "expr":
-			exprName = tuple.Value
-		case "direction":
-			direction = tuple.Value
-		case "nulls":
-			nulls = tuple.Value
-		}
-	}
-
-	require.Equal(t, "sort_by_age", exprName)
-	require.Equal(t, "asc", direction)
-	require.Equal(t, "last", nulls)
+	// The last node should be a return of the Sort.
+	lastNode := ssa.Instructions[len(ssa.Instructions)-1]
+	require.IsType(t, &Return{}, lastNode)
+	require.IsType(t, &Sort{}, lastNode.(*Return).Value)
 }

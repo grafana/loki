@@ -76,7 +76,7 @@ func (df *DataFrame) Node() TreeNode {
 // ToSSA converts the DataFrame to SSA form. This is useful for optimizing and
 // executing the query plan, as the SSA form is easier to analyze and transform
 // than the tree-based logical plan.
-func (df *DataFrame) ToSSA() (*SSAForm, error) {
+func (df *DataFrame) ToPlan() (*Plan, error) {
 	return ConvertToSSA(df.plan)
 }
 

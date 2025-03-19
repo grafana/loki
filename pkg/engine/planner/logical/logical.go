@@ -1,6 +1,11 @@
 package logical
 
-import "github.com/grafana/loki/v3/pkg/engine/planner/schema"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
+)
 
 // An Instruction is an SSA instruction that computes a new [Value] or has some
 // effect.
@@ -43,4 +48,20 @@ type Value interface {
 // The first [Return] instruction in the plan denotes the final output.
 type Plan struct {
 	Instructions []Instruction // Instructions of the plan in order.
+}
+
+// String prints out the entire plan SSA.
+func (p Plan) String() string {
+	var sb strings.Builder
+
+	for _, inst := range p.Instructions {
+		switch inst := inst.(type) {
+		case Value:
+			fmt.Fprintf(&sb, "%s = %s\n", inst.Name(), inst.String())
+		case Instruction:
+			fmt.Fprintf(&sb, "%s\n", inst.String())
+		}
+	}
+
+	return sb.String()
 }
