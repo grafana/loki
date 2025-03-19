@@ -1,17 +1,16 @@
 package logical
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
-// Limit represents a plan node that limits the number of rows returned.
-// It corresponds to the LIMIT clause in SQL and is used to restrict the
-// number of rows returned by a query, optionally with an offset.
-//
-// The Limit plan is typically the final operation in a query plan, applied
-// after filtering, projection, and aggregation. It's useful for pagination
-// and for reducing the amount of data returned to the client.
+// The Limit instruction limits the number of rows from a table relation. Limit
+// implements [Instruction] and [Value].
 type Limit struct {
+	id string
+
 	// Input is the child plan node which provides the data to limit.
 	Input Plan
 
@@ -23,6 +22,11 @@ type Limit struct {
 	// are returned (after applying Skip).
 	Fetch uint64
 }
+
+var (
+	_ Value       = (*Limit)(nil)
+	_ Instruction = (*Limit)(nil)
+)
 
 // Special values for skip and fetch
 const (
@@ -55,9 +59,28 @@ func newLimit(input Plan, skip uint64, fetch uint64) *Limit {
 	}
 }
 
+// Name returns an identifier for the Limit operation.
+func (l *Limit) Name() string {
+	if l.id != "" {
+		return l.id
+	}
+	return fmt.Sprintf("<%p>", l)
+}
+
+// String returns the disassembled SSA form of the Limit instruction.
+func (l *Limit) String() string {
+	// TODO(rfratto): change the type of l.Input to [Value] so we can use
+	// s.Value.Name here.
+	return fmt.Sprintf("limit %v [skip=%d, fetch=%d]", l.Input, l.Skip, l.Fetch)
+}
+
 // Schema returns the schema of the limit operation.
 // The schema is the same as the input plan's schema since limiting
 // only affects the number of rows, not their structure.
-func (l *Limit) Schema() schema.Schema {
-	return l.Input.Schema()
+func (l *Limit) Schema() *schema.Schema {
+	res := l.Input.Schema()
+	return &res
 }
+
+func (l *Limit) isInstruction() {}
+func (l *Limit) isValue()       {}

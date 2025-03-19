@@ -67,7 +67,7 @@ func (p Plan) Schema() schema.Schema {
 	case PlanTypeSelect:
 		return *(p.val.(*Select).Schema())
 	case PlanTypeLimit:
-		return p.val.(*Limit).Schema()
+		return *(p.val.(*Limit).Schema())
 	case PlanTypeSort:
 		return p.val.(*Sort).Schema()
 	default:
