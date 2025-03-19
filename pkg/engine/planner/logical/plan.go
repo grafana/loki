@@ -69,7 +69,7 @@ func (p Plan) Schema() schema.Schema {
 	case PlanTypeLimit:
 		return *(p.val.(*Limit).Schema())
 	case PlanTypeSort:
-		return p.val.(*Sort).Schema()
+		return *(p.val.(*Sort).Schema())
 	default:
 		panic(fmt.Sprintf("unknown plan type: %v", p.ty))
 	}
