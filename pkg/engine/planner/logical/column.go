@@ -17,7 +17,7 @@ func Col(name string) Expr {
 }
 
 // ToField looks up and returns the schema for the referenced column
-func (c ColumnExpr) ToField(p Plan) schema.ColumnSchema {
+func (c ColumnExpr) ToField(p TreeNode) schema.ColumnSchema {
 	for _, col := range p.Schema().Columns {
 		if col.Name == c.Name {
 			return col

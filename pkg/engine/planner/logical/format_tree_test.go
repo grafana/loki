@@ -30,8 +30,8 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewMakeTable(ds.Name(), ds.Schema())
-	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	scan := NewMakeTableNode(ds.Name(), ds.Schema())
+	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	var f TreeFormatter
 
@@ -63,7 +63,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewMakeTable(ds.Name(), ds.Schema()),
+		NewMakeTableNode(ds.Name(), ds.Schema()),
 	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Limit(
@@ -73,7 +73,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(df.LogicalPlan())
+	actual := "\n" + f.Format(df.Node())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
@@ -101,11 +101,11 @@ func TestFormatSortQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewMakeTable(ds.Name(), ds.Schema())
-	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	scan := NewMakeTableNode(ds.Name(), ds.Schema())
+	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSortNode(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	var f TreeFormatter
 
@@ -138,7 +138,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewMakeTable(ds.Name(), ds.Schema()),
+		NewMakeTableNode(ds.Name(), ds.Schema()),
 	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Sort(
@@ -150,7 +150,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(df.LogicalPlan())
+	actual := "\n" + f.Format(df.Node())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `

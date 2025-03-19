@@ -43,7 +43,7 @@ func (e Expr) Type() ExprType {
 	return e.ty
 }
 
-func (e Expr) ToField(p Plan) schema.ColumnSchema {
+func (e Expr) ToField(p TreeNode) schema.ColumnSchema {
 	switch e.ty {
 	case ExprTypeColumn:
 		return e.val.(*ColumnExpr).ToField(p)

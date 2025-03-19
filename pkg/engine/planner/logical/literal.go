@@ -50,7 +50,7 @@ func (l LiteralExpr) ValueString() string {
 
 // ToField converts the literal to a column schema.
 // The name of the column is derived from the string representation of the value.
-func (l LiteralExpr) ToField(_ Plan) schema.ColumnSchema {
+func (l LiteralExpr) ToField(_ TreeNode) schema.ColumnSchema {
 	switch l.ty {
 	case LiteralTypeString:
 		return schema.ColumnSchema{

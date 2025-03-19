@@ -64,7 +64,7 @@ type BinOpExpr struct {
 // ToField converts the binary operation to a column schema.
 // The name of the column is the name of the binary operation,
 // and the type is derived from the left operand.
-func (b BinOpExpr) ToField(p Plan) schema.ColumnSchema {
+func (b BinOpExpr) ToField(p TreeNode) schema.ColumnSchema {
 	return schema.ColumnSchema{
 		Name: b.Name,
 		Type: b.Left.ToField(p).Type,

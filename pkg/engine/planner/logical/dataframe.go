@@ -4,18 +4,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
-// DataFrame provides an ergonomic interface for building logical query plans.
-// It wraps a logical Plan and provides fluent methods for common operations
-// like projection, filtering, and aggregation. This makes it easier to build
-// complex query plans in a readable and maintainable way.
+// DataFrame provides an ergonomic interface for building a [TreeNode]. It
+// provides fluent methods for common operations like projection, filtering,
+// and aggregation. This makes it easier to build complex query plans in a
+// readable and maintainable way.
 type DataFrame struct {
-	plan Plan
+	plan TreeNode
 }
 
 // NewDataFrame creates a new DataFrame from a logical plan.
 // This is typically used to wrap a table scan plan as the starting point
 // for building a more complex query.
-func NewDataFrame(plan Plan) *DataFrame {
+func NewDataFrame(plan TreeNode) *DataFrame {
 	return &DataFrame{plan: plan}
 }
 
@@ -25,7 +25,7 @@ func NewDataFrame(plan Plan) *DataFrame {
 // clause in SQL.
 func (df *DataFrame) Select(expr Expr) *DataFrame {
 	return &DataFrame{
-		plan: NewSelect(df.plan, expr),
+		plan: NewSelectNode(df.plan, expr),
 	}
 }
 
@@ -55,7 +55,7 @@ func (df *DataFrame) Select(expr Expr) *DataFrame {
 // after filtering, projection, and aggregation.
 func (df *DataFrame) Limit(skip uint64, fetch uint64) *DataFrame {
 	return &DataFrame{
-		plan: NewLimit(df.plan, skip, fetch),
+		plan: NewLimitNode(df.plan, skip, fetch),
 	}
 }
 
@@ -66,16 +66,16 @@ func (df *DataFrame) Schema() schema.Schema {
 	return df.plan.Schema()
 }
 
-// LogicalPlan returns the underlying logical plan.
-// This is useful when you need to access the plan directly, such as when
-// passing it to a function that operates on plans rather than DataFrames.
-func (df *DataFrame) LogicalPlan() Plan {
+// Node returns the underlying [TreeNode]. This is useful when you need to
+// access the node directly, such as when passing it to a function that
+// operates on nodes rather than DataFrames.
+func (df *DataFrame) Node() TreeNode {
 	return df.plan
 }
 
-// ToSSA converts the DataFrame to SSA form.
-// This is useful for optimizing and executing the query plan, as the SSA form
-// is easier to analyze and transform than the tree-based logical plan.
+// ToSSA converts the DataFrame to SSA form. This is useful for optimizing and
+// executing the query plan, as the SSA form is easier to analyze and transform
+// than the tree-based logical plan.
 func (df *DataFrame) ToSSA() (*SSAForm, error) {
 	return ConvertToSSA(df.plan)
 }
@@ -101,6 +101,6 @@ func (df *DataFrame) ToSSA() (*SSAForm, error) {
 // but before limiting the results.
 func (df *DataFrame) Sort(expr SortExpr) *DataFrame {
 	return &DataFrame{
-		plan: NewSort(df.plan, expr),
+		plan: NewSortNode(df.plan, expr),
 	}
 }

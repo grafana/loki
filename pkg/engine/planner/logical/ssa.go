@@ -60,7 +60,7 @@ type SSAForm struct {
 
 // ConvertToSSA converts a logical plan to SSA form
 // It performs a post-order traversal of the plan, adding nodes as it goes
-func ConvertToSSA(plan Plan) (*SSAForm, error) {
+func ConvertToSSA(plan TreeNode) (*SSAForm, error) {
 	// Initialize the builder with an empty node at index 0
 	builder := &ssaBuilder{
 		nodes:     []SSANode{{}}, // Start with an empty node at index 0
@@ -95,15 +95,15 @@ func (b *ssaBuilder) getID() int {
 }
 
 // processPlan processes a logical plan and returns the ID of the resulting SSA node.
-func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
+func (b *ssaBuilder) processPlan(plan TreeNode) (int, error) {
 	switch plan.Type() {
-	case PlanTypeMakeTable:
+	case TreeNodeTypeMakeTable:
 		return b.processMakeTablePlan(plan.MakeTable())
-	case PlanTypeSelect:
+	case TreeNodeTypeSelect:
 		return b.processSelectPlan(plan.Select())
-	case PlanTypeLimit:
+	case TreeNodeTypeLimit:
 		return b.processLimitPlan(plan.Limit())
-	case PlanTypeSort:
+	case TreeNodeTypeSort:
 		return b.processSortPlan(plan.Sort())
 	default:
 		return 0, fmt.Errorf("unsupported plan type: %v", plan.Type())
@@ -170,7 +170,7 @@ func (b *ssaBuilder) processSelectPlan(plan *Select) (int, error) {
 
 // processExpr processes an expression and returns its ID
 // It handles different expression types by delegating to specific processing methods
-func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
+func (b *ssaBuilder) processExpr(expr Expr, parent TreeNode) (int, error) {
 	switch expr.Type() {
 	case ExprTypeColumn:
 		return b.processColumnExpr(expr.Column(), parent)
@@ -185,7 +185,7 @@ func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
 
 // processColumnExpr processes a column expression
 // It creates a ColumnRef node with the column name and type
-func (b *ssaBuilder) processColumnExpr(expr *ColumnExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processColumnExpr(expr *ColumnExpr, parent TreeNode) (int, error) {
 	field := expr.ToField(parent)
 
 	// Create a node for the column reference
@@ -223,7 +223,7 @@ func (b *ssaBuilder) processLiteralExpr(expr *LiteralExpr) (int, error) {
 
 // processBinaryOpExpr processes a binary operation expression
 // It processes the left and right operands, then creates a BinaryOp node
-func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, error) {
+func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent TreeNode) (int, error) {
 	// Process the left and right operands first
 	leftID, err := b.processExpr(expr.Left, parent)
 	if err != nil {

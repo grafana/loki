@@ -11,8 +11,8 @@ import (
 type TreeFormatter struct{}
 
 // Format formats a logical plan as a tree structure, similar to the Unix 'tree' command.
-// It takes a [Plan] as input and returns a string representation of the plan tree.
-func (t *TreeFormatter) Format(ast Plan) string {
+// It takes a [TreeNode] as input and returns a string representation of the plan tree.
+func (t *TreeFormatter) Format(ast TreeNode) string {
 	var sb strings.Builder
 	p := tree.NewPrinter(&sb)
 	p.Print(t.convert(ast))
@@ -21,15 +21,15 @@ func (t *TreeFormatter) Format(ast Plan) string {
 
 // convert dispatches to the appropriate method based on the plan type and
 // returns the newly created [tree.Node].
-func (t *TreeFormatter) convert(ast Plan) *tree.Node {
+func (t *TreeFormatter) convert(ast TreeNode) *tree.Node {
 	switch ast.Type() {
-	case PlanTypeMakeTable:
+	case TreeNodeTypeMakeTable:
 		return t.convertMakeTable(ast.MakeTable())
-	case PlanTypeSelect:
+	case TreeNodeTypeSelect:
 		return t.convertSelect(ast.Select())
-	case PlanTypeLimit:
+	case TreeNodeTypeLimit:
 		return t.convertLimit(ast.Limit())
-	case PlanTypeSort:
+	case TreeNodeTypeSort:
 		return t.convertSort(ast.Sort())
 	default:
 		panic(fmt.Sprintf("unknown plan type: %v", ast.Type()))

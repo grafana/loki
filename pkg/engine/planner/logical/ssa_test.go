@@ -24,8 +24,8 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 		},
 	}
 
-	scan := NewMakeTable(ds.Name(), ds.Schema())
-	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	scan := NewMakeTableNode(ds.Name(), ds.Schema())
+	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Convert to SSA
 	ssaForm, err := ConvertToSSA(sel)
@@ -72,7 +72,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 	}
 
 	df := NewDataFrame(
-		NewMakeTable(ds.Name(), ds.Schema()),
+		NewMakeTableNode(ds.Name(), ds.Schema()),
 	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Limit(
@@ -81,7 +81,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 	)
 
 	// Convert to SSA
-	ssaForm, err := ConvertToSSA(df.LogicalPlan())
+	ssaForm, err := ConvertToSSA(df.Node())
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 
@@ -126,11 +126,11 @@ func TestConvertSortQueryToSSA(t *testing.T) {
 		},
 	}
 
-	scan := NewMakeTable(ds.Name(), ds.Schema())
-	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	scan := NewMakeTableNode(ds.Name(), ds.Schema())
+	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSortNode(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	ssa, err := ConvertToSSA(sortByAge)
 	require.NoError(t, err)

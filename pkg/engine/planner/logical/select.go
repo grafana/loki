@@ -11,8 +11,8 @@ import (
 type Select struct {
 	id string
 
-	Input Plan // Child plan node providing data to filter.
-	Expr  Expr // Boolean expression used to filter nodes.
+	Input TreeNode // Child plan node providing data to filter.
+	Expr  Expr     // Boolean expression used to filter nodes.
 }
 
 var (
@@ -25,7 +25,7 @@ var (
 // should be selected (included) in its output. This is represented by the WHERE
 // clause in SQL. A simple example would be SELECT * FROM foo WHERE a > 5.
 // The filter expression needs to evaluate to a Boolean result.
-func newSelect(input Plan, expr Expr) *Select {
+func newSelect(input TreeNode, expr Expr) *Select {
 	return &Select{
 		Input: input,
 		Expr:  expr,

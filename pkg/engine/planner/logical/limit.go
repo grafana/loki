@@ -12,7 +12,7 @@ type Limit struct {
 	id string
 
 	// Input is the child plan node which provides the data to limit.
-	Input Plan
+	Input TreeNode
 
 	// Skip is the number of rows to skip before returning results. A value of 0
 	// means no rows are skipped.
@@ -51,7 +51,7 @@ const (
 //
 //	// Skip the first 100 rows and return all remaining rows
 //	limit := newLimit(inputPlan, 100, 0)
-func newLimit(input Plan, skip uint64, fetch uint64) *Limit {
+func newLimit(input TreeNode, skip uint64, fetch uint64) *Limit {
 	return &Limit{
 		Input: input,
 		Skip:  skip,

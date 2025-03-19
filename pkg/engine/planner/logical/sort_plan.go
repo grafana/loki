@@ -15,7 +15,7 @@ import (
 type Sort struct {
 	id string
 
-	Input Plan     // Child plan node providing data to sort.
+	Input TreeNode // Child plan node providing data to sort.
 	Expr  SortExpr // Sort expression to apply.
 }
 
@@ -34,7 +34,7 @@ var (
 //		NewSortExpr("sort_by_age", Col("age"), true, false),
 //		NewSortExpr("sort_by_name", Col("name"), false, true),
 //	})
-func newSort(input Plan, expr SortExpr) *Sort {
+func newSort(input TreeNode, expr SortExpr) *Sort {
 	return &Sort{
 		Input: input,
 		Expr:  expr,
