@@ -131,13 +131,13 @@ func (b *ssaBuilder) processMakeTablePlan(plan *MakeTable) (int, error) {
 // It processes the child plan and select expression, then creates a Select node
 func (b *ssaBuilder) processSelectPlan(plan *Select) (int, error) {
 	// Process the child plan first
-	childID, err := b.processPlan(plan.Child())
+	childID, err := b.processPlan(plan.Input)
 	if err != nil {
 		return 0, err
 	}
 
 	// Process the select expression
-	exprID, err := b.processExpr(plan.SelectExpr(), plan.Child())
+	exprID, err := b.processExpr(plan.Expr, plan.Input)
 	if err != nil {
 		return 0, err
 	}
@@ -145,10 +145,10 @@ func (b *ssaBuilder) processSelectPlan(plan *Select) (int, error) {
 	// Get the name of the expression
 	var exprName string
 
-	if plan.SelectExpr().Type() == ExprTypeBinaryOp {
-		exprName = plan.SelectExpr().BinaryOp().Name
+	if plan.Expr.Type() == ExprTypeBinaryOp {
+		exprName = plan.Expr.BinaryOp().Name
 	} else {
-		exprName = plan.SelectExpr().ToField(plan.Child()).Name
+		exprName = plan.Expr.ToField(plan.Input).Name
 	}
 
 	// Create a node for the select

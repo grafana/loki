@@ -41,9 +41,9 @@ func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
 }
 
 func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
-	node := tree.NewNode("Select", "", tree.NewProperty("expr", false, ast.SelectExpr().ToField(ast.Child()).Name))
-	node.Comments = append(node.Comments, t.convertExpr(ast.SelectExpr()))
-	node.Children = append(node.Children, t.convert(ast.Child()))
+	node := tree.NewNode("Select", "", tree.NewProperty("expr", false, ast.Expr.ToField(ast.Input).Name))
+	node.Comments = append(node.Comments, t.convertExpr(ast.Expr))
+	node.Children = append(node.Children, t.convert(ast.Input))
 	return node
 }
 
