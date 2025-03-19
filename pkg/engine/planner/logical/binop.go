@@ -54,16 +54,11 @@ func (t BinOpType) String() string {
 // BinOpExpr represents a binary operation expression in the query plan.
 // It combines two expressions with an operation to produce a result.
 type BinOpExpr struct {
-	// name is the identifier for this binary operation
-	name string
-	// ty is the type of binary operation (e.g. math, cmp, set)
-	ty BinOpType
-	// op is the actual operation (e.g. +, -, ==, !=, &&, ||)
-	op int
-	// l is the left expression
-	l Expr
-	// r is the right expression
-	r Expr
+	Name  string    // Identifier for the expression.
+	Type  BinOpType // Type of binary operation (e.g., math, cmp, set).
+	Op    int       // Actual operation to perform (e.g., +, -, ==, !=, &&, ||).
+	Left  Expr      // Left-hand side of the expression.
+	Right Expr      // Right-hand side of the expression.
 }
 
 // ToField converts the binary operation to a column schema.
@@ -71,43 +66,24 @@ type BinOpExpr struct {
 // and the type is derived from the left operand.
 func (b BinOpExpr) ToField(p Plan) schema.ColumnSchema {
 	return schema.ColumnSchema{
-		Name: b.name,
-		Type: b.l.ToField(p).Type,
+		Name: b.Name,
+		Type: b.Left.ToField(p).Type,
 	}
 }
 
-// Type returns the type of the binary operation.
-func (b BinOpExpr) Type() BinOpType {
-	return b.ty
-}
-
-// Name returns the name of the binary operation.
-func (b BinOpExpr) Name() string {
-	return b.name
-}
-
-// Left returns the left operand of the binary operation.
-func (b BinOpExpr) Left() Expr {
-	return b.l
-}
-
-// Right returns the right operand of the binary operation.
-func (b BinOpExpr) Right() Expr {
-	return b.r
-}
-
-// Op returns a string representation of the binary operation.
-// It delegates to the appropriate type-specific operation based on the operation type.
-func (b BinOpExpr) Op() fmt.Stringer {
-	switch b.ty {
+// OpStringer returns a string representation of the binary operation. It
+// delegates to the appropriate type-specific operation based on the operation
+// type.
+func (b BinOpExpr) OpStringer() fmt.Stringer {
+	switch b.Type {
 	case BinOpTypeMath:
-		return BinaryOpMath(b.op)
+		return BinaryOpMath(b.Op)
 	case BinOpTypeCmp:
-		return BinaryOpCmp(b.op)
+		return BinaryOpCmp(b.Op)
 	case BinOpTypeSet:
-		return BinaryOpSet(b.op)
+		return BinaryOpSet(b.Op)
 	default:
-		panic(fmt.Sprintf("unknown binary operation type: %d", b.ty))
+		panic(fmt.Sprintf("unknown binary operation type: %d", b.Type))
 	}
 }
 
@@ -221,11 +197,11 @@ func (b BinaryOpSet) String() string {
 func newBinOpConstructor(t BinOpType, op int) func(name string, l Expr, r Expr) Expr {
 	return func(name string, l Expr, r Expr) Expr {
 		binop := BinOpExpr{
-			name: name,
-			ty:   t,
-			op:   op,
-			l:    l,
-			r:    r,
+			Name:  name,
+			Type:  t,
+			Op:    op,
+			Left:  l,
+			Right: r,
 		}
 		return NewBinOpExpr(binop)
 	}

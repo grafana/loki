@@ -106,11 +106,11 @@ func (t *TreeFormatter) convertLiteralExpr(expr *LiteralExpr) *tree.Node {
 
 func (t *TreeFormatter) convertBinaryOpExpr(expr *BinOpExpr) *tree.Node {
 	node := tree.NewNode(ExprTypeBinaryOp.String(), "",
-		tree.NewProperty("type", false, expr.Type().String()),
-		tree.NewProperty("op", false, fmt.Sprintf(`"%s"`, expr.Op())),
-		tree.NewProperty("name", false, expr.Name()),
+		tree.NewProperty("type", false, expr.Type.String()),
+		tree.NewProperty("op", false, fmt.Sprintf(`"%s"`, expr.OpStringer())),
+		tree.NewProperty("name", false, expr.Name),
 	)
-	node.Children = append(node.Children, t.convertExpr(expr.Left()))
-	node.Children = append(node.Children, t.convertExpr(expr.Right()))
+	node.Children = append(node.Children, t.convertExpr(expr.Left))
+	node.Children = append(node.Children, t.convertExpr(expr.Right))
 	return node
 }

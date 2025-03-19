@@ -146,7 +146,7 @@ func (b *ssaBuilder) processSelectPlan(plan *Select) (int, error) {
 	var exprName string
 
 	if plan.SelectExpr().Type() == ExprTypeBinaryOp {
-		exprName = plan.SelectExpr().BinaryOp().Name()
+		exprName = plan.SelectExpr().BinaryOp().Name
 	} else {
 		exprName = plan.SelectExpr().ToField(plan.Child()).Name
 	}
@@ -225,12 +225,12 @@ func (b *ssaBuilder) processLiteralExpr(expr *LiteralExpr) (int, error) {
 // It processes the left and right operands, then creates a BinaryOp node
 func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, error) {
 	// Process the left and right operands first
-	leftID, err := b.processExpr(expr.Left(), parent)
+	leftID, err := b.processExpr(expr.Left, parent)
 	if err != nil {
 		return 0, err
 	}
 
-	rightID, err := b.processExpr(expr.Right(), parent)
+	rightID, err := b.processExpr(expr.Right, parent)
 	if err != nil {
 		return 0, err
 	}
@@ -241,8 +241,8 @@ func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, err
 		ID:       id,
 		NodeType: "BinaryOp",
 		Tuples: []nodeProperty{
-			{Key: "op", Value: fmt.Sprintf("(%s)", expr.Op().String())},
-			{Key: "name", Value: expr.Name()},
+			{Key: "op", Value: fmt.Sprintf("(%s)", expr.OpStringer().String())},
+			{Key: "name", Value: expr.Name},
 			{Key: "left", Value: fmt.Sprintf("%%%d", leftID)},
 			{Key: "right", Value: fmt.Sprintf("%%%d", rightID)},
 		},
