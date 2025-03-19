@@ -65,7 +65,7 @@ func (p Plan) Schema() schema.Schema {
 	case PlanTypeMakeTable:
 		return *(p.val.(*MakeTable).Schema())
 	case PlanTypeSelect:
-		return p.val.(*Select).Schema()
+		return *(p.val.(*Select).Schema())
 	case PlanTypeLimit:
 		return p.val.(*Limit).Schema()
 	case PlanTypeSort:

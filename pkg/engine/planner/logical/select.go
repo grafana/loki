@@ -1,16 +1,24 @@
 package logical
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
-// Select represents a plan node that filters rows based on a boolean
-// expression. It corresponds to the WHERE clause in SQL and is used to select
-// a subset of rows from the input plan based on a predicate expression.
+// The Select instruction filters rows from a table relation. Select implements
+// both [Instruction] and [Value].
 type Select struct {
+	id string
+
 	Input Plan // Child plan node providing data to filter.
 	Expr  Expr // Boolean expression used to filter nodes.
 }
+
+var (
+	_ Value       = (*Select)(nil)
+	_ Instruction = (*Select)(nil)
+)
 
 // newSelect creates a new Select plan node.
 // It takes an input plan and a boolean expression that determines which rows
@@ -24,9 +32,28 @@ func newSelect(input Plan, expr Expr) *Select {
 	}
 }
 
+// Name returns an identifier for the Select operation.
+func (s *Select) Name() string {
+	if s.id != "" {
+		return s.id
+	}
+	return fmt.Sprintf("<%p>", s)
+}
+
+// String returns the disassembled SSA form of the Select instruction.
+func (s *Select) String() string {
+	// TODO(rfratto): change the type of s.Expr to [Value] so we can call
+	// s.Expr.Name here.
+	return fmt.Sprintf("select %v", s.Expr)
+}
+
 // Schema returns the schema of the Select plan.
 // The schema of a Select is the same as the schema of its input,
 // as selection only removes rows and doesn't modify the structure.
-func (f *Select) Schema() schema.Schema {
-	return f.Input.Schema()
+func (s *Select) Schema() *schema.Schema {
+	res := s.Input.Schema()
+	return &res
 }
+
+func (s *Select) isInstruction() {}
+func (s *Select) isValue()       {}
