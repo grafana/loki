@@ -12,13 +12,13 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/util/math"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -75,7 +75,8 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +103,8 @@ func newStorageClientV1(cfg Config, schemaCfg config.SchemaConfig, client *bigta
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (index.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +252,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index
 		table := s.client.Open(tq.name)
 
 		for i := 0; i < len(tq.rows); i += maxRowReads {
-			page := tq.rows[i:math.Min(i+maxRowReads, len(tq.rows))]
+			page := tq.rows[i:min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list

@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/loki/operator/internal/controller/loki/internal/lokistack"
 )
 
+const ControllerNameRecordingRule = "recordingrule"
+
 // RecordingRuleReconciler reconciles a RecordingRule object
 type RecordingRuleReconciler struct {
 	client.Client
@@ -49,5 +51,6 @@ func (r *RecordingRuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.RecordingRule{}).
 		Watches(&corev1.Namespace{}, &handler.EnqueueRequestForObject{}, builder.OnlyMetadata).
+		Named(ControllerNameRecordingRule).
 		Complete(r)
 }

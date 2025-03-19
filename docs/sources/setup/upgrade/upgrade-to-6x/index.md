@@ -11,6 +11,10 @@ keywords:
 
 v6.x of this chart introduces distributed mode but also introduces breaking changes from v5x.
 
+{{< admonition type="caution" >}}
+If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/), perform that migration before you upgrade your Loki Helm chart to v6.x.
+{{< /admonition >}}
+
 ### Changes
 
 #### BREAKING: `deploymentMode` setting

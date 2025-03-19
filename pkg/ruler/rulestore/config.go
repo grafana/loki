@@ -2,7 +2,9 @@ package rulestore
 
 import (
 	"flag"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/flagext"
 
@@ -23,7 +25,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.ExtraBackends = []string{local.Name}
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
-	f.StringVar(&cfg.Backend, prefix+"backend", "filesystem", "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem.")
+	f.StringVar(&cfg.Backend, prefix+"backend", "filesystem", fmt.Sprintf("Backend storage to use. Supported backends are: local, %s", strings.Join(bucket.SupportedBackends, ", ")))
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 

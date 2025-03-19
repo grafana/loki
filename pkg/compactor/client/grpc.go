@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -46,7 +47,8 @@ func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (deleti
 		}, []string{"operation", "status_code"}),
 	}
 
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(client.GRPCClientRequestDuration))
+	unaryInterceptors, streamInterceptors := grpcclient.Instrument(client.GRPCClientRequestDuration)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +69,7 @@ func (s *compactorGRPCClient) Stop() {
 
 func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &deletion_grpc.GetDeleteRequestsRequest{})
+	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &deletion_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
 	if err != nil {
 		return nil, err
 	}

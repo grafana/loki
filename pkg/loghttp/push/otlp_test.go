@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return plog.NewLogs()
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -64,7 +65,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return ld
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -92,15 +93,23 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 9,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 0,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
@@ -131,15 +140,23 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"others": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"others": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         27,
 				MostRecentEntryTimestamp: now,
@@ -170,15 +187,23 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"others": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"others": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
@@ -248,18 +273,26 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 37,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "service_image", Value: "loki"},
-						{Name: "op", Value: "buzz"},
-						{Name: "scope_name", Value: "fizz"},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 37,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "service_image", Value: "loki"},
+							{Name: "op", Value: "buzz"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         21,
@@ -339,18 +372,26 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 97,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "resource_nested_foo", Value: "bar"},
-						{Name: "scope_nested_foo", Value: "bar"},
-						{Name: "scope_name", Value: "fizz"},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 97,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "resource_nested_foo", Value: "bar"},
+							{Name: "scope_nested_foo", Value: "bar"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         21,
@@ -490,19 +531,27 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 113,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "pod_ip", Value: "10.200.200.200"},
-						{Name: "resource_nested_foo", Value: "bar"},
-						{Name: "scope_nested_foo", Value: "bar"},
-						{Name: "scope_name", Value: "fizz"},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 113,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "pod_ip", Value: "10.200.200.200"},
+							{Name: "resource_nested_foo", Value: "bar"},
+							{Name: "scope_nested_foo", Value: "bar"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         42,
@@ -511,29 +560,41 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stats := newPushStats()
+			stats := NewPushStats()
 			tracker := NewMockTracker()
+			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+			streamResolver.policyForOverride = func(lbs labels.Labels) string {
+				if lbs.Get("service_name") == "service-1" {
+					return "service-1-policy"
+				}
+				return "others"
+			}
+
 			pushReq := otlpToLokiPushRequest(
 				context.Background(),
 				tc.generateLogs(),
 				"foo",
-				fakeRetention{},
 				tc.otlpConfig,
 				defaultServiceDetection,
 				tracker,
 				stats,
 				false,
 				log.NewNopLogger(),
+				streamResolver,
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
 			totalBytes := 0.0
-			for _, b := range stats.LogLinesBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.LogLinesBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
-			for _, b := range stats.StructuredMetadataBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.StructuredMetadataBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
 			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
 		})
@@ -620,7 +681,8 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig)))
+			_, res := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			require.Equal(t, tc.expectedResp, res)
 		})
 	}
 }
@@ -774,4 +836,256 @@ func TestOtlpError(t *testing.T) {
 			require.EqualValues(t, 0, respStatus.Code)
 		})
 	}
+}
+
+func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config that indexes log attributes
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Override the LogAttributes to include IndexLabel action
+	customOTLPConfig.LogAttributes = []AttributesConfig{
+		{
+			// Index detected_level and log.level as labels
+			Action:     IndexLabel,
+			Attributes: []string{"detected_level", "log.level"},
+		},
+		{
+			// Keep other attributes as structured metadata
+			Action:     StructuredMetadata,
+			Attributes: []string{"trace_id", "error_code", "component"},
+		},
+	}
+
+	// Generate logs with different log.level attributes
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "info" level
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.Attributes().PutStr("detected_level", "info")
+		infoLog.Attributes().PutStr("trace_id", "abc123")
+
+		// Add log with "error" level
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.Attributes().PutStr("detected_level", "error")
+		errorLog.Attributes().PutStr("error_code", "500")
+
+		// Add log with "debug" level using log.level instead
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.Attributes().PutStr("log.level", "debug")
+		debugLog.Attributes().PutStr("component", "database")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each log level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected log level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
+
+		if strings.Contains(lbs, "detected_level=\"info\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "detected_level=\"error\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "log_level=\"debug\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	require.True(t, infoStreamFound, "Stream with info level not found")
+	require.True(t, errorStreamFound, "Stream with error level not found")
+	require.True(t, debugStreamFound, "Stream with debug level not found")
+
+	// Verify stats
+	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
+}
+
+func TestOTLPSeverityTextAsLabel(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config with severity_text as label enabled
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Explicitly set SeverityTextAsLabel to true for this test
+	customOTLPConfig.SeverityTextAsLabel = true
+
+	// Generate logs with different severity_text values
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "INFO" severity
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.SetSeverityText("INFO")
+
+		// Add log with "ERROR" severity
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.SetSeverityText("ERROR")
+
+		// Add log with "DEBUG" severity
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.SetSeverityText("DEBUG")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each severity level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected severity level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
+
+		if strings.Contains(lbs, "severity_text=\"INFO\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "severity_text=\"ERROR\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "severity_text=\"DEBUG\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	// Verify all expected streams were found
+	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
+	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
+	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
 }

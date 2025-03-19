@@ -29,6 +29,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
+	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
@@ -83,16 +84,8 @@ var (
 	})
 )
 
-// endpointSharding which specifies pick first children.
-var endpointShardingLBConfig serviceconfig.LoadBalancingConfig
-
 func init() {
 	balancer.Register(bb{})
-	var err error
-	endpointShardingLBConfig, err = endpointsharding.ParseConfig(json.RawMessage(endpointsharding.PickFirstConfig))
-	if err != nil {
-		logger.Fatal(err)
-	}
 }
 
 type bb struct{}
@@ -101,13 +94,13 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	b := &wrrBalancer{
 		ClientConn:       cc,
 		target:           bOpts.Target.String(),
-		metricsRecorder:  bOpts.MetricsRecorder,
+		metricsRecorder:  cc.MetricsRecorder(),
 		addressWeights:   resolver.NewAddressMap(),
 		endpointToWeight: resolver.NewEndpointMap(),
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
-	b.child = endpointsharding.NewBalancer(b, bOpts)
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 	return b
@@ -218,7 +211,9 @@ type wrrBalancer struct {
 }
 
 func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error {
-	b.logger.Infof("UpdateCCS: %v", ccs)
+	if b.logger.V(2) {
+		b.logger.Infof("UpdateCCS: %v", ccs)
+	}
 	cfg, ok := ccs.BalancerConfig.(*lbConfig)
 	if !ok {
 		return fmt.Errorf("wrr: received nil or illegal BalancerConfig (type %T): %v", ccs.BalancerConfig, ccs.BalancerConfig)
@@ -235,8 +230,9 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	// This causes child to update picker inline and will thus cause inline
 	// picker update.
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
-		BalancerConfig: endpointShardingLBConfig,
-		ResolverState:  ccs.ResolverState,
+		// Make pickfirst children use health listeners for outlier detection to
+		// work.
+		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
 	})
 }
 
@@ -399,6 +395,7 @@ func (b *wrrBalancer) Close() {
 			ew.stopORCAListener()
 		}
 	}
+	b.child.Close()
 }
 
 func (b *wrrBalancer) ExitIdle() {

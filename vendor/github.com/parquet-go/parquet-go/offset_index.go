@@ -23,22 +23,24 @@ type OffsetIndex interface {
 	FirstRowIndex(int) int64
 }
 
-type fileOffsetIndex format.OffsetIndex
-
-func (i *fileOffsetIndex) NumPages() int {
-	return len(i.PageLocations)
+type FileOffsetIndex struct {
+	index *format.OffsetIndex
 }
 
-func (i *fileOffsetIndex) Offset(j int) int64 {
-	return i.PageLocations[j].Offset
+func (i *FileOffsetIndex) NumPages() int {
+	return len(i.index.PageLocations)
 }
 
-func (i *fileOffsetIndex) CompressedPageSize(j int) int64 {
-	return int64(i.PageLocations[j].CompressedPageSize)
+func (i *FileOffsetIndex) Offset(j int) int64 {
+	return i.index.PageLocations[j].Offset
 }
 
-func (i *fileOffsetIndex) FirstRowIndex(j int) int64 {
-	return i.PageLocations[j].FirstRowIndex
+func (i *FileOffsetIndex) CompressedPageSize(j int) int64 {
+	return int64(i.index.PageLocations[j].CompressedPageSize)
+}
+
+func (i *FileOffsetIndex) FirstRowIndex(j int) int64 {
+	return i.index.PageLocations[j].FirstRowIndex
 }
 
 type emptyOffsetIndex struct{}

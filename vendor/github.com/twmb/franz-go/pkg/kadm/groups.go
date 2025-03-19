@@ -104,6 +104,8 @@ type DescribedGroup struct {
 	Protocol     string                 // Protocol is the partition assignor strategy this group is using.
 	Members      []DescribedGroupMember // Members contains the members of this group sorted first by InstanceID, or if nil, by MemberID.
 
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this group.
+
 	Err error // Err is non-nil if the group could not be described.
 }
 
@@ -275,6 +277,7 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 
 	req := kmsg.NewPtrDescribeGroupsRequest()
 	req.Groups = groups
+	req.IncludeAuthorizedOperations = true
 
 	shards := cl.cl.RequestSharded(ctx, req)
 	described := make(DescribedGroups)
@@ -285,12 +288,13 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 				return err
 			}
 			g := DescribedGroup{
-				Group:        rg.Group,
-				Coordinator:  b,
-				State:        rg.State,
-				ProtocolType: rg.ProtocolType,
-				Protocol:     rg.Protocol,
-				Err:          kerr.ErrorForCode(rg.ErrorCode),
+				Group:                rg.Group,
+				Coordinator:          b,
+				State:                rg.State,
+				ProtocolType:         rg.ProtocolType,
+				Protocol:             rg.Protocol,
+				AuthorizedOperations: DecodeACLOperations(rg.AuthorizedOperations),
+				Err:                  kerr.ErrorForCode(rg.ErrorCode),
 			}
 			for _, rm := range rg.Members {
 				gm := DescribedGroupMember{

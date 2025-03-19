@@ -20,16 +20,12 @@ For an updated list of all of our released APIs please see our
 
 ## [Go Versions Supported](#supported-versions)
 
-**Note:** As of Jan 1, 2025 the Cloud Client Libraries for Go will support the
-two most-recent major Go releases -- the same [policy](https://go.dev/doc/devel/release#policy)
-the Go programming language follows.
-
-Our libraries are compatible with at least the three most recent, major Go
-releases. They are currently compatible with:
+Our libraries are compatible with the two most recent major Go
+releases, the same [policy](https://go.dev/doc/devel/release#policy) the Go
+programming language follows. This means the currently supported versions are:
 
 - Go 1.23
-- Go 1.22
-- Go 1.21
+- Go 1.24
 
 ## Authorization
 

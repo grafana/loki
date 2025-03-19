@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -41,6 +42,7 @@ type Limits interface {
 	StreamRetention(userID string) []validation.StreamRetention
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
+	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
@@ -131,15 +133,41 @@ func NewTenantsRetention(l Limits) *TenantsRetention {
 	}
 }
 
+func (tr *TenantsRetention) RetentionHoursFor(userID string, lbs labels.Labels) string {
+	return NewTenantRetentionSnapshot(tr.limits, userID).RetentionHoursFor(lbs)
+}
+
 func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
-	streamRetentions := tr.limits.StreamRetention(userID)
-	globalRetention := tr.limits.RetentionPeriod(userID)
+	return NewTenantRetentionSnapshot(tr.limits, userID).RetentionPeriodFor(lbs)
+}
+
+// TenantRetentionSnapshot is a snapshot of retention rules for a tenant.
+// The underlying retention rules may change on the original limits object passed to
+// NewTenantRetentionSnapshot, but the snapshot is immutable.
+type TenantRetentionSnapshot struct {
+	streamRetentions []validation.StreamRetention
+	globalRetention  time.Duration
+}
+
+func NewTenantRetentionSnapshot(limits Limits, userID string) *TenantRetentionSnapshot {
+	return &TenantRetentionSnapshot{
+		streamRetentions: limits.StreamRetention(userID),
+		globalRetention:  limits.RetentionPeriod(userID),
+	}
+}
+
+func (r *TenantRetentionSnapshot) RetentionHoursFor(lbs labels.Labels) string {
+	period := r.RetentionPeriodFor(lbs)
+	return util.RetentionHours(period)
+}
+
+func (r *TenantRetentionSnapshot) RetentionPeriodFor(lbs labels.Labels) time.Duration {
 	var (
 		matchedRule validation.StreamRetention
 		found       bool
 	)
 Outer:
-	for _, streamRetention := range streamRetentions {
+	for _, streamRetention := range r.streamRetentions {
 		for _, m := range streamRetention.Matchers {
 			if !m.Matches(lbs.Get(m.Name)) {
 				continue Outer
@@ -159,10 +187,12 @@ Outer:
 		found = true
 		matchedRule = streamRetention
 	}
+
 	if found {
 		return time.Duration(matchedRule.Period)
 	}
-	return globalRetention
+
+	return r.globalRetention
 }
 
 type latestRetentionStartTime struct {

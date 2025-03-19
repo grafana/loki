@@ -3,11 +3,11 @@ package ring
 import (
 	"context"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/go-kit/log"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/netutil"

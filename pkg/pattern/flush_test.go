@@ -260,6 +260,11 @@ func (f *fakeRing) GetTokenRangesForInstance(identifier string) (ring.TokenRange
 	return args.Get(0).(ring.TokenRanges), args.Error(1)
 }
 
+func (f *fakeRing) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+	args := f.Called(key, op, opts)
+	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
 type mockPoolClient struct {
 	mock.Mock
 	ctx context.Context

@@ -1,7 +1,9 @@
 package dataset
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 
@@ -11,6 +13,7 @@ import (
 // Helper types
 type (
 	stringptr *byte
+	bytearray *byte
 )
 
 // A Value represents a single value within a dataset. Unlike [any], Values can
@@ -68,6 +71,14 @@ func StringValue(v string) Value {
 	}
 }
 
+// ByteArrayValue returns a [Value] for a byte slice representing a string.
+func ByteArrayValue(v []byte) Value {
+	return Value{
+		num: uint64(len(v)),
+		any: (bytearray)(unsafe.SliceData(v)),
+	}
+}
+
 // IsNil returns whether v is nil.
 func (v Value) IsNil() bool {
 	return v.any == nil
@@ -92,6 +103,8 @@ func (v Value) Type() datasetmd.ValueType {
 		return v
 	case stringptr:
 		return datasetmd.VALUE_TYPE_STRING
+	case bytearray:
+		return datasetmd.VALUE_TYPE_BYTE_ARRAY
 	default:
 		panic(fmt.Sprintf("dataset.Value has unexpected type %T", v))
 	}
@@ -125,6 +138,87 @@ func (v Value) String() string {
 	return v.Type().String()
 }
 
+// ByteSlice returns v's value as a byte slice. If v is not a string,
+// ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
+// underlying type of v.
+func (v Value) ByteArray() []byte {
+	if ba, ok := v.any.(bytearray); ok {
+		return unsafe.Slice(ba, v.num)
+	}
+	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
+}
+
+// MarshalBinary encodes v into a binary representation. Non-NULL values encode
+// first with the type (encoded as uvarint), followed by an encoded value,
+// where:
+//
+//   - [datasetmd.VALUE_TYPE_INT64] encodes as a varint.
+//   - [datasetmd.VALUE_TYPE_UINT64] encodes as a uvarint.
+//   - [datasetmd.VALUE_TYPE_STRING] encodes the string as a sequence of bytes.
+//
+// NULL values encode as nil.
+func (v Value) MarshalBinary() (data []byte, err error) {
+	if v.IsNil() {
+		return nil, nil
+	}
+
+	buf := binary.AppendUvarint(nil, uint64(v.Type()))
+
+	switch v.Type() {
+	case datasetmd.VALUE_TYPE_INT64:
+		buf = binary.AppendVarint(buf, v.Int64())
+	case datasetmd.VALUE_TYPE_UINT64:
+		buf = binary.AppendUvarint(buf, v.Uint64())
+	case datasetmd.VALUE_TYPE_STRING:
+		str := v.String()
+		buf = append(buf, unsafe.Slice(unsafe.StringData(str), len(str))...)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		buf = append(buf, v.ByteArray()...)
+	default:
+		return nil, fmt.Errorf("dataset.Value.MarshalBinary: unsupported type %s", v.Type())
+	}
+
+	return buf, nil
+}
+
+// UnmarshalBinary decodes a Value from a binary representation. See
+// [Value.MarshalBinary] for the encoding format.
+func (v *Value) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		*v = Value{} // NULL
+		return nil
+	}
+
+	typ, n := binary.Uvarint(data)
+	if n <= 0 {
+		return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid type")
+	}
+
+	switch vtyp := datasetmd.ValueType(typ); vtyp {
+	case datasetmd.VALUE_TYPE_INT64:
+		val, n := binary.Varint(data[n:])
+		if n <= 0 {
+			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid int64 value")
+		}
+		*v = Int64Value(val)
+	case datasetmd.VALUE_TYPE_UINT64:
+		val, n := binary.Uvarint(data[n:])
+		if n <= 0 {
+			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid uint64 value")
+		}
+		*v = Uint64Value(val)
+	case datasetmd.VALUE_TYPE_STRING:
+		str := string(data[n:])
+		*v = StringValue(str)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		*v = ByteArrayValue(data[n:])
+	default:
+		return fmt.Errorf("dataset.Value.UnmarshalBinary: unsupported type %s", vtyp)
+	}
+
+	return nil
+}
+
 // CompareValues returns -1 if a<b, 0 if a==b, or 1 if a>b. CompareValues
 // panics if a and b are not the same type.
 //
@@ -153,6 +247,8 @@ func CompareValues(a, b Value) int {
 		return cmp.Compare(a.Uint64(), b.Uint64())
 	case datasetmd.VALUE_TYPE_STRING:
 		return cmp.Compare(a.String(), b.String())
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		return bytes.Compare(a.ByteArray(), b.ByteArray())
 	default:
 		panic(fmt.Sprintf("page.CompareValues: unsupported type %s", a.Type()))
 	}

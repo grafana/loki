@@ -34,17 +34,17 @@ func TestSum(t *testing.T) {
 	}}, counterValue))
 }
 
-func TestMax(t *testing.T) {
-	require.Equal(t, float64(0), max(nil, counterValue))
-	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: nil}, counterValue))
-	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
-	require.Equal(t, 12345.6789, max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
-	require.Equal(t, 7890.12345, max(&dto.MetricFamily{Metric: []*dto.Metric{
+func Test_maxMetric(t *testing.T) {
+	require.Equal(t, float64(0), maxMetric(nil, counterValue))
+	require.Equal(t, float64(0), maxMetric(&dto.MetricFamily{Metric: nil}, counterValue))
+	require.Equal(t, float64(0), maxMetric(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
+	require.Equal(t, 12345.6789, maxMetric(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
+	require.Equal(t, 7890.12345, maxMetric(&dto.MetricFamily{Metric: []*dto.Metric{
 		{Counter: &dto.Counter{Value: proto.Float64(1234.56789)}},
 		{Counter: &dto.Counter{Value: proto.Float64(7890.12345)}},
 	}}, counterValue))
 	// using 'counterValue' as function only works on counters
-	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{
+	require.Equal(t, float64(0), maxMetric(&dto.MetricFamily{Metric: []*dto.Metric{
 		{Gauge: &dto.Gauge{Value: proto.Float64(12345.6789)}},
 		{Gauge: &dto.Gauge{Value: proto.Float64(7890.12345)}},
 	}}, counterValue))

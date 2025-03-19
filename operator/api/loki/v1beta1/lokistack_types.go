@@ -431,7 +431,7 @@ type ObjectStorageSpec struct {
 
 // QueryLimitSpec defines the limits applies at the query path.
 type QueryLimitSpec struct {
-	// MaxEntriesLimitsPerQuery defines the maximum number of log entries
+	// MaxEntriesLimitPerQuery defines the maximum number of log entries
 	// that will be returned for a query.
 	//
 	// +optional

@@ -20,14 +20,16 @@ type compressWriter struct {
 	w   io.WriteCloser // Compressing writer.
 	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
 
+	rawBytes int // Number of uncompressed bytes written.
+
 	compression datasetmd.CompressionType // Compression type being used.
-	rawBytes    int                       // Number of uncompressed bytes written.
+	opts        CompressionOptions        // Options to customize compression.
 }
 
 var _ streamio.Writer = (*compressWriter)(nil)
 
-func newCompressWriter(w io.Writer, ty datasetmd.CompressionType) *compressWriter {
-	c := compressWriter{compression: ty}
+func newCompressWriter(w io.Writer, ty datasetmd.CompressionType, opts CompressionOptions) *compressWriter {
+	c := compressWriter{compression: ty, opts: opts}
 	c.Reset(w)
 	return &c
 }
@@ -85,7 +87,7 @@ func (c *compressWriter) Reset(w io.Writer) {
 			compressedWriter = snappy.NewBufferedWriter(w)
 
 		case datasetmd.COMPRESSION_TYPE_ZSTD:
-			zw, err := zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+			zw, err := zstd.NewWriter(w, c.opts.Zstd...)
 			if err != nil {
 				panic(fmt.Sprintf("compressWriter.Reset: creating zstd writer: %v", err))
 			}

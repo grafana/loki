@@ -45,6 +45,8 @@ type Complex interface {
 // that supports the operators < <= >= >.
 // If future releases of Go add new ordered types,
 // this constraint will be modified to include them.
+//
+// This type is redundant since Go 1.21 introduced [cmp.Ordered].
 type Ordered interface {
 	Integer | Float | ~string
 }

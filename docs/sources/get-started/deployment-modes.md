@@ -30,7 +30,7 @@ Query parallelization is limited by the number of instances and the setting `max
 
 ## Simple Scalable
 
-The simple scalable deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
+The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
 
 {{< admonition type="note" >}}
 This deployment mode is sometimes referred to by the acronym SSD for simple scalable deployment, not to be confused with solid state drives. Loki uses an object store.

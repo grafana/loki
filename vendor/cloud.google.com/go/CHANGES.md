@@ -1,5 +1,43 @@
 # Changes
 
+
+
+## [0.119.0](https://github.com/googleapis/google-cloud-go/compare/v0.118.3...v0.119.0) (2025-03-11)
+
+
+### Features
+
+* **main:** Add support for listening on custom host to internal/testutil ([#11780](https://github.com/googleapis/google-cloud-go/issues/11780)) ([9608a09](https://github.com/googleapis/google-cloud-go/commit/9608a09a5d41778c7bb93792b5d5128d7081d4a6)), refs [#11586](https://github.com/googleapis/google-cloud-go/issues/11586)
+
+## [0.118.3](https://github.com/googleapis/google-cloud-go/compare/v0.118.2...v0.118.3) (2025-02-20)
+
+
+### Bug Fixes
+
+* **main:** Bump github.com/envoyproxy/go-control-plane/envoy to v1.32.4 ([#11591](https://github.com/googleapis/google-cloud-go/issues/11591)) ([d52451a](https://github.com/googleapis/google-cloud-go/commit/d52451aa22fb7120e37b43161d3d3103c19e5943))
+
+## [0.118.2](https://github.com/googleapis/google-cloud-go/compare/v0.118.1...v0.118.2) (2025-02-06)
+
+
+### Bug Fixes
+
+* **internal/godocfx:** Don't save timestamps until modules are successfully processed ([#11563](https://github.com/googleapis/google-cloud-go/issues/11563)) ([8f38b3d](https://github.com/googleapis/google-cloud-go/commit/8f38b3d912354027c30977b5adc928e0c6eff7a9))
+* **internal/godocfx:** Retry go get with explicit envoy dependency ([#11564](https://github.com/googleapis/google-cloud-go/issues/11564)) ([a06a6a5](https://github.com/googleapis/google-cloud-go/commit/a06a6a5542939b6239e1ec2c944eb1aae56745d9))
+
+## [0.118.1](https://github.com/googleapis/google-cloud-go/compare/v0.118.0...v0.118.1) (2025-01-30)
+
+
+### Bug Fixes
+
+* **main:** Remove OpenCensus dependency ([6243d91](https://github.com/googleapis/google-cloud-go/commit/6243d910b2bb502211d8308f9cc7723829d9f844))
+
+## [0.118.0](https://github.com/googleapis/google-cloud-go/compare/v0.117.0...v0.118.0) (2025-01-02)
+
+
+### Features
+
+* **civil:** Add AddMonths, AddYears and Weekday methods to Date ([#11340](https://github.com/googleapis/google-cloud-go/issues/11340)) ([d45f1a0](https://github.com/googleapis/google-cloud-go/commit/d45f1a01ebff868418aa14fe762ef7d1334f797d))
+
 ## [0.117.0](https://github.com/googleapis/google-cloud-go/compare/v0.116.0...v0.117.0) (2024-12-16)
 
 

@@ -222,9 +222,9 @@ func bench(numWriters, totalLines int, b *testing.B) {
 // 4. After all are written, call a SeriesReset. This will block the entire series map and will hopefully block
 // some other writing routine.
 func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int, series record.RefSeries, maxInitialSleep time.Duration) {
-	randomSleepMax := func(max time.Duration) {
+	randomSleepMax := func(maxVal time.Duration) {
 		// random sleep to add some jitter
-		s := int64(rand.Uint64()) % int64(max)
+		s := int64(rand.Uint64()) % int64(maxVal)
 		time.Sleep(time.Duration(s))
 	}
 	// random sleep to add some jitter

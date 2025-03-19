@@ -9,6 +9,8 @@ weight:
 
 # output
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `output` stage is an action stage that takes data from the extracted map and
 changes the log line that will be sent to Loki.
 

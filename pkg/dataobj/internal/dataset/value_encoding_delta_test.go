@@ -2,6 +2,8 @@ package dataset
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"math"
 	"math/rand"
 	"testing"
@@ -22,8 +24,9 @@ func Test_delta(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc = newDeltaEncoder(&buf)
-		dec = newDeltaDecoder(&buf)
+		enc    = newDeltaEncoder(&buf)
+		dec    = newDeltaDecoder(&buf)
+		decBuf = make([]Value, batchSize)
 	)
 
 	for _, num := range numbers {
@@ -31,10 +34,15 @@ func Test_delta(t *testing.T) {
 	}
 
 	var actual []int64
-	for range len(numbers) {
-		v, err := dec.Decode()
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		require.NoError(t, err)
-		actual = append(actual, v.Int64())
+		for _, v := range decBuf[:n] {
+			actual = append(actual, v.Int64())
+		}
 	}
 
 	require.Equal(t, numbers, actual)
@@ -54,8 +62,9 @@ func Fuzz_delta(f *testing.F) {
 		var buf bytes.Buffer
 
 		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
+			enc    = newDeltaEncoder(&buf)
+			dec    = newDeltaDecoder(&buf)
+			decBuf = make([]Value, batchSize)
 		)
 
 		var numbers []int64
@@ -66,10 +75,15 @@ func Fuzz_delta(f *testing.F) {
 		}
 
 		var actual []int64
-		for i := 0; i < count; i++ {
-			v, err := dec.Decode()
+		for {
+			n, err := dec.Decode(decBuf[:batchSize])
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			require.NoError(t, err)
-			actual = append(actual, v.Int64())
+			for _, v := range decBuf[:n] {
+				actual = append(actual, v.Int64())
+			}
 		}
 
 		require.Equal(t, numbers, actual)
@@ -126,7 +140,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 
@@ -148,7 +162,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 
@@ -168,7 +182,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 }

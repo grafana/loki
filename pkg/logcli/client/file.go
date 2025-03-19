@@ -241,6 +241,10 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
 }
 
+func (l *limiter) EnableMultiVariantQueries(_ string) bool {
+	return false // Multi-variant queries disabled by default for file client
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels

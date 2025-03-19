@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -148,4 +149,85 @@ func generateRandomString(length int) string {
 		b[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+func TestEncodeDecodeStreamMetadata(t *testing.T) {
+	tests := []struct {
+		name                   string
+		hash                   uint64
+		partition              int32
+		topic                  string
+		tenantID               string
+		entriesSize            uint64
+		structuredMetadataSize uint64
+		expectErr              bool
+	}{
+		{
+			name:                   "Valid metadata",
+			hash:                   12345,
+			partition:              1,
+			topic:                  "logs",
+			tenantID:               "tenant-1",
+			entriesSize:            1024,
+			structuredMetadataSize: 512,
+			expectErr:              false,
+		},
+		{
+			name:                   "Valid metadata with zero sizes",
+			hash:                   67890,
+			partition:              2,
+			topic:                  "metrics",
+			tenantID:               "tenant-2",
+			entriesSize:            0,
+			structuredMetadataSize: 0,
+			expectErr:              false,
+		},
+		{
+			name:                   "Zero hash - should error",
+			hash:                   0,
+			partition:              3,
+			topic:                  "traces",
+			tenantID:               "tenant-3",
+			entriesSize:            2048,
+			structuredMetadataSize: 1024,
+			expectErr:              true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Encode metadata
+			record, err := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.entriesSize, tt.structuredMetadataSize)
+			if tt.expectErr {
+				require.Error(t, err)
+				require.Nil(t, record)
+				return
+			}
+
+			require.NotNil(t, record)
+			require.NotNil(t, record.Value)
+			require.Equal(t, tt.topic+metadataTopicSuffix, record.Topic)
+			require.Equal(t, tt.partition, record.Partition)
+			require.Equal(t, []byte(tt.tenantID), record.Key)
+
+			// Decode metadata
+			metadata, err := DecodeStreamMetadata(record)
+			require.NoError(t, err)
+			require.NotNil(t, metadata)
+
+			// Verify decoded values
+			require.Equal(t, tt.hash, metadata.StreamHash)
+			require.Equal(t, tt.entriesSize, metadata.EntriesSize)
+			require.Equal(t, tt.structuredMetadataSize, metadata.StructuredMetadataSize)
+		})
+	}
+
+	t.Run("Decode invalid value", func(t *testing.T) {
+		record := &kgo.Record{
+			Value: []byte("invalid data"),
+		}
+		metadata, err := DecodeStreamMetadata(record)
+		require.Error(t, err)
+		require.Nil(t, metadata)
+	})
 }

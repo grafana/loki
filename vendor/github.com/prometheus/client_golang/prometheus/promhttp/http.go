@@ -207,7 +207,13 @@ func HandlerForTransactional(reg prometheus.TransactionalGatherer, opts HandlerO
 		if encodingHeader != string(Identity) {
 			rsp.Header().Set(contentEncodingHeader, encodingHeader)
 		}
-		enc := expfmt.NewEncoder(w, contentType)
+
+		var enc expfmt.Encoder
+		if opts.EnableOpenMetricsTextCreatedSamples {
+			enc = expfmt.NewEncoder(w, contentType, expfmt.WithCreatedLines())
+		} else {
+			enc = expfmt.NewEncoder(w, contentType)
+		}
 
 		// handleError handles the error according to opts.ErrorHandling
 		// and returns true if we have to abort after the handling.
@@ -408,6 +414,21 @@ type HandlerOpts struct {
 	// (which changes the identity of the resulting series on the Prometheus
 	// server).
 	EnableOpenMetrics bool
+	// EnableOpenMetricsTextCreatedSamples specifies if this handler should add, extra, synthetic
+	// Created Timestamps for counters, histograms and summaries, which for the current
+	// version of OpenMetrics are defined as extra series with the same name and "_created"
+	// suffix. See also the OpenMetrics specification for more details
+	// https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#counter-1
+	//
+	// Created timestamps are used to improve the accuracy of reset detection,
+	// but the way it's designed in OpenMetrics 1.0 it also dramatically increases cardinality
+	// if the scraper does not handle those metrics correctly (converting to created timestamp
+	// instead of leaving those series as-is). New OpenMetrics versions might improve
+	// this situation.
+	//
+	// Prometheus introduced the feature flag 'created-timestamp-zero-ingestion'
+	// in version 2.50.0 to handle this situation.
+	EnableOpenMetricsTextCreatedSamples bool
 	// ProcessStartTime allows setting process start timevalue that will be exposed
 	// with "Process-Start-Time-Unix" response header along with the metrics
 	// payload. This allow callers to have efficient transformations to cumulative

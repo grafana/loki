@@ -51,7 +51,7 @@ func (a *allocator) reset() {
 // contracts that do not allow the implementations to retain the rows they
 // are passed as arguments.
 //
-// See: RowBuffer, DedupeRowReader, DedupeRowWriter
+// See: RowBuffer, NewRowGroupRowReader, NewColumnChunkRowReader
 type rowAllocator struct{ allocator }
 
 func (a *rowAllocator) capture(row Row) {

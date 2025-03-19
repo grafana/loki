@@ -12,7 +12,7 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 	visited := [][2]string{}
 
 	visitor := &DepthFirstTraversal{
-		VisitLabelParserFn: func(_ RootVisitor, e *LabelParserExpr) {
+		VisitLabelParserFn: func(_ RootVisitor, e *LineParserExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
 		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
@@ -33,7 +33,7 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 		{"*syntax.LogfmtParserExpr", `| logfmt`},
 		{"*syntax.MatchersExpr", `{env="dev"}`},
 		{"*syntax.LineFilterExpr", `|~ "(foo|bar)"`},
-		{"*syntax.LabelParserExpr", `| json`},
+		{"*syntax.LineParserExpr", `| json`},
 	}
 
 	query := `
@@ -41,6 +41,30 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 	/
 	sum by (container) (max_over_time({env="dev"} |~ "(foo|bar)" | json | unwrap duration [1m]))
 	`
+	expr, err := ParseExpr(query)
+	require.NoError(t, err)
+	expr.Accept(visitor)
+	require.Equal(t, expected, visited)
+}
+
+func TestDepthFirstTraversalVisitor_Variants(t *testing.T) {
+	visited := [][2]string{}
+
+	visitor := &DepthFirstTraversal{
+		VisitVariantsFn: func(_ RootVisitor, e *MultiVariantExpr) {
+			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
+		},
+	}
+
+	// Only expressions that have a Visit function defined are added to the list
+	expected := [][2]string{
+		{
+			"*syntax.MultiVariantExpr",
+			`variants(count_over_time({env="prod"}[1m])) of ({env="prod"}[1m])`,
+		},
+	}
+
+	query := `variants(count_over_time({env="prod"}[1m])) of ({env="prod"}[1m])`
 	expr, err := ParseExpr(query)
 	require.NoError(t, err)
 	expr.Accept(visitor)

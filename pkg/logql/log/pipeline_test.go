@@ -328,7 +328,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 			[]Stage{
 				NewLogfmtParser(true, false),
 				NewJSONParser(),
-				NewDropLabels([]DropLabel{
+				NewDropLabels([]NamedLabelMatcher{
 					{
 						nil,
 						"__error__",
@@ -365,7 +365,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 			[]Stage{
 				NewLogfmtParser(true, false),
 				NewJSONParser(),
-				NewDropLabels([]DropLabel{
+				NewDropLabels([]NamedLabelMatcher{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
 						"",
@@ -431,7 +431,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep all",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{}),
+				NewKeepLabels([]NamedLabelMatcher{}),
 			},
 			lines: [][]byte{
 				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
@@ -467,7 +467,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep by name",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{
+				NewKeepLabels([]NamedLabelMatcher{
 					{
 						nil,
 						"level",
@@ -498,7 +498,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep by matcher",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{
+				NewKeepLabels([]NamedLabelMatcher{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
 						"",

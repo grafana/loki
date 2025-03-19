@@ -1,0 +1,24 @@
+linters:
+  enable-all: true
+  disable:
+    - golint
+    - interfacer
+    - scopelint
+    - maligned
+    - rowserrcheck
+    - funlen
+    - depguard
+    - goerr113
+    - exhaustivestruct
+    - testpackage
+    - gochecknoglobals
+    - wrapcheck
+    - forbidigo
+    - ifshort
+    - cyclop
+    - gomoddirectives
+linters-settings:
+  exhaustive:
+    default-signifies-exhaustive: true
+issues:
+  exclude-use-default: false

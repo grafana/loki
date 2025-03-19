@@ -213,6 +213,14 @@ type RemoveObjectError struct {
 	Err        error
 }
 
+func (err *RemoveObjectError) Error() string {
+	// This should never happen as we will have a non-nil error with no underlying error.
+	if err.Err == nil {
+		return "unexpected remove object error result"
+	}
+	return err.Err.Error()
+}
+
 // RemoveObjectResult - container of Multi Delete S3 API result
 type RemoveObjectResult struct {
 	ObjectName      string

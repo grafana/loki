@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
@@ -49,10 +54,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	dataobjquerier "github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/limits"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -64,12 +75,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/tail"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -81,6 +94,7 @@ import (
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -96,52 +110,59 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                     string = "ring"
-	RuntimeConfig            string = "runtime-config"
-	Overrides                string = "overrides"
-	OverridesExporter        string = "overrides-exporter"
-	TenantConfigs            string = "tenant-configs"
-	Server                   string = "server"
-	InternalServer           string = "internal-server"
-	Distributor              string = "distributor"
-	Querier                  string = "querier"
-	CacheGenerationLoader    string = "cache-generation-loader"
-	Ingester                 string = "ingester"
-	PatternIngester          string = "pattern-ingester"
-	PatternIngesterTee       string = "pattern-ingester-tee"
-	PatternRingClient        string = "pattern-ring-client"
-	IngesterQuerier          string = "ingester-querier"
-	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
-	QueryFrontend            string = "query-frontend"
-	QueryFrontendTripperware string = "query-frontend-tripperware"
-	QueryLimiter             string = "query-limiter"
-	QueryLimitsInterceptors  string = "query-limits-interceptors"
-	QueryLimitsTripperware   string = "query-limits-tripper"
-	RulerStorage             string = "ruler-storage"
-	Ruler                    string = "ruler"
-	RuleEvaluator            string = "rule-evaluator"
-	Store                    string = "store"
-	TableManager             string = "table-manager"
-	MemberlistKV             string = "memberlist-kv"
-	Compactor                string = "compactor"
-	BloomGateway             string = "bloom-gateway"
-	IndexGateway             string = "index-gateway"
-	IndexGatewayRing         string = "index-gateway-ring"
-	IndexGatewayInterceptors string = "index-gateway-interceptors"
-	QueryScheduler           string = "query-scheduler"
-	QuerySchedulerRing       string = "query-scheduler-ring"
-	BloomPlanner             string = "bloom-planner"
-	BloomBuilder             string = "bloom-builder"
-	BloomStore               string = "bloom-store"
-	All                      string = "all"
-	Read                     string = "read"
-	Write                    string = "write"
-	Backend                  string = "backend"
-	Analytics                string = "analytics"
-	InitCodec                string = "init-codec"
-	PartitionRing            string = "partition-ring"
-	BlockBuilder             string = "block-builder"
-	BlockScheduler           string = "block-scheduler"
+	Ring                     = "ring"
+	Overrides                = "overrides"
+	OverridesExporter        = "overrides-exporter"
+	TenantConfigs            = "tenant-configs"
+	Server                   = "server"
+	InternalServer           = "internal-server"
+	Distributor              = "distributor"
+	IngestLimits             = "ingest-limits"
+	IngestLimitsRing         = "ingest-limits-ring"
+	IngestLimitsFrontend     = "ingest-limits-frontend"
+	IngestLimitsFrontendRing = "ingest-limits-frontend-ring"
+	Ingester                 = "ingester"
+	PatternIngester          = "pattern-ingester"
+	PatternRingClient        = "pattern-ring-client"
+	PatternIngesterTee       = "pattern-ingester-tee"
+	Querier                  = "querier"
+	QueryFrontend            = "query-frontend"
+	QueryFrontendTripperware = "query-frontend-tripperware"
+	QueryLimiter             = "query-limiter"
+	QueryLimitsInterceptors  = "query-limits-interceptors"
+	QueryLimitsTripperware   = "query-limits-tripperware"
+	Store                    = "store"
+	TableManager             = "table-manager"
+	RulerStorage             = "ruler-storage"
+	Ruler                    = "ruler"
+	RuleEvaluator            = "rule-evaluator"
+	Compactor                = "compactor"
+	IndexGateway             = "index-gateway"
+	IndexGatewayRing         = "index-gateway-ring"
+	IndexGatewayInterceptors = "index-gateway-interceptors"
+	BloomStore               = "bloom-store"
+	BloomGateway             = "bloom-gateway"
+	BloomGatewayClient       = "bloom-gateway-client"
+	BloomPlanner             = "bloom-planner"
+	BloomBuilder             = "bloom-builder"
+	QueryScheduler           = "query-scheduler"
+	QuerySchedulerRing       = "query-scheduler-ring"
+	IngesterQuerier          = "ingester-querier"
+	IngesterGRPCInterceptors = "ingester-grpc-interceptors"
+	RuntimeConfig            = "runtime-config"
+	MemberlistKV             = "memberlist-kv"
+	Analytics                = "analytics"
+	CacheGenerationLoader    = "cache-generation-loader"
+	PartitionRing            = "partition-ring"
+	BlockBuilder             = "block-builder"
+	BlockScheduler           = "block-scheduler"
+	DataObjExplorer          = "dataobj-explorer"
+	DataObjConsumer          = "dataobj-consumer"
+	UI                       = "ui"
+	All                      = "all"
+	Read                     = "read"
+	Write                    = "write"
+	Backend                  = "backend"
 )
 
 const (
@@ -197,6 +218,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	}(t.Server.HTTPServer.Handler)
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
+	t.Server.HTTPServer.Handler = h2c.NewHandler(t.Server.HTTPServer.Handler, &http2.Server{})
 
 	if t.Cfg.Server.HTTPListenPort == 0 {
 		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
@@ -292,6 +314,8 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 
 	return t.runtimeConfig, err
 }
@@ -346,6 +370,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.MetricsNamespace,
 		t.Tee,
 		t.UsageTracker,
+		t.Cfg.IngestLimitsFrontendClient,
+		t.ingestLimitsFrontendRing,
+		t.Cfg.IngestLimits.NumPartitions,
 		logger,
 	)
 	if err != nil {
@@ -382,10 +409,152 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	return t.distributor, nil
 }
 
+func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	t.ingestLimitsRing, err = ring.New(
+		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
+		limits.RingName,
+		limits.RingKey,
+		util_log.Logger,
+		reg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	}
+
+	return t.ingestLimitsRing, nil
+}
+
+func (t *Loki) initIngestLimits() (services.Service, error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
+
+	ingestLimits, err := limits.NewIngestLimits(
+		t.Cfg.IngestLimits,
+		util_log.Logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.ingestLimits = ingestLimits
+
+	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
+
+	// Register HTTP handler for metadata
+	t.Server.HTTP.Path("/ingest-limits/usage/{tenant}").Methods("GET").Handler(ingestLimits)
+
+	return ingestLimits, nil
+}
+
+func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	if t.ingestLimitsFrontendRing, err = ring.New(
+		t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig,
+		limits_frontend.RingName,
+		limits_frontend.RingKey,
+		util_log.Logger,
+		reg,
+	); err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits_frontend.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits-frontend/ring").
+		Methods("GET", "POST").
+		Handler(t.ingestLimitsFrontendRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits-frontend/ring").
+			Methods("GET", "POST").
+			Handler(t.ingestLimitsFrontendRing)
+	}
+
+	return t.ingestLimitsFrontendRing, nil
+}
+
+func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	// Members of the ring are expected to listen on their gRPC server port.
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	logger := log.With(util_log.Logger, "component", "ingest-limits-frontend")
+	ingestLimitsFrontend, err := limits_frontend.New(
+		t.Cfg.IngestLimitsFrontend,
+		limits.RingName,
+		t.ingestLimitsRing,
+		t.Overrides,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.ingestLimitsFrontend = ingestLimitsFrontend
+	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+
+	// Register HTTP handler to check if a tenant exceeds limits
+	// Returns a JSON response for the frontend to display which
+	// streams are rejected.
+	t.Server.HTTP.Path("/ingest-limits/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
+
+	return ingestLimitsFrontend, nil
+}
+
 // initCodec sets the codec used to encode and decode requests.
 func (t *Loki) initCodec() (services.Service, error) {
 	t.Codec = queryrange.DefaultCodec
 	return nil, nil
+}
+
+func (t *Loki) getQuerierStore() (querier.Store, error) {
+	if !t.Cfg.DataObj.Querier.Enabled {
+		return t.Store, nil
+	}
+
+	// verify that there's no schema with a date after the dataobj querier from date
+	for _, schema := range t.Cfg.SchemaConfig.Configs {
+		if schema.From.After(t.Cfg.DataObj.Querier.From) {
+			return nil, fmt.Errorf("dataobj querier From should be after the last schema date")
+		}
+	}
+
+	store, err := t.createDataObjBucket("dataobj-querier")
+	if err != nil {
+		return nil, err
+	}
+
+	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
+		{
+			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier"), metastore.NewObjectMetastore(store)),
+			From:  t.Cfg.DataObj.Querier.From.Time,
+		},
+		{
+			Store: t.Store,
+		},
+	})
+
+	return storeCombiner, nil
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
@@ -400,7 +569,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
+	querierStore, err := t.getQuerierStore()
+	if err != nil {
+		return nil, err
+	}
+
+	t.Querier, err = querier.New(t.Cfg.Querier, querierStore, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -550,8 +724,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
-	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
+	tailQuerier := tail.NewQuerier(t.ingesterQuerier, t.Querier, deleteStore, t.Overrides, t.Cfg.Querier.TailMaxDuration, tail.NewMetrics(prometheus.DefaultRegisterer), log.With(util_log.Logger, "component", "tail-querier"))
+	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
+	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
 
 	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
@@ -907,20 +1082,11 @@ func (t *Loki) setupAsyncStore() error {
 		shipperConfigIdx++
 	}
 
-	// TODO(owen-d): make helper more agnostic between boltdb|tsdb
-	var resyncInterval time.Duration
-	switch t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType {
-	case types.BoltDBShipperType:
-		resyncInterval = t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
-	case types.TSDBType:
-		resyncInterval = t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval
-	}
-
 	minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
 		t.Cfg.Ingester.MaxChunkAge,
 		shipperQuerierIndexUpdateDelay(
 			t.Cfg.StorageConfig.IndexCacheValidity,
-			resyncInterval,
+			shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs),
 		),
 	)
 
@@ -1011,13 +1177,26 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	schemas := t.Cfg.SchemaConfig
+	// Adjust schema config to use constant sharding for the timerange of dataobj querier.
+	if t.Cfg.DataObj.Querier.Enabled {
+		schemas = schemas.Clone()
+		schemas.Configs = append(schemas.Configs, t.Cfg.DataObj.Querier.PeriodConfig())
+		sort.Slice(schemas.Configs, func(i, j int) bool {
+			return schemas.Configs[i].From.UnixNano() < schemas.Configs[j].From.UnixNano()
+		})
+		for _, cfg := range schemas.Configs {
+			level.Debug(util_log.Logger).Log("msg", "schema config", "from", cfg.From, "row_shards", cfg.RowShards, "index_type", cfg.IndexType, "object_store", cfg.ObjectType, "schema", cfg.Schema)
+		}
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
-		t.Cfg.SchemaConfig,
+		schemas,
 		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
@@ -1421,6 +1600,9 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1470,17 +1652,28 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		}
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, deleteRequestStoreClient, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
+	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs))
+	t.compactor, err = compactor.NewCompactor(
+		t.Cfg.CompactorConfig,
+		objectClients,
+		deleteRequestStoreClient,
+		t.Cfg.SchemaConfig,
+		t.Overrides,
+		indexUpdatePropagationMaxDelay,
+		prometheus.DefaultRegisterer,
+		t.Cfg.MetricsNamespace,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	t.compactor.RegisterIndexCompactor(types.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactor())
-	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+	prefix, compactorHandler := t.compactor.Handler()
+	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+		t.InternalServer.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
@@ -1495,7 +1688,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 }
 
 func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
-	return t.HTTPAuthMiddleware.Wrap(deletion.TenantMiddleware(t.Overrides, h))
+	return middleware.Merge(t.HTTPAuthMiddleware, deletion.TenantMiddleware(t.Overrides)).Wrap(h)
 }
 
 func (t *Loki) initBloomGateway() (services.Service, error) {
@@ -1544,23 +1737,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewClient(
-			t.Cfg.BloomGateway.Client,
-			t.Overrides,
-			prometheus.DefaultRegisterer,
-			logger,
-			t.cacheGenerationLoader,
-			t.Cfg.CompactorConfig.RetentionEnabled,
-		)
-		if err != nil {
-			return nil, err
-		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
 			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
 			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
-		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
+		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
@@ -1655,6 +1837,18 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 	return p, nil
 }
 
+func (t *Loki) initBloomGatewayClient() (services.Service, error) {
+	var err error
+	if t.Cfg.BloomGateway.Enabled {
+		logger := log.With(util_log.Logger, "component", "bloom-gateway-client")
+		t.bloomGatewayClient, err = bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
 func (t *Loki) initBloomBuilder() (services.Service, error) {
 	if !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
@@ -1672,22 +1866,6 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		ringManager = t.indexGatewayRingManager
 	}
 
-	var bloomGatewayClient bloomgateway.Client
-	if t.Cfg.BloomGateway.Enabled {
-		var err error
-		bloomGatewayClient, err = bloomgateway.NewClient(
-			t.Cfg.BloomGateway.Client,
-			t.Overrides,
-			prometheus.DefaultRegisterer,
-			logger,
-			t.cacheGenerationLoader,
-			t.Cfg.CompactorConfig.RetentionEnabled,
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1696,7 +1874,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.ClientMetrics,
 		t.Store,
 		t.BloomStore,
-		bloomGatewayClient,
+		t.bloomGatewayClient,
 		logger,
 		prometheus.DefaultRegisterer,
 		ringManager,
@@ -1887,9 +2065,76 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	return s, nil
 }
 
+func (t *Loki) initDataObjExplorer() (services.Service, error) {
+	store, err := t.createDataObjBucket("dataobj-explorer")
+	if err != nil {
+		return nil, err
+	}
+
+	explorer, err := explorer.New(store, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	path, handler := explorer.Handler()
+	t.Server.HTTP.PathPrefix(path).Handler(handler)
+	return explorer, nil
+}
+
+func (t *Loki) initUI() (services.Service, error) {
+	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
+	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+	t.UI = svc
+	return svc, nil
+}
+
+func (t *Loki) initDataObjConsumer() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	store, err := t.createDataObjBucket("dataobj-consumer")
+	if err != nil {
+		return nil, err
+	}
+
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
+	t.dataObjConsumer = consumer.New(
+		t.Cfg.KafkaConfig,
+		t.Cfg.DataObj.Consumer,
+		t.Cfg.Distributor.TenantTopic.TopicPrefix,
+		store,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		t.partitionRing,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	return t.dataObjConsumer, nil
+}
+
+func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema for now: %w", err)
+	}
+	var objstoreBucket objstore.Bucket
+	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, clientName, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if t.Cfg.DataObj.StorageBucketPrefix != "" {
+		objstoreBucket = objstore.NewPrefixedBucket(objstoreBucket, t.Cfg.DataObj.StorageBucketPrefix)
+	}
+
+	return objstoreBucket, nil
+}
+
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
 	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
-		return deletion.NewNoOpDeleteRequestsStore(), nil
+		return deletion.NewNoOpDeleteRequestsClient(), nil
 	}
 
 	compactorAddress, isGRPCAddress, err := t.compactorAddress()
@@ -1920,7 +2165,12 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil, logger)
+	querierStore, err := t.getQuerierStore()
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := querier.New(t.Cfg.Querier, querierStore, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
@@ -1975,6 +2225,25 @@ func shipperIngesterIndexUploadDelay() time.Duration {
 // avoid missing any logs or chunk ids due to async nature of shipper.
 func shipperMinIngesterQueryStoreDuration(maxChunkAge, querierUpdateDelay time.Duration) time.Duration {
 	return maxChunkAge + shipperIngesterIndexUploadDelay() + querierUpdateDelay + 5*time.Minute
+}
+
+// shipperResyncInterval returns the resync interval for the active shipper index type i.e boltdb-shipper | tsdb
+func shipperResyncInterval(storageConfig storage.Config, schemaConfigs []config.PeriodConfig) time.Duration {
+	shipperConfigIdx := config.ActivePeriodConfig(schemaConfigs)
+	iTy := schemaConfigs[shipperConfigIdx].IndexType
+	if iTy != types.BoltDBShipperType && iTy != types.TSDBType {
+		shipperConfigIdx++
+	}
+
+	var resyncInterval time.Duration
+	switch schemaConfigs[shipperConfigIdx].IndexType {
+	case types.BoltDBShipperType:
+		resyncInterval = storageConfig.BoltDBShipperConfig.ResyncInterval
+	case types.TSDBType:
+		resyncInterval = storageConfig.TSDBShipperConfig.ResyncInterval
+	}
+
+	return resyncInterval
 }
 
 // NewServerService constructs service from Server component.

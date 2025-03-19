@@ -6,7 +6,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/openshift/otlp"
 )
 
 func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
@@ -19,7 +19,17 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
 	}
 
-	return openshift.DefaultOTLPAttributes(disableRecommended)
+	return config.OTLPAttributeConfig{
+		RemoveDefaultLabels: true,
+		Global: &config.OTLPTenantAttributeConfig{
+			ResourceAttributes: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  otlp.DefaultOTLPAttributes(disableRecommended),
+				},
+			},
+		},
+	}
 }
 
 func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action config.OTLPAttributeAction) []config.OTLPAttribute {
@@ -92,20 +102,20 @@ func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec, base *config.OT
 			convertAttributeReferences(streamLabels.ResourceAttributes, config.OTLPAttributeActionStreamLabel)...)
 	}
 
-	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil {
-		if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
+	if dropLabels := otlpSpec.Drop; dropLabels != nil {
+		if resAttr := dropLabels.ResourceAttributes; len(resAttr) > 0 {
 			result.ResourceAttributes = append(result.ResourceAttributes,
-				convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
+				convertAttributeReferences(resAttr, config.OTLPAttributeActionDrop)...)
 		}
 
-		if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
+		if scopeAttr := dropLabels.ScopeAttributes; len(scopeAttr) > 0 {
 			result.ScopeAttributes = append(result.ScopeAttributes,
-				convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
+				convertAttributeReferences(scopeAttr, config.OTLPAttributeActionDrop)...)
 		}
 
-		if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
+		if logAttr := dropLabels.LogAttributes; len(logAttr) > 0 {
 			result.LogAttributes = append(result.LogAttributes,
-				convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
+				convertAttributeReferences(logAttr, config.OTLPAttributeActionDrop)...)
 		}
 	}
 
@@ -233,24 +243,24 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				}
 			}
 
-			if structuredMetadata := globalOTLP.StructuredMetadata; structuredMetadata != nil {
+			if dropLabels := globalOTLP.Drop; dropLabels != nil {
 				if result.Global == nil {
 					result.Global = &config.OTLPTenantAttributeConfig{}
 				}
 
-				if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
+				if resAttr := dropLabels.ResourceAttributes; len(resAttr) > 0 {
 					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
-						convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
+						convertAttributeReferences(resAttr, config.OTLPAttributeActionDrop)...)
 				}
 
-				if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
+				if scopeAttr := dropLabels.ScopeAttributes; len(scopeAttr) > 0 {
 					result.Global.ScopeAttributes = append(result.Global.ScopeAttributes,
-						convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
+						convertAttributeReferences(scopeAttr, config.OTLPAttributeActionDrop)...)
 				}
 
-				if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
+				if logAttr := dropLabels.LogAttributes; len(logAttr) > 0 {
 					result.Global.LogAttributes = append(result.Global.LogAttributes,
-						convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
+						convertAttributeReferences(logAttr, config.OTLPAttributeActionDrop)...)
 				}
 			}
 		}

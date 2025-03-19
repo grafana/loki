@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"runtime"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -88,39 +90,86 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 	}
 
 	var (
-		bitmapReader         = bytes.NewReader(p.Data[n : n+int(bitmapSize)])
-		compressedDataReader = bytes.NewReader(p.Data[n+int(bitmapSize):])
+		bitmapData           = p.Data[n : n+int(bitmapSize)]
+		compressedValuesData = p.Data[n+int(bitmapSize):]
+
+		bitmapReader           = bytes.NewReader(bitmapData)
+		compressedValuesReader = bytes.NewReader(compressedValuesData)
 	)
 
 	switch compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-		return bitmapReader, io.NopCloser(compressedDataReader), nil
+		return bitmapReader, io.NopCloser(compressedValuesReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
-		sr := snappy.NewReader(compressedDataReader)
-		return bitmapReader, io.NopCloser(sr), nil
+		sr := snappyPool.Get().(*snappy.Reader)
+		sr.Reset(compressedValuesReader)
+		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			sr.Reset(nil) // Allow releasing the buffer.
+			snappyPool.Put(sr)
+			return nil
+		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zr, err := zstd.NewReader(compressedDataReader)
-		if err != nil {
-			return nil, nil, fmt.Errorf("opening zstd reader: %w", err)
+		zr := zstdPool.Get().(*zstdWrapper)
+		if err := zr.Reset(compressedValuesReader); err != nil {
+			// [zstd.Decoder.Reset] can fail if the underlying reader got closed.
+			// This shouldn't happen in practice (we only close the reader when the
+			// wrapper has been released from the pool), but we handle this for
+			// safety and fall back to manually creating a new wrapper by calling New
+			// directly.
+			zr = zstdPool.New().(*zstdWrapper)
 		}
-		return bitmapReader, newZstdReader(zr), nil
+		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
+			_ = zr.Reset(nil) // Allow releasing the buffer.
+			zstdPool.Put(zr)
+			return nil
+		}}, nil
+
+	default:
+		// We do *not* want to panic here, as we may be trying to read a page from
+		// a newer format.
+		return nil, nil, fmt.Errorf("unknown compression type %q", compression.String())
 	}
-
-	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
 }
 
-// zstdReader implements [io.ReadCloser] for a [zstd.Decoder].
-type zstdReader struct{ *zstd.Decoder }
-
-// newZstdReader returns a new [io.ReadCloser] for a [zstd.Decoder].
-func newZstdReader(dec *zstd.Decoder) io.ReadCloser {
-	return &zstdReader{Decoder: dec}
+var snappyPool = sync.Pool{
+	New: func() any {
+		return snappy.NewReader(nil)
+	},
 }
 
-// Close implements [io.Closer].
-func (r *zstdReader) Close() error {
-	r.Decoder.Close()
-	return nil
+type closerFunc struct {
+	io.Reader
+	onClose func() error
+}
+
+func (c *closerFunc) Close() error { return c.onClose() }
+
+// zstdWrapper wraps around a [zstd.Decoder]. [zstd.Decoder] uses persistent
+// goroutines for parallelized decoding, which prevents it from being garbage
+// collected.
+//
+// Wrapping around the decoder permits using [runtime.AddCleanup] to detect
+// when the wrapper is garbage collected and automatically closing the
+// underlying decoder.
+type zstdWrapper struct{ *zstd.Decoder }
+
+var zstdPool = sync.Pool{
+	New: func() any {
+		// Despite the name of zstd.WithDecoderLowmem implying we're using more
+		// memory, in practice we've seen it use both less memory and fewer
+		// allocations than the default of true. As a result, setting it to false
+		// increases read speed as it is less taxing on the garbage collector.
+		zr, err := zstd.NewReader(nil, zstd.WithDecoderLowmem(false))
+		if err != nil {
+			panic(fmt.Sprintf("creating zstd reader: %v", err))
+		}
+
+		// See doc comment on [zstdWrapper] for why we're doing this.
+		zw := &zstdWrapper{zr}
+		runtime.AddCleanup(zw, func(zr *zstd.Decoder) { zr.Close() }, zr)
+
+		return zw
+	},
 }

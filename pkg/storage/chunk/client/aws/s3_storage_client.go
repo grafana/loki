@@ -20,14 +20,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	awscommon "github.com/grafana/dskit/aws"
-
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -76,6 +73,7 @@ type S3Config struct {
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
+	ChunkDelimiter   string              `yaml:"chunk_delimiter"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	StorageClass     string              `yaml:"storage_class"`
@@ -113,6 +111,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Delimiter used to replace the default delimiter ':' in chunk IDs when storing chunks. This is mainly intended when you run a MinIO instance on a Windows machine. You should not change this value inflight.")
 	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
@@ -192,7 +191,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 
 	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
 	if cfg.S3.URL != nil {
-		s3Config, err = awscommon.ConfigFromURL(cfg.S3.URL)
+		s3Config, err = ConfigFromURL(cfg.S3.URL)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +334,7 @@ func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method
 		lastErr = instrument.CollectedRequest(ctx, method, s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
-				Key:    aws.String(objectKey),
+				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 			}
 			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
 			if requestErr != nil {
@@ -365,7 +364,7 @@ func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		deleteObjectInput := &s3.DeleteObjectInput{
 			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+			Key:    aws.String(a.convertObjectKey(objectKey, true)),
 		}
 
 		_, err := a.S3.DeleteObjectWithContext(ctx, deleteObjectInput)
@@ -405,7 +404,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			var requestErr error
 			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
-				Key:    aws.String(objectKey),
+				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 			})
 			return requestErr
 		})
@@ -442,7 +441,7 @@ func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, o
 			var requestErr error
 			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
-				Key:    aws.String(objectKey),
+				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 				Range:  aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
 			})
 			return requestErr
@@ -467,7 +466,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 		putObjectInput := &s3.PutObjectInput{
 			Body:         readSeeker,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
-			Key:          aws.String(objectKey),
+			Key:          aws.String(a.convertObjectKey(objectKey, true)),
 			StorageClass: aws.String(a.cfg.StorageClass),
 		}
 
@@ -504,7 +503,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 				for _, content := range output.Contents {
 					storageObjects = append(storageObjects, client.StorageObject{
-						Key:        *content.Key,
+						Key:        a.convertObjectKey(*content.Key, false),
 						ModifiedAt: *content.LastModified,
 					})
 				}
@@ -616,4 +615,16 @@ func IsRetryableErr(err error) bool {
 
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
 	return IsRetryableErr(err)
+}
+
+// convertObjectKey modifies the object key based on a delimiter and a mode flag determining conversion.
+func (a *S3ObjectClient) convertObjectKey(objectKey string, toS3 bool) string {
+	if len(a.cfg.ChunkDelimiter) == 1 {
+		if toS3 {
+			objectKey = strings.ReplaceAll(objectKey, ":", a.cfg.ChunkDelimiter)
+		} else {
+			objectKey = strings.ReplaceAll(objectKey, a.cfg.ChunkDelimiter, ":")
+		}
+	}
+	return objectKey
 }

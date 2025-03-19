@@ -932,6 +932,18 @@ func (m *Http2ProtocolOptions) MarshalToSizedBufferVTStrict(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MaxMetadataSize != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.MaxMetadataSize).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x8a
+	}
 	if m.UseOghttp2Codec != nil {
 		size, err := (*wrapperspb.BoolValue)(m.UseOghttp2Codec).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1674,6 +1686,10 @@ func (m *Http2ProtocolOptions) SizeVT() (n int) {
 	}
 	if m.UseOghttp2Codec != nil {
 		l = (*wrapperspb.BoolValue)(m.UseOghttp2Codec).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.MaxMetadataSize != nil {
+		l = (*wrapperspb.UInt64Value)(m.MaxMetadataSize).SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

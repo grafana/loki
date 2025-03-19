@@ -164,7 +164,7 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 		}
 		ln := model.LabelName(k)
 		// skips invalid name and values
-		if !ln.IsValid() {
+		if !ln.IsValidLegacy() {
 			continue
 		}
 		lv := model.LabelValue(fmt.Sprintf("%v", v))

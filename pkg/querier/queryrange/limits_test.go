@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 func TestLimits(t *testing.T) {
@@ -232,11 +231,11 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	maxQueryParallelism := 2
 
 	var count atomic.Int32
-	var max atomic.Int32
+	var maxVal atomic.Int32
 	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		cur := count.Inc()
-		if cur > max.Load() {
-			max.Store(cur)
+		if cur > maxVal.Load() {
+			maxVal.Store(cur)
 		}
 		defer count.Dec()
 		// simulate some work
@@ -262,7 +261,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 			})
 		}),
 	).Do(ctx, &LokiRequest{})
-	maxFound := int(max.Load())
+	maxFound := int(maxVal.Load())
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
 
@@ -676,9 +675,9 @@ func Test_MaxQuerySize(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1))})
+			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQueryStatsHits, 1))})
 
-			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1))})
+			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQuerierStatsHits, 1))})
 
 			_, promHandler := promqlResult(matrix)
 

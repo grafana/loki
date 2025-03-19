@@ -22,10 +22,10 @@ message SectionInfo {
   SectionType type = 1;
 
   // Byte offset of the section's metadata from the start of the data object.
-  uint32 metadata_offset = 2;
+  uint64 metadata_offset = 2;
 
   // Size of the section's metadata in bytes.
-  uint32 metadata_size = 3;
+  uint64 metadata_size = 3;
 }
 
 enum SectionType {

@@ -19,27 +19,66 @@
 package xdsclient
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/grpc/internal/cache"
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
+	estats "google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
+	xdsclientinternal "google.golang.org/grpc/xds/internal/xdsclient/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/transport"
 	"google.golang.org/grpc/xds/internal/xdsclient/transport/ads"
+	"google.golang.org/grpc/xds/internal/xdsclient/transport/grpctransport"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
-var _ XDSClient = &clientImpl{}
+const (
+	// NameForServer represents the value to be passed as name when creating an xDS
+	// client from xDS-enabled gRPC servers. This is a well-known dedicated key
+	// value, and is defined in gRFC A71.
+	NameForServer = "#server"
 
-// ErrClientClosed is returned when the xDS client is closed.
-var ErrClientClosed = errors.New("xds: the xDS client is closed")
+	defaultWatchExpiryTimeout = 15 * time.Second
+)
 
-// clientImpl is the real implementation of the xds client. The exported Client
+var (
+	_ XDSClient = &clientImpl{}
+
+	// ErrClientClosed is returned when the xDS client is closed.
+	ErrClientClosed = errors.New("xds: the xDS client is closed")
+
+	// The following functions are no-ops in the actual code, but can be
+	// overridden in tests to give them visibility into certain events.
+	xdsClientImplCreateHook = func(string) {}
+	xdsClientImplCloseHook  = func(string) {}
+
+	defaultExponentialBackoff = backoff.DefaultExponential.Backoff
+
+	xdsClientResourceUpdatesValidMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:        "grpc.xds_client.resource_updates_valid",
+		Description: "A counter of resources received that were considered valid. The counter will be incremented even for resources that have not changed.",
+		Unit:        "resource",
+		Labels:      []string{"grpc.target", "grpc.xds.server", "grpc.xds.resource_type"},
+		Default:     false,
+	})
+	xdsClientResourceUpdatesInvalidMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:        "grpc.xds_client.resource_updates_invalid",
+		Description: "A counter of resources received that were considered invalid.",
+		Unit:        "resource",
+		Labels:      []string{"grpc.target", "grpc.xds.server", "grpc.xds.resource_type"},
+		Default:     false,
+	})
+)
+
+// clientImpl is the real implementation of the xDS client. The exported Client
 // is a wrapper of this struct with a ref count.
 type clientImpl struct {
 	// The following fields are initialized at creation time and are read-only
@@ -55,6 +94,8 @@ type clientImpl struct {
 	serializer         *grpcsync.CallbackSerializer // Serializer for invoking resource watcher callbacks.
 	serializerClose    func()                       // Function to close the serializer.
 	logger             *grpclog.PrefixLogger        // Logger for this client.
+	metricsRecorder    estats.MetricsRecorder       // Metrics recorder for metrics.
+	target             string                       // The gRPC target for this client.
 
 	// The clientImpl owns a bunch of channels to individual xDS servers
 	// specified in the bootstrap configuration. Authorities acquire references
@@ -63,80 +104,76 @@ type clientImpl struct {
 	// these channels, and forwards updates from the channels to each of these
 	// authorities.
 	//
-	// Once all references to a channel are dropped, the channel is moved to the
-	// idle cache where it lives for a configured duration before being closed.
-	// If the channel is required before the idle timeout fires, it is revived
-	// from the idle cache and used.
+	// Once all references to a channel are dropped, the channel is closed.
 	channelsMu        sync.Mutex
 	xdsActiveChannels map[string]*channelState // Map from server config to in-use xdsChannels.
-	xdsIdleChannels   *cache.TimeoutCache      // Map from server config to idle xdsChannels.
-	closeCond         *sync.Cond
 }
 
-// channelState represents the state of an xDS channel. It tracks the number of
-// LRS references, the authorities interested in the channel, and the server
-// configuration used for the channel.
-//
-// It receives callbacks for events on the underlying ADS stream and invokes
-// corresponding callbacks on interested authoririties.
-type channelState struct {
-	parent       *clientImpl
-	serverConfig *bootstrap.ServerConfig
+func init() {
+	internal.TriggerXDSResourceNotFoundForTesting = triggerXDSResourceNotFoundForTesting
+	xdsclientinternal.ResourceWatchStateForTesting = resourceWatchStateForTesting
 
-	// Access to the following fields should be protected by the parent's
-	// channelsMu.
-	channel               *xdsChannel
-	lrsRefs               int
-	interestedAuthorities map[*authority]bool
-}
-
-func (cs *channelState) adsStreamFailure(err error) {
-	if cs.parent.done.HasFired() {
-		return
-	}
-
-	cs.parent.channelsMu.Lock()
-	defer cs.parent.channelsMu.Unlock()
-	for authority := range cs.interestedAuthorities {
-		authority.adsStreamFailure(cs.serverConfig, err)
-	}
-}
-
-func (cs *channelState) adsResourceUpdate(typ xdsresource.Type, updates map[string]ads.DataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
-	if cs.parent.done.HasFired() {
-		return
-	}
-
-	cs.parent.channelsMu.Lock()
-	defer cs.parent.channelsMu.Unlock()
-
-	if len(cs.interestedAuthorities) == 0 {
-		onDone()
-		return
-	}
-
-	authorityCnt := new(atomic.Int64)
-	authorityCnt.Add(int64(len(cs.interestedAuthorities)))
-	done := func() {
-		if authorityCnt.Add(-1) == 0 {
-			onDone()
+	// DefaultPool is initialized with bootstrap configuration from one of the
+	// supported environment variables. If the environment variables are not
+	// set, then fallback bootstrap configuration should be set before
+	// attempting to create an xDS client, else xDS client creation will fail.
+	config, err := bootstrap.GetConfiguration()
+	if err != nil {
+		if logger.V(2) {
+			logger.Infof("Failed to read xDS bootstrap config from env vars:  %v", err)
 		}
-	}
-	for authority := range cs.interestedAuthorities {
-		authority.adsResourceUpdate(cs.serverConfig, typ, updates, md, done)
-	}
-}
-
-func (cs *channelState) adsResourceDoesNotExist(typ xdsresource.Type, resourceName string) {
-	if cs.parent.done.HasFired() {
+		DefaultPool = &Pool{clients: make(map[string]*clientRefCounted)}
 		return
 	}
+	DefaultPool = &Pool{clients: make(map[string]*clientRefCounted), config: config}
+}
 
-	cs.parent.channelsMu.Lock()
-	defer cs.parent.channelsMu.Unlock()
-	for authority := range cs.interestedAuthorities {
-		authority.adsResourceDoesNotExist(typ, resourceName)
+// newClientImpl returns a new xdsClient with the given config.
+func newClientImpl(config *bootstrap.Config, watchExpiryTimeout time.Duration, streamBackoff func(int) time.Duration, mr estats.MetricsRecorder, target string) (*clientImpl, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &clientImpl{
+		metricsRecorder:    mr,
+		target:             target,
+		done:               grpcsync.NewEvent(),
+		authorities:        make(map[string]*authority),
+		config:             config,
+		watchExpiryTimeout: watchExpiryTimeout,
+		backoff:            streamBackoff,
+		serializer:         grpcsync.NewCallbackSerializer(ctx),
+		serializerClose:    cancel,
+		transportBuilder:   &grpctransport.Builder{},
+		resourceTypes:      newResourceTypeRegistry(),
+		xdsActiveChannels:  make(map[string]*channelState),
 	}
+
+	for name, cfg := range config.Authorities() {
+		// If server configs are specified in the authorities map, use that.
+		// Else, use the top-level server configs.
+		serverCfg := config.XDSServers()
+		if len(cfg.XDSServers) >= 1 {
+			serverCfg = cfg.XDSServers
+		}
+		c.authorities[name] = newAuthority(authorityBuildOptions{
+			serverConfigs:    serverCfg,
+			name:             name,
+			serializer:       c.serializer,
+			getChannelForADS: c.getChannelForADS,
+			logPrefix:        clientPrefix(c),
+			target:           target,
+			metricsRecorder:  c.metricsRecorder,
+		})
+	}
+	c.topLevelAuthority = newAuthority(authorityBuildOptions{
+		serverConfigs:    config.XDSServers(),
+		name:             "",
+		serializer:       c.serializer,
+		getChannelForADS: c.getChannelForADS,
+		logPrefix:        clientPrefix(c),
+		target:           target,
+		metricsRecorder:  c.metricsRecorder,
+	})
+	c.logger = prefixLogger(c)
+	return c, nil
 }
 
 // BootstrapConfig returns the configuration read from the bootstrap file.
@@ -172,21 +209,6 @@ func (c *clientImpl) close() {
 	for _, c := range channelsToClose {
 		c.close()
 	}
-
-	// Similarly, closing idle channels cannot be done with the lock held, for
-	// the same reason as described above.  So, we clear the idle cache in a
-	// goroutine and use a condition variable to wait on the condition that the
-	// idle cache has zero entries. The Wait() method on the condition variable
-	// releases the lock and blocks the goroutine until signaled (which happens
-	// when an idle channel is removed from the cache and closed), and grabs the
-	// lock before returning.
-	c.channelsMu.Lock()
-	c.closeCond = sync.NewCond(&c.channelsMu)
-	go c.xdsIdleChannels.Clear(true)
-	for c.xdsIdleChannels.Len() > 0 {
-		c.closeCond.Wait()
-	}
-	c.channelsMu.Unlock()
 
 	c.serializerClose()
 	<-c.serializer.Done()
@@ -289,23 +311,11 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 		c.logger.Infof("Received request for a reference to an xdsChannel for server config %q", serverConfig)
 	}
 
-	// Use an active channel, if one exists for this server config.
+	// Use an existing channel, if one exists for this server config.
 	if state, ok := c.xdsActiveChannels[serverConfig.String()]; ok {
 		if c.logger.V(2) {
-			c.logger.Infof("Reusing an active xdsChannel for server config %q", serverConfig)
+			c.logger.Infof("Reusing an existing xdsChannel for server config %q", serverConfig)
 		}
-		initLocked(state)
-		return state.channel, c.releaseChannel(serverConfig, state, deInitLocked), nil
-	}
-
-	// If an idle channel exists for this server config, remove it from the
-	// idle cache and add it to the map of active channels, and return it.
-	if s, ok := c.xdsIdleChannels.Remove(serverConfig.String()); ok {
-		if c.logger.V(2) {
-			c.logger.Infof("Reviving an xdsChannel from the idle cache for server config %q", serverConfig)
-		}
-		state := s.(*channelState)
-		c.xdsActiveChannels[serverConfig.String()] = state
 		initLocked(state)
 		return state.channel, c.releaseChannel(serverConfig, state, deInitLocked), nil
 	}
@@ -318,7 +328,7 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 	// map of xdsChannels.
 	tr, err := c.transportBuilder.Build(transport.BuildOptions{ServerConfig: serverConfig})
 	if err != nil {
-		return nil, func() {}, fmt.Errorf("failed to create transport for server config %s: %v", serverConfig, err)
+		return nil, func() {}, fmt.Errorf("xds: failed to create transport for server config %s: %v", serverConfig, err)
 	}
 	state := &channelState{
 		parent:                c,
@@ -336,7 +346,7 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 		logPrefix:          clientPrefix(c),
 	})
 	if err != nil {
-		return nil, func() {}, fmt.Errorf("failed to create xdsChannel for server config %s: %v", serverConfig, err)
+		return nil, func() {}, fmt.Errorf("xds: failed to create xdsChannel for server config %s: %v", serverConfig, err)
 	}
 	state.channel = channel
 	c.xdsActiveChannels[serverConfig.String()] = state
@@ -345,9 +355,7 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 }
 
 // releaseChannel is a function that is called when a reference to an xdsChannel
-// needs to be released. It handles the logic of moving the channel to an idle
-// cache if there are no other active references, and closing the channel if it
-// remains in the idle cache for the configured duration.
+// needs to be released. It handles closing channels with no active references.
 //
 // The function takes the following parameters:
 // - serverConfig: the server configuration for the xdsChannel
@@ -358,9 +366,8 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 // reference to the xdsChannel. This returned function is idempotent, meaning
 // it can be called multiple times without any additional effect.
 func (c *clientImpl) releaseChannel(serverConfig *bootstrap.ServerConfig, state *channelState, deInitLocked func(*channelState)) func() {
-	return grpcsync.OnceFunc(func() {
+	return sync.OnceFunc(func() {
 		c.channelsMu.Lock()
-		defer c.channelsMu.Unlock()
 
 		if c.logger.V(2) {
 			c.logger.Infof("Received request to release a reference to an xdsChannel for server config %q", serverConfig)
@@ -372,40 +379,128 @@ func (c *clientImpl) releaseChannel(serverConfig *bootstrap.ServerConfig, state 
 			if c.logger.V(2) {
 				c.logger.Infof("xdsChannel %p has other active references", state.channel)
 			}
+			c.channelsMu.Unlock()
 			return
 		}
 
-		// Move the channel to the idle cache instead of closing
-		// immediately. If the channel remains in the idle cache for
-		// the configured duration, it will get closed.
 		delete(c.xdsActiveChannels, serverConfig.String())
 		if c.logger.V(2) {
-			c.logger.Infof("Moving xdsChannel [%p] for server config %s to the idle cache", state.channel, serverConfig)
+			c.logger.Infof("Closing xdsChannel [%p] for server config %s", state.channel, serverConfig)
 		}
+		channelToClose := state.channel
+		c.channelsMu.Unlock()
 
-		// The idle cache expiry timeout results in the channel getting
-		// closed in another serializer callback.
-		c.xdsIdleChannels.Add(serverConfig.String(), state, grpcsync.OnceFunc(func() {
-			c.channelsMu.Lock()
-			channelToClose := state.channel
-			c.channelsMu.Unlock()
-
-			if c.logger.V(2) {
-				c.logger.Infof("Idle cache expiry timeout fired for xdsChannel [%p] for server config %s", state.channel, serverConfig)
-			}
-			channelToClose.close()
-
-			// If the channel is being closed as a result of the xDS client
-			// being closed, closeCond is non-nil and we need to signal from
-			// here to unblock Close().  Holding the lock is not necessary
-			// to call Signal() on a condition variable. But the field
-			// `c.closeCond` needs to guarded by the lock, which is why we
-			// acquire it here.
-			c.channelsMu.Lock()
-			if c.closeCond != nil {
-				c.closeCond.Signal()
-			}
-			c.channelsMu.Unlock()
-		}))
+		channelToClose.close()
 	})
+}
+
+// dumpResources returns the status and contents of all xDS resources.
+func (c *clientImpl) dumpResources() *v3statuspb.ClientConfig {
+	retCfg := c.topLevelAuthority.dumpResources()
+	for _, a := range c.authorities {
+		retCfg = append(retCfg, a.dumpResources()...)
+	}
+
+	return &v3statuspb.ClientConfig{
+		Node:              c.config.Node(),
+		GenericXdsConfigs: retCfg,
+	}
+}
+
+// channelState represents the state of an xDS channel. It tracks the number of
+// LRS references, the authorities interested in the channel, and the server
+// configuration used for the channel.
+//
+// It receives callbacks for events on the underlying ADS stream and invokes
+// corresponding callbacks on interested authorities.
+type channelState struct {
+	parent       *clientImpl
+	serverConfig *bootstrap.ServerConfig
+
+	// Access to the following fields should be protected by the parent's
+	// channelsMu.
+	channel               *xdsChannel
+	lrsRefs               int
+	interestedAuthorities map[*authority]bool
+}
+
+func (cs *channelState) adsStreamFailure(err error) {
+	if cs.parent.done.HasFired() {
+		return
+	}
+
+	cs.parent.channelsMu.Lock()
+	defer cs.parent.channelsMu.Unlock()
+	for authority := range cs.interestedAuthorities {
+		authority.adsStreamFailure(cs.serverConfig, err)
+	}
+}
+
+func (cs *channelState) adsResourceUpdate(typ xdsresource.Type, updates map[string]ads.DataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
+	if cs.parent.done.HasFired() {
+		return
+	}
+
+	cs.parent.channelsMu.Lock()
+	defer cs.parent.channelsMu.Unlock()
+
+	if len(cs.interestedAuthorities) == 0 {
+		onDone()
+		return
+	}
+
+	authorityCnt := new(atomic.Int64)
+	authorityCnt.Add(int64(len(cs.interestedAuthorities)))
+	done := func() {
+		if authorityCnt.Add(-1) == 0 {
+			onDone()
+		}
+	}
+	for authority := range cs.interestedAuthorities {
+		authority.adsResourceUpdate(cs.serverConfig, typ, updates, md, done)
+	}
+}
+
+func (cs *channelState) adsResourceDoesNotExist(typ xdsresource.Type, resourceName string) {
+	if cs.parent.done.HasFired() {
+		return
+	}
+
+	cs.parent.channelsMu.Lock()
+	defer cs.parent.channelsMu.Unlock()
+	for authority := range cs.interestedAuthorities {
+		authority.adsResourceDoesNotExist(typ, resourceName)
+	}
+}
+
+// clientRefCounted is ref-counted, and to be shared by the xds resolver and
+// balancer implementations, across multiple ClientConns and Servers.
+type clientRefCounted struct {
+	*clientImpl
+
+	refCount int32 // accessed atomically
+}
+
+func (c *clientRefCounted) incrRef() int32 {
+	return atomic.AddInt32(&c.refCount, 1)
+}
+
+func (c *clientRefCounted) decrRef() int32 {
+	return atomic.AddInt32(&c.refCount, -1)
+}
+
+func triggerXDSResourceNotFoundForTesting(client XDSClient, typ xdsresource.Type, name string) error {
+	crc, ok := client.(*clientRefCounted)
+	if !ok {
+		return fmt.Errorf("xds: xDS client is of type %T, want %T", client, &clientRefCounted{})
+	}
+	return crc.clientImpl.triggerResourceNotFoundForTesting(typ, name)
+}
+
+func resourceWatchStateForTesting(client XDSClient, typ xdsresource.Type, name string) (ads.ResourceWatchState, error) {
+	crc, ok := client.(*clientRefCounted)
+	if !ok {
+		return ads.ResourceWatchState{}, fmt.Errorf("xds: xDS client is of type %T, want %T", client, &clientRefCounted{})
+	}
+	return crc.clientImpl.resourceWatchStateForTesting(typ, name)
 }

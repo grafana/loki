@@ -59,6 +59,10 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 	return b.bucket.Upload(ctx, name, r)
 }
 
+func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+	return b.bucket.GetAndReplace(ctx, name, fn)
+}
+
 // Delete implements objstore.Bucket.
 func (b *SSEBucketClient) Delete(ctx context.Context, name string) error {
 	return b.bucket.Delete(ctx, name)

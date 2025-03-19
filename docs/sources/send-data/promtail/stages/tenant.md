@@ -9,9 +9,11 @@ weight:
 
 # tenant
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The tenant stage is an action stage that sets the tenant ID for the log entry
 picking it from a field in the extracted data map. If the field is missing, the
-default promtail client [`tenant_id`]({{< relref "../configuration#clients" >}}) will
+default promtail client [`tenant_id`](../../configuration/#clients) will
 be used.
 
 

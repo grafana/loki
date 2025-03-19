@@ -31,13 +31,19 @@ type BloomFilter interface {
 	Check(value Value) (bool, error)
 }
 
-type bloomFilter struct {
+type errorBloomFilter struct{ err error }
+
+func (f *errorBloomFilter) Size() int64                       { return 0 }
+func (f *errorBloomFilter) ReadAt([]byte, int64) (int, error) { return 0, f.err }
+func (f *errorBloomFilter) Check(Value) (bool, error)         { return false, f.err }
+
+type FileBloomFilter struct {
 	io.SectionReader
 	hash  bloom.Hash
 	check func(io.ReaderAt, int64, uint64) (bool, error)
 }
 
-func (f *bloomFilter) Check(v Value) (bool, error) {
+func (f *FileBloomFilter) Check(v Value) (bool, error) {
 	return f.check(&f.SectionReader, f.Size(), v.hash(f.hash))
 }
 
@@ -54,11 +60,11 @@ func (v Value) hash(h bloom.Hash) uint64 {
 	}
 }
 
-func newBloomFilter(file io.ReaderAt, offset int64, header *format.BloomFilterHeader) *bloomFilter {
+func newBloomFilter(file io.ReaderAt, offset int64, header *format.BloomFilterHeader) *FileBloomFilter {
 	if header.Algorithm.Block != nil {
 		if header.Hash.XxHash != nil {
 			if header.Compression.Uncompressed != nil {
-				return &bloomFilter{
+				return &FileBloomFilter{
 					SectionReader: *io.NewSectionReader(file, offset, int64(header.NumBytes)),
 					hash:          bloom.XXH64{},
 					check:         bloom.CheckSplitBlock,

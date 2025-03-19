@@ -30,12 +30,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.rulerSelectorLabels" . | nindent 8 }}
+        {{- include "loki.rulerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.ruler.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.ruler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -69,7 +66,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=ruler
-            {{- with .Values.ruler.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.ruler.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -82,11 +79,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.ruler.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.ruler.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.ruler.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.ruler.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -111,7 +108,7 @@ spec:
             - name: {{ include "loki.rulerRulesDirName" $dir }}
               mountPath: /etc/loki/rules/{{ $dir }}
             {{- end }}
-            {{- with .Values.ruler.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.ruler.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -157,7 +154,7 @@ spec:
         {{- end }}
         - name: tmp
           emptyDir: {}
-        {{- with .Values.ruler.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.ruler.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if not .Values.ruler.persistence.enabled }}

@@ -8,15 +8,16 @@ weight:  800
 ---
 # Troubleshooting Promtail
 
-This document describes known failure modes of Promtail on edge cases and the
-adopted trade-offs.
+This document describes known failure modes of Promtail on edge cases and the adopted trade-offs.
+
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 ## Dry running
 
 Promtail can be configured to print log stream entries instead of sending them to Loki.
 This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot Promtail log parsing.
 
-In dry run mode, Promtail still support reading from a [positions]({{< relref "../configuration#positions" >}}) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
+In dry run mode, Promtail still support reading from a [positions](../configuration/#positions) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
 
 To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
 
@@ -79,9 +80,9 @@ This will add labels `k1` and `k2` with respective values `v1` and `v2`.
 In pipe mode Promtail also support file configuration using `--config.file`, however do note that positions config is not used and
 only **the first scrape config is used**.
 
-[`static_configs:`]({{< relref "../configuration" >}}) can be used to provide static labels, although the targets property is ignored.
+[`static_configs:`](../configuration/) can be used to provide static labels, although the targets property is ignored.
 
-If you don't provide any [`scrape_config:`]({{< relref "../configuration#scrape_configs" >}}) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
+If you don't provide any [`scrape_config:`](../configuration/#scrape_configs) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
 
 For example you could use this config below to parse and add the label `level` on all your piped logs:
 

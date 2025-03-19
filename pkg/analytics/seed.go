@@ -20,7 +20,7 @@ type ClusterSeed struct {
 
 // Merge implements the memberlist.Mergeable interface.
 // It allow to merge the content of two different seeds.
-func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memberlist.Mergeable, error error) {
+func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memberlist.Mergeable, err error) {
 	if mergeable == nil {
 		return nil, nil
 	}

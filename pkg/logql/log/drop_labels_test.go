@@ -12,7 +12,7 @@ import (
 func Test_DropLabels(t *testing.T) {
 	tests := []struct {
 		Name       string
-		dropLabels []DropLabel
+		dropLabels []NamedLabelMatcher
 		err        string
 		errDetails string
 		lbs        labels.Labels
@@ -20,7 +20,7 @@ func Test_DropLabels(t *testing.T) {
 	}{
 		{
 			"drop by name",
-			[]DropLabel{
+			[]NamedLabelMatcher{
 				{
 					nil,
 					"app",
@@ -40,7 +40,7 @@ func Test_DropLabels(t *testing.T) {
 		},
 		{
 			"drop by __error__",
-			[]DropLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",
@@ -63,7 +63,7 @@ func Test_DropLabels(t *testing.T) {
 		},
 		{
 			"drop with wrong __error__ value",
-			[]DropLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
 					"",
@@ -84,7 +84,7 @@ func Test_DropLabels(t *testing.T) {
 		},
 		{
 			"drop by __error_details__",
-			[]DropLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, "expecting json.*"),
 					"",
@@ -107,7 +107,7 @@ func Test_DropLabels(t *testing.T) {
 		},
 		{
 			"drop labels with names and matcher",
-			[]DropLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON),
 					"",

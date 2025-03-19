@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"bytes"
+	"errors"
 	"strconv"
 	"strings"
 	"unicode"
@@ -34,25 +35,53 @@ var (
 	critical   = []byte("critical")
 	fatal      = []byte("fatal")
 
-	defaultAllowedLevelFields = []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"}
+	defaultAllowedLevelFields = []string{
+		"level",
+		"LEVEL",
+		"Level",
+		"log.level",
+		"severity",
+		"SEVERITY",
+		"Severity",
+		"SeverityText",
+		"lvl",
+		"LVL",
+		"Lvl",
+		"severity_text",
+		"Severity_Text",
+		"SEVERITY_TEXT",
+	}
+
+	errKeyFound = errors.New("key found")
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
 	if len(allowedFields) == 0 {
 		return defaultAllowedLevelFields
 	}
+
 	return allowedFields
 }
 
 type FieldDetector struct {
-	validationContext  validationContext
-	allowedLevelLabels []string
+	validationContext        validationContext
+	allowedLevelLabelsMap    map[string]struct{}
+	allowedLevelLabels       []string
+	logLevelFromJSONMaxDepth int
 }
 
 func newFieldDetector(validationContext validationContext) *FieldDetector {
+	allowedLevelLabels := allowedLabelsForLevel(validationContext.logLevelFields)
+	allowedLevelLabelsMap := make(map[string]struct{}, len(allowedLevelLabels))
+	for _, field := range allowedLevelLabels {
+		allowedLevelLabelsMap[field] = struct{}{}
+	}
+
 	return &FieldDetector{
-		validationContext:  validationContext,
-		allowedLevelLabels: allowedLabelsForLevel(validationContext.logLevelFields),
+		validationContext:        validationContext,
+		allowedLevelLabelsMap:    allowedLevelLabelsMap,
+		allowedLevelLabels:       allowedLevelLabels,
+		logLevelFromJSONMaxDepth: validationContext.logLevelFromJSONMaxDepth,
 	}
 }
 
@@ -154,7 +183,7 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	lineBytes := unsafe.Slice(unsafe.StringData(log), len(log))
 	var v []byte
 	if isJSON(log) {
-		v = getValueUsingJSONParser(lineBytes, l.allowedLevelLabels)
+		v = getLevelUsingJSONParser(lineBytes, l.allowedLevelLabelsMap, l.logLevelFromJSONMaxDepth)
 	} else if isLogFmt(lineBytes) {
 		v = getValueUsingLogfmtParser(lineBytes, l.allowedLevelLabels)
 	} else {
@@ -219,6 +248,37 @@ func getValueUsingJSONParser(line []byte, hints []string) []byte {
 	return res
 }
 
+func getLevelUsingJSONParser(line []byte, allowedLevelFields map[string]struct{}, maxDepth int) []byte {
+	var result []byte
+	var detectLevel func([]byte, int) error
+	detectLevel = func(data []byte, depth int) error {
+		// maxDepth <= 0 means no limit
+		if maxDepth > 0 && depth >= maxDepth {
+			return nil
+		}
+
+		return jsonparser.ObjectEach(data, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
+			switch dataType {
+			case jsonparser.String:
+				if _, ok := allowedLevelFields[unsafe.String(unsafe.SliceData(key), len(key))]; ok {
+					result = value
+					// ErrKeyFound is used to stop parsing once we find the desired key
+					return errKeyFound
+				}
+			case jsonparser.Object:
+				if err := detectLevel(value, depth+1); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	}
+
+	_ = detectLevel(line, 0)
+	return result
+}
+
 func isLogFmt(line []byte) bool {
 	equalIndex := bytes.Index(line, []byte("="))
 	if len(line) == 0 || equalIndex == -1 {
@@ -249,22 +309,21 @@ func isJSON(line string) bool {
 }
 
 func detectLevelFromLogLine(log string) string {
-	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
-		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
+	if strings.Contains(log, "info") || strings.Contains(log, "INFO") {
 		return constants.LogLevelInfo
 	}
-	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
+	if strings.Contains(log, "err") || strings.Contains(log, "ERR") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
 		return constants.LogLevelError
 	}
-	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
+	if strings.Contains(log, "warn") || strings.Contains(log, "WARN") ||
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
 		return constants.LogLevelWarn
 	}
-	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+	if strings.Contains(log, "CRITICAL") || strings.Contains(log, "critical") {
 		return constants.LogLevelCritical
 	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+	if strings.Contains(log, "debug") || strings.Contains(log, "DEBUG") {
 		return constants.LogLevelDebug
 	}
 	return constants.LogLevelUnknown

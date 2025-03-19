@@ -30,7 +30,7 @@ maintenance tasks. It consists of:
 {{< admonition type="note" >}}
 Unlike the other core components of Loki, the chunk store is not a separate
 service, job, or process, but rather a library embedded in the two services
-that need to access Loki data: the [ingester]({{< relref "../../get-started/components#ingester" >}}) and [querier]({{< relref "../../get-started/components#querier" >}}).
+that need to access Loki data: the [ingester](../../../get-started/components/#ingester) and [querier](../../../get-started/components/#querier).
 {{< /admonition >}}
 
 The chunk store relies on a unified interface to the

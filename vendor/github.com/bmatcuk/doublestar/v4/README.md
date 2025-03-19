@@ -376,8 +376,9 @@ Character classes support the following:
 
 Class      | Meaning
 ---------- | -------
-`[abc]`    | matches any single character within the set
-`[a-z]`    | matches any single character in the range
+`[abc123]` | matches any single character within the set
+`[a-z0-9]` | matches any single character in the range a-z or 0-9
+`[125-79]` | matches any single character within the set 129, or the range 5-7
 `[^class]` | matches any single character which does *not* match the class
 `[!class]` | same as `^`: negates the class
 

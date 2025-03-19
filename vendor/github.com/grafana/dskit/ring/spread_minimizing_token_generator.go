@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
-
-	"golang.org/x/exp/slices"
 )
 
 const (

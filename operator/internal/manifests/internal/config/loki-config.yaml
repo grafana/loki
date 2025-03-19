@@ -229,6 +229,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: {{ . }}MB
+    time_sharding_enabled: true
 {{- end }}
 {{- with .OTLPAttributes.Global }}
   otlp_config:

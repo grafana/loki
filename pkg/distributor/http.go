@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -39,19 +40,33 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
+	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
+	// across all parsers for this HTTP request.
+	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
+
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams)
 	if err != nil {
+		if !errors.Is(err, push.ErrAllLogsFiltered) {
+			if d.tenantConfigs.LogPushRequest(tenantID) {
+				level.Debug(logger).Log(
+					"msg", "push request failed",
+					"code", http.StatusBadRequest,
+					"err", err,
+				)
+			}
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
+
+			errorWriter(w, err.Error(), http.StatusBadRequest, logger)
+			return
+		}
+
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
-				"msg", "push request failed",
-				"code", http.StatusBadRequest,
-				"err", err,
+				"msg", "successful push request filtered all lines",
 			)
 		}
-		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
-
-		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -66,7 +81,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		)
 	}
 
-	_, err = d.Push(r.Context(), req)
+	_, err = d.PushWithResolver(r.Context(), req, streamResolver)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

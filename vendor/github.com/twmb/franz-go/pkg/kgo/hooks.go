@@ -350,7 +350,9 @@ type HookProduceRecordPartitioned interface {
 // As an example, if using HookProduceRecordBuffered for a gauge of how many
 // record bytes are buffered, this hook can be used to decrement the gauge.
 //
-// Note that this hook will slow down high-volume producing a bit.
+// Note that this hook will slow down high-volume producing a bit. As well,
+// records that were buffered but are paused (and stripped internally before
+// being returned to the user) will still be passed to this hook.
 type HookProduceRecordUnbuffered interface {
 	// OnProduceRecordUnbuffered is passed a record that is just about to
 	// have its produce promise called, as well as the error that the

@@ -18,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
-	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
@@ -35,7 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -324,7 +322,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
 	}
-	return err
+	return nil
 }
 
 type dynamoDBRequest interface {
@@ -692,16 +690,16 @@ func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byt
 	})
 }
 
-// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs), toFill)
+			taken := min(len(fromReqs), toFill)
 			if taken > 0 {
 				b[tableName] = append(b[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]
@@ -739,16 +737,16 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'b' with ReadRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
+// Fill 'b' with ReadRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs.Keys), toFill)
+			taken := min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
 					b[tableName] = &dynamodb.KeysAndAttributes{
@@ -803,7 +801,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	if len(path) > 0 {
 		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
-	config, err := awscommon.ConfigFromURL(awsURL)
+	config, err := ConfigFromURL(awsURL)
 	if err != nil {
 		return nil, err
 	}

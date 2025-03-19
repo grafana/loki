@@ -24,5 +24,11 @@ func printFile(filename string) {
 	}
 	defer func() { _ = f.Close() }()
 
-	tools.Inspect(f)
+	fi, err := f.Stat()
+	if err != nil {
+		log.Printf("%s: %v", filename, err)
+		return
+	}
+
+	tools.Inspect(f, fi.Size())
 }

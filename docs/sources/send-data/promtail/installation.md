@@ -9,9 +9,7 @@ weight:  100
 
 # Install Promtail
 
-{{< admonition type="note" >}}
-Promtail is feature complete.  All future feature development will occur in Grafana Alloy.
-{{< /admonition >}}
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 Promtail is distributed as a binary, in a Docker container,
 or there is a Helm chart to install it in a Kubernetes cluster.

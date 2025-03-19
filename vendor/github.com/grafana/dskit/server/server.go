@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
+	"github.com/grafana/dskit/clusterutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
@@ -100,7 +101,7 @@ type Config struct {
 	ExcludeRequestInLog                      bool `yaml:"-"`
 	DisableRequestSuccessLog                 bool `yaml:"-"`
 
-	PerTenantDurationInstrumentation middleware.PerTenantCallback `yaml:"-"`
+	PerTenantInstrumentation middleware.PerTenantCallback `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
 	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
@@ -153,6 +154,15 @@ type Config struct {
 
 	// This limiter is called for every started and finished gRPC request.
 	GrpcMethodLimiter GrpcInflightMethodLimiter `yaml:"-"`
+
+	Throughput Throughput `yaml:"-"`
+
+	ClusterValidation clusterutil.ServerClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
+}
+
+type Throughput struct {
+	LatencyCutoff time.Duration `yaml:"throughput_latency_cutoff"`
+	Unit          string        `yaml:"throughput_unit"`
 }
 
 var infinty = time.Duration(math.MaxInt64)
@@ -209,6 +219,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.LogRequestExcludeHeadersList, "server.log-request-headers-exclude-list", "", "Comma separated list of headers to exclude from loggin. Only used if server.log-request-headers is true.")
 	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level. Applies to request headers as well if server.log-request-headers is enabled.")
 	f.BoolVar(&cfg.ProxyProtocolEnabled, "server.proxy-protocol-enabled", false, "Enables PROXY protocol.")
+	f.DurationVar(&cfg.Throughput.LatencyCutoff, "server.throughput.latency-cutoff", 0, "Requests taking over the cutoff are be observed to measure throughput. Server-Timing header is used with specified unit as the indicator, for example 'Server-Timing: unit;val=8.2'. If set to 0, the throughput is not calculated.")
+	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
+	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
+}
+
+func (cfg *Config) Validate() error {
+	return cfg.ClusterValidation.Validate()
 }
 
 func (cfg *Config) registererOrDefault() prometheus.Registerer {
@@ -376,11 +393,12 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if cfg.ReportGRPCCodesInInstrumentationLabel {
 		grpcInstrumentationOptions = append(grpcInstrumentationOptions, middleware.ReportGRPCStatusOption)
 	}
-	if cfg.PerTenantDurationInstrumentation != nil {
+	if cfg.PerTenantInstrumentation != nil {
 		grpcInstrumentationOptions = append(grpcInstrumentationOptions,
 			middleware.WithPerTenantInstrumentation(
+				metrics.PerTenantRequestTotal,
 				metrics.PerTenantRequestDuration,
-				cfg.PerTenantDurationInstrumentation,
+				cfg.PerTenantInstrumentation,
 			))
 	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
@@ -390,6 +408,9 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
+	if cfg.ClusterValidation.GRPC.Enabled {
+		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation, logger))
+	}
 
 	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
 		serverLog.StreamServerInterceptor,
@@ -411,6 +432,13 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		PermitWithoutStream: cfg.GRPCServerPingWithoutStreamAllowed,
 	}
 
+	var grpcServerLimit *grpcInflightLimitCheck
+	if cfg.GrpcMethodLimiter != nil {
+		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
+		grpcMiddleware = append(grpcMiddleware, grpcServerLimit.UnaryServerInterceptor)
+		grpcStreamMiddleware = append(grpcStreamMiddleware, grpcServerLimit.StreamServerInterceptor)
+	}
+
 	grpcOptions := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(grpcMiddleware...),
 		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
@@ -422,9 +450,11 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
 	}
 
-	if cfg.GrpcMethodLimiter != nil {
-		grpcServerLimit := newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
-		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcServerLimit.TapHandle), grpc.StatsHandler(grpcServerLimit))
+	if grpcServerLimit != nil {
+		grpcOptions = append(grpcOptions,
+			grpc.StatsHandler(grpcServerLimit),
+			grpc.InTapHandle(grpcServerLimit.TapHandle),
+		)
 	}
 
 	if cfg.GRPCServerStatsTrackingEnabled {
@@ -523,10 +553,14 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 		middleware.Instrument{
 			Duration:          metrics.RequestDuration,
 			PerTenantDuration: metrics.PerTenantRequestDuration,
-			PerTenantCallback: cfg.PerTenantDurationInstrumentation,
+			PerTenantTotal:    metrics.PerTenantRequestTotal,
+			PerTenantCallback: cfg.PerTenantInstrumentation,
 			RequestBodySize:   metrics.ReceivedMessageSize,
 			ResponseBodySize:  metrics.SentMessageSize,
 			InflightRequests:  metrics.InflightRequests,
+			LatencyCutoff:     cfg.Throughput.LatencyCutoff,
+			ThroughputUnit:    cfg.Throughput.Unit,
+			RequestThroughput: metrics.RequestThroughput,
 		},
 	}
 	var httpMiddleware []middleware.Interface

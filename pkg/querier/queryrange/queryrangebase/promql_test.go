@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -28,7 +29,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		Logger:             log.NewNopLogger(),
+		Logger:             util_log.SlogFromGoKit(log.NewNopLogger()),
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
 		ActiveQueryTracker: nil,
@@ -517,12 +518,6 @@ func Test_FunctionParallelism(t *testing.T) {
 		{
 			fn:    "round",
 			fArgs: []string{"20"},
-		},
-		{
-			fn:           "holt_winters",
-			isTestMatrix: true,
-			fArgs:        []string{"0.5", "0.7"},
-			approximate:  true,
 		},
 	} {
 
