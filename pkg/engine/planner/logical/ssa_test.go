@@ -25,10 +25,10 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 	}
 
 	scan := NewMakeTable(ds.Name(), ds.Schema())
-	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Convert to SSA
-	ssaForm, err := ConvertToSSA(filter)
+	ssaForm, err := ConvertToSSA(sel)
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 
@@ -42,7 +42,7 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 %2 = ColumnRef [name=age, type=VALUE_TYPE_UINT64]
 %3 = Literal [val=21, type=VALUE_TYPE_INT64]
 %4 = BinaryOp [op=(>), name=age_gt_21, left=%2, right=%3]
-%5 = Filter [name=age_gt_21, predicate=%4, plan=%1]
+%5 = Select [name=age_gt_21, predicate=%4, plan=%1]
 `
 	exp = strings.TrimSpace(exp)
 
@@ -73,7 +73,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 
 	df := NewDataFrame(
 		NewMakeTable(ds.Name(), ds.Schema()),
-	).Filter(
+	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Limit(
 		0,
@@ -95,7 +95,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 %2 = ColumnRef [name=year, type=VALUE_TYPE_UINT64]
 %3 = Literal [val=2020, type=VALUE_TYPE_INT64]
 %4 = BinaryOp [op=(==), name=year_2020, left=%2, right=%3]
-%5 = Filter [name=year_2020, predicate=%4, plan=%1]
+%5 = Select [name=year_2020, predicate=%4, plan=%1]
 %6 = Limit [Skip=0, Fetch=10]
 `
 	exp = strings.TrimSpace(exp)
@@ -127,10 +127,10 @@ func TestConvertSortQueryToSSA(t *testing.T) {
 	}
 
 	scan := NewMakeTable(ds.Name(), ds.Schema())
-	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(filter, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSort(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	ssa, err := ConvertToSSA(sortByAge)
 	require.NoError(t, err)

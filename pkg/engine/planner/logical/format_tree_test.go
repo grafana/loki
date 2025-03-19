@@ -31,15 +31,15 @@ func TestFormatSimpleQuery(t *testing.T) {
 	}
 
 	scan := NewMakeTable(ds.Name(), ds.Schema())
-	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(filter)
+	actual := "\n" + f.Format(sel)
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Filter expr=age_gt_21
+Select expr=age_gt_21
 │   └── BinaryOp type=cmp op=">" name=age_gt_21
 │       ├── Column #age
 │       └── Literal value=21 type=VALUE_TYPE_INT64
@@ -64,7 +64,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	df := NewDataFrame(
 		NewMakeTable(ds.Name(), ds.Schema()),
-	).Filter(
+	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Limit(
 		0,
@@ -78,7 +78,7 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	expected := `
 Limit offset=0 fetch=10
-└── Filter expr=year_2020
+└── Select expr=year_2020
     │   └── BinaryOp type=cmp op="==" name=year_2020
     │       ├── Column #year
     │       └── Literal value=2020 type=VALUE_TYPE_INT64
@@ -102,10 +102,10 @@ func TestFormatSortQuery(t *testing.T) {
 	}
 
 	scan := NewMakeTable(ds.Name(), ds.Schema())
-	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	sel := NewSelect(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(filter, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSort(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	var f TreeFormatter
 
@@ -115,7 +115,7 @@ func TestFormatSortQuery(t *testing.T) {
 	expected := `
 Sort expr=sort_by_age direction=asc nulls=last
 │   └── Column #age
-└── Filter expr=age_gt_21
+└── Select expr=age_gt_21
     │   └── BinaryOp type=cmp op=">" name=age_gt_21
     │       ├── Column #age
     │       └── Literal value=21 type=VALUE_TYPE_INT64
@@ -139,7 +139,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 
 	df := NewDataFrame(
 		NewMakeTable(ds.Name(), ds.Schema()),
-	).Filter(
+	).Select(
 		Eq("year_2020", Col("year"), LitI64(2020)),
 	).Sort(
 		NewSortExpr("sort_by_sales", Col("total_sales"), false, true), // Sort by total_sales descending, nulls first
@@ -157,7 +157,7 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 Limit offset=0 fetch=10
 └── Sort expr=sort_by_sales direction=desc nulls=first
     │   └── Column #total_sales
-    └── Filter expr=year_2020
+    └── Select expr=year_2020
         │   └── BinaryOp type=cmp op="==" name=year_2020
         │       ├── Column #year
         │       └── Literal value=2020 type=VALUE_TYPE_INT64

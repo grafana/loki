@@ -19,13 +19,13 @@ func NewDataFrame(plan Plan) *DataFrame {
 	return &DataFrame{plan: plan}
 }
 
-// Filter applies a filter to the DataFrame.
-// It creates a new DataFrame with a filter plan that selects rows from the
-// input DataFrame based on the specified boolean expression.
-// This corresponds to the WHERE clause in SQL.
-func (df *DataFrame) Filter(expr Expr) *DataFrame {
+// Select applies a selection filter to the DataFrame. It creates a new
+// DataFrame with a select plan that selects rows from the input DataFrame
+// based on the specified boolean expression. This corresponds to the WHERE
+// clause in SQL.
+func (df *DataFrame) Select(expr Expr) *DataFrame {
 	return &DataFrame{
-		plan: NewFilter(df.plan, expr),
+		plan: NewSelect(df.plan, expr),
 	}
 }
 

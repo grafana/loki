@@ -99,8 +99,8 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 	switch plan.Type() {
 	case PlanTypeMakeTable:
 		return b.processMakeTablePlan(plan.MakeTable())
-	case PlanTypeFilter:
-		return b.processFilterPlan(plan.Filter())
+	case PlanTypeSelect:
+		return b.processSelectPlan(plan.Select())
 	case PlanTypeLimit:
 		return b.processLimitPlan(plan.Limit())
 	case PlanTypeSort:
@@ -127,17 +127,17 @@ func (b *ssaBuilder) processMakeTablePlan(plan *MakeTable) (int, error) {
 	return id, nil
 }
 
-// processFilterPlan processes a filter plan node
-// It processes the child plan and filter expression, then creates a Filter node
-func (b *ssaBuilder) processFilterPlan(plan *Filter) (int, error) {
+// processSelectPlan processes a select plan node
+// It processes the child plan and select expression, then creates a Select node
+func (b *ssaBuilder) processSelectPlan(plan *Select) (int, error) {
 	// Process the child plan first
 	childID, err := b.processPlan(plan.Child())
 	if err != nil {
 		return 0, err
 	}
 
-	// Process the filter expression
-	exprID, err := b.processExpr(plan.FilterExpr(), plan.Child())
+	// Process the select expression
+	exprID, err := b.processExpr(plan.SelectExpr(), plan.Child())
 	if err != nil {
 		return 0, err
 	}
@@ -145,17 +145,17 @@ func (b *ssaBuilder) processFilterPlan(plan *Filter) (int, error) {
 	// Get the name of the expression
 	var exprName string
 
-	if plan.FilterExpr().Type() == ExprTypeBinaryOp {
-		exprName = plan.FilterExpr().BinaryOp().Name()
+	if plan.SelectExpr().Type() == ExprTypeBinaryOp {
+		exprName = plan.SelectExpr().BinaryOp().Name()
 	} else {
-		exprName = plan.FilterExpr().ToField(plan.Child()).Name
+		exprName = plan.SelectExpr().ToField(plan.Child()).Name
 	}
 
-	// Create a node for the filter
+	// Create a node for the select
 	id := b.getID()
 	node := SSANode{
 		ID:       id,
-		NodeType: "Filter",
+		NodeType: "Select",
 		Tuples: []nodeProperty{
 			{Key: "name", Value: exprName},
 			{Key: "predicate", Value: fmt.Sprintf("%%%d", exprID)},

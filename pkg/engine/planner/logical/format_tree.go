@@ -25,8 +25,8 @@ func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 	switch ast.Type() {
 	case PlanTypeMakeTable:
 		return t.convertMakeTable(ast.MakeTable())
-	case PlanTypeFilter:
-		return t.convertFilter(ast.Filter())
+	case PlanTypeSelect:
+		return t.convertSelect(ast.Select())
 	case PlanTypeLimit:
 		return t.convertLimit(ast.Limit())
 	case PlanTypeSort:
@@ -40,9 +40,9 @@ func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
 	return tree.NewNode("MakeTable", "", tree.Property{Key: "name", Values: []any{ast.TableName()}})
 }
 
-func (t *TreeFormatter) convertFilter(ast *Filter) *tree.Node {
-	node := tree.NewNode("Filter", "", tree.NewProperty("expr", false, ast.FilterExpr().ToField(ast.Child()).Name))
-	node.Comments = append(node.Comments, t.convertExpr(ast.FilterExpr()))
+func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
+	node := tree.NewNode("Select", "", tree.NewProperty("expr", false, ast.SelectExpr().ToField(ast.Child()).Name))
+	node.Comments = append(node.Comments, t.convertExpr(ast.SelectExpr()))
 	node.Children = append(node.Children, t.convert(ast.Child()))
 	return node
 }

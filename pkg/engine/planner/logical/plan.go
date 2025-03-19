@@ -17,7 +17,7 @@ type PlanType int
 const (
 	PlanTypeInvalid   PlanType = iota // Invalid or uninitialized plan
 	PlanTypeMakeTable                 // Represents an operation to make a table relation.
-	PlanTypeFilter                    // Represents a filter operation
+	PlanTypeSelect                    // Represents a Select operation
 	PlanTypeLimit                     // Represents a limit operation
 	PlanTypeSort                      // Represents a sort operation
 )
@@ -30,8 +30,8 @@ func (t PlanType) String() string {
 		return "Invalid"
 	case PlanTypeMakeTable:
 		return "MakeTable"
-	case PlanTypeFilter:
-		return "Filter"
+	case PlanTypeSelect:
+		return "Select"
 	case PlanTypeLimit:
 		return "Limit"
 	case PlanTypeSort:
@@ -42,7 +42,7 @@ func (t PlanType) String() string {
 }
 
 // Plan is the core plan type in the logical package.
-// It wraps a concrete plan type (MakeTable, Filter, etc.)
+// It wraps a concrete plan type (MakeTable, Select, etc.)
 // and provides methods to safely access the underlying value.
 // This approach replaces the previous interface-based design to reduce
 // indirection and improve code clarity.
@@ -64,8 +64,8 @@ func (p Plan) Schema() schema.Schema {
 	switch p.ty {
 	case PlanTypeMakeTable:
 		return p.val.(*MakeTable).Schema()
-	case PlanTypeFilter:
-		return p.val.(*Filter).Schema()
+	case PlanTypeSelect:
+		return p.val.(*Select).Schema()
 	case PlanTypeLimit:
 		return p.val.(*Limit).Schema()
 	case PlanTypeSort:
@@ -84,13 +84,13 @@ func (p Plan) MakeTable() *MakeTable {
 	return p.val.(*MakeTable)
 }
 
-// Filter returns the concrete filter plan if this is a filter plan.
-// Panics if this is not a filter plan.
-func (p Plan) Filter() *Filter {
-	if p.ty != PlanTypeFilter {
-		panic(fmt.Sprintf("not a filter plan: %v", p.ty))
+// Select returns the concrete select plan if this is a select plan.
+// Panics if this is not a select plan.
+func (p Plan) Select() *Select {
+	if p.ty != PlanTypeSelect {
+		panic(fmt.Sprintf("not a select plan: %v", p.ty))
 	}
-	return p.val.(*Filter)
+	return p.val.(*Select)
 }
 
 // Limit returns the concrete limit plan if this is a limit plan.
@@ -126,10 +126,10 @@ func NewMakeTable(name string, schema schema.Schema) Plan {
 	return newPlan(PlanTypeMakeTable, makeTable(name, schema))
 }
 
-// NewFilter creates a new filter plan.
-// This applies a boolean expression to filter rows from the input plan.
-func NewFilter(input Plan, expr Expr) Plan {
-	return newPlan(PlanTypeFilter, newFilter(input, expr))
+// NewSelect creates a new select plan. This applies a boolean expression to
+// select (filter) rows from the input plan.
+func NewSelect(input Plan, expr Expr) Plan {
+	return newPlan(PlanTypeSelect, newSelect(input, expr))
 }
 
 // NewLimit creates a new limit plan.
