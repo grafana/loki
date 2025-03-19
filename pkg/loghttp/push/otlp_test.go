@@ -961,6 +961,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		false,
 		log.NewNopLogger(),
 		streamResolver,
+		false,
 	)
 
 	// Debug: Print the actual streams we got
@@ -1081,6 +1082,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		false,
 		log.NewNopLogger(),
 		streamResolver,
+		false,
 	)
 
 	// Debug: Print the actual streams we got
