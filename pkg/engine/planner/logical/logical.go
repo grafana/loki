@@ -36,3 +36,11 @@ type Value interface {
 	// isValue is a marker method to prevent external implementations.
 	isValue()
 }
+
+// A Plan represents a sequence of [Instruction]s that ultimately produce a
+// [Value].
+//
+// The first [Return] instruction in the plan denotes the final output.
+type Plan struct {
+	Instructions []Instruction // Instructions of the plan in order.
+}

@@ -10,29 +10,30 @@ import (
 // TreeFormatter formats a logical plan as a tree structure.
 type TreeFormatter struct{}
 
-// Format formats a logical plan as a tree structure, similar to the Unix 'tree' command.
-// It takes a [TreeNode] as input and returns a string representation of the plan tree.
-func (t *TreeFormatter) Format(ast TreeNode) string {
+// Format formats a logical plan as a tree structure. It takes a [Value] as
+// input and returns a tree representation of that Value and all Values it
+// depends on.
+func (t *TreeFormatter) Format(value Value) string {
 	var sb strings.Builder
 	p := tree.NewPrinter(&sb)
-	p.Print(t.convert(ast))
+	p.Print(t.convert(value))
 	return sb.String()
 }
 
-// convert dispatches to the appropriate method based on the plan type and
+// convert dispatches to the appropriate method based on the Instruction and
 // returns the newly created [tree.Node].
-func (t *TreeFormatter) convert(ast TreeNode) *tree.Node {
-	switch ast.Type() {
-	case TreeNodeTypeMakeTable:
-		return t.convertMakeTable(ast.MakeTable())
-	case TreeNodeTypeSelect:
-		return t.convertSelect(ast.Select())
-	case TreeNodeTypeLimit:
-		return t.convertLimit(ast.Limit())
-	case TreeNodeTypeSort:
-		return t.convertSort(ast.Sort())
+func (t *TreeFormatter) convert(value Value) *tree.Node {
+	switch value := value.(type) {
+	case *MakeTable:
+		return t.convertMakeTable(value)
+	case *Select:
+		return t.convertSelect(value)
+	case *Limit:
+		return t.convertLimit(value)
+	case *Sort:
+		return t.convertSort(value)
 	default:
-		panic(fmt.Sprintf("unknown plan type: %v", ast.Type()))
+		panic(fmt.Sprintf("unknown value type %T", value))
 	}
 }
 
@@ -43,7 +44,7 @@ func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
 func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
 	node := tree.NewNode("Select", "", tree.NewProperty("expr", false, ast.Expr.ToField(ast.Input).Name))
 	node.Comments = append(node.Comments, t.convertExpr(ast.Expr))
-	node.Children = append(node.Children, t.convert(ast.Input))
+	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
 	return node
 }
 
@@ -52,7 +53,7 @@ func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
 		tree.NewProperty("offset", false, ast.Skip),
 		tree.NewProperty("fetch", false, ast.Fetch),
 	)
-	node.Children = append(node.Children, t.convert(ast.Input))
+	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
 	return node
 }
 
@@ -73,7 +74,7 @@ func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
 		tree.NewProperty("nulls", false, nullsPosition),
 	)
 	node.Comments = append(node.Comments, t.convertExpr(ast.Expr.Expr))
-	node.Children = append(node.Children, t.convert(ast.Input))
+	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
 	return node
 }
 
@@ -113,4 +114,19 @@ func (t *TreeFormatter) convertBinaryOpExpr(expr *BinOpExpr) *tree.Node {
 	node.Children = append(node.Children, t.convertExpr(expr.Left))
 	node.Children = append(node.Children, t.convertExpr(expr.Right))
 	return node
+}
+
+func unwrapTreeNode(tn TreeNode) Value {
+	switch tn.Type() {
+	case TreeNodeTypeMakeTable:
+		return tn.MakeTable()
+	case TreeNodeTypeSelect:
+		return tn.Select()
+	case TreeNodeTypeLimit:
+		return tn.Limit()
+	case TreeNodeTypeSort:
+		return tn.Sort()
+	default:
+		panic(fmt.Sprintf("unknown TreeNode type: %v", tn.Type()))
+	}
 }

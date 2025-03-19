@@ -30,8 +30,11 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	}
 
-	scan := NewMakeTableNode(ds.Name(), ds.Schema())
-	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
+	var (
+		scan = NewMakeTableNode(ds.Name(), ds.Schema())
+
+		sel = &Select{Input: scan, Expr: Gt("age_gt_21", Col("age"), LitI64(21))}
+	)
 
 	var f TreeFormatter
 
@@ -73,7 +76,9 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(df.Node())
+	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
+	// types.
+	actual := "\n" + f.Format(unwrapTreeNode(df.Node()))
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
@@ -109,7 +114,9 @@ func TestFormatSortQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(sortByAge)
+	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
+	// types.
+	actual := "\n" + f.Format(unwrapTreeNode(sortByAge))
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
@@ -150,7 +157,9 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(df.Node())
+	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
+	// types.
+	actual := "\n" + f.Format(unwrapTreeNode(df.Node()))
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
