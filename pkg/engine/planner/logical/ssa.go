@@ -312,19 +312,19 @@ func (b *ssaBuilder) processSortPlan(plan *Sort) (int, error) {
 	}
 
 	// Process the sort expression
-	exprID, err := b.processExpr(plan.Expr().Expr(), plan.Child())
+	exprID, err := b.processExpr(plan.Expr().Expr, plan.Child())
 	if err != nil {
 		return 0, err
 	}
 
 	// Create direction and nulls position properties
 	direction := "asc"
-	if !plan.Expr().Asc() {
+	if !plan.Expr().Ascending {
 		direction = "desc"
 	}
 
 	nullsPosition := "last"
-	if plan.Expr().NullsFirst() {
+	if plan.Expr().NullsFirst {
 		nullsPosition = "first"
 	}
 
@@ -334,7 +334,7 @@ func (b *ssaBuilder) processSortPlan(plan *Sort) (int, error) {
 		ID:       id,
 		NodeType: "Sort",
 		Tuples: []nodeProperty{
-			{Key: "expr", Value: plan.Expr().Name()},
+			{Key: "expr", Value: plan.Expr().Name},
 			{Key: "direction", Value: direction},
 			{Key: "nulls", Value: nullsPosition},
 		},
