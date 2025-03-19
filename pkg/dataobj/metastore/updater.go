@@ -160,10 +160,13 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		return errors.Wrap(err, "resolving object metadata")
 	}
 
+	var streamsReader dataobj.StreamsReader
+	defer streamsReader.Close()
+
 	// Read streams from existing metastore object and write them to the builder for the new object
 	streams := make([]dataobj.Stream, 100)
 	for i := 0; i < si.StreamsSections; i++ {
-		streamsReader := dataobj.NewStreamsReader(object, i)
+		streamsReader.Reset(object, i)
 		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading streams")
