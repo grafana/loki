@@ -119,7 +119,7 @@ func (b *ssaBuilder) processMakeTablePlan(plan *MakeTable) (int, error) {
 		ID:       id,
 		NodeType: "MakeTable",
 		Tuples: []nodeProperty{
-			{Key: "name", Value: plan.TableName()},
+			{Key: "name", Value: plan.Name},
 		},
 	}
 
