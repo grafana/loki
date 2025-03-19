@@ -332,6 +332,10 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
+	if d.deleteRequestsToProcess[userIDStr] == nil {
+		return true
+	}
+
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
 		// if the delete request does not touch the series, continue looking for other matching requests
 		if !labels.Selector(deleteRequest.matchers).Matches(lbls) {
@@ -499,7 +503,12 @@ func (d *DeleteRequestsManager) DropFromIndex(_ []byte, _ retention.Chunk, _ lab
 }
 
 func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
-	for _, req := range d.deleteRequestsToProcess[unsafeGetString(userID)].requests {
+	userIDStr := unsafeGetString(userID)
+	if d.deleteRequestsToProcess[userIDStr] == nil {
+		return nil
+	}
+
+	for _, req := range d.deleteRequestsToProcess[userIDStr].requests {
 		// if the delete request does not touch the series, do not waste space in storing the marker
 		if !labels.Selector(req.matchers).Matches(lbls) {
 			continue
