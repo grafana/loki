@@ -4500,6 +4500,62 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.route</td>
+			<td>object</td>
+			<td>Gateway API Routes configuration</td>
+			<td><pre lang="json">
+{
+  "main": {
+    "additionalRules": [],
+    "annotations": {},
+    "apiVersion": "gateway.networking.k8s.io/v1",
+    "enabled": false,
+    "filters": [],
+    "hostnames": [],
+    "kind": "HTTPRoute",
+    "labels": {},
+    "matches": [
+      {
+        "path": {
+          "type": "PathPrefix",
+          "value": "/"
+        }
+      }
+    ],
+    "parentRefs": []
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.main.apiVersion</td>
+			<td>string</td>
+			<td>Set the route apiVersion, e.g. gateway.networking.k8s.io/v1 or gateway.networking.k8s.io/v1alpha2</td>
+			<td><pre lang="json">
+"gateway.networking.k8s.io/v1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.main.enabled</td>
+			<td>bool</td>
+			<td>Enables or disables the route</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.main.kind</td>
+			<td>string</td>
+			<td>Set the route kind Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute</td>
+			<td><pre lang="json">
+"HTTPRoute"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.annotations</td>
 			<td>object</td>
 			<td>Annotations for the gateway service</td>
