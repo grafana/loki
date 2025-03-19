@@ -22,8 +22,8 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		limits                        Limits
 		expectedGetStreamUsageRequest *GetStreamUsageRequest
 		getStreamUsageResponses       []GetStreamUsageResponse
-		request                       exceedsLimitsRequest
-		expected                      exceedsLimitsResponse
+		request                       httpExceedsLimitsRequest
+		expected                      httpExceedsLimitsResponse
 	}{{
 		name: "within limits",
 		limits: &mockLimits{
@@ -41,7 +41,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				Rate:          10,
 			},
 		}},
-		request: exceedsLimitsRequest{
+		request: httpExceedsLimitsRequest{
 			TenantID:     "test",
 			StreamHashes: []uint64{0x1},
 		},
@@ -63,11 +63,11 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				Rate:          200,
 			},
 		}},
-		request: exceedsLimitsRequest{
+		request: httpExceedsLimitsRequest{
 			TenantID:     "test",
 			StreamHashes: []uint64{0x1},
 		},
-		expected: exceedsLimitsResponse{
+		expected: httpExceedsLimitsResponse{
 			RejectedStreams: []*logproto.RejectedStream{{
 				StreamHash: 0x1,
 				Reason:     "exceeds_rate_limit",
@@ -101,7 +101,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 			b, err = io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			var actual exceedsLimitsResponse
+			var actual httpExceedsLimitsResponse
 			require.NoError(t, json.Unmarshal(b, &actual))
 			require.Equal(t, test.expected, actual)
 		})
