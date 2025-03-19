@@ -19,7 +19,6 @@ const (
 	PlanTypeTable                      // Represents a table scan operation
 	PlanTypeFilter                     // Represents a filter operation
 	PlanTypeProjection                 // Represents a projection operation
-	PlanTypeAggregate                  // Represents an aggregation operation
 	PlanTypeLimit                      // Represents a limit operation
 	PlanTypeSort                       // Represents a sort operation
 )
@@ -36,8 +35,6 @@ func (t PlanType) String() string {
 		return "Filter"
 	case PlanTypeProjection:
 		return "Projection"
-	case PlanTypeAggregate:
-		return "Aggregate"
 	case PlanTypeLimit:
 		return "Limit"
 	case PlanTypeSort:
@@ -74,8 +71,6 @@ func (p Plan) Schema() schema.Schema {
 		return p.val.(*Filter).Schema()
 	case PlanTypeProjection:
 		return p.val.(*Projection).Schema()
-	case PlanTypeAggregate:
-		return p.val.(*Aggregate).Schema()
 	case PlanTypeLimit:
 		return p.val.(*Limit).Schema()
 	case PlanTypeSort:
@@ -110,15 +105,6 @@ func (p Plan) Projection() *Projection {
 		panic(fmt.Sprintf("not a projection plan: %v", p.ty))
 	}
 	return p.val.(*Projection)
-}
-
-// Aggregate returns the concrete aggregate plan if this is an aggregate plan.
-// Panics if this is not an aggregate plan.
-func (p Plan) Aggregate() *Aggregate {
-	if p.ty != PlanTypeAggregate {
-		panic(fmt.Sprintf("not an aggregate plan: %v", p.ty))
-	}
-	return p.val.(*Aggregate)
 }
 
 // Limit returns the concrete limit plan if this is a limit plan.
@@ -165,12 +151,6 @@ func NewFilter(input Plan, expr Expr) Plan {
 // This applies a list of expressions to project columns from the input plan.
 func NewProjection(input Plan, exprs []Expr) Plan {
 	return newPlan(PlanTypeProjection, newProjection(input, exprs))
-}
-
-// NewAggregate creates a new aggregate plan.
-// This applies grouping and aggregation to the input plan.
-func NewAggregate(input Plan, groupExprs []Expr, aggExprs []AggregateExpr) Plan {
-	return newPlan(PlanTypeAggregate, newAggregate(input, groupExprs, aggExprs))
 }
 
 // NewLimit creates a new limit plan.

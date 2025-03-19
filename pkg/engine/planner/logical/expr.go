@@ -12,12 +12,11 @@ import (
 type ExprType int
 
 const (
-	ExprTypeInvalid   ExprType = iota
-	ExprTypeColumn             // Represents a reference to a column in the input
-	ExprTypeLiteral            // Represents a literal value
-	ExprTypeBinaryOp           // Represents a binary operation (e.g., a + b)
-	ExprTypeAggregate          // Represents an aggregate function (e.g., SUM(a))
-	ExprTypeSort               // Represents a sort expression
+	ExprTypeInvalid  ExprType = iota
+	ExprTypeColumn            // Represents a reference to a column in the input
+	ExprTypeLiteral           // Represents a literal value
+	ExprTypeBinaryOp          // Represents a binary operation (e.g., a + b)
+	ExprTypeSort              // Represents a sort expression
 )
 
 func (t ExprType) String() string {
@@ -28,8 +27,6 @@ func (t ExprType) String() string {
 		return "Literal"
 	case ExprTypeBinaryOp:
 		return "BinaryOp"
-	case ExprTypeAggregate:
-		return "Aggregate"
 	case ExprTypeSort:
 		return "Sort"
 	default:
@@ -54,8 +51,6 @@ func (e Expr) ToField(p Plan) schema.ColumnSchema {
 		return e.val.(*LiteralExpr).ToField(p)
 	case ExprTypeBinaryOp:
 		return e.val.(*BinOpExpr).ToField(p)
-	case ExprTypeAggregate:
-		return e.val.(*AggregateExpr).ToField(p)
 	default:
 		panic(fmt.Sprintf("unsupported expression type: %d", e.ty))
 	}
@@ -90,13 +85,6 @@ func NewBinOpExpr(expr BinOpExpr) Expr {
 	}
 }
 
-func NewAggregateExpr(expr AggregateExpr) Expr {
-	return Expr{
-		ty:  ExprTypeAggregate,
-		val: &expr,
-	}
-}
-
 // shortcut: must be checked elsewhere
 func (e Expr) Literal() *LiteralExpr {
 	if e.ty != ExprTypeLiteral {
@@ -111,14 +99,6 @@ func (e Expr) BinaryOp() *BinOpExpr {
 		panic(fmt.Sprintf("expression is not a binary operation: %d", e.ty))
 	}
 	return e.val.(*BinOpExpr)
-}
-
-// shortcut: must be checked elsewhere
-func (e Expr) Aggregate() *AggregateExpr {
-	if e.ty != ExprTypeAggregate {
-		panic(fmt.Sprintf("expression is not an aggregate: %d", e.ty))
-	}
-	return e.val.(*AggregateExpr)
 }
 
 func (e Expr) Sort() *SortExpr {

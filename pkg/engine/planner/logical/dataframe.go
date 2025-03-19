@@ -39,16 +39,6 @@ func (df *DataFrame) Filter(expr Expr) *DataFrame {
 	}
 }
 
-// Aggregate applies grouping and aggregation to the DataFrame.
-// It creates a new DataFrame with an aggregate plan that groups rows by the
-// specified expressions and computes the specified aggregate expressions.
-// This corresponds to the GROUP BY clause in SQL.
-func (df *DataFrame) Aggregate(groupBy []Expr, aggExprs []AggregateExpr) *DataFrame {
-	return &DataFrame{
-		plan: NewAggregate(df.plan, groupBy, aggExprs),
-	}
-}
-
 // Limit applies a row limit to the DataFrame.
 // It creates a new DataFrame with a limit plan that restricts the number of rows
 // returned, optionally with an offset to skip initial rows.

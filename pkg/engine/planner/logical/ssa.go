@@ -103,8 +103,6 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 		return b.processFilterPlan(plan.Filter())
 	case PlanTypeProjection:
 		return b.processProjectionPlan(plan.Projection())
-	case PlanTypeAggregate:
-		return b.processAggregatePlan(plan.Aggregate())
 	case PlanTypeLimit:
 		return b.processLimitPlan(plan.Limit())
 	case PlanTypeSort:
@@ -214,60 +212,6 @@ func (b *ssaBuilder) processProjectionPlan(plan *Projection) (int, error) {
 	return id, nil
 }
 
-// processAggregatePlan processes an aggregate plan node
-// It processes the child plan, group expressions, and aggregate expressions,
-// then creates an AggregatePlan node
-func (b *ssaBuilder) processAggregatePlan(plan *Aggregate) (int, error) {
-	// Process the child plan first
-	_, err := b.processPlan(plan.Child())
-	if err != nil {
-		return 0, err
-	}
-
-	// Process group expressions
-	var groupingRefs []string
-	var groupingIDs []int
-
-	for _, expr := range plan.GroupExprs() {
-		exprID, err := b.processExpr(expr, plan.Child())
-		if err != nil {
-			return 0, err
-		}
-
-		groupingRefs = append(groupingRefs, fmt.Sprintf("%%%d", exprID))
-		groupingIDs = append(groupingIDs, exprID)
-	}
-
-	// Process aggregate expressions
-	var aggregationRefs []string
-	var aggregationIDs []int
-
-	for _, expr := range plan.AggregateExprs() {
-		exprID, err := b.processAggregateExpr(&expr, plan.Child())
-		if err != nil {
-			return 0, err
-		}
-
-		aggregationRefs = append(aggregationRefs, fmt.Sprintf("%%%d", exprID))
-		aggregationIDs = append(aggregationIDs, exprID)
-	}
-
-	// Create a node for the aggregate plan
-	id := b.getID()
-	node := SSANode{
-		ID:       id,
-		NodeType: "AggregatePlan",
-		Tuples: []nodeProperty{
-			{Key: "aggregations", Value: fmt.Sprintf("[%s]", strings.Join(aggregationRefs, ", "))},
-			{Key: "groupings", Value: fmt.Sprintf("[%s]", strings.Join(groupingRefs, ", "))},
-		},
-		References: append(groupingIDs, aggregationIDs...),
-	}
-
-	b.nodes = append(b.nodes, node)
-	return id, nil
-}
-
 // processExpr processes an expression and returns its ID
 // It handles different expression types by delegating to specific processing methods
 func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
@@ -278,8 +222,6 @@ func (b *ssaBuilder) processExpr(expr Expr, parent Plan) (int, error) {
 		return b.processLiteralExpr(expr.Literal())
 	case ExprTypeBinaryOp:
 		return b.processBinaryOpExpr(expr.BinaryOp(), parent)
-	case ExprTypeAggregate:
-		return b.processAggregateExpr(expr.Aggregate(), parent)
 	default:
 		return 0, fmt.Errorf("unknown expression type: %v", expr.Type())
 	}
@@ -349,31 +291,6 @@ func (b *ssaBuilder) processBinaryOpExpr(expr *BinOpExpr, parent Plan) (int, err
 			{Key: "right", Value: fmt.Sprintf("%%%d", rightID)},
 		},
 		References: []int{leftID, rightID},
-	}
-
-	b.nodes = append(b.nodes, node)
-	return id, nil
-}
-
-// processAggregateExpr processes an aggregate expression
-// It processes the input expression first if it exists, then creates an AggregationExpr node
-func (b *ssaBuilder) processAggregateExpr(expr *AggregateExpr, parent Plan) (int, error) {
-	// Process the input expression first if it exists
-	exprID, err := b.processExpr(expr.SubExpr(), parent)
-	if err != nil {
-		return 0, err
-	}
-
-	// Create a node for the aggregate expression
-	id := b.getID()
-	node := SSANode{
-		ID:       id,
-		NodeType: "AggregationExpr",
-		Tuples: []nodeProperty{
-			{Key: "name", Value: expr.Name()},
-			{Key: "op", Value: string(expr.Op())},
-		},
-		References: []int{exprID},
 	}
 
 	b.nodes = append(b.nodes, node)

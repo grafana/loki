@@ -29,8 +29,6 @@ func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 		return t.convertFilter(ast.Filter())
 	case PlanTypeProjection:
 		return t.convertProjection(ast.Projection())
-	case PlanTypeAggregate:
-		return t.convertAggregation(ast.Aggregate())
 	case PlanTypeLimit:
 		return t.convertLimit(ast.Limit())
 	case PlanTypeSort:
@@ -58,42 +56,6 @@ func (t *TreeFormatter) convertProjection(ast *Projection) *tree.Node {
 		node.Properties = append(node.Properties, tree.NewProperty(field.Name, false, field.Type.String()))
 		node.Comments = append(node.Comments, t.convertExpr(expr))
 	}
-	node.Children = append(node.Children, t.convert(ast.Child()))
-	return node
-}
-
-func (t *TreeFormatter) convertAggregation(ast *Aggregate) *tree.Node {
-	// Collect grouping names
-	var groupNames []string
-	for _, expr := range ast.GroupExprs() {
-		groupNames = append(groupNames, expr.ToField(ast.Child()).Name)
-	}
-
-	// Collect aggregate names
-	var aggNames []string
-	for _, expr := range ast.AggregateExprs() {
-		aggNames = append(aggNames, expr.ToField(ast.Child()).Name)
-	}
-
-	node := tree.NewNode("Aggregate", "",
-		tree.NewProperty("groupings", true, groupNames),
-		tree.NewProperty("aggregates", true, aggNames),
-	)
-
-	// Format grouping expressions
-	groupNode := tree.NewNode("GroupExpr", "")
-	for _, expr := range ast.GroupExprs() {
-		groupNode.Children = append(groupNode.Children, t.convertExpr(expr))
-	}
-	node.Comments = append(node.Comments, groupNode)
-
-	// Format aggregate expressions
-	aggNode := tree.NewNode("AggregateExpr", "")
-	for _, expr := range ast.AggregateExprs() {
-		aggNode.Children = append(aggNode.Children, t.convertAggregateExpr(&expr))
-	}
-	node.Comments = append(node.Comments, aggNode)
-
 	node.Children = append(node.Children, t.convert(ast.Child()))
 	return node
 }
@@ -139,8 +101,6 @@ func (t *TreeFormatter) convertExpr(expr Expr) *tree.Node {
 		return t.convertLiteralExpr(expr.Literal())
 	case ExprTypeBinaryOp:
 		return t.convertBinaryOpExpr(expr.BinaryOp())
-	case ExprTypeAggregate:
-		return t.convertAggregateExpr(expr.Aggregate())
 	default:
 		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Type(), expr))
 	}
@@ -165,13 +125,5 @@ func (t *TreeFormatter) convertBinaryOpExpr(expr *BinOpExpr) *tree.Node {
 	)
 	node.Children = append(node.Children, t.convertExpr(expr.Left()))
 	node.Children = append(node.Children, t.convertExpr(expr.Right()))
-	return node
-}
-
-func (t *TreeFormatter) convertAggregateExpr(expr *AggregateExpr) *tree.Node {
-	node := tree.NewNode(ExprTypeAggregate.String(), "",
-		tree.NewProperty("op", false, expr.Op()),
-	)
-	node.Children = append(node.Children, t.convertExpr(expr.SubExpr()))
 	return node
 }

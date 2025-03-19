@@ -76,11 +76,6 @@ func TestFormatDataFrameQuery(t *testing.T) {
 			Col("sales"),
 			Col("year"),
 		},
-	).Aggregate(
-		[]Expr{Col("region")},
-		[]AggregateExpr{
-			Sum("total_sales", Col("sales")),
-		},
 	).Limit(
 		0,
 		10,
@@ -93,21 +88,15 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	expected := `
 Limit offset=0 fetch=10
-└── Aggregate groupings=([region]) aggregates=([total_sales])
-    │   ├── GroupExpr
-    │   │   └── Column #region
-    │   └── AggregateExpr
-    │       └── Aggregate op=sum
-    │           └── Column #sales
-    └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-        │   ├── Column #region
-        │   ├── Column #sales
-        │   └── Column #year
-        └── Filter expr=year_2020
-            │   └── BinaryOp type=cmp op="==" name=year_2020
-            │       ├── Column #year
-            │       └── Literal value=2020 type=VALUE_TYPE_INT64
-            └── MakeTable name=orders
+└── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
+    │   ├── Column #region
+    │   ├── Column #sales
+    │   └── Column #year
+    └── Filter expr=year_2020
+        │   └── BinaryOp type=cmp op="==" name=year_2020
+        │       ├── Column #year
+        │       └── Literal value=2020 type=VALUE_TYPE_INT64
+        └── MakeTable name=orders
 `
 	require.Equal(t, expected, actual)
 }
@@ -177,11 +166,6 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 			Col("sales"),
 			Col("year"),
 		},
-	).Aggregate(
-		[]Expr{Col("region")},
-		[]AggregateExpr{
-			Sum("total_sales", Col("sales")),
-		},
 	).Sort(
 		NewSortExpr("sort_by_sales", Col("total_sales"), false, true), // Sort by total_sales descending, nulls first
 	).Limit(
@@ -198,21 +182,15 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 Limit offset=0 fetch=10
 └── Sort expr=sort_by_sales direction=desc nulls=first
     │   └── Column #total_sales
-    └── Aggregate groupings=([region]) aggregates=([total_sales])
-        │   ├── GroupExpr
-        │   │   └── Column #region
-        │   └── AggregateExpr
-        │       └── Aggregate op=sum
-        │           └── Column #sales
-        └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-            │   ├── Column #region
-            │   ├── Column #sales
-            │   └── Column #year
-            └── Filter expr=year_2020
-                │   └── BinaryOp type=cmp op="==" name=year_2020
-                │       ├── Column #year
-                │       └── Literal value=2020 type=VALUE_TYPE_INT64
-                └── MakeTable name=orders
+    └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
+        │   ├── Column #region
+        │   ├── Column #sales
+        │   └── Column #year
+        └── Filter expr=year_2020
+            │   └── BinaryOp type=cmp op="==" name=year_2020
+            │       ├── Column #year
+            │       └── Literal value=2020 type=VALUE_TYPE_INT64
+            └── MakeTable name=orders
 `
 	require.Equal(t, expected, actual)
 }
