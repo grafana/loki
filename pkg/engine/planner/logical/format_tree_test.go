@@ -32,22 +32,18 @@ func TestFormatSimpleQuery(t *testing.T) {
 
 	scan := NewScan(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-	proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(proj)
+	actual := "\n" + f.Format(filter)
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING
-│   ├── Column #id
-│   └── Column #name
-└── Filter expr=age_gt_21
-    │   └── BinaryOp type=cmp op=">" name=age_gt_21
-    │       ├── Column #age
-    │       └── Literal value=21 type=VALUE_TYPE_INT64
-    └── MakeTable name=users
+Filter expr=age_gt_21
+│   └── BinaryOp type=cmp op=">" name=age_gt_21
+│       ├── Column #age
+│       └── Literal value=21 type=VALUE_TYPE_INT64
+└── MakeTable name=users
 `
 
 	require.Equal(t, expected, actual)
@@ -70,12 +66,6 @@ func TestFormatDataFrameQuery(t *testing.T) {
 		NewScan(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
-	).Project(
-		[]Expr{
-			Col("region"),
-			Col("sales"),
-			Col("year"),
-		},
 	).Limit(
 		0,
 		10,
@@ -88,15 +78,11 @@ func TestFormatDataFrameQuery(t *testing.T) {
 
 	expected := `
 Limit offset=0 fetch=10
-└── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-    │   ├── Column #region
-    │   ├── Column #sales
-    │   └── Column #year
-    └── Filter expr=year_2020
-        │   └── BinaryOp type=cmp op="==" name=year_2020
-        │       ├── Column #year
-        │       └── Literal value=2020 type=VALUE_TYPE_INT64
-        └── MakeTable name=orders
+└── Filter expr=year_2020
+    │   └── BinaryOp type=cmp op="==" name=year_2020
+    │       ├── Column #year
+    │       └── Literal value=2020 type=VALUE_TYPE_INT64
+    └── MakeTable name=orders
 `
 	require.Equal(t, expected, actual)
 }
@@ -117,10 +103,9 @@ func TestFormatSortQuery(t *testing.T) {
 
 	scan := NewScan(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-	proj := NewProjection(filter, []Expr{Col("id"), Col("name"), Col("age")})
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(proj, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSort(filter, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	var f TreeFormatter
 
@@ -130,15 +115,11 @@ func TestFormatSortQuery(t *testing.T) {
 	expected := `
 Sort expr=sort_by_age direction=asc nulls=last
 │   └── Column #age
-└── Projection id=VALUE_TYPE_UINT64 name=VALUE_TYPE_STRING age=VALUE_TYPE_UINT64
-    │   ├── Column #id
-    │   ├── Column #name
-    │   └── Column #age
-    └── Filter expr=age_gt_21
-        │   └── BinaryOp type=cmp op=">" name=age_gt_21
-        │       ├── Column #age
-        │       └── Literal value=21 type=VALUE_TYPE_INT64
-        └── MakeTable name=users
+└── Filter expr=age_gt_21
+    │   └── BinaryOp type=cmp op=">" name=age_gt_21
+    │       ├── Column #age
+    │       └── Literal value=21 type=VALUE_TYPE_INT64
+    └── MakeTable name=users
 `
 	require.Equal(t, expected, actual)
 }
@@ -160,12 +141,6 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 		NewScan(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
-	).Project(
-		[]Expr{
-			Col("region"),
-			Col("sales"),
-			Col("year"),
-		},
 	).Sort(
 		NewSortExpr("sort_by_sales", Col("total_sales"), false, true), // Sort by total_sales descending, nulls first
 	).Limit(
@@ -182,15 +157,11 @@ func TestFormatDataFrameWithSortQuery(t *testing.T) {
 Limit offset=0 fetch=10
 └── Sort expr=sort_by_sales direction=desc nulls=first
     │   └── Column #total_sales
-    └── Projection region=VALUE_TYPE_STRING sales=VALUE_TYPE_UINT64 year=VALUE_TYPE_UINT64
-        │   ├── Column #region
-        │   ├── Column #sales
-        │   └── Column #year
-        └── Filter expr=year_2020
-            │   └── BinaryOp type=cmp op="==" name=year_2020
-            │       ├── Column #year
-            │       └── Literal value=2020 type=VALUE_TYPE_INT64
-            └── MakeTable name=orders
+    └── Filter expr=year_2020
+        │   └── BinaryOp type=cmp op="==" name=year_2020
+        │       ├── Column #year
+        │       └── Literal value=2020 type=VALUE_TYPE_INT64
+        └── MakeTable name=orders
 `
 	require.Equal(t, expected, actual)
 }

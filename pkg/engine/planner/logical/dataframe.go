@@ -19,16 +19,6 @@ func NewDataFrame(plan Plan) *DataFrame {
 	return &DataFrame{plan: plan}
 }
 
-// Project applies a projection to the DataFrame.
-// It creates a new DataFrame with a projection plan that selects or computes
-// the specified expressions from the input DataFrame.
-// This corresponds to the SELECT clause in SQL.
-func (df *DataFrame) Project(exprs []Expr) *DataFrame {
-	return &DataFrame{
-		plan: NewProjection(df.plan, exprs),
-	}
-}
-
 // Filter applies a filter to the DataFrame.
 // It creates a new DataFrame with a filter plan that selects rows from the
 // input DataFrame based on the specified boolean expression.

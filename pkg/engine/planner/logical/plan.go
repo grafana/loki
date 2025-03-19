@@ -15,12 +15,11 @@ import (
 type PlanType int
 
 const (
-	PlanTypeInvalid    PlanType = iota // Invalid or uninitialized plan
-	PlanTypeTable                      // Represents a table scan operation
-	PlanTypeFilter                     // Represents a filter operation
-	PlanTypeProjection                 // Represents a projection operation
-	PlanTypeLimit                      // Represents a limit operation
-	PlanTypeSort                       // Represents a sort operation
+	PlanTypeInvalid PlanType = iota // Invalid or uninitialized plan
+	PlanTypeTable                   // Represents a table scan operation
+	PlanTypeFilter                  // Represents a filter operation
+	PlanTypeLimit                   // Represents a limit operation
+	PlanTypeSort                    // Represents a sort operation
 )
 
 // String returns a string representation of the plan type.
@@ -33,8 +32,6 @@ func (t PlanType) String() string {
 		return "Table"
 	case PlanTypeFilter:
 		return "Filter"
-	case PlanTypeProjection:
-		return "Projection"
 	case PlanTypeLimit:
 		return "Limit"
 	case PlanTypeSort:
@@ -69,8 +66,6 @@ func (p Plan) Schema() schema.Schema {
 		return p.val.(*MakeTable).Schema()
 	case PlanTypeFilter:
 		return p.val.(*Filter).Schema()
-	case PlanTypeProjection:
-		return p.val.(*Projection).Schema()
 	case PlanTypeLimit:
 		return p.val.(*Limit).Schema()
 	case PlanTypeSort:
@@ -96,15 +91,6 @@ func (p Plan) Filter() *Filter {
 		panic(fmt.Sprintf("not a filter plan: %v", p.ty))
 	}
 	return p.val.(*Filter)
-}
-
-// Projection returns the concrete projection plan if this is a projection plan.
-// Panics if this is not a projection plan.
-func (p Plan) Projection() *Projection {
-	if p.ty != PlanTypeProjection {
-		panic(fmt.Sprintf("not a projection plan: %v", p.ty))
-	}
-	return p.val.(*Projection)
 }
 
 // Limit returns the concrete limit plan if this is a limit plan.
@@ -145,12 +131,6 @@ func NewScan(name string, schema schema.Schema) Plan {
 // This applies a boolean expression to filter rows from the input plan.
 func NewFilter(input Plan, expr Expr) Plan {
 	return newPlan(PlanTypeFilter, newFilter(input, expr))
-}
-
-// NewProjection creates a new projection plan.
-// This applies a list of expressions to project columns from the input plan.
-func NewProjection(input Plan, exprs []Expr) Plan {
-	return newPlan(PlanTypeProjection, newProjection(input, exprs))
 }
 
 // NewLimit creates a new limit plan.

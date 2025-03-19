@@ -26,10 +26,9 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 
 	scan := NewScan(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-	proj := NewProjection(filter, []Expr{Col("id"), Col("name")})
 
 	// Convert to SSA
-	ssaForm, err := ConvertToSSA(proj)
+	ssaForm, err := ConvertToSSA(filter)
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 
@@ -44,9 +43,6 @@ func TestConvertSimpleQueryToSSA(t *testing.T) {
 %3 = Literal [val=21, type=VALUE_TYPE_INT64]
 %4 = BinaryOp [op=(>), name=age_gt_21, left=%2, right=%3]
 %5 = Filter [name=age_gt_21, predicate=%4, plan=%1]
-%6 = ColumnRef [name=id, type=VALUE_TYPE_UINT64]
-%7 = ColumnRef [name=name, type=VALUE_TYPE_STRING]
-%8 = Project [id=%6, name=%7]
 `
 	exp = strings.TrimSpace(exp)
 
@@ -79,12 +75,6 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 		NewScan(ds.Name(), ds.Schema()),
 	).Filter(
 		Eq("year_2020", Col("year"), LitI64(2020)),
-	).Project(
-		[]Expr{
-			Col("region"),
-			Col("sales"),
-			Col("year"),
-		},
 	).Limit(
 		0,
 		10,
@@ -106,11 +96,7 @@ func TestConvertComplexQueryToSSA(t *testing.T) {
 %3 = Literal [val=2020, type=VALUE_TYPE_INT64]
 %4 = BinaryOp [op=(==), name=year_2020, left=%2, right=%3]
 %5 = Filter [name=year_2020, predicate=%4, plan=%1]
-%6 = ColumnRef [name=region, type=VALUE_TYPE_STRING]
-%7 = ColumnRef [name=sales, type=VALUE_TYPE_UINT64]
-%8 = ColumnRef [name=year, type=VALUE_TYPE_UINT64]
-%9 = Project [region=%6, sales=%7, year=%8]
-%10 = Limit [Skip=0, Fetch=10]
+%6 = Limit [Skip=0, Fetch=10]
 `
 	exp = strings.TrimSpace(exp)
 
@@ -142,10 +128,9 @@ func TestConvertSortQueryToSSA(t *testing.T) {
 
 	scan := NewScan(ds.Name(), ds.Schema())
 	filter := NewFilter(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-	proj := NewProjection(filter, []Expr{Col("id"), Col("name"), Col("age")})
 
 	// Sort by age ascending, nulls last
-	sortByAge := NewSort(proj, NewSortExpr("sort_by_age", Col("age"), true, false))
+	sortByAge := NewSort(filter, NewSortExpr("sort_by_age", Col("age"), true, false))
 
 	ssa, err := ConvertToSSA(sortByAge)
 	require.NoError(t, err)

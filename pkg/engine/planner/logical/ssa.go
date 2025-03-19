@@ -101,8 +101,6 @@ func (b *ssaBuilder) processPlan(plan Plan) (int, error) {
 		return b.processTablePlan(plan.Table())
 	case PlanTypeFilter:
 		return b.processFilterPlan(plan.Filter())
-	case PlanTypeProjection:
-		return b.processProjectionPlan(plan.Projection())
 	case PlanTypeLimit:
 		return b.processLimitPlan(plan.Limit())
 	case PlanTypeSort:
@@ -164,48 +162,6 @@ func (b *ssaBuilder) processFilterPlan(plan *Filter) (int, error) {
 			{Key: "plan", Value: fmt.Sprintf("%%%d", childID)},
 		},
 		References: []int{exprID, childID},
-	}
-
-	b.nodes = append(b.nodes, node)
-	return id, nil
-}
-
-// processProjectionPlan processes a projection plan node
-// It processes the child plan and all projection expressions, then creates a Project node
-func (b *ssaBuilder) processProjectionPlan(plan *Projection) (int, error) {
-	// Process the child plan first
-	childID, err := b.processPlan(plan.Child())
-	if err != nil {
-		return 0, err
-	}
-
-	// Process all projection expressions
-	var props []nodeProperty
-	var references []int
-
-	// Process expressions and build properties in a stable order
-	// determined by the order of expressions in the plan
-	for _, expr := range plan.ProjectExprs() {
-		exprID, err := b.processExpr(expr, plan.Child())
-		if err != nil {
-			return 0, err
-		}
-
-		field := expr.ToField(plan.Child())
-		props = append(props, nodeProperty{
-			Key:   field.Name,
-			Value: fmt.Sprintf("%%%d", exprID),
-		})
-		references = append(references, exprID)
-	}
-
-	// Create a node for the projection
-	id := b.getID()
-	node := SSANode{
-		ID:         id,
-		NodeType:   "Project",
-		Tuples:     props,
-		References: append(references, childID), // Add childID to references
 	}
 
 	b.nodes = append(b.nodes, node)

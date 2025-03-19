@@ -27,8 +27,6 @@ func (t *TreeFormatter) convert(ast Plan) *tree.Node {
 		return t.convertMakeTable(ast.Table())
 	case PlanTypeFilter:
 		return t.convertFilter(ast.Filter())
-	case PlanTypeProjection:
-		return t.convertProjection(ast.Projection())
 	case PlanTypeLimit:
 		return t.convertLimit(ast.Limit())
 	case PlanTypeSort:
@@ -45,17 +43,6 @@ func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
 func (t *TreeFormatter) convertFilter(ast *Filter) *tree.Node {
 	node := tree.NewNode("Filter", "", tree.NewProperty("expr", false, ast.FilterExpr().ToField(ast.Child()).Name))
 	node.Comments = append(node.Comments, t.convertExpr(ast.FilterExpr()))
-	node.Children = append(node.Children, t.convert(ast.Child()))
-	return node
-}
-
-func (t *TreeFormatter) convertProjection(ast *Projection) *tree.Node {
-	node := tree.NewNode("Projection", "")
-	for _, expr := range ast.ProjectExprs() {
-		field := expr.ToField(ast.Child())
-		node.Properties = append(node.Properties, tree.NewProperty(field.Name, false, field.Type.String()))
-		node.Comments = append(node.Comments, t.convertExpr(expr))
-	}
 	node.Children = append(node.Children, t.convert(ast.Child()))
 	return node
 }
