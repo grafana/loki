@@ -12,6 +12,8 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
@@ -155,6 +157,26 @@ func (c *closerFunc) Close() error { return c.onClose() }
 // underlying decoder.
 type zstdWrapper struct{ *zstd.Decoder }
 
+// Metrics to help track whether Zstd decoders are being released back into the
+// pool properly and to ensure that their goroutines are being cleaned up.
+var (
+	createdZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_created_total",
+
+		Help: "Total number of Zstd decoders created.",
+	})
+
+	closedZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_closed_total",
+
+		Help: "Total number of Zstd decoders closed.",
+	})
+)
+
 var zstdPool = sync.Pool{
 	New: func() any {
 		// Despite the name of zstd.WithDecoderLowmem implying we're using more
@@ -168,8 +190,12 @@ var zstdPool = sync.Pool{
 
 		// See doc comment on [zstdWrapper] for why we're doing this.
 		zw := &zstdWrapper{zr}
-		runtime.AddCleanup(zw, func(zr *zstd.Decoder) { zr.Close() }, zr)
+		runtime.AddCleanup(zw, func(zr *zstd.Decoder) {
+			zr.Close()
+			closedZstdDecodersTotal.Inc()
+		}, zr)
 
+		createdZstdDecodersTotal.Inc()
 		return zw
 	},
 }
