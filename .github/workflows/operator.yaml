@@ -93,5 +93,5 @@ jobs:
       with:
         working-directory: ./operator
         path-to-profile: profile.cov
-        flag-name: Go-1.23
+        flag-name: Go-1.24
         shallow: true
