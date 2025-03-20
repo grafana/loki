@@ -15,6 +15,7 @@ const (
 	// LiteralKindInvalid indicates an invalid literal value.
 	LiteralKindInvalid LiteralKind = iota
 
+	LiteralKindNull      // NULL literal value.
 	LiteralKindString    // String literal value.
 	LiteralKindInt64     // 64-bit integer literal value.
 	LiteralKindUint64    // 64-bit unsigned integer literal value.
@@ -24,6 +25,7 @@ const (
 var literalKindStrings = map[LiteralKind]string{
 	LiteralKindInvalid: "invalid",
 
+	LiteralKindNull:      "null",
 	LiteralKindString:    "string",
 	LiteralKindInt64:     "int64",
 	LiteralKindUint64:    "uint64",
@@ -40,27 +42,31 @@ func (k LiteralKind) String() string {
 
 // A Literal represents a literal value known at plan time. Literal only
 // implements [Value].
+//
+// The zero value of a Literal is a NULL value.
 type Literal struct {
-	any any
+	val any
 }
 
 var _ Value = (*Literal)(nil)
 
 // LiteralString creates a new Literal value from a string.
-func LiteralString(v string) *Literal { return &Literal{any: v} }
+func LiteralString(v string) *Literal { return &Literal{val: v} }
 
 // LiteralInt64 creates a new Literal value from a 64-bit integer.
-func LiteralInt64(v int64) *Literal { return &Literal{any: v} }
+func LiteralInt64(v int64) *Literal { return &Literal{val: v} }
 
 // LiteralUint64 creates a new Literal value from a 64-bit unsigned integer.
-func LiteralUint64(v uint64) *Literal { return &Literal{any: v} }
+func LiteralUint64(v uint64) *Literal { return &Literal{val: v} }
 
 // LiteralByteArray creates a new Literal value from a byte slice.
-func LiteralByteArray(v []byte) *Literal { return &Literal{any: v} }
+func LiteralByteArray(v []byte) *Literal { return &Literal{val: v} }
 
 // Kind returns the kind of value represented by the literal.
 func (lit Literal) Kind() LiteralKind {
-	switch lit.any.(type) {
+	switch lit.val.(type) {
+	case nil:
+		return LiteralKindNull
 	case string:
 		return LiteralKindString
 	case int64:
@@ -82,22 +88,25 @@ func (lit Literal) Name() string {
 // String returns a printable form of the literal, even if lit is not a
 // [LiteralKindString].
 func (lit Literal) String() string {
-	if lit.any == nil {
-		return "NULL"
-	}
-
 	switch lit.Kind() {
+	case LiteralKindNull:
+		return "NULL"
 	case LiteralKindString:
-		return strconv.Quote(lit.any.(string))
+		return strconv.Quote(lit.val.(string))
 	case LiteralKindInt64:
 		return strconv.FormatInt(lit.Int64(), 10)
 	case LiteralKindUint64:
 		return strconv.FormatUint(lit.Uint64(), 10)
 	case LiteralKindByteArray:
-		return fmt.Sprintf("%v", lit.any)
+		return fmt.Sprintf("%v", lit.val)
 	default:
 		return fmt.Sprintf("Literal(%s)", lit.Kind())
 	}
+}
+
+// IsNull returns true if lit is a [LiteralKindNull] value.
+func (lit Literal) IsNull() bool {
+	return lit.Kind() == LiteralKindNull
 }
 
 // Int64 returns lit's value as an int64. It panics if lit is not a
@@ -106,7 +115,7 @@ func (lit Literal) Int64() int64 {
 	if expect, actual := LiteralKindInt64, lit.Kind(); expect != actual {
 		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
 	}
-	return lit.any.(int64)
+	return lit.val.(int64)
 }
 
 // Uint64 returns lit's value as a uint64. It panics if lit is not a
@@ -115,7 +124,7 @@ func (lit Literal) Uint64() uint64 {
 	if expect, actual := LiteralKindUint64, lit.Kind(); expect != actual {
 		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
 	}
-	return lit.any.(uint64)
+	return lit.val.(uint64)
 }
 
 // ByteArray returns lit's value as a byte slice. It panics if lit is not a
@@ -124,7 +133,7 @@ func (lit Literal) ByteArray() []byte {
 	if expect, actual := LiteralKindByteArray, lit.Kind(); expect != actual {
 		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
 	}
-	return lit.any.([]byte)
+	return lit.val.([]byte)
 }
 
 func (lit *Literal) Schema() *schema.Schema {
