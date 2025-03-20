@@ -8,6 +8,7 @@ The Meta-monitoring chart collects metrics and logs from Loki deployments using 
 
 ## Prerequisites
 
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/)
 - Kubernetes cluster
 - Helm 3.x
 - Access to Grafana Cloud or a self-managed Prometheus/Loki/Grafana stack
