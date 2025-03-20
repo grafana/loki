@@ -138,29 +138,33 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	return n, nil
 }
 
+// Columns returns the column descriptions for the logs section.
 func (r *LogsReader) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
 	if r.columnDesc != nil {
 		return r.columnDesc, nil
 	}
 
-	dec := r.obj.dec.LogsDecoder()
 	si, err := r.findSection(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("finding section: %w", err)
 	}
-	r.sectionInfo = si
 
-	columnDescs, err := dec.Columns(ctx, r.sectionInfo)
+	columnDesc, err := r.obj.dec.LogsDecoder().Columns(ctx, si)
 	if err != nil {
 		return nil, fmt.Errorf("reading columns: %w", err)
 	}
 
-	r.columnDesc = columnDescs
+	r.sectionInfo = si
+	r.columnDesc = columnDesc
+
 	return r.columnDesc, nil
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
 	dec := r.obj.dec.LogsDecoder()
+
+	// sectionInfo and columnDesc could be populated by a previous call to Columns method.
+	// avoid re-reading them.
 	if r.sectionInfo == nil {
 		si, err := r.findSection(ctx)
 		if err != nil {
@@ -170,9 +174,13 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		r.sectionInfo = si
 	}
 
-	columnDescs, err := dec.Columns(ctx, r.sectionInfo)
-	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+	if r.columnDesc == nil {
+		columnDescs, err := dec.Columns(ctx, r.sectionInfo)
+		if err != nil {
+			return fmt.Errorf("reading columns: %w", err)
+		}
+
+		r.columnDesc = columnDescs
 	}
 
 	dset := encoding.LogsDataset(dec, r.sectionInfo)
@@ -183,11 +191,11 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
-	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
+	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.columnDesc)
 	if r.predicate != nil {
 		predicate = dataset.AndPredicate{
 			Left:  predicate,
-			Right: translateLogsPredicate(r.predicate, columns, columnDescs),
+			Right: translateLogsPredicate(r.predicate, columns, r.columnDesc),
 		}
 	}
 
@@ -205,7 +213,6 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		r.reader.Reset(readerOpts)
 	}
 
-	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
 	return nil

@@ -940,7 +940,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, actualExpr := buildLogsPredicateFromPipeline(tt.query)
+			p, actualExpr := buildLogMessagePredicateFromPipeline(tt.query)
 
 			tt.testFunc(t, p)
 
@@ -994,7 +994,7 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, actualExpr := buildLogsPredicateFromSampleExpr(tt.query)
+			p, actualExpr := buildLogMessagePredicateFromSampleExpr(tt.query)
 
 			tt.testFunc(t, p)
 
