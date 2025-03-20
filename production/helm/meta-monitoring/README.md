@@ -1,10 +1,10 @@
-# Meta Monitoring Loki - Kubernetes Helm Chart
+# Meta-monitoring Loki - Kubernetes Helm Chart
 
 This Helm chart provides comprehensive monitoring for Loki deployments in Kubernetes, based on the [Grafana Kubernetes Monitoring Helm Chart](https://github.com/grafana/k8s-monitoring-helm/tree/main).
 
 ## Overview
 
-The Meta Monitoring chart collects metrics and logs from Loki deployments using Grafana Alloy (an OpenTelemetry Collector distribution) and sends them to your preferred observability backend. It's designed to work with the pre-compiled Loki mixins to provide dashboards and alerts specifically tailored for Loki monitoring.
+The Meta-monitoring chart collects metrics and logs from Loki deployments using Grafana Alloy (an OpenTelemetry Collector distribution) and sends them to your preferred observability backend. It's designed to work with the pre-compiled Loki mixins to provide dashboards and alerts specifically tailored for Loki monitoring.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ helm install meta-loki grafana/k8s-monitoring \
 
 ## Configuration
 
-The default configuration is set up for Grafana Cloud, but you can direct it to your self-managed monitoring stack by modifying the destinations in values.yaml:
+The default configuration is set up for Grafana Cloud, but you can direct it to your self-managed monitoring stack by modifying the destinations in `values.yaml`:
 
 ```yaml
 destinations:
@@ -79,10 +79,10 @@ This chart is designed to work with the Loki mixins found in the `loki-mixin-com
 
 The `dashboards/` directory contains JSON files that can be imported directly into Grafana:
 
-1. From your Grafana UI, go to Dashboards → Import
-2. Upload the JSON file or paste its contents
-3. Configure the data source (should match your Prometheus)
-4. Click Import
+1. From your Grafana UI, go to **Dashboards → Import**.
+1. Upload the JSON file or paste its contents.
+1. Configure the data source (should match your Prometheus).
+1. Click **Import**.
 
 Alternatively, use the Grafana API to programmatically import dashboards:
 
@@ -95,7 +95,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer YOUR_
 
 ### Loading Alert and Recording Rules
 
-For Grafana Cloud Prometheus or Grafana Mimir, use mimirtool to load the rules:
+For Grafana Cloud Prometheus or Grafana Mimir, use `mimirtool` to load the rules:
 
 ```bash
 # Install mimirtool
