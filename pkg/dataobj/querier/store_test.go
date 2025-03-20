@@ -1021,3 +1021,275 @@ func mustParseSampleExpr(t *testing.T, s string) syntax.SampleExpr {
 	}
 	return expr
 }
+
+func TestBuildMetadataFilterPredicateFromPipeline(t *testing.T) {
+	// Define test metadata columns
+	metadataColumns := map[string]struct{}{
+		"level":    {},
+		"source":   {},
+		"severity": {},
+	}
+
+	// Helper to evaluate metadata predicates
+	var evalPredicate func(p dataobj.Predicate, key string, value string) bool
+	evalPredicate = func(p dataobj.Predicate, key string, value string) bool {
+		switch p := p.(type) {
+		case dataobj.MetadataMatcherPredicate:
+			return p.Key == key && p.Value == value
+		case dataobj.MetadataFilterPredicate:
+			return p.Key == key && p.Keep(key, value)
+		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+			return evalPredicate(p.Left, key, value) && evalPredicate(p.Right, key, value)
+		case dataobj.NotPredicate[dataobj.LogsPredicate]:
+			return !evalPredicate(p.Inner, key, value)
+		default:
+			t.Fatalf("unsupported predicate type: %T", p)
+			return false
+		}
+	}
+
+	// Test cases
+	for _, tt := range []struct {
+		name         string
+		query        syntax.LogSelectorExpr
+		expectedExpr syntax.LogSelectorExpr
+		testFunc     func(t *testing.T, pred dataobj.Predicate)
+	}{
+		{
+			name:         "no label filter",
+			query:        mustParseLogSelector(t, `{app="foo"}`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.Nil(t, pred, "expected nil predicate for query without label filter")
+			},
+		},
+		{
+			name:         "label filter with non-metadata column",
+			query:        mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.Nil(t, pred, "expected nil predicate for query with non-metadata column filter")
+			},
+		},
+		{
+			name:         "label filter with metadata column equality",
+			query:        mustParseLogSelector(t, `{app="foo"} | level="error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.MetadataMatcherPredicate{}, pred)
+
+				// Test the predicate behavior
+				require.True(t, evalPredicate(pred, "level", "error"))
+				require.False(t, evalPredicate(pred, "level", "info"))
+			},
+		},
+		{
+			name:         "label filter with metadata column inequality",
+			query:        mustParseLogSelector(t, `{app="foo"} | level!="error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.NotPredicate[dataobj.LogsPredicate]{}, pred)
+
+				// Test the predicate behavior
+				require.False(t, evalPredicate(pred, "level", "error"))
+				require.True(t, evalPredicate(pred, "level", "info"))
+				require.True(t, evalPredicate(pred, "level", "debug"))
+			},
+		},
+		{
+			name:         "label filter with metadata column regex",
+			query:        mustParseLogSelector(t, `{app="foo"} | level=~"err.*"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.MetadataFilterPredicate{}, pred)
+
+				// Test the predicate behavior
+				require.True(t, evalPredicate(pred, "level", "error"))
+				require.True(t, evalPredicate(pred, "level", "errors"))
+				require.False(t, evalPredicate(pred, "level", "info"))
+			},
+		},
+		{
+			name:         "multiple label filters with metadata columns",
+			query:        mustParseLogSelector(t, `{app="foo"} | level="error" | source="backend"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				andPred, ok := pred.(dataobj.AndPredicate[dataobj.LogsPredicate])
+				require.True(t, ok)
+
+				// Test the predicate behavior
+				require.True(t, evalPredicate(andPred.Left, "level", "error") && evalPredicate(andPred.Right, "source", "backend"))
+				require.False(t, evalPredicate(andPred.Left, "level", "info") && evalPredicate(andPred.Right, "source", "backend"))
+				require.False(t, evalPredicate(andPred.Left, "level", "error") && evalPredicate(andPred.Right, "source", "frontend"))
+			},
+		},
+		{
+			name:         "mixed metadata and non-metadata filters",
+			query:        mustParseLogSelector(t, `{app="foo"} | level="error" | app="bar"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.MetadataMatcherPredicate{}, pred)
+
+				// Test the predicate behavior
+				require.True(t, evalPredicate(pred, "level", "error"))
+				require.False(t, evalPredicate(pred, "level", "info"))
+			},
+		},
+		{
+			name:         "label filter after line parser",
+			query:        mustParseLogSelector(t, `{app="foo"} | json | level="error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | level="error"`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.Nil(t, pred, "expected nil predicate for label filter after parser")
+			},
+		},
+		{
+			name:         "mixed line and label filters",
+			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | level="error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} |= "error"`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.MetadataMatcherPredicate{}, pred)
+
+				// Test the predicate behavior
+				require.True(t, evalPredicate(pred, "level", "error"))
+				require.False(t, evalPredicate(pred, "level", "info"))
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, actualExpr := buildMetadataFilterPredicateFromPipeline(tt.query, metadataColumns)
+
+			tt.testFunc(t, p)
+
+			// Verify the updated expression
+			syntax.AssertExpressions(t, tt.expectedExpr, actualExpr)
+		})
+	}
+
+	// Add test cases for binary expressions
+	tests := []struct {
+		name              string
+		expr              string
+		metadataColumns   map[string]struct{}
+		wantPredicate     bool
+		expectedPredicate string // Expected string representation of the predicate
+		expectedExpr      string // Expected resulting expression
+	}{
+		{
+			name:              "AND with both metadata columns",
+			expr:              `{foo="bar"} | meta1="value1" and meta2="value2"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			wantPredicate:     true,
+			expectedPredicate: `(Metadata(meta1=value1) AND Metadata(meta2=value2))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:              "AND with one metadata column",
+			expr:              `{foo="bar"} | meta1="value1" and other="value2"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}},
+			wantPredicate:     true,
+			expectedPredicate: `Metadata(meta1=value1)`,
+			expectedExpr:      `{foo="bar"} | other="value2"`,
+		},
+		{
+			name:              "OR with both metadata columns",
+			expr:              `{foo="bar"} | meta1="value1" or meta2="value2"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			wantPredicate:     true,
+			expectedPredicate: `(Metadata(meta1=value1) OR Metadata(meta2=value2))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:            "OR with one metadata column",
+			expr:            `{foo="bar"} | meta1="value1" or other="value2"`,
+			metadataColumns: map[string]struct{}{"meta1": {}},
+			wantPredicate:   false, // cannot push down as we need both operands to determine inclusion
+			expectedExpr:    `{foo="bar"} | meta1="value1" or other="value2"`,
+		},
+		{
+			name:              "OR with regex matchers on metadata columns",
+			expr:              `{foo="bar"} | meta1=~"value.*" or meta2=~"test.*"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			wantPredicate:     true,
+			expectedPredicate: `(MetadataFilter(meta1) OR MetadataFilter(meta2))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:              "nested AND expressions",
+			expr:              `{foo="bar"} | (meta1="value1" and meta2="value2") and (meta3="value3" and meta4="value4")`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}, "meta4": {}},
+			wantPredicate:     true,
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) AND (Metadata(meta3=value3) AND Metadata(meta4=value4)))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:              "mixed AND/OR - AND at top level",
+			expr:              `{foo="bar"} | (meta1="value1" or meta2="value2") and other="value3"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			wantPredicate:     true,
+			expectedPredicate: `(Metadata(meta1=value1) OR Metadata(meta2=value2))`,
+			expectedExpr:      `{foo="bar"} | other="value3"`,
+		},
+		{
+			name:              "mixed AND/OR - OR at top level",
+			expr:              `{foo="bar"} | (meta1="value1" and meta2="value2") or meta3="value3"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}},
+			wantPredicate:     true,
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:            "nested OR with non-metadata column",
+			expr:            `{foo="bar"} | (meta1="value1" or meta2="value2") or other="value3"`,
+			metadataColumns: map[string]struct{}{"meta1": {}, "meta2": {}},
+			wantPredicate:   false,
+			expectedExpr:    `{foo="bar"} | (meta1="value1" or meta2="value2") or other="value3"`,
+		},
+		{
+			name:              "deeply nested expressions with mixed operators",
+			expr:              `{foo="bar"} | ((meta1="value1" and meta2="value2") or meta3="value3") and meta4="value4"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}, "meta4": {}},
+			wantPredicate:     true,
+			expectedPredicate: `(((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3)) AND Metadata(meta4=value4))`,
+			expectedExpr:      `{foo="bar"}`,
+		},
+		{
+			name:              "deeply nested expressions with mixed operators and non-metadata column",
+			expr:              `{foo="bar"} | ((meta1="value1" and meta2="value2") or meta3="value3") and other="value4"`,
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}},
+			wantPredicate:     true,
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3))`,
+			expectedExpr:      `{foo="bar"} | other="value4"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expr, err := syntax.ParseLogSelector(tt.expr, false)
+			require.NoError(t, err)
+
+			expectedExpr := mustParseLogSelector(t, tt.expectedExpr)
+			predicate, newExpr := buildMetadataFilterPredicateFromPipeline(expr, tt.metadataColumns)
+
+			// Check predicate existence and string representation
+			if tt.wantPredicate {
+				require.NotNil(t, predicate, "expected a predicate to be created")
+				// Check predicate string representation if expected
+				if tt.expectedPredicate != "" {
+					require.Equal(t, tt.expectedPredicate, predicate.String(), "unexpected predicate")
+				}
+			} else {
+				require.Nil(t, predicate, "expected no predicate to be created")
+			}
+
+			// Compare the resulting expression with the expected one
+			syntax.AssertExpressions(t, expectedExpr, newExpr)
+		})
+	}
+}

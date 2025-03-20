@@ -44,9 +44,11 @@ type LogsReader struct {
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*logsmd.ColumnDesc
+	reader  *dataset.Reader
+	columns []dataset.Column
+
+	sectionInfo *filemd.SectionInfo
+	columnDesc  []*logsmd.ColumnDesc
 }
 
 // NewLogsReader creates a new LogsReader that reads from the logs section of
@@ -136,19 +138,44 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	return n, nil
 }
 
-func (r *LogsReader) initReader(ctx context.Context) error {
-	dec := r.obj.dec.LogsDecoder()
-	sec, err := r.findSection(ctx)
-	if err != nil {
-		return fmt.Errorf("finding section: %w", err)
+func (r *LogsReader) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
+	if r.columnDesc != nil {
+		return r.columnDesc, nil
 	}
 
-	columnDescs, err := dec.Columns(ctx, sec)
+	dec := r.obj.dec.LogsDecoder()
+	si, err := r.findSection(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("finding section: %w", err)
+	}
+	r.sectionInfo = si
+
+	columnDescs, err := dec.Columns(ctx, r.sectionInfo)
+	if err != nil {
+		return nil, fmt.Errorf("reading columns: %w", err)
+	}
+
+	r.columnDesc = columnDescs
+	return r.columnDesc, nil
+}
+
+func (r *LogsReader) initReader(ctx context.Context) error {
+	dec := r.obj.dec.LogsDecoder()
+	if r.sectionInfo == nil {
+		si, err := r.findSection(ctx)
+		if err != nil {
+			return fmt.Errorf("finding section: %w", err)
+		}
+
+		r.sectionInfo = si
+	}
+
+	columnDescs, err := dec.Columns(ctx, r.sectionInfo)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := encoding.LogsDataset(dec, sec)
+	dset := encoding.LogsDataset(dec, r.sectionInfo)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

@@ -489,3 +489,187 @@ func evaluateRecordPredicate(p dataset.Predicate, ts time.Time) bool {
 		panic("unexpected predicate")
 	}
 }
+
+func TestPredicateString(t *testing.T) {
+	// Test time values
+	startTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2023, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	// Common predicates for complex test cases
+	appLabel := LabelMatcherPredicate{Name: "app", Value: "service"}
+	envLabel := LabelMatcherPredicate{Name: "env", Value: "prod"}
+	regionLabel := LabelMatcherPredicate{Name: "region", Value: "us-west"}
+	timeRange := TimeRangePredicate[StreamsPredicate]{
+		StartTime:    startTime,
+		EndTime:      endTime,
+		IncludeStart: true,
+		IncludeEnd:   false,
+	}
+
+	// Complex predicate: (app=service AND env=prod) OR (region=us-west AND time_range)
+	complexPredicate := OrPredicate[StreamsPredicate]{
+		Left: AndPredicate[StreamsPredicate]{
+			Left:  appLabel,
+			Right: envLabel,
+		},
+		Right: AndPredicate[StreamsPredicate]{
+			Left:  regionLabel,
+			Right: timeRange,
+		},
+	}
+
+	// Even more complex: NOT((app=service AND env=prod) OR (region=us-west AND time_range))
+	moreComplexPredicate := NotPredicate[StreamsPredicate]{
+		Inner: complexPredicate,
+	}
+
+	// Metadata and log message predicates for LogsPredicate tests
+	metadataMatch := MetadataMatcherPredicate{Key: "trace_id", Value: "123"}
+	logMessageFilter := LogMessageFilterPredicate{Keep: func(_ []byte) bool { return true }}
+
+	// Complex LogsPredicate: metadata=123 AND NOT(log_message_filter)
+	complexLogsPred := AndPredicate[LogsPredicate]{
+		Left: metadataMatch,
+		Right: NotPredicate[LogsPredicate]{
+			Inner: logMessageFilter,
+		},
+	}
+
+	// Label predicates for StreamsPredicate tests
+	labelMatch := LabelMatcherPredicate{Name: "app", Value: "frontend"}
+	labelFilter := LabelFilterPredicate{Name: "env", Keep: func(_, value string) bool { return true }}
+
+	// Complex StreamsPredicate: label=frontend AND NOT(label_filter)
+	complexStreamsPred := AndPredicate[StreamsPredicate]{
+		Left: labelMatch,
+		Right: NotPredicate[StreamsPredicate]{
+			Inner: labelFilter,
+		},
+	}
+
+	// Test cases for all predicate types
+	testCases := []struct {
+		name     string
+		pred     Predicate
+		expected string
+	}{
+		{
+			name:     "LabelMatcherPredicate",
+			pred:     LabelMatcherPredicate{Name: "app", Value: "frontend"},
+			expected: "Label(app=frontend)",
+		},
+		{
+			name:     "LabelFilterPredicate",
+			pred:     LabelFilterPredicate{Name: "environment", Keep: func(name, value string) bool { return true }},
+			expected: "LabelFilter(environment)",
+		},
+		{
+			name:     "MetadataMatcherPredicate",
+			pred:     MetadataMatcherPredicate{Key: "trace_id", Value: "abc123"},
+			expected: "Metadata(trace_id=abc123)",
+		},
+		{
+			name:     "MetadataFilterPredicate",
+			pred:     MetadataFilterPredicate{Key: "span_id", Keep: func(key, value string) bool { return true }},
+			expected: "MetadataFilter(span_id)",
+		},
+		{
+			name:     "LogMessageFilterPredicate",
+			pred:     LogMessageFilterPredicate{Keep: func(line []byte) bool { return true }},
+			expected: "LogMessageFilter()",
+		},
+		{
+			name: "TimeRangePredicate - inclusive start, exclusive end",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: true,
+				IncludeEnd:   false,
+			},
+			expected: "TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)",
+		},
+		{
+			name: "TimeRangePredicate - exclusive start, inclusive end",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: false,
+				IncludeEnd:   true,
+			},
+			expected: "TimeRange(2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z]",
+		},
+		{
+			name: "TimeRangePredicate - both inclusive",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: true,
+				IncludeEnd:   true,
+			},
+			expected: "TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z]",
+		},
+		{
+			name: "TimeRangePredicate - both exclusive",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: false,
+				IncludeEnd:   false,
+			},
+			expected: "TimeRange(2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)",
+		},
+		{
+			name: "NotPredicate",
+			pred: NotPredicate[StreamsPredicate]{
+				Inner: LabelMatcherPredicate{Name: "app", Value: "frontend"},
+			},
+			expected: "NOT(Label(app=frontend))",
+		},
+		{
+			name: "AndPredicate",
+			pred: AndPredicate[StreamsPredicate]{
+				Left:  LabelMatcherPredicate{Name: "app", Value: "frontend"},
+				Right: LabelMatcherPredicate{Name: "env", Value: "prod"},
+			},
+			expected: "(Label(app=frontend) AND Label(env=prod))",
+		},
+		{
+			name: "OrPredicate",
+			pred: OrPredicate[StreamsPredicate]{
+				Left:  LabelMatcherPredicate{Name: "app", Value: "frontend"},
+				Right: LabelMatcherPredicate{Name: "app", Value: "backend"},
+			},
+			expected: "(Label(app=frontend) OR Label(app=backend))",
+		},
+		{
+			name:     "Complex nested predicate",
+			pred:     complexPredicate,
+			expected: "((Label(app=service) AND Label(env=prod)) OR (Label(region=us-west) AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)))",
+		},
+		{
+			name:     "More complex nested predicate with NOT",
+			pred:     moreComplexPredicate,
+			expected: "NOT(((Label(app=service) AND Label(env=prod)) OR (Label(region=us-west) AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z))))",
+		},
+		{
+			name:     "Complex LogsPredicate",
+			pred:     complexLogsPred,
+			expected: "(Metadata(trace_id=123) AND NOT(LogMessageFilter()))",
+		},
+		{
+			name:     "Complex StreamsPredicate",
+			pred:     complexStreamsPred,
+			expected: "(Label(app=frontend) AND NOT(LabelFilter(env)))",
+		},
+	}
+
+	// Run tests
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.pred.String()
+			if result != tc.expected {
+				t.Errorf("Expected: %s, Got: %s", tc.expected, result)
+			}
+		})
+	}
+}
