@@ -33,13 +33,9 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	lblWithStructuredMetadataFilter := `{foo="bar", fizz="buzz"} | ping="pong"`
 	lblWithLineAndStructuredMetadataFilter := `{foo="bar", fizz="buzz"} | ping="pong" |= "filter"`
 
-	chunkEntry := retention.ChunkEntry{
-		ChunkRef: retention.ChunkRef{
-			UserID:  []byte(user1),
-			From:    now.Add(-3 * time.Hour),
-			Through: now.Add(-time.Hour),
-		},
-		Labels: mustParseLabel(lbl),
+	chunkEntry := retention.Chunk{
+		From:    now.Add(-3 * time.Hour),
+		Through: now.Add(-time.Hour),
 	}
 
 	type resp struct {
@@ -275,7 +271,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
 			tc.deleteRequest.Metrics = newDeleteRequestsManagerMetrics(nil)
-			isExpired, filterFunc := tc.deleteRequest.IsDeleted(chunkEntry)
+			isExpired, filterFunc := tc.deleteRequest.IsDeleted([]byte(user1), mustParseLabel(lbl), chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
