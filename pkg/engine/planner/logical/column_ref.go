@@ -16,7 +16,7 @@ const (
 
 	ColumnTypeBuiltin  // ColumnTypeBuiltin represents a builtin column (such as timestamp).
 	ColumnTypeLabel    // ColumnTypeLabel represents a column from a stream label.
-	ColumnTypeMetadata // ColumnTypeMetadata represents a column from a stream metadata.
+	ColumnTypeMetadata // ColumnTypeMetadata represents a column from a log metadata.
 )
 
 // String returns a human-readable representation of the column type.
