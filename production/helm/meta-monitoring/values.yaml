@@ -86,12 +86,10 @@ clusterMetrics:
     enabled: true
   cadvisor:
     enabled: true
-    extraMetricProcessingRules: |-
-      rule {
-        action = "keep"
-        source_labels = ["namespace"]
-        regex = "meta|loki"
-      }
+    metricsTuning:
+      includeNamespaces:
+        - loki
+        - meta
   apiServer:
     enabled: false
   kubeControllerManager:
