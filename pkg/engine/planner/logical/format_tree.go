@@ -2,23 +2,23 @@ package logical
 
 import (
 	"fmt"
-	"strings"
+	"io"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
 
-// TreeFormatter formats a [Value] as a tree structure.
-type TreeFormatter struct{}
+// PrintTree prints the given value and its dependencies as a tree structure to
+// w.
+func PrintTree(w io.StringWriter, value Value) {
+	p := tree.NewPrinter(w)
 
-// Format formats value and its dependencies as a tree structure.
-func (t *TreeFormatter) Format(value Value) string {
-	var sb strings.Builder
-	p := tree.NewPrinter(&sb)
+	var t treeFormatter
 	p.Print(t.convert(value))
-	return sb.String()
 }
 
-func (t *TreeFormatter) convert(value Value) *tree.Node {
+type treeFormatter struct{}
+
+func (t *treeFormatter) convert(value Value) *tree.Node {
 	switch value := value.(type) {
 	case *MakeTable:
 		return t.convertMakeTable(value)
@@ -43,20 +43,20 @@ func (t *TreeFormatter) convert(value Value) *tree.Node {
 	}
 }
 
-func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
+func (t *treeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
 	node := tree.NewNode("MakeTable", "")
 	node.Comments = append(node.Children, t.convert(ast.Selector))
 	return node
 }
 
-func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
+func (t *treeFormatter) convertSelect(ast *Select) *tree.Node {
 	node := tree.NewNode("Select", "")
 	node.Comments = append(node.Comments, t.convert(ast.Predicate))
 	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }
 
-func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
+func (t *treeFormatter) convertLimit(ast *Limit) *tree.Node {
 	node := tree.NewNode("Limit", "",
 		tree.NewProperty("offset", false, ast.Skip),
 		tree.NewProperty("fetch", false, ast.Fetch),
@@ -65,7 +65,7 @@ func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
 	return node
 }
 
-func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
+func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
 	direction := "asc"
 	if !ast.Ascending {
 		direction = "desc"
@@ -85,24 +85,24 @@ func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
 	return node
 }
 
-func (t *TreeFormatter) convertUnaryOp(expr *UnaryOp) *tree.Node {
+func (t *treeFormatter) convertUnaryOp(expr *UnaryOp) *tree.Node {
 	node := tree.NewNode("UnaryOp", "", tree.NewProperty("op", false, expr.Op.String()))
 	node.Children = append(node.Children, t.convert(expr.Value))
 	return node
 }
 
-func (t *TreeFormatter) convertBinOp(expr *BinOp) *tree.Node {
+func (t *treeFormatter) convertBinOp(expr *BinOp) *tree.Node {
 	node := tree.NewNode("BinOp", "", tree.NewProperty("op", false, expr.Op.String()))
 	node.Children = append(node.Children, t.convert(expr.Left))
 	node.Children = append(node.Children, t.convert(expr.Right))
 	return node
 }
 
-func (t *TreeFormatter) convertColumnRef(expr *ColumnRef) *tree.Node {
+func (t *treeFormatter) convertColumnRef(expr *ColumnRef) *tree.Node {
 	return tree.NewNode("ColumnRef", expr.Name())
 }
 
-func (t *TreeFormatter) convertLiteral(expr *Literal) *tree.Node {
+func (t *treeFormatter) convertLiteral(expr *Literal) *tree.Node {
 	return tree.NewNode("Literal", "",
 		tree.NewProperty("value", false, expr.String()),
 		tree.NewProperty("kind", false, expr.Kind()),

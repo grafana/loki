@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,9 +36,10 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	)
 
-	var f TreeFormatter
+	var sb strings.Builder
+	PrintTree(&sb, b.Value())
 
-	actual := "\n" + f.Format(b.Value())
+	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
@@ -74,8 +76,10 @@ func TestFormatSortQuery(t *testing.T) {
 		},
 	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
 
-	var f TreeFormatter
-	actual := "\n" + f.Format(b.Value())
+	var sb strings.Builder
+	PrintTree(&sb, b.Value())
+
+	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
