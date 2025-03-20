@@ -49,8 +49,8 @@ Select
 │       └── Literal value=21 kind=int64
 └── MakeTable
         └── BinOp op=EQ
-    │       ├── ColumnRef #label.app
-    │       └── Literal value="users" kind=string
+            ├── ColumnRef #label.app
+            └── Literal value="users" kind=string
 `
 
 	require.Equal(t, expected, actual)
@@ -91,8 +91,8 @@ Sort direction=asc nulls=last
     │       └── Literal value=21 kind=int64
     └── MakeTable
             └── BinOp op=EQ
-        │       ├── ColumnRef #label.app
-        │       └── Literal value="users" kind=string
+                ├── ColumnRef #label.app
+                └── Literal value="users" kind=string
 `
 	require.Equal(t, expected, actual)
 }

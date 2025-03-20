@@ -104,7 +104,7 @@ func NewPrinter(w io.StringWriter) *Printer {
 //	    └── DataObjScan #scan2 location=dataobj_2
 func (tp *Printer) Print(root *Node) {
 	tp.printNode(root)
-	tp.printChildren(root.Comments, root.Children, "")
+	tp.printChildren(root.Comments, root.Children, "", true)
 }
 
 func (tp *Printer) printNode(node *Node) {
@@ -145,8 +145,10 @@ func (tp *Printer) printNode(node *Node) {
 	tp.w.WriteString("\n")
 }
 
-// printChildren recursively prints all children with appropriate indentation
-func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
+// printChildren recursively prints all children with appropriate indentation.
+// lastSibling denotes whether the node being printed is the last of its
+// siblings.
+func (tp *Printer) printChildren(comments, children []*Node, prefix string, lastSibling bool) {
 	hasChildren := len(children) > 0
 
 	// Iterate over sub nodes first.
@@ -155,16 +157,23 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 	for i, node := range comments {
 		isLast := i == len(comments)-1
 
+		// Choose indentation symbols based on whether the node we're printing the
+		// children of has any more siblings or will print out children.
+		indent := symIndent
+		if lastSibling && !hasChildren {
+			indent = symPrefix
+		}
+
 		// Choose connector symbols based on whether this is the last item
 		connector := symPrefix + symConn
-		newPrefix := prefix + symIndent + symIndent
+		newPrefix := prefix + indent + symIndent
 		if hasChildren {
 			connector = symIndent + symConn
 		}
 
 		if isLast {
 			connector = symPrefix + symLastConn
-			newPrefix = prefix + symIndent + symPrefix
+			newPrefix = prefix + indent + symPrefix
 			if hasChildren {
 				connector = symIndent + symLastConn
 			}
@@ -176,7 +185,7 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 		tp.printNode(node)
 
 		// Recursively print children
-		tp.printChildren(node.Comments, node.Children, newPrefix)
+		tp.printChildren(node.Comments, node.Children, newPrefix, isLast)
 	}
 
 	// Iterate over child nodes last.
@@ -197,6 +206,6 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 		tp.printNode(node)
 
 		// Recursively print children
-		tp.printChildren(node.Comments, node.Children, newPrefix)
+		tp.printChildren(node.Comments, node.Children, newPrefix, isLast)
 	}
 }
