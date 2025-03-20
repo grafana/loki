@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
