@@ -11,7 +11,7 @@ import (
 func TestPlan_String(t *testing.T) {
 	// Build a simple query plan:
 	// SELECT id, name FROM users WHERE age > 21 SORT BY age ASC
-	df := NewDataFrame(
+	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
@@ -28,7 +28,7 @@ func TestPlan_String(t *testing.T) {
 	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
 
 	// Convert to SSA
-	ssaForm, err := df.ToPlan()
+	ssaForm, err := b.ToPlan()
 	require.NoError(t, err)
 	require.NotNil(t, ssaForm)
 

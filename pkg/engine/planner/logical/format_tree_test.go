@@ -19,7 +19,7 @@ func (t *testDataSource) Name() string          { return t.name }
 func TestFormatSimpleQuery(t *testing.T) {
 	// Build a simple query plan:
 	// SELECT id, name FROM users WHERE age > 21
-	df := NewDataFrame(
+	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
@@ -37,7 +37,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 
 	var f TreeFormatter
 
-	actual := "\n" + f.Format(df.Value())
+	actual := "\n" + f.Format(b.Value())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
@@ -57,7 +57,7 @@ Select
 func TestFormatSortQuery(t *testing.T) {
 	// Build a query plan with sorting:
 	// SELECT id, name, age FROM users WHERE age > 21 ORDER BY age ASC
-	df := NewDataFrame(
+	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
@@ -74,7 +74,7 @@ func TestFormatSortQuery(t *testing.T) {
 	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
 
 	var f TreeFormatter
-	actual := "\n" + f.Format(df.Value())
+	actual := "\n" + f.Format(b.Value())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
