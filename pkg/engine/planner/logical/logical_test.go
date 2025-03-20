@@ -9,12 +9,13 @@ import (
 )
 
 func TestPlan_String(t *testing.T) {
-	// Build a simple query plan:
-	// SELECT id, name FROM users WHERE age > 21 SORT BY age ASC
+	// Build a query plan for this query sorted by `age` in ascending order:
+	//
+	// { app="users" } | age > 21
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
 				Right: LiteralString("users"),
 				Op:    BinOpKindEq,
 			},
@@ -36,7 +37,7 @@ func TestPlan_String(t *testing.T) {
 
 	// Define expected output
 	exp := `
-%1 = EQ label.table, "users" 
+%1 = EQ label.app, "users" 
 %2 = MAKE_TABLE [selector=%1] 
 %3 = GT metadata.age, 21 
 %4 = SELECT %2 [predicate=%3] 

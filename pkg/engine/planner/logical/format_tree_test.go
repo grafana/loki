@@ -18,11 +18,11 @@ func (t *testDataSource) Name() string          { return t.name }
 
 func TestFormatSimpleQuery(t *testing.T) {
 	// Build a simple query plan:
-	// SELECT id, name FROM users WHERE age > 21
+	// { app="users" } | age > 21
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
 				Right: LiteralString("users"),
 				Op:    BinOpKindEq,
 			},
@@ -47,7 +47,7 @@ Select
 │       └── Literal value=21 kind=int64
 └── MakeTable
         └── BinOp op=EQ
-    │       ├── ColumnRef #label.table
+    │       ├── ColumnRef #label.app
     │       └── Literal value="users" kind=string
 `
 
@@ -55,12 +55,13 @@ Select
 }
 
 func TestFormatSortQuery(t *testing.T) {
-	// Build a query plan with sorting:
-	// SELECT id, name, age FROM users WHERE age > 21 ORDER BY age ASC
+	// Build a query plan for this query sorted by `age` in ascending order:
+	//
+	// { app="users" } | age > 21
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
 				Right: LiteralString("users"),
 				Op:    BinOpKindEq,
 			},
@@ -86,7 +87,7 @@ Sort direction=asc nulls=last
     │       └── Literal value=21 kind=int64
     └── MakeTable
             └── BinOp op=EQ
-        │       ├── ColumnRef #label.table
+        │       ├── ColumnRef #label.app
         │       └── Literal value="users" kind=string
 `
 	require.Equal(t, expected, actual)
