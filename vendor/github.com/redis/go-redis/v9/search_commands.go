@@ -240,14 +240,19 @@ type FTAggregateWithCursor struct {
 }
 
 type FTAggregateOptions struct {
-	Verbatim          bool
-	LoadAll           bool
-	Load              []FTAggregateLoad
-	Timeout           int
-	GroupBy           []FTAggregateGroupBy
-	SortBy            []FTAggregateSortBy
-	SortByMax         int
-	Scorer            string
+	Verbatim  bool
+	LoadAll   bool
+	Load      []FTAggregateLoad
+	Timeout   int
+	GroupBy   []FTAggregateGroupBy
+	SortBy    []FTAggregateSortBy
+	SortByMax int
+	// Scorer is used to set scoring function, if not set passed, a default will be used.
+	// The default scorer depends on the Redis version:
+	// - `BM25` for Redis >= 8
+	// - `TFIDF` for Redis < 8
+	Scorer string
+	// AddScores is available in Redis CE 8
 	AddScores         bool
 	Apply             []FTAggregateApply
 	LimitOffset       int
@@ -284,23 +289,30 @@ type FTSearchSortBy struct {
 	Desc      bool
 }
 
+// FTSearchOptions hold options that can be passed to the FT.SEARCH command.
+// More information about the options can be found
+// in the documentation for FT.SEARCH https://redis.io/docs/latest/commands/ft.search/
 type FTSearchOptions struct {
-	NoContent       bool
-	Verbatim        bool
-	NoStopWords     bool
-	WithScores      bool
-	WithPayloads    bool
-	WithSortKeys    bool
-	Filters         []FTSearchFilter
-	GeoFilter       []FTSearchGeoFilter
-	InKeys          []interface{}
-	InFields        []interface{}
-	Return          []FTSearchReturn
-	Slop            int
-	Timeout         int
-	InOrder         bool
-	Language        string
-	Expander        string
+	NoContent    bool
+	Verbatim     bool
+	NoStopWords  bool
+	WithScores   bool
+	WithPayloads bool
+	WithSortKeys bool
+	Filters      []FTSearchFilter
+	GeoFilter    []FTSearchGeoFilter
+	InKeys       []interface{}
+	InFields     []interface{}
+	Return       []FTSearchReturn
+	Slop         int
+	Timeout      int
+	InOrder      bool
+	Language     string
+	Expander     string
+	// Scorer is used to set scoring function, if not set passed, a default will be used.
+	// The default scorer depends on the Redis version:
+	// - `BM25` for Redis >= 8
+	// - `TFIDF` for Redis < 8
 	Scorer          string
 	ExplainScore    bool
 	Payload         string
@@ -846,20 +858,32 @@ func (c cmdable) FTAlter(ctx context.Context, index string, skipInitialScan bool
 	return cmd
 }
 
-// FTConfigGet - Retrieves the value of a RediSearch configuration parameter.
+// Retrieves the value of a RediSearch configuration parameter.
 // The 'option' parameter specifies the configuration parameter to retrieve.
-// For more information, please refer to the Redis documentation:
-// [FT.CONFIG GET]: (https://redis.io/commands/ft.config-get/)
+// For more information, please refer to the Redis [FT.CONFIG GET] documentation.
+//
+// Deprecated: FTConfigGet is deprecated in Redis 8.
+// All configuration will be done with the CONFIG GET command.
+// For more information check [Client.ConfigGet] and [CONFIG GET Documentation]
+//
+// [CONFIG GET Documentation]: https://redis.io/commands/config-get/
+// [FT.CONFIG GET]: https://redis.io/commands/ft.config-get/
 func (c cmdable) FTConfigGet(ctx context.Context, option string) *MapMapStringInterfaceCmd {
 	cmd := NewMapMapStringInterfaceCmd(ctx, "FT.CONFIG", "GET", option)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
-// FTConfigSet - Sets the value of a RediSearch configuration parameter.
+// Sets the value of a RediSearch configuration parameter.
 // The 'option' parameter specifies the configuration parameter to set, and the 'value' parameter specifies the new value.
-// For more information, please refer to the Redis documentation:
-// [FT.CONFIG SET]: (https://redis.io/commands/ft.config-set/)
+// For more information, please refer to the Redis [FT.CONFIG SET] documentation.
+//
+// Deprecated: FTConfigSet is deprecated in Redis 8.
+// All configuration will be done with the CONFIG SET command.
+// For more information check [Client.ConfigSet] and [CONFIG SET Documentation]
+//
+// [CONFIG SET Documentation]: https://redis.io/commands/config-set/
+// [FT.CONFIG SET]: https://redis.io/commands/ft.config-set/
 func (c cmdable) FTConfigSet(ctx context.Context, option string, value interface{}) *StatusCmd {
 	cmd := NewStatusCmd(ctx, "FT.CONFIG", "SET", option, value)
 	_ = c(ctx, cmd)
