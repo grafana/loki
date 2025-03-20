@@ -37,8 +37,6 @@ func (s *Sort) Name() string {
 
 // String returns the disassembled SSA form of the Sort instruction.
 func (s *Sort) String() string {
-	// TODO(rfratto): change the type of s.Input to [Value] so we can use
-	// s.Value.Name here.
 	return fmt.Sprintf(
 		"SORT %s [column=%s, asc=%t, nulls_first=%t]",
 		s.Table.Name(),
