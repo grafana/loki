@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConvertSimpleQueryToSSA(t *testing.T) {
+func TestPlan_String(t *testing.T) {
 	// Build a simple query plan:
 	// SELECT id, name FROM users WHERE age > 21 SORT BY age ASC
 	df := NewDataFrame(
