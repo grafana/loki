@@ -7,12 +7,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
 
-// TreeFormatter formats a logical plan as a tree structure.
+// TreeFormatter formats a [Value] as a tree structure.
 type TreeFormatter struct{}
 
-// Format formats a logical plan as a tree structure. It takes a [Value] as
-// input and returns a tree representation of that Value and all Values it
-// depends on.
+// Format formats value and its dependencies as a tree structure.
 func (t *TreeFormatter) Format(value Value) string {
 	var sb strings.Builder
 	p := tree.NewPrinter(&sb)
@@ -20,8 +18,6 @@ func (t *TreeFormatter) Format(value Value) string {
 	return sb.String()
 }
 
-// convert dispatches to the appropriate method based on the Instruction and
-// returns the newly created [tree.Node].
 func (t *TreeFormatter) convert(value Value) *tree.Node {
 	switch value := value.(type) {
 	case *MakeTable:

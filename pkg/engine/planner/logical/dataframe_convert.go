@@ -4,12 +4,10 @@ import (
 	"fmt"
 )
 
-// convertToPlan converts a [Value] a [Plan]. The value becomes the last
+// convertToPlan converts a [Value] into a [Plan]. The value becomes the last
 // instruction returned by [Return].
 func convertToPlan(value Value) (*Plan, error) {
-	// Initialize the builder with an empty node at index 0
 	var builder ssaBuilder
-
 	value, err := builder.process(value)
 	if err != nil {
 		return nil, fmt.Errorf("error converting plan to SSA: %w", err)
