@@ -20,34 +20,34 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 	)
 
 	benchmarks := []struct {
-		name           string
-		numPartitions  int
-		streamsPerPart int
-		numTenants     int
+		name                string
+		numTenants          int
+		numPartitions       int
+		streamsPerPartition int
 	}{
 		{
-			name:           "4_partitions_small_streams_single_tenant",
-			numPartitions:  4,
-			streamsPerPart: 500,
-			numTenants:     1,
+			name:                "4_partitions_small_streams_single_tenant",
+			numTenants:          1,
+			numPartitions:       4,
+			streamsPerPartition: 500,
 		},
 		{
-			name:           "8_partitions_medium_streams_multi_tenant",
-			numPartitions:  8,
-			streamsPerPart: 1000,
-			numTenants:     10,
+			name:                "8_partitions_medium_streams_multi_tenant",
+			numTenants:          10,
+			numPartitions:       8,
+			streamsPerPartition: 1000,
 		},
 		{
-			name:           "16_partitions_large_streams_multi_tenant",
-			numPartitions:  16,
-			streamsPerPart: 5000,
-			numTenants:     50,
+			name:                "16_partitions_large_streams_multi_tenant",
+			numTenants:          50,
+			numPartitions:       16,
+			streamsPerPartition: 5000,
 		},
 		{
-			name:           "32_partitions_xlarge_streams_multi_tenant",
-			numPartitions:  32,
-			streamsPerPart: 10000,
-			numTenants:     100,
+			name:                "32_partitions_xlarge_streams_multi_tenant",
+			numTenants:          100,
+			numPartitions:       32,
+			streamsPerPartition: 10000,
 		},
 	}
 
@@ -75,8 +75,8 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 
 				// Create partitions with streams
 				for p := int32(0); p < int32(bm.numPartitions); p++ {
-					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPart)
-					for i := 0; i < bm.streamsPerPart; i++ {
+					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPartition)
+					for i := 0; i < bm.streamsPerPartition; i++ {
 						// Create stream with multiple rate buckets
 						stream := streamMetadata{
 							hash:        uint64(i),
@@ -114,7 +114,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 				// For each iteration, update a random stream in a random partition for a random tenant
 				tenant := fmt.Sprintf("benchmark-tenant-%d", i%bm.numTenants)
 				partition := int32(i % bm.numPartitions)
-				streamIdx := i % bm.streamsPerPart
+				streamIdx := i % bm.streamsPerPartition
 
 				updateTime := now.Add(time.Duration(i) * time.Second)
 				metadata := &logproto.StreamMetadata{
@@ -148,8 +148,8 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 				s.metadata[tenant] = make(map[int32][]streamMetadata)
 
 				for p := int32(0); p < int32(bm.numPartitions); p++ {
-					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPart)
-					for i := 0; i < bm.streamsPerPart; i++ {
+					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPartition)
+					for i := 0; i < bm.streamsPerPartition; i++ {
 						stream := streamMetadata{
 							hash:        uint64(i),
 							lastSeenAt:  now.Add(-time.Duration(i) * time.Minute).UnixNano(),
@@ -185,7 +185,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 				for pb.Next() {
 					tenant := fmt.Sprintf("benchmark-tenant-%d", i%bm.numTenants)
 					partition := int32(i % bm.numPartitions)
-					streamIdx := i % bm.streamsPerPart
+					streamIdx := i % bm.streamsPerPartition
 
 					updateTime := now.Add(time.Duration(i) * time.Second)
 					metadata := &logproto.StreamMetadata{
