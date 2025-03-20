@@ -24,14 +24,6 @@ var (
 	_ Instruction = (*Select)(nil)
 )
 
-// newSelect creates a new Select instruction.
-func newSelect(table, predicate Value) *Select {
-	return &Select{
-		Table:     table,
-		Predicate: predicate,
-	}
-}
-
 // Name returns an identifier for the Select operation.
 func (s *Select) Name() string {
 	if s.id != "" {

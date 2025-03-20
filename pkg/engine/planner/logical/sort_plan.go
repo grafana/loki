@@ -27,26 +27,6 @@ var (
 	_ Instruction = (*Sort)(nil)
 )
 
-// newSort creates a new Sort plan node.
-// It takes an input plan and a vector of sort expressions to apply.
-//
-// Example usage:
-//
-//	// Sort by age in ascending order, NULLs last, then by name in descending order, NULLs first
-//	sort := newSort(inputPlan, []SortExpr{
-//		NewSortExpr("sort_by_age", Col("age"), true, false),
-//		NewSortExpr("sort_by_name", Col("name"), false, true),
-//	})
-func newSort(table Value, column ColumnRef, ascending, nullsFirst bool) *Sort {
-	return &Sort{
-		Table: table,
-
-		Column:     column,
-		Ascending:  ascending,
-		NullsFirst: nullsFirst,
-	}
-}
-
 // Name returns an identifier for the Sort operation.
 func (s *Sort) Name() string {
 	if s.id != "" {

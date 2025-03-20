@@ -27,37 +27,6 @@ var (
 	_ Instruction = (*Limit)(nil)
 )
 
-// Special values for skip and fetch
-const (
-	// NoSkip indicates that no rows should be skipped (OFFSET 0)
-	NoSkip uint64 = 0
-	// NoLimit indicates that all rows should be returned (no LIMIT clause)
-	NoLimit uint64 = 0
-)
-
-// newLimit creates a new Limit plan node.
-// The Limit logical plan restricts the number of rows returned by a query.
-// It takes an input plan, a skip value (for OFFSET), and a fetch value (for LIMIT).
-// If skip is 0, no rows are skipped. If fetch is 0, all rows are returned after applying skip.
-//
-// Example usage:
-//
-//	// Return the first 10 rows
-//	limit := newLimit(inputPlan, 0, 10)
-//
-//	// Skip the first 20 rows and return the next 10
-//	limit := newLimit(inputPlan, 20, 10)
-//
-//	// Skip the first 100 rows and return all remaining rows
-//	limit := newLimit(inputPlan, 100, 0)
-func newLimit(table Value, skip uint64, fetch uint64) *Limit {
-	return &Limit{
-		Table: table,
-		Skip:  skip,
-		Fetch: fetch,
-	}
-}
-
 // Name returns an identifier for the Limit operation.
 func (l *Limit) Name() string {
 	if l.id != "" {

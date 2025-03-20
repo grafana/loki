@@ -24,12 +24,6 @@ var (
 	_ Instruction = (*MakeTable)(nil)
 )
 
-// makeTable creates a new MakeTable plan node with the given name and schema.
-// This is an internal constructor used by the public NewScan function.
-func makeTable(selector Value) *MakeTable {
-	return &MakeTable{Selector: selector}
-}
-
 // Name returns an identifier for the MakeTable operation.
 func (t *MakeTable) Name() string {
 	if t.id != "" {
