@@ -104,7 +104,7 @@ func NewPrinter(w io.StringWriter) *Printer {
 //	    └── DataObjScan #scan2 location=dataobj_2
 func (tp *Printer) Print(root *Node) {
 	tp.printNode(root)
-	tp.printChildren(root.Comments, root.Children, "", true)
+	tp.printChildren(root.Comments, root.Children, "")
 }
 
 func (tp *Printer) printNode(node *Node) {
@@ -146,9 +146,7 @@ func (tp *Printer) printNode(node *Node) {
 }
 
 // printChildren recursively prints all children with appropriate indentation.
-// lastSibling denotes whether the node being printed is the last of its
-// siblings.
-func (tp *Printer) printChildren(comments, children []*Node, prefix string, lastSibling bool) {
+func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 	hasChildren := len(children) > 0
 
 	// Iterate over sub nodes first.
@@ -157,10 +155,10 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string, last
 	for i, node := range comments {
 		isLast := i == len(comments)-1
 
-		// Choose indentation symbols based on whether the node we're printing the
-		// children of has any more siblings or will print out children.
+		// Choose indentation symbols based on whether the node we're printing has
+		// any children to print.
 		indent := symIndent
-		if lastSibling && !hasChildren {
+		if !hasChildren {
 			indent = symPrefix
 		}
 
@@ -185,7 +183,7 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string, last
 		tp.printNode(node)
 
 		// Recursively print children
-		tp.printChildren(node.Comments, node.Children, newPrefix, isLast)
+		tp.printChildren(node.Comments, node.Children, newPrefix)
 	}
 
 	// Iterate over child nodes last.
@@ -206,6 +204,6 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string, last
 		tp.printNode(node)
 
 		// Recursively print children
-		tp.printChildren(node.Comments, node.Children, newPrefix, isLast)
+		tp.printChildren(node.Comments, node.Children, newPrefix)
 	}
 }
