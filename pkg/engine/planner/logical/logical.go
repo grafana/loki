@@ -1,3 +1,30 @@
+// Package logical provides a logical query plan representation for data
+// processing operations.
+//
+// The logical plan is represented using static single-assignment (SSA) form of
+// intermediate representation (IR) for the operations performed on log data.
+//
+// For an introduction to SSA form, see
+// https://en.wikipedia.org/wiki/Static_single_assignment_form.
+//
+// The primary interfaces of this package are:
+//
+// - [Value], an expression that yields a value.
+// - [Instruction], a statement that consumes values and performs computation.
+// - [Plan], a sequence of instructions that produces a result.
+//
+// A computation that also yields a result implements both the [Value] and
+// [Instruction] interfaces. See the documentation comments on each type for
+// which of those interfaces it implements.
+//
+// Values are representable as either:
+//
+// - A column value (such as in [ColumnRef]),
+// - a relation (such as in [Select]), or
+// - a value literal (such as in [Literal]).
+//
+// The SSA form forms a graph: each [Value] may appear as an operand of one or
+// more [Instruction]s.
 package logical
 
 import (
