@@ -16,7 +16,7 @@ func NewPlanner(ctx Context) *Planner {
 }
 
 // Convert transforms a logical plan into a physical plan.
-func (p *Planner) Convert(_ *logical.TreeNode) (*Plan, error) {
+func (p *Planner) Convert(_ *logical.Plan) (*Plan, error) {
 	pp := &Plan{}
 	// TODO: The logical plan implementation is not traversible yet.
 	// Convert MAKETABLE

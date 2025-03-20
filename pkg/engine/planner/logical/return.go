@@ -8,7 +8,7 @@ type Return struct {
 
 // String returns the disassembled SSA form of r.
 func (r *Return) String() string {
-	return "return " + r.Value.Name()
+	return "RETURN " + r.Value.Name()
 }
 
 func (r *Return) isInstruction() {}

@@ -32,19 +32,31 @@ func (t *TreeFormatter) convert(value Value) *tree.Node {
 		return t.convertLimit(value)
 	case *Sort:
 		return t.convertSort(value)
+
+	case *UnaryOp:
+		return t.convertUnaryOp(value)
+	case *BinOp:
+		return t.convertBinOp(value)
+	case *ColumnRef:
+		return t.convertColumnRef(value)
+	case *Literal:
+		return t.convertLiteral(value)
+
 	default:
 		panic(fmt.Sprintf("unknown value type %T", value))
 	}
 }
 
 func (t *TreeFormatter) convertMakeTable(ast *MakeTable) *tree.Node {
-	return tree.NewNode("MakeTable", "", tree.Property{Key: "name", Values: []any{ast.TableName}})
+	node := tree.NewNode("MakeTable", "")
+	node.Comments = append(node.Children, t.convert(ast.Selector))
+	return node
 }
 
 func (t *TreeFormatter) convertSelect(ast *Select) *tree.Node {
-	node := tree.NewNode("Select", "", tree.NewProperty("expr", false, ast.Expr.ToField(ast.Input).Name))
-	node.Comments = append(node.Comments, t.convertExpr(ast.Expr))
-	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
+	node := tree.NewNode("Select", "")
+	node.Comments = append(node.Comments, t.convert(ast.Predicate))
+	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }
 
@@ -53,80 +65,50 @@ func (t *TreeFormatter) convertLimit(ast *Limit) *tree.Node {
 		tree.NewProperty("offset", false, ast.Skip),
 		tree.NewProperty("fetch", false, ast.Fetch),
 	)
-	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
+	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }
 
 func (t *TreeFormatter) convertSort(ast *Sort) *tree.Node {
 	direction := "asc"
-	if !ast.Expr.Ascending {
+	if !ast.Ascending {
 		direction = "desc"
 	}
 
 	nullsPosition := "last"
-	if ast.Expr.NullsFirst {
+	if ast.NullsFirst {
 		nullsPosition = "first"
 	}
 
 	node := tree.NewNode("Sort", "",
-		tree.NewProperty("expr", false, ast.Expr.Name),
 		tree.NewProperty("direction", false, direction),
 		tree.NewProperty("nulls", false, nullsPosition),
 	)
-	node.Comments = append(node.Comments, t.convertExpr(ast.Expr.Expr))
-	node.Children = append(node.Children, t.convert(unwrapTreeNode(ast.Input)))
+	node.Comments = append(node.Comments, t.convert(&ast.Column))
+	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }
 
-// convert dispatches to the appropriate method based on the expression type and
-// returns the newly created [tree.Node], which can be used as comment for the
-// parent node.
-func (t *TreeFormatter) convertExpr(expr Expr) *tree.Node {
-	switch expr.Type() {
-	case ExprTypeColumn:
-		return t.convertColumnExpr(expr.Column())
-	case ExprTypeLiteral:
-		return t.convertLiteralExpr(expr.Literal())
-	case ExprTypeBinaryOp:
-		return t.convertBinaryOpExpr(expr.BinaryOp())
-	default:
-		panic(fmt.Sprintf("unknown expr type: (named: %v, type: %T)", expr.Type(), expr))
-	}
+func (t *TreeFormatter) convertUnaryOp(expr *UnaryOp) *tree.Node {
+	node := tree.NewNode("UnaryOp", "", tree.NewProperty("op", false, expr.Op.String()))
+	node.Children = append(node.Children, t.convert(expr.Value))
+	return node
 }
 
-func (t *TreeFormatter) convertColumnExpr(expr *ColumnExpr) *tree.Node {
-	return tree.NewNode("Column", expr.Name)
+func (t *TreeFormatter) convertBinOp(expr *BinOp) *tree.Node {
+	node := tree.NewNode("BinOp", "", tree.NewProperty("op", false, expr.Op.String()))
+	node.Children = append(node.Children, t.convert(expr.Left))
+	node.Children = append(node.Children, t.convert(expr.Right))
+	return node
 }
 
-func (t *TreeFormatter) convertLiteralExpr(expr *LiteralExpr) *tree.Node {
+func (t *TreeFormatter) convertColumnRef(expr *ColumnRef) *tree.Node {
+	return tree.NewNode("ColumnRef", expr.Name())
+}
+
+func (t *TreeFormatter) convertLiteral(expr *Literal) *tree.Node {
 	return tree.NewNode("Literal", "",
-		tree.NewProperty("value", false, expr.ValueString()),
-		tree.NewProperty("type", false, expr.ValueType()),
+		tree.NewProperty("value", false, expr.String()),
+		tree.NewProperty("kind", false, expr.Kind()),
 	)
-}
-
-func (t *TreeFormatter) convertBinaryOpExpr(expr *BinOpExpr) *tree.Node {
-	node := tree.NewNode(ExprTypeBinaryOp.String(), "",
-		tree.NewProperty("type", false, expr.Type.String()),
-		tree.NewProperty("op", false, fmt.Sprintf(`"%s"`, expr.OpStringer())),
-		tree.NewProperty("name", false, expr.Name),
-	)
-	node.Children = append(node.Children, t.convertExpr(expr.Left))
-	node.Children = append(node.Children, t.convertExpr(expr.Right))
-	return node
-}
-
-func unwrapTreeNode(tn TreeNode) Value {
-	switch tn.Type() {
-	case TreeNodeTypeMakeTable:
-		return tn.MakeTable()
-	case TreeNodeTypeSelect:
-		return tn.Select()
-	case TreeNodeTypeLimit:
-		return tn.Limit()
-	case TreeNodeTypeSort:
-		return tn.Sort()
-	default:
-		panic(fmt.Sprintf("unknown TreeNode type: %v", tn.Type()))
-	}
 }

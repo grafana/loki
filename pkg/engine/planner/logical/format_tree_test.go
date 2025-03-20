@@ -19,158 +19,75 @@ func (t *testDataSource) Name() string          { return t.name }
 func TestFormatSimpleQuery(t *testing.T) {
 	// Build a simple query plan:
 	// SELECT id, name FROM users WHERE age > 21
-	ds := &testDataSource{
-		name: "users",
-		schema: schema.Schema{
-			Columns: []schema.ColumnSchema{
-				{Name: "id", Type: schema.ValueTypeUint64},
-				{Name: "name", Type: schema.ValueTypeString},
-				{Name: "age", Type: schema.ValueTypeUint64},
-			},
-		},
-	}
-
-	var (
-		scan = NewMakeTableNode(ds.Name(), ds.Schema())
-
-		sel = &Select{Input: scan, Expr: Gt("age_gt_21", Col("age"), LitI64(21))}
-	)
-
-	var f TreeFormatter
-
-	actual := "\n" + f.Format(sel)
-	t.Logf("Actual output:\n%s", actual)
-
-	expected := `
-Select expr=age_gt_21
-│   └── BinaryOp type=cmp op=">" name=age_gt_21
-│       ├── Column #age
-│       └── Literal value=21 type=VALUE_TYPE_INT64
-└── MakeTable name=users
-`
-
-	require.Equal(t, expected, actual)
-}
-
-func TestFormatDataFrameQuery(t *testing.T) {
-	// Calculate the sum of sales per region for the year 2020
-	ds := &testDataSource{
-		name: "orders",
-		schema: schema.Schema{
-			Columns: []schema.ColumnSchema{
-				{Name: "region", Type: schema.ValueTypeString},
-				{Name: "sales", Type: schema.ValueTypeUint64},
-				{Name: "year", Type: schema.ValueTypeUint64},
-			},
-		},
-	}
-
 	df := NewDataFrame(
-		NewMakeTableNode(ds.Name(), ds.Schema()),
+		&MakeTable{
+			Selector: &BinOp{
+				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
+				Right: LiteralString("users"),
+				Op:    BinOpKindEq,
+			},
+		},
 	).Select(
-		Eq("year_2020", Col("year"), LitI64(2020)),
-	).Limit(
-		0,
-		10,
+		&BinOp{
+			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
+			Right: LiteralInt64(21),
+			Op:    BinOpKindGt,
+		},
 	)
 
 	var f TreeFormatter
 
-	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
-	// types.
-	actual := "\n" + f.Format(unwrapTreeNode(df.Node()))
+	actual := "\n" + f.Format(df.Value())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Limit offset=0 fetch=10
-└── Select expr=year_2020
-    │   └── BinaryOp type=cmp op="==" name=year_2020
-    │       ├── Column #year
-    │       └── Literal value=2020 type=VALUE_TYPE_INT64
-    └── MakeTable name=orders
+Select
+│   └── BinOp op=GT
+│       ├── ColumnRef #metadata.age
+│       └── Literal value=21 kind=int64
+└── MakeTable
+        └── BinOp op=EQ
+    │       ├── ColumnRef #label.table
+    │       └── Literal value="users" kind=string
 `
+
 	require.Equal(t, expected, actual)
 }
 
 func TestFormatSortQuery(t *testing.T) {
 	// Build a query plan with sorting:
-	// SELECT id, name, age FROM users WHERE age > 21 ORDER BY age ASC, name DESC
-	ds := &testDataSource{
-		name: "users",
-		schema: schema.Schema{
-			Columns: []schema.ColumnSchema{
-				{Name: "id", Type: schema.ValueTypeUint64},
-				{Name: "name", Type: schema.ValueTypeString},
-				{Name: "age", Type: schema.ValueTypeUint64},
-			},
-		},
-	}
-
-	scan := NewMakeTableNode(ds.Name(), ds.Schema())
-	sel := NewSelectNode(scan, Gt("age_gt_21", Col("age"), LitI64(21)))
-
-	// Sort by age ascending, nulls last
-	sortByAge := NewSortNode(sel, NewSortExpr("sort_by_age", Col("age"), true, false))
-
-	var f TreeFormatter
-
-	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
-	// types.
-	actual := "\n" + f.Format(unwrapTreeNode(sortByAge))
-	t.Logf("Actual output:\n%s", actual)
-
-	expected := `
-Sort expr=sort_by_age direction=asc nulls=last
-│   └── Column #age
-└── Select expr=age_gt_21
-    │   └── BinaryOp type=cmp op=">" name=age_gt_21
-    │       ├── Column #age
-    │       └── Literal value=21 type=VALUE_TYPE_INT64
-    └── MakeTable name=users
-`
-	require.Equal(t, expected, actual)
-}
-
-func TestFormatDataFrameWithSortQuery(t *testing.T) {
-	// Calculate the sum of sales per region for the year 2020, sorted by total sales descending
-	ds := &testDataSource{
-		name: "orders",
-		schema: schema.Schema{
-			Columns: []schema.ColumnSchema{
-				{Name: "region", Type: schema.ValueTypeString},
-				{Name: "sales", Type: schema.ValueTypeUint64},
-				{Name: "year", Type: schema.ValueTypeUint64},
-			},
-		},
-	}
-
+	// SELECT id, name, age FROM users WHERE age > 21 ORDER BY age ASC
 	df := NewDataFrame(
-		NewMakeTableNode(ds.Name(), ds.Schema()),
+		&MakeTable{
+			Selector: &BinOp{
+				Left:  &ColumnRef{Column: "table", Type: ColumnTypeLabel},
+				Right: LiteralString("users"),
+				Op:    BinOpKindEq,
+			},
+		},
 	).Select(
-		Eq("year_2020", Col("year"), LitI64(2020)),
-	).Sort(
-		NewSortExpr("sort_by_sales", Col("total_sales"), false, true), // Sort by total_sales descending, nulls first
-	).Limit(
-		0,
-		10,
-	)
+		&BinOp{
+			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
+			Right: LiteralInt64(21),
+			Op:    BinOpKindGt,
+		},
+	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
 
 	var f TreeFormatter
-
-	// TODO(rfratto): Remove call to unwrapTreeNode once we fix up all the field
-	// types.
-	actual := "\n" + f.Format(unwrapTreeNode(df.Node()))
+	actual := "\n" + f.Format(df.Value())
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Limit offset=0 fetch=10
-└── Sort expr=sort_by_sales direction=desc nulls=first
-    │   └── Column #total_sales
-    └── Select expr=year_2020
-        │   └── BinaryOp type=cmp op="==" name=year_2020
-        │       ├── Column #year
-        │       └── Literal value=2020 type=VALUE_TYPE_INT64
-        └── MakeTable name=orders
+Sort direction=asc nulls=last
+│   └── ColumnRef #metadata.age
+└── Select
+    │   └── BinOp op=GT
+    │       ├── ColumnRef #metadata.age
+    │       └── Literal value=21 kind=int64
+    └── MakeTable
+            └── BinOp op=EQ
+        │       ├── ColumnRef #label.table
+        │       └── Literal value="users" kind=string
 `
 	require.Equal(t, expected, actual)
 }

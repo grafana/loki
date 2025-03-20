@@ -11,8 +11,7 @@ import (
 type Limit struct {
 	id string
 
-	// Input is the child plan node which provides the data to limit.
-	Input TreeNode
+	Table Value // Table relation to limit.
 
 	// Skip is the number of rows to skip before returning results. A value of 0
 	// means no rows are skipped.
@@ -51,9 +50,9 @@ const (
 //
 //	// Skip the first 100 rows and return all remaining rows
 //	limit := newLimit(inputPlan, 100, 0)
-func newLimit(input TreeNode, skip uint64, fetch uint64) *Limit {
+func newLimit(table Value, skip uint64, fetch uint64) *Limit {
 	return &Limit{
-		Input: input,
+		Table: table,
 		Skip:  skip,
 		Fetch: fetch,
 	}
@@ -71,15 +70,14 @@ func (l *Limit) Name() string {
 func (l *Limit) String() string {
 	// TODO(rfratto): change the type of l.Input to [Value] so we can use
 	// s.Value.Name here.
-	return fmt.Sprintf("limit %v [skip=%d, fetch=%d]", l.Input, l.Skip, l.Fetch)
+	return fmt.Sprintf("limit %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
 }
 
 // Schema returns the schema of the limit operation.
-// The schema is the same as the input plan's schema since limiting
-// only affects the number of rows, not their structure.
 func (l *Limit) Schema() *schema.Schema {
-	res := l.Input.Schema()
-	return &res
+	// The schema is the same as the input plan's schema since limiting
+	// only affects the number of rows, not their structure.
+	return l.Table.Schema()
 }
 
 func (l *Limit) isInstruction() {}

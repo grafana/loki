@@ -4,103 +4,64 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
-// DataFrame provides an ergonomic interface for building a [TreeNode]. It
-// provides fluent methods for common operations like projection, filtering,
-// and aggregation. This makes it easier to build complex query plans in a
-// readable and maintainable way.
+// DataFrame provides an ergonomic builder-like interface for constructing a
+// [Plan].
 type DataFrame struct {
-	plan TreeNode
+	val Value
 }
 
-// NewDataFrame creates a new DataFrame from a logical plan.
-// This is typically used to wrap a table scan plan as the starting point
-// for building a more complex query.
-func NewDataFrame(plan TreeNode) *DataFrame {
-	return &DataFrame{plan: plan}
+// NewDataFrame creates a new DataFrame from a Value, where the starting Value
+// is usually a [MakeTable].
+func NewDataFrame(val Value) *DataFrame {
+	return &DataFrame{val: val}
 }
 
-// Select applies a selection filter to the DataFrame. It creates a new
-// DataFrame with a select plan that selects rows from the input DataFrame
-// based on the specified boolean expression. This corresponds to the WHERE
-// clause in SQL.
-func (df *DataFrame) Select(expr Expr) *DataFrame {
+// Select applies a [Select] operation to the DataFrame.
+func (df *DataFrame) Select(predicate Value) *DataFrame {
 	return &DataFrame{
-		plan: NewSelectNode(df.plan, expr),
+		val: &Select{
+			Table:     df.val,
+			Predicate: predicate,
+		},
 	}
 }
 
-// Limit applies a row limit to the DataFrame.
-// It creates a new DataFrame with a limit plan that restricts the number of rows
-// returned, optionally with an offset to skip initial rows.
-// This corresponds to the LIMIT and OFFSET clauses in SQL.
-//
-// Parameters:
-//   - skip: Number of rows to skip before returning results (OFFSET in SQL).
-//     Use 0 to start from the first row.
-//   - fetch: Maximum number of rows to return after skipping (LIMIT in SQL).
-//     Use 0 to return all remaining rows.
-//
-// Example usage:
-//
-//	// Return the first 10 rows
-//	df = df.Limit(0, 10)
-//
-//	// Skip the first 20 rows and return the next 10
-//	df = df.Limit(20, 10)
-//
-//	// Skip the first 100 rows and return all remaining rows
-//	df = df.Limit(100, 0)
-//
-// The Limit operation is typically applied as the final step in a query,
-// after filtering, projection, and aggregation.
+// Limit applies a [Limit] operation to the DataFrame.
 func (df *DataFrame) Limit(skip uint64, fetch uint64) *DataFrame {
 	return &DataFrame{
-		plan: NewLimitNode(df.plan, skip, fetch),
+		val: &Limit{
+			Table: df.val,
+			Skip:  skip,
+			Fetch: fetch,
+		},
 	}
 }
 
-// Schema returns the schema of the data that will be produced by this DataFrame.
-// This is useful for understanding the structure of the data that will result
-// from executing the query plan.
-func (df *DataFrame) Schema() schema.Schema {
-	return df.plan.Schema()
-}
-
-// Node returns the underlying [TreeNode]. This is useful when you need to
-// access the node directly, such as when passing it to a function that
-// operates on nodes rather than DataFrames.
-func (df *DataFrame) Node() TreeNode {
-	return df.plan
-}
-
-// ToSSA converts the DataFrame to SSA form. This is useful for optimizing and
-// executing the query plan, as the SSA form is easier to analyze and transform
-// than the tree-based logical plan.
-func (df *DataFrame) ToPlan() (*Plan, error) {
-	return ConvertToSSA(df.plan)
-}
-
-// Sort applies a sort operation to the DataFrame.
-// It creates a new DataFrame with a sort plan that orders rows from the
-// input DataFrame based on the specified sort expression.
-// This corresponds to the ORDER BY clause in SQL.
-//
-// Parameters:
-//   - expr: The sort expression specifying the column to sort by, sort direction,
-//     and NULL handling.
-//
-// Example usage:
-//
-//	// Sort by age in ascending order, NULLs last
-//	df = df.Sort(NewSortExpr("sort_by_age", Col("age"), true, false))
-//
-//	// Sort by name in descending order, NULLs first
-//	df = df.Sort(NewSortExpr("sort_by_name", Col("name"), false, true))
-//
-// The Sort operation is typically applied after filtering and projection,
-// but before limiting the results.
-func (df *DataFrame) Sort(expr SortExpr) *DataFrame {
+// Sort applies a [Sort] operation to the DataFrame.
+func (df *DataFrame) Sort(column ColumnRef, ascending, nullsFirst bool) *DataFrame {
 	return &DataFrame{
-		plan: NewSortNode(df.plan, expr),
+		val: &Sort{
+			Table: df.val,
+
+			Column:     column,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+		},
 	}
+}
+
+// Schema returns the schema of the data that will be produced by this
+// DataFrame.
+func (df *DataFrame) Schema() *schema.Schema {
+	return df.val.Schema()
+}
+
+// Value returns the underlying [Value]. This is useful when you need to access
+// the value directly, such as when passing it to a function that operates on
+// values rather than DataFrames.
+func (df *DataFrame) Value() Value { return df.val }
+
+// ToPlan converts the DataFrame to a Plan.
+func (df *DataFrame) ToPlan() (*Plan, error) {
+	return convertToPlan(df.val)
 }

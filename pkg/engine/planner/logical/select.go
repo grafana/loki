@@ -11,8 +11,12 @@ import (
 type Select struct {
 	id string
 
-	Input TreeNode // Child plan node providing data to filter.
-	Expr  Expr     // Boolean expression used to filter nodes.
+	Table Value // The table relation to filter.
+
+	// Predicate is used to filter rows from Table. Each row is checked against
+	// the given Predicate, and only rows for which the Predicate is true are
+	// returned.
+	Predicate Value
 }
 
 var (
@@ -20,15 +24,11 @@ var (
 	_ Instruction = (*Select)(nil)
 )
 
-// newSelect creates a new Select plan node.
-// It takes an input plan and a boolean expression that determines which rows
-// should be selected (included) in its output. This is represented by the WHERE
-// clause in SQL. A simple example would be SELECT * FROM foo WHERE a > 5.
-// The filter expression needs to evaluate to a Boolean result.
-func newSelect(input TreeNode, expr Expr) *Select {
+// newSelect creates a new Select instruction.
+func newSelect(table, predicate Value) *Select {
 	return &Select{
-		Input: input,
-		Expr:  expr,
+		Table:     table,
+		Predicate: predicate,
 	}
 }
 
@@ -42,17 +42,14 @@ func (s *Select) Name() string {
 
 // String returns the disassembled SSA form of the Select instruction.
 func (s *Select) String() string {
-	// TODO(rfratto): change the type of s.Expr to [Value] so we can call
-	// s.Expr.Name here.
-	return fmt.Sprintf("select %v", s.Expr)
+	return fmt.Sprintf("SELECT %s [predicate=%s]", s.Table.Name(), s.Predicate.Name())
 }
 
 // Schema returns the schema of the Select plan.
-// The schema of a Select is the same as the schema of its input,
-// as selection only removes rows and doesn't modify the structure.
 func (s *Select) Schema() *schema.Schema {
-	res := s.Input.Schema()
-	return &res
+	// Since Select only filters rows from a table, the schema is the same as the
+	// input table relation.
+	return s.Table.Schema()
 }
 
 func (s *Select) isInstruction() {}

@@ -11,8 +11,12 @@ import (
 type MakeTable struct {
 	id string
 
-	TableName   string        // Identifier of the table to scan.
-	TableSchema schema.Schema // Structure of the data within the table.
+	// Selector is used to generate a table relation. All streams for which the
+	// selector passes are included in the resulting table.
+	//
+	// It is invalid for Selector to include a [ColumnRef] that is not
+	// [ColumnTypeBuiltin] or [ColumnTypeLabel].
+	Selector Value
 }
 
 var (
@@ -22,11 +26,8 @@ var (
 
 // makeTable creates a new MakeTable plan node with the given name and schema.
 // This is an internal constructor used by the public NewScan function.
-func makeTable(name string, schema schema.Schema) *MakeTable {
-	return &MakeTable{
-		TableName:   name,
-		TableSchema: schema,
-	}
+func makeTable(selector Value) *MakeTable {
+	return &MakeTable{Selector: selector}
 }
 
 // Name returns an identifier for the MakeTable operation.
@@ -39,13 +40,15 @@ func (t *MakeTable) Name() string {
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {
-	return fmt.Sprintf("make_table %s", t.TableName)
+	return fmt.Sprintf("MAKE_TABLE [selector=%s]", t.Selector.Name())
 }
 
 // Schema returns the schema of the table.
 // This implements part of the Plan interface.
 func (t *MakeTable) Schema() *schema.Schema {
-	return &t.TableSchema
+	// TODO(rfratto): What should we return here? What's possible for the logical
+	// planner to know about the selector at planning time?
+	return nil
 }
 
 func (t *MakeTable) isInstruction() {}

@@ -15,8 +15,11 @@ import (
 type Sort struct {
 	id string
 
-	Input TreeNode // Child plan node providing data to sort.
-	Expr  SortExpr // Sort expression to apply.
+	Table Value // The table relation to sort.
+
+	Column     ColumnRef // The column to sort by.
+	Ascending  bool      // Whether to sort in ascending order.
+	NullsFirst bool      // Controls whether NULLs appear first (true) or last (false).
 }
 
 var (
@@ -34,10 +37,13 @@ var (
 //		NewSortExpr("sort_by_age", Col("age"), true, false),
 //		NewSortExpr("sort_by_name", Col("name"), false, true),
 //	})
-func newSort(input TreeNode, expr SortExpr) *Sort {
+func newSort(table Value, column ColumnRef, ascending, nullsFirst bool) *Sort {
 	return &Sort{
-		Input: input,
-		Expr:  expr,
+		Table: table,
+
+		Column:     column,
+		Ascending:  ascending,
+		NullsFirst: nullsFirst,
 	}
 }
 
@@ -53,15 +59,20 @@ func (s *Sort) Name() string {
 func (s *Sort) String() string {
 	// TODO(rfratto): change the type of s.Input to [Value] so we can use
 	// s.Value.Name here.
-	return fmt.Sprintf("sort %v [asc=%t, nulls_first=%t]", s.Input, s.Expr.Ascending, s.Expr.NullsFirst)
+	return fmt.Sprintf(
+		"SORT %s [column=%s, asc=%t, nulls_first=%t]",
+		s.Table.Name(),
+		s.Column.String(),
+		s.Ascending,
+		s.NullsFirst,
+	)
 }
 
 // Schema returns the schema of the sort plan.
-// The schema is the same as the input plan's schema since sorting
-// only affects the order of rows, not their structure.
 func (s *Sort) Schema() *schema.Schema {
-	res := s.Input.Schema()
-	return &res
+	// The schema is the same as the input plan's schema since sorting only
+	// affects the order of rows, not their structure.
+	return s.Table.Schema()
 }
 
 func (s *Sort) isInstruction() {}
