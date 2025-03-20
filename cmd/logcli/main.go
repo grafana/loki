@@ -33,7 +33,7 @@ var (
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
-	timestamp  = app.Flag("timestamp", "Specify the format of timestamps in the default output mode [rfc3339, rfc3339nano, rfc822z, rfc1123z, stampmicro, stampmilli, stampnano]").Default("rfc3339").Enum("rfc3339", "rfc3339nano", "rfc822z", "rfc1123z", "stampmicro", "stampmilli", "stampnano")
+	timestamp  = app.Flag("output-timestamp-format", "Specify the format of timestamps in the default output mode [rfc3339, rfc3339nano, rfc822z, rfc1123z, stampmicro, stampmilli, stampnano]").Default("rfc3339").Enum("rfc3339", "rfc3339nano", "rfc822z", "rfc1123z", "stampmicro", "stampmilli", "stampnano")
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 	stdin      = app.Flag("stdin", "Take input logs from stdin").Bool()
@@ -63,8 +63,8 @@ or provide specific start and end times with --from and --to respectively.
 Notice that when using --from and --to then ensure to use RFC3339Nano
 time format, but without timezone at the end. The local timezone will be added
 automatically or if using  --timezone flag.
-In default output mode the --timestamp flag can be used to modify the output
-timestamp.
+In default output mode the --output-timestamp-format flag can be used to 
+modify the output timestamp.
 
 Example:
 
@@ -75,13 +75,13 @@ Example:
 	   --output=jsonl
 	   'my-query'
 
-Example with --timestamp:
+Example with --output-timestamp-format:
 
 	logcli query
 	   --timezone=UTC
 	   --from="2021-01-19T10:00:00Z"
 	   --to="2021-01-19T20:00:00Z"
-	   --timestamp=rfc3339nano
+	   --output-timestamp-format=rfc3339nano
 	   'my-query'
 
 The output is limited to 30 entries by default; use --limit to increase.
