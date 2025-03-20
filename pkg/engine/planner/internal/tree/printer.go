@@ -145,7 +145,7 @@ func (tp *Printer) printNode(node *Node) {
 	tp.w.WriteString("\n")
 }
 
-// printChildren recursively prints all children with appropriate indentation
+// printChildren recursively prints all children with appropriate indentation.
 func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 	hasChildren := len(children) > 0
 
@@ -155,16 +155,23 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 	for i, node := range comments {
 		isLast := i == len(comments)-1
 
+		// Choose indentation symbols based on whether the node we're printing has
+		// any children to print.
+		indent := symIndent
+		if !hasChildren {
+			indent = symPrefix
+		}
+
 		// Choose connector symbols based on whether this is the last item
 		connector := symPrefix + symConn
-		newPrefix := prefix + symIndent + symIndent
+		newPrefix := prefix + indent + symIndent
 		if hasChildren {
 			connector = symIndent + symConn
 		}
 
 		if isLast {
 			connector = symPrefix + symLastConn
-			newPrefix = prefix + symIndent + symPrefix
+			newPrefix = prefix + indent + symPrefix
 			if hasChildren {
 				connector = symIndent + symLastConn
 			}
