@@ -579,12 +579,12 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 				defer sp.LogKV("msg", "selectSamples section done", "index", i)
 			}
 
-			orig_expr := expr
+			origExpr := expr
 			expr, err := applyLogsPredicate(reader)
 			if err != nil {
 				return err
 			}
-			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", orig_expr.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
+			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", origExpr.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
 
 			// extractors is not thread safe, so we need to create a new one for each object
 			extractors, err := expr.Extractors()
