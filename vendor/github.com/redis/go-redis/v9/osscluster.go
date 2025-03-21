@@ -21,10 +21,6 @@ import (
 	"github.com/redis/go-redis/v9/internal/rand"
 )
 
-const (
-	minLatencyMeasurementInterval = 10 * time.Second
-)
-
 var errClusterNoNodes = fmt.Errorf("redis: cluster has no nodes")
 
 // ClusterOptions are used to configure a cluster client and should be
@@ -336,10 +332,6 @@ type clusterNode struct {
 	latency    uint32 // atomic
 	generation uint32 // atomic
 	failing    uint32 // atomic
-
-	// last time the latency measurement was performed for the node, stored in nanoseconds
-	// from epoch
-	lastLatencyMeasurement int64 // atomic
 }
 
 func newClusterNode(clOpt *ClusterOptions, addr string) *clusterNode {
@@ -392,7 +384,6 @@ func (n *clusterNode) updateLatency() {
 		latency = float64(dur) / float64(successes)
 	}
 	atomic.StoreUint32(&n.latency, uint32(latency+0.5))
-	n.SetLastLatencyMeasurement(time.Now())
 }
 
 func (n *clusterNode) Latency() time.Duration {
@@ -422,23 +413,10 @@ func (n *clusterNode) Generation() uint32 {
 	return atomic.LoadUint32(&n.generation)
 }
 
-func (n *clusterNode) LastLatencyMeasurement() int64 {
-	return atomic.LoadInt64(&n.lastLatencyMeasurement)
-}
-
 func (n *clusterNode) SetGeneration(gen uint32) {
 	for {
 		v := atomic.LoadUint32(&n.generation)
 		if gen < v || atomic.CompareAndSwapUint32(&n.generation, v, gen) {
-			break
-		}
-	}
-}
-
-func (n *clusterNode) SetLastLatencyMeasurement(t time.Time) {
-	for {
-		v := atomic.LoadInt64(&n.lastLatencyMeasurement)
-		if t.UnixNano() < v || atomic.CompareAndSwapInt64(&n.lastLatencyMeasurement, v, t.UnixNano()) {
 			break
 		}
 	}
@@ -533,11 +511,10 @@ func (c *clusterNodes) GC(generation uint32) {
 	c.mu.Lock()
 
 	c.activeAddrs = c.activeAddrs[:0]
-	now := time.Now()
 	for addr, node := range c.nodes {
 		if node.Generation() >= generation {
 			c.activeAddrs = append(c.activeAddrs, addr)
-			if c.opt.RouteByLatency && node.LastLatencyMeasurement() < now.Add(-minLatencyMeasurementInterval).UnixNano() {
+			if c.opt.RouteByLatency {
 				go node.updateLatency()
 			}
 			continue
