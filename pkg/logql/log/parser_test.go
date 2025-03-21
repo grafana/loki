@@ -13,11 +13,12 @@ import (
 
 func Test_jsonParser_Parse(t *testing.T) {
 	tests := []struct {
-		name  string
-		line  []byte
-		lbs   labels.Labels
-		want  labels.Labels
-		hints ParserHint
+		name         string
+		line         []byte
+		lbs          labels.Labels
+		want         labels.Labels
+		wantJsonPath map[string][]string
+		hints        ParserHint
 	}{
 		{
 			"multi depth",
@@ -28,15 +29,24 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"pod_uuid", "foo",
 				"pod_deployment_ref", "foobar",
 			),
+			map[string][]string{
+				"app":                {"app"},
+				"namespace":          {"namespace"},
+				"pod_uuid":           {"pod", "uuid"},
+				"pod_deployment_ref": {"pod", "deployment", "ref"},
+			},
 			NoParserHints(),
 		},
-		{
-			"numeric",
+		{"numeric",
 			[]byte(`{"counter":1, "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1",
 				"price__net_", "5.56909",
 			),
+			map[string][]string{
+				"counter":     {"counter"},
+				"price__net_": {"price", "_net_"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -44,6 +54,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{" ": {"foo":"bar"}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("foo", "bar"),
+			map[string][]string{
+				"foo": {" ", "foo"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -51,6 +64,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{" ": {" ":"bar"}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("", "bar"),
+			map[string][]string{
+				"": {" ", " "},
+			},
 			NoParserHints(),
 		},
 		{
@@ -58,6 +74,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{" ": {"":"bar"}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("", "bar"),
+			map[string][]string{
+				"": {" ", ""},
+			},
 			NoParserHints(),
 		},
 		{
@@ -65,6 +84,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{"": {"":"bar"}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("", "bar"),
+			map[string][]string{
+				"": {"", ""},
+			},
 			NoParserHints(),
 		},
 		{
@@ -75,6 +97,11 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"price__net_", "5.56909",
 				"foo", `foo\"bar`,
 			),
+			map[string][]string{
+				"counter":     {"counter"},
+				"price__net_": {"price", "_net_"},
+				"foo":         {"foo"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -85,6 +112,11 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"price__net_", "5.56909",
 				"foo", " ",
 			),
+			map[string][]string{
+				"counter":     {"counter"},
+				"price__net_": {"price", "_net_"},
+				"foo":         {"foo"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -92,6 +124,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1"),
+			map[string][]string{
+				"counter": {"counter"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -99,6 +134,19 @@ func Test_jsonParser_Parse(t *testing.T) {
 			[]byte(`{"cou-nter":1}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("cou_nter", "1"),
+			map[string][]string{
+				"cou_nter": {"cou-nter"},
+			},
+			NoParserHints(),
+		},
+		{
+			"nested bad key replaced",
+			[]byte(`{"foo":{"cou-nter":1}}"`),
+			labels.EmptyLabels(),
+			labels.FromStrings("foo_cou_nter", "1"),
+			map[string][]string{
+				"foo_cou_nter": {"foo", "cou-nter"},
+			},
 			NoParserHints(),
 		},
 		{
@@ -108,6 +156,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
 			),
+			map[string][]string{},
 			NoParserHints(),
 		},
 		{
@@ -118,6 +167,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
 				"__preserve_error__", "true",
 			),
+			map[string][]string{},
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
 		},
 		{
@@ -131,6 +181,13 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"next_err", "false",
 				"pod_deployment_ref", "foobar",
 			),
+			map[string][]string{
+				"app_extracted":      {"app"},
+				"namespace":          {"namespace"},
+				"pod_uuid":           {"pod", "uuid"},
+				"next_err":           {"next", "err"},
+				"pod_deployment_ref": {"pod", "deployment", "ref"},
+			},
 			NoParserHints(),
 		},
 	}
@@ -141,6 +198,19 @@ func Test_jsonParser_Parse(t *testing.T) {
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
+
+			// Print all JSON paths for debugging
+			fmt.Printf("Test: %s\n", tt.name)
+			for k, v := range b.jsonPaths {
+				fmt.Printf("JSON path for %s: %v\n", k, v)
+			}
+
+			// Check JSON paths if provided
+			if len(tt.wantJsonPath) > 0 {
+				for k, parts := range tt.wantJsonPath {
+					require.Equal(t, parts, b.GetJSONPath(k), "incorrect json path parts for key %s", k)
+				}
+			}
 		})
 	}
 }

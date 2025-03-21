@@ -68,6 +68,7 @@ func NewDetectedFieldsHandler(
 						Type:        v.fieldType,
 						Cardinality: v.Estimate(),
 						Parsers:     p,
+						JsonPath:    v.jsonPath,
 					}
 
 					fieldCount++
@@ -226,6 +227,7 @@ type parsedFields struct {
 	sketch    *hyperloglog.Sketch
 	fieldType logproto.DetectedFieldType
 	parsers   []string
+	jsonPath  []string // Original JSON path as an array of components (e.g., ["user", "id"] for field "user_id")
 }
 
 func newParsedFields(parsers []string) *parsedFields {
@@ -233,13 +235,7 @@ func newParsedFields(parsers []string) *parsedFields {
 		sketch:    hyperloglog.New(),
 		fieldType: logproto.DetectedFieldString,
 		parsers:   parsers,
-	}
-}
-
-func newParsedLabels() *parsedFields {
-	return &parsedFields{
-		sketch:    hyperloglog.New(),
-		fieldType: logproto.DetectedFieldString,
+		jsonPath:  nil,
 	}
 }
 
@@ -339,6 +335,12 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 					if !slices.Contains(df.parsers, parser) {
 						df.parsers = append(df.parsers, parser)
 					}
+				}
+
+				// If we parsed with JSON, check for a JSON path
+				if slices.Contains(parsers, "json") {
+					// Get the JSON path if it exists
+					df.jsonPath = entryLbls.GetJSONPath(k)
 				}
 
 				detectType := true

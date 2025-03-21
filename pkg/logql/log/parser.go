@@ -51,7 +51,7 @@ var (
 )
 
 type JSONParser struct {
-	prefixBuffer []byte // buffer used to build json keys
+	prefixBuffer []string // buffer used to build json keys
 	lbs          *LabelsBuilder
 
 	keys        internedStringSet
@@ -61,7 +61,7 @@ type JSONParser struct {
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser() *JSONParser {
 	return &JSONParser{
-		prefixBuffer: make([]byte, 0, 1024),
+		prefixBuffer: make([]string, 0, 16), //Pre-emptive allocation, assuming a nesting of > 16 levels is rare
 		keys:         internedStringSet{},
 	}
 }
@@ -121,18 +121,18 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 
 // nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
 func (j *JSONParser) nextKeyPrefix(key []byte) bool {
-	// first add the spacer if needed.
-	if len(j.prefixBuffer) != 0 {
-		j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	}
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	return j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer))
+	j.prefixBuffer = append(j.prefixBuffer, string(key))
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	return j.lbs.ParserLabelHints().ShouldExtractPrefix(
+		string(sanitized),
+	)
 }
 
 func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) error {
 	// the first time we use the field as label key.
 	if len(j.prefixBuffer) == 0 {
-		key, ok := j.keys.Get(key, func() (string, bool) {
+		sanitizedKey, ok := j.keys.Get(key, func() (string, bool) {
 			field := sanitizeLabelKey(string(key), true)
 			if j.lbs.BaseHas(field) {
 				field = field + duplicateSuffix
@@ -145,8 +145,10 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !ok {
 			return nil
 		}
-		j.lbs.Set(ParsedLabel, key, readValue(value, dataType))
-		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
+		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
+		j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
+
+		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
 			return errLabelDoesNotMatch
 		}
 		return nil
@@ -156,18 +158,23 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// snapshot the current prefix position
 	prefixLen := len(j.prefixBuffer)
-	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	keyString, ok := j.keys.Get(j.prefixBuffer, func() (string, bool) {
-		if j.lbs.BaseHas(string(j.prefixBuffer)) {
-			j.prefixBuffer = append(j.prefixBuffer, duplicateSuffix...)
+	j.prefixBuffer = append(j.prefixBuffer, string(key))
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
+		if j.lbs.BaseHas(string(sanitized)) {
+			j.prefixBuffer[prefixLen] = string(append(key, duplicateSuffix...))
 		}
-		if !j.parserHints.ShouldExtract(string(j.prefixBuffer)) {
+
+		keyPrefix := j.buildSanitizedPrefixFromBuffer()
+		if !j.parserHints.ShouldExtract(string(keyPrefix)) {
 			return "", false
 		}
 
-		return string(j.prefixBuffer), true
+		return string(keyPrefix), true
 	})
+
+	jsonPath := j.buildJsonPathFromPrefixBuffer()
 
 	// reset the prefix position
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
@@ -176,10 +183,37 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	}
 
 	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
+	j.lbs.SetJSONPath(keyString, jsonPath)
+
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
 	return nil
+}
+
+func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
+	sanitized := []byte{}
+	for i, part := range j.prefixBuffer {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+
+		if i > 0 && len(sanitized) > 0 {
+			sanitized = append(sanitized, byte(jsonSpacer))
+		}
+		sanitized = appendSanitized(sanitized, []byte(part))
+	}
+
+	return sanitized
+}
+
+func (j *JSONParser) buildJsonPathFromPrefixBuffer() []string {
+	jsonPath := make([]string, 0, len(j.prefixBuffer))
+	for _, part := range j.prefixBuffer {
+		jsonPath = append(jsonPath, part)
+	}
+
+	return jsonPath
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
