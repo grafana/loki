@@ -341,7 +341,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker Usa
 			}
 		}
 
-		if tracker != nil {
+		if tracker != nil && !pushStats.IsAggregatedMetric {
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
 		}
 
