@@ -76,6 +76,10 @@ spec:
         - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.read.command }}
+          command:
+            - {{ coalesce .Values.read.command .Values.loki.command | quote }}
+          {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}

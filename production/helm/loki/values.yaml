@@ -1368,6 +1368,8 @@ singleBinary:
     repository: null
     # -- Docker image tag for the single binary image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for single binary pods
   priorityClassName: null
   # -- Annotations for single binary StatefulSet
@@ -1479,6 +1481,8 @@ write:
     repository: null
     # -- Docker image tag for the write image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for write pods
   priorityClassName: null
   # -- Annotations for write StatefulSet
@@ -1600,6 +1604,8 @@ read:
     repository: null
     # -- Docker image tag for the read image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for read pods
   priorityClassName: null
   # -- Annotations for read deployment
@@ -1710,6 +1716,8 @@ backend:
     repository: null
     # -- Docker image tag for the backend image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for backend pods
   priorityClassName: null
   # -- Annotations for backend StatefulSet
@@ -2307,6 +2315,8 @@ queryScheduler:
     repository: null
     # -- Docker image tag for the query-scheduler image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for query-scheduler pods
   priorityClassName: null
   # -- Labels for query-scheduler pods
@@ -2371,6 +2381,8 @@ indexGateway:
     repository: null
     # -- Docker image tag for the index-gateway image. Overrides `loki.image.tag`
     tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
   # -- The name of the PriorityClass for index-gateway pods
   priorityClassName: null
   # -- Labels for index-gateway pods
