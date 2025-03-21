@@ -790,6 +790,7 @@ Outer:
 				Keep: func(line []byte) bool {
 					return f.Filter(line)
 				},
+				Desc: s.String(),
 			})
 
 		default:
@@ -903,8 +904,9 @@ func processLabelFilter(expr logqllog.LabelFilterer, metadataColumns map[string]
 			}
 		} else {
 			predicate = dataobj.MetadataFilterPredicate{
-				Key: e.Name,
-				Keep: func(key, value string) bool {
+				Key:  e.Name,
+				Desc: e.String(),
+				Keep: func(_, value string) bool {
 					return e.Matcher.Matches(value)
 				},
 			}
@@ -931,8 +933,9 @@ func processLabelFilter(expr logqllog.LabelFilterer, metadataColumns map[string]
 			}
 		} else {
 			predicate = dataobj.MetadataFilterPredicate{
-				Key: e.Name,
-				Keep: func(key, value string) bool {
+				Key:  e.Name,
+				Desc: e.String(),
+				Keep: func(_, value string) bool {
 					return e.Filter.Filter([]byte(value))
 				},
 			}

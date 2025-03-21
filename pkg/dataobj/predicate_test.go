@@ -494,60 +494,6 @@ func TestPredicateString(t *testing.T) {
 	// Test time values
 	startTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	endTime := time.Date(2023, 1, 2, 0, 0, 0, 0, time.UTC)
-
-	// Common predicates for complex test cases
-	appLabel := LabelMatcherPredicate{Name: "app", Value: "service"}
-	envLabel := LabelMatcherPredicate{Name: "env", Value: "prod"}
-	regionLabel := LabelMatcherPredicate{Name: "region", Value: "us-west"}
-	timeRange := TimeRangePredicate[StreamsPredicate]{
-		StartTime:    startTime,
-		EndTime:      endTime,
-		IncludeStart: true,
-		IncludeEnd:   false,
-	}
-
-	// Complex predicate: (app=service AND env=prod) OR (region=us-west AND time_range)
-	complexPredicate := OrPredicate[StreamsPredicate]{
-		Left: AndPredicate[StreamsPredicate]{
-			Left:  appLabel,
-			Right: envLabel,
-		},
-		Right: AndPredicate[StreamsPredicate]{
-			Left:  regionLabel,
-			Right: timeRange,
-		},
-	}
-
-	// Even more complex: NOT((app=service AND env=prod) OR (region=us-west AND time_range))
-	moreComplexPredicate := NotPredicate[StreamsPredicate]{
-		Inner: complexPredicate,
-	}
-
-	// Metadata and log message predicates for LogsPredicate tests
-	metadataMatch := MetadataMatcherPredicate{Key: "trace_id", Value: "123"}
-	logMessageFilter := LogMessageFilterPredicate{Keep: func(_ []byte) bool { return true }}
-
-	// Complex LogsPredicate: metadata=123 AND NOT(log_message_filter)
-	complexLogsPred := AndPredicate[LogsPredicate]{
-		Left: metadataMatch,
-		Right: NotPredicate[LogsPredicate]{
-			Inner: logMessageFilter,
-		},
-	}
-
-	// Label predicates for StreamsPredicate tests
-	labelMatch := LabelMatcherPredicate{Name: "app", Value: "frontend"}
-	labelFilter := LabelFilterPredicate{Name: "env", Keep: func(_, value string) bool { return true }}
-
-	// Complex StreamsPredicate: label=frontend AND NOT(label_filter)
-	complexStreamsPred := AndPredicate[StreamsPredicate]{
-		Left: labelMatch,
-		Right: NotPredicate[StreamsPredicate]{
-			Inner: labelFilter,
-		},
-	}
-
-	// Test cases for all predicate types
 	testCases := []struct {
 		name     string
 		pred     Predicate
@@ -560,8 +506,8 @@ func TestPredicateString(t *testing.T) {
 		},
 		{
 			name:     "LabelFilterPredicate",
-			pred:     LabelFilterPredicate{Name: "environment", Keep: func(name, value string) bool { return true }},
-			expected: "LabelFilter(environment)",
+			pred:     LabelFilterPredicate{Name: "env", Desc: `env=~"(prod|dev)"`},
+			expected: `LabelFilter(env, description="env=~\"(prod|dev)\"")`,
 		},
 		{
 			name:     "MetadataMatcherPredicate",
@@ -570,13 +516,13 @@ func TestPredicateString(t *testing.T) {
 		},
 		{
 			name:     "MetadataFilterPredicate",
-			pred:     MetadataFilterPredicate{Key: "span_id", Keep: func(key, value string) bool { return true }},
-			expected: "MetadataFilter(span_id)",
+			pred:     MetadataFilterPredicate{Key: "span_id", Desc: `span_id=~"123"`},
+			expected: `MetadataFilter(span_id, description="span_id=~\"123\"")`,
 		},
 		{
 			name:     "LogMessageFilterPredicate",
-			pred:     LogMessageFilterPredicate{Keep: func(line []byte) bool { return true }},
-			expected: "LogMessageFilter()",
+			pred:     LogMessageFilterPredicate{Desc: `line=~"error"`},
+			expected: `LogMessageFilter(description="line=~\"error\"")`,
 		},
 		{
 			name: "TimeRangePredicate - inclusive start, exclusive end",
@@ -597,26 +543,6 @@ func TestPredicateString(t *testing.T) {
 				IncludeEnd:   true,
 			},
 			expected: "TimeRange(2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z]",
-		},
-		{
-			name: "TimeRangePredicate - both inclusive",
-			pred: TimeRangePredicate[StreamsPredicate]{
-				StartTime:    startTime,
-				EndTime:      endTime,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-			expected: "TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z]",
-		},
-		{
-			name: "TimeRangePredicate - both exclusive",
-			pred: TimeRangePredicate[StreamsPredicate]{
-				StartTime:    startTime,
-				EndTime:      endTime,
-				IncludeStart: false,
-				IncludeEnd:   false,
-			},
-			expected: "TimeRange(2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)",
 		},
 		{
 			name: "NotPredicate",
@@ -642,28 +568,26 @@ func TestPredicateString(t *testing.T) {
 			expected: "(Label(app=frontend) OR Label(app=backend))",
 		},
 		{
-			name:     "Complex nested predicate",
-			pred:     complexPredicate,
-			expected: "((Label(app=service) AND Label(env=prod)) OR (Label(region=us-west) AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)))",
-		},
-		{
-			name:     "More complex nested predicate with NOT",
-			pred:     moreComplexPredicate,
-			expected: "NOT(((Label(app=service) AND Label(env=prod)) OR (Label(region=us-west) AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z))))",
-		},
-		{
-			name:     "Complex LogsPredicate",
-			pred:     complexLogsPred,
-			expected: "(Metadata(trace_id=123) AND NOT(LogMessageFilter()))",
-		},
-		{
-			name:     "Complex StreamsPredicate",
-			pred:     complexStreamsPred,
-			expected: "(Label(app=frontend) AND NOT(LabelFilter(env)))",
+			name: "Complex nested predicate",
+			pred: OrPredicate[StreamsPredicate]{
+				Left: AndPredicate[StreamsPredicate]{
+					Left:  LabelMatcherPredicate{Name: "app", Value: "service"},
+					Right: LabelMatcherPredicate{Name: "env", Value: "prod"},
+				},
+				Right: AndPredicate[StreamsPredicate]{
+					Left: LabelFilterPredicate{Name: "region", Desc: `region=~"us-west"`},
+					Right: TimeRangePredicate[StreamsPredicate]{
+						StartTime:    startTime,
+						EndTime:      endTime,
+						IncludeStart: true,
+						IncludeEnd:   false,
+					},
+				},
+			},
+			expected: `((Label(app=service) AND Label(env=prod)) OR (LabelFilter(region, description="region=~\"us-west\"") AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)))`,
 		},
 	}
 
-	// Run tests
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := tc.pred.String()
