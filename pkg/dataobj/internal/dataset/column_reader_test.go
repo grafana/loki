@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // columnReaderTestStrings contains enough strings to span multiple pages
@@ -34,7 +35,7 @@ func Test_columnReader_ReadAll(t *testing.T) {
 	col := buildMultiPageColumn(t, columnReaderTestStrings)
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
-	cr := newColumnReader(col)
+	cr := newColumnReader(col, bufpool.Get)
 	actualValues, err := readColumn(cr, 4)
 	require.NoError(t, err)
 
@@ -49,7 +50,7 @@ func Test_columnReader_SeekAcrossPages(t *testing.T) {
 	// Find a position near the end of the first page
 	endFirstPage := col.Pages[0].PageInfo().RowCount - 2
 
-	cr := newColumnReader(col)
+	cr := newColumnReader(col, bufpool.Get)
 	_, err := cr.Seek(int64(endFirstPage), io.SeekStart)
 	require.NoError(t, err)
 
@@ -68,7 +69,7 @@ func Test_columnReader_SeekToStart(t *testing.T) {
 	col := buildMultiPageColumn(t, columnReaderTestStrings)
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
-	cr := newColumnReader(col)
+	cr := newColumnReader(col, bufpool.Get)
 
 	// First read everything
 	_, err := readColumn(cr, 4)
@@ -89,7 +90,7 @@ func Test_columnReader_Reset(t *testing.T) {
 	col := buildMultiPageColumn(t, columnReaderTestStrings)
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
-	cr := newColumnReader(col)
+	cr := newColumnReader(col, bufpool.Get)
 
 	// First read everything
 	_, err := readColumn(cr, 4)

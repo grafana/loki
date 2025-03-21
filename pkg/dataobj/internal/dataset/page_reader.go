@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -29,13 +30,16 @@ type pageReader struct {
 
 	pageRow int64
 	nextRow int64
+
+	getBuffer func(size int) *bytes.Buffer
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
 // The page must hold values of the provided value type, and be compressed with
 // the provided compression type.
-func newPageReader(p Page, value datasetmd.ValueType, compression datasetmd.CompressionType) *pageReader {
+func newPageReader(p Page, value datasetmd.ValueType, compression datasetmd.CompressionType, getBuffer func(size int) *bytes.Buffer) *pageReader {
 	var pr pageReader
+	pr.getBuffer = getBuffer
 	pr.Reset(p, value, compression)
 	return &pr
 }
@@ -88,7 +92,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
 	// First read presence values for the next len(v) rows.
-	count, err := pr.presenceDec.Decode(pr.presenceBuf)
+	count, err := pr.presenceDec.Decode(pr.presenceBuf, false)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
@@ -112,7 +116,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// Now fill up to prescentCount values of concrete values.
 	var valuesCount int
 	if presentCount > 0 {
-		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
+		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount], false)
 		if err != nil {
 			return n, err
 		} else if valuesCount != presentCount {
@@ -194,7 +198,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	if pr.valuesDec == nil || pr.lastValue != pr.value || pr.lastEncoding != memPage.Info.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, bufio.NewReader(valuesReader))
+		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, bufio.NewReader(valuesReader), pr.getBuffer)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.value, memPage.Info.Encoding)
 		}

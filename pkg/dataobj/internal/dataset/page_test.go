@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 func Benchmark_page_Decode(b *testing.B) {
@@ -162,7 +163,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	var actual []string
 
-	r := newPageReader(page, opts.Value, opts.Compression)
+	r := newPageReader(page, opts.Value, opts.Compression, bufpool.Get)
 	for {
 		var values [1]Value
 		n, err := r.Read(context.Background(), values[:])

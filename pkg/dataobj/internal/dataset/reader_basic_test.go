@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 type testPerson struct {
@@ -36,7 +37,7 @@ func Test_basicReader_ReadAll(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	actualRows, err := readBasicReader(br, 3)
@@ -48,7 +49,7 @@ func Test_basicReader_ReadFromOffset(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	// Seek to row 4
@@ -64,7 +65,7 @@ func Test_basicReader_SeekToStart(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	// First read everything
@@ -84,7 +85,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	// Read only birth_year and middle_name columns (indices 3 and 1)
@@ -133,7 +134,7 @@ func Test_basicReader_Fill(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	// Create rows with specific indices we want to fill
@@ -219,7 +220,7 @@ func Test_basicReader_Reset(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicReader(columns, bufpool.Get)
 	defer br.Close()
 
 	// First read everything
@@ -243,7 +244,7 @@ func buildTestColumns(t *testing.T) []Column {
 }
 
 // buildTestDataset creates a set of columns with test data.
-func buildTestDataset(t *testing.T) (Dataset, []Column) {
+func buildTestDataset(t testing.TB) (Dataset, []Column) {
 	t.Helper()
 
 	// Create builders for each column
@@ -278,7 +279,7 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 	return dset, cols
 }
 
-func buildStringColumn(t *testing.T, name string) *ColumnBuilder {
+func buildStringColumn(t testing.TB, name string) *ColumnBuilder {
 	t.Helper()
 
 	builder, err := NewColumnBuilder(name, BuilderOptions{
@@ -293,7 +294,7 @@ func buildStringColumn(t *testing.T, name string) *ColumnBuilder {
 	return builder
 }
 
-func buildInt64Column(t *testing.T, name string) *ColumnBuilder {
+func buildInt64Column(t testing.TB, name string) *ColumnBuilder {
 	t.Helper()
 
 	builder, err := NewColumnBuilder(name, BuilderOptions{

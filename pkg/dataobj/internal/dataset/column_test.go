@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 func TestColumnBuilder_ReadWrite(t *testing.T) {
@@ -53,7 +54,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 
 	var actual []string
 
-	r := newColumnReader(col)
+	r := newColumnReader(col, bufpool.Get)
 	for {
 		var values [1]Value
 		n, err := r.Read(context.Background(), values[:])

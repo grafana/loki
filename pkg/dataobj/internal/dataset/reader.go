@@ -1,14 +1,17 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
@@ -46,10 +49,11 @@ type Reader struct {
 
 	origColumnLookup map[Column]int // Find the index of a column in opts.Columns.
 
-	dl     *readerDownloader // Bulk page download manager.
-	row    int64             // The current row being read.
-	inner  *basicReader      // Underlying reader that reads from columns.
-	ranges rowRanges         // Valid ranges to read across the entire dataset.
+	dl         *readerDownloader // Bulk page download manager.
+	row        int64             // The current row being read.
+	inner      *basicReader      // Underlying reader that reads from columns.
+	ranges     rowRanges         // Valid ranges to read across the entire dataset.
+	bufferRefs []*bytes.Buffer
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -57,6 +61,12 @@ func NewReader(opts ReaderOptions) *Reader {
 	var r Reader
 	r.Reset(opts)
 	return &r
+}
+
+func (r *Reader) getBuffer(size int) *bytes.Buffer {
+	buf := bufpool.Get(size)
+	r.bufferRefs = append(r.bufferRefs, buf)
+	return buf
 }
 
 // Read reads up to the next len(s) rows from r and stores them into s. It
@@ -161,6 +171,26 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		} else if count != passCount {
 			return n, fmt.Errorf("failed to fill rows: expected %d, got %d", n, count)
 		}
+
+	}
+
+	// Clean up pooled values
+	{
+		for i := range s[:passCount] {
+			for j := range s[i].Values {
+				switch s[i].Values[j].Type() {
+				case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+					fallthrough
+				case datasetmd.VALUE_TYPE_STRING:
+					s[i].Values[j] = cloneValue(s[i].Values[j])
+				}
+			}
+		}
+
+		for _, buf := range r.bufferRefs {
+			bufpool.Put(buf)
+		}
+		r.bufferRefs = r.bufferRefs[:0]
 	}
 
 	n += passCount
@@ -169,6 +199,26 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	// allows the caller to retry reading rows if a sporadic error occurs.
 	r.row += int64(count)
 	return n, nil
+}
+
+// cloneValue returns a new Value with the same value as v.
+// For types which use pooled buffers for initial predicate checks, cloneValue reallocates them into permanent buffers for external use.
+func cloneValue(v Value) Value {
+	val := v.any
+	switch v.Type() {
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		copied := make([]byte, v.num)
+		copy(copied, unsafe.Slice(v.any.(bytearray), v.num))
+		val = (bytearray)(unsafe.SliceData(copied))
+	case datasetmd.VALUE_TYPE_STRING:
+		copied := make([]byte, v.num)
+		copy(copied, unsafe.Slice(v.any.(stringptr), v.num))
+		val = (stringptr)(unsafe.SliceData(copied))
+	}
+	return Value{
+		num: v.num,
+		any: val,
+	}
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
@@ -322,7 +372,7 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	if r.inner == nil {
-		r.inner = newBasicReader(r.dl.AllColumns())
+		r.inner = newBasicReader(r.dl.AllColumns(), r.getBuffer)
 	} else {
 		r.inner.Reset(r.dl.AllColumns())
 	}

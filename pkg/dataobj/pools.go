@@ -13,3 +13,9 @@ var encoderPool = sync.Pool{
 		return encoding.NewEncoder(nil)
 	},
 }
+
+var bytesPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 0, 1024)
+	},
+}

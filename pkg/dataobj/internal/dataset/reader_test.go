@@ -116,6 +116,31 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+func Benchmark_Reader_ReadWithPredicate(b *testing.B) {
+	dset, columns := buildTestDataset(b)
+
+	opts := ReaderOptions{
+		Dataset: dset,
+		Columns: []Column{columns[0], columns[3]},
+		Predicate: AndPredicate{
+			Left:  EqualPredicate{Column: columns[0], Value: StringValue("Grace")},
+			Right: GreaterThanPredicate{Column: columns[3], Value: Int64Value(1985)},
+		},
+	}
+	// Create a predicate that only returns people born after 1985
+	r := NewReader(opts)
+	defer r.Close()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		rows, err := readDataset(r, 3)
+		require.NoError(b, err)
+		require.Equal(b, 1, len(rows))
+		r.Reset(opts)
+	}
+}
+
 func Test_Reader_Reset(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 	r := NewReader(ReaderOptions{Dataset: dset, Columns: columns})

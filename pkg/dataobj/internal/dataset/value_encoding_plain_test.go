@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 var testStrings = []string{
@@ -26,7 +27,7 @@ func Test_plainStringEncoder(t *testing.T) {
 
 	var (
 		enc    = newPlainStringEncoder(&buf)
-		dec    = newPlainStringDecoder(&buf)
+		dec    = newPlainStringDecoder(&buf, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -37,7 +38,7 @@ func Test_plainStringEncoder(t *testing.T) {
 	var out []string
 
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
@@ -56,7 +57,7 @@ func Test_plainStringEncoder_partialRead(t *testing.T) {
 
 	var (
 		enc    = newPlainStringEncoder(&buf)
-		dec    = newPlainStringDecoder(&oneByteReader{&buf})
+		dec    = newPlainStringDecoder(&oneByteReader{&buf}, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -67,7 +68,7 @@ func Test_plainStringEncoder_partialRead(t *testing.T) {
 	var out []string
 
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
@@ -96,7 +97,7 @@ func Benchmark_plainStringDecoder_Decode(b *testing.B) {
 
 	var (
 		enc    = newPlainStringEncoder(buf)
-		dec    = newPlainStringDecoder(buf)
+		dec    = newPlainStringDecoder(buf, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -108,7 +109,7 @@ func Benchmark_plainStringDecoder_Decode(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for {
-			_, err = dec.Decode(decBuf[:batchSize])
+			_, err = dec.Decode(decBuf[:batchSize], false)
 			if errors.Is(err, io.EOF) {
 				break
 			} else if err != nil {
@@ -123,7 +124,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 
 	var (
 		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&buf)
+		dec    = newPlainBytesDecoder(&buf, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -134,7 +135,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 	var out []string
 
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
@@ -153,7 +154,7 @@ func Test_plainBytesEncoder_partialRead(t *testing.T) {
 
 	var (
 		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&oneByteReader{&buf})
+		dec    = newPlainBytesDecoder(&oneByteReader{&buf}, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -164,7 +165,7 @@ func Test_plainBytesEncoder_partialRead(t *testing.T) {
 	var out []string
 
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
@@ -193,7 +194,7 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 
 	var (
 		enc    = newPlainBytesEncoder(buf)
-		dec    = newPlainBytesDecoder(buf)
+		dec    = newPlainBytesDecoder(buf, bufpool.Get)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -205,7 +206,7 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for {
-			_, err = dec.Decode(decBuf[:batchSize])
+			_, err = dec.Decode(decBuf[:batchSize], false)
 			if errors.Is(err, io.EOF) {
 				break
 			} else if err != nil {

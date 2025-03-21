@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -22,12 +23,15 @@ type basicReader struct {
 	buf []Value // Buffer for reading values from columns
 
 	nextRow int64
+
+	getBuffer func(size int) *bytes.Buffer
 }
 
 // newBasicReader returns a new basicReader that reads rows from the given set
 // of columns.
-func newBasicReader(set []Column) *basicReader {
+func newBasicReader(set []Column, getBuffer func(size int) *bytes.Buffer) *basicReader {
 	var br basicReader
+	br.getBuffer = getBuffer
 	br.Reset(set)
 	return &br
 }
@@ -335,7 +339,7 @@ func (pr *basicReader) Reset(columns []Column) {
 
 	// Create new readers for any additional columns.
 	for i := len(pr.readers); i < len(columns); i++ {
-		pr.readers = append(pr.readers, newColumnReader(columns[i]))
+		pr.readers = append(pr.readers, newColumnReader(columns[i], pr.getBuffer))
 		pr.columnLookup[columns[i]] = i
 	}
 

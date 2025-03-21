@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -43,7 +44,7 @@ type valueDecoder interface {
 	// Decode decodes up to len(s) values, storing the results into s. The
 	// number of decoded values is returned, followed by an error (if any).
 	// At the end of the stream, Decode returns 0, [io.EOF].
-	Decode(s []Value) (int, error)
+	Decode(s []Value, discard bool) (int, error)
 
 	// Reset discards any state and resets the valueDecoder to read from r. This
 	// permits reusing a valueDecoder rather than allocating a new one.
@@ -63,7 +64,7 @@ type (
 
 	registryEntry struct {
 		NewEncoder func(streamio.Writer) valueEncoder
-		NewDecoder func(streamio.Reader) valueDecoder
+		NewDecoder func(streamio.Reader, func(size int) *bytes.Buffer) valueDecoder
 	}
 )
 
@@ -77,7 +78,7 @@ func registerValueEncoding(
 	valueType datasetmd.ValueType,
 	encodingType datasetmd.EncodingType,
 	newEncoder func(streamio.Writer) valueEncoder,
-	newDecoder func(streamio.Reader) valueDecoder,
+	newDecoder func(streamio.Reader, func(size int) *bytes.Buffer) valueDecoder,
 ) {
 	key := registryKey{
 		Value:    valueType,
@@ -111,7 +112,7 @@ func newValueEncoder(valueType datasetmd.ValueType, encodingType datasetmd.Encod
 // newValueDecoder creates a new valueDecoder for the specified valueType and
 // encodingType. If no encoding is registered for the specified combination of
 // valueType and encodingType, vewValueDecoder returns nil and false.
-func newValueDecoder(valueType datasetmd.ValueType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
+func newValueDecoder(valueType datasetmd.ValueType, encodingType datasetmd.EncodingType, r streamio.Reader, getBuffer func(size int) *bytes.Buffer) (valueDecoder, bool) {
 	key := registryKey{
 		Value:    valueType,
 		Encoding: encodingType,
@@ -120,5 +121,5 @@ func newValueDecoder(valueType datasetmd.ValueType, encodingType datasetmd.Encod
 	if !exist {
 		return nil, false
 	}
-	return entry.NewDecoder(r), true
+	return entry.NewDecoder(r, getBuffer), true
 }

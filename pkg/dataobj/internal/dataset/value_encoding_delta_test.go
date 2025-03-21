@@ -35,7 +35,7 @@ func Test_delta(t *testing.T) {
 
 	var actual []int64
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -76,7 +76,7 @@ func Fuzz_delta(f *testing.F) {
 
 		var actual []int64
 		for {
-			n, err := dec.Decode(decBuf[:batchSize])
+			n, err := dec.Decode(decBuf[:batchSize], false)
 			if errors.Is(err, io.EOF) {
 				break
 			}

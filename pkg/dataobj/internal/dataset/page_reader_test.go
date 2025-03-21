@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 var pageReaderTestStrings = []string{
@@ -39,7 +40,7 @@ func Test_pageReader(t *testing.T) {
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Value, opts.Compression, bufpool.Get)
 	actualValues, err := readPage(pr, 4)
 	require.NoError(t, err)
 
@@ -62,7 +63,7 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Value, opts.Compression, bufpool.Get)
 	_, err := readPage(pr, 4)
 	require.NoError(t, err)
 
@@ -92,7 +93,7 @@ func Test_pageReader_Reset(t *testing.T) {
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Value, opts.Compression, bufpool.Get)
 	_, err := readPage(pr, 4)
 	require.NoError(t, err)
 
@@ -121,7 +122,7 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Value, opts.Compression, bufpool.Get)
 
 	_, err := pr.Seek(4, io.SeekStart)
 	require.NoError(t, err)

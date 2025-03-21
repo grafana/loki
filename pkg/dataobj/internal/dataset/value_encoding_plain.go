@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,13 +18,17 @@ func init() {
 		datasetmd.VALUE_TYPE_STRING,
 		datasetmd.ENCODING_TYPE_PLAIN,
 		func(w streamio.Writer) valueEncoder { return newPlainStringEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newPlainStringDecoder(r) },
+		func(r streamio.Reader, getBuffer func(size int) *bytes.Buffer) valueDecoder {
+			return newPlainStringDecoder(r, getBuffer)
+		},
 	)
 	registerValueEncoding(
 		datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		datasetmd.ENCODING_TYPE_PLAIN,
 		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newPlainBytesDecoder(r) },
+		func(r streamio.Reader, getBuffer func(size int) *bytes.Buffer) valueDecoder {
+			return newPlainBytesDecoder(r, getBuffer)
+		},
 	)
 }
 
@@ -82,14 +87,16 @@ func (enc *plainStringEncoder) Reset(w streamio.Writer) {
 
 // plainStringDecoder decodes strings from an [streamio.Reader].
 type plainStringDecoder struct {
-	r streamio.Reader
+	r           streamio.Reader
+	getBuffer   func(size int) *bytes.Buffer
+	limitReader *io.LimitedReader
 }
 
 var _ valueDecoder = (*plainStringDecoder)(nil)
 
 // newPlainStringDecoder creates a plainDecoder that reads encoded strings from r.
-func newPlainStringDecoder(r streamio.Reader) *plainStringDecoder {
-	return &plainStringDecoder{r: r}
+func newPlainStringDecoder(r streamio.Reader, getBuffer func(size int) *bytes.Buffer) *plainStringDecoder {
+	return &plainStringDecoder{r: r, getBuffer: getBuffer, limitReader: &io.LimitedReader{}}
 }
 
 // ValueType returns [datasetmd.VALUE_TYPE_BYTE_ARRAY].
@@ -105,7 +112,7 @@ func (dec *plainStringDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to len(s) values, storing the results into s. The
 // number of decoded values is returned, followed by an error (if any).
 // At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *plainStringDecoder) Decode(s []Value) (int, error) {
+func (dec *plainStringDecoder) Decode(s []Value, discard bool) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -114,7 +121,7 @@ func (dec *plainStringDecoder) Decode(s []Value) (int, error) {
 	var v Value
 
 	for i := range s {
-		v, err = dec.decode()
+		v, err = dec.decode(discard)
 		if errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
@@ -129,17 +136,27 @@ func (dec *plainStringDecoder) Decode(s []Value) (int, error) {
 }
 
 // decode decodes a string.
-func (dec *plainStringDecoder) decode() (Value, error) {
+func (dec *plainStringDecoder) decode(discard bool) (Value, error) {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
 		return StringValue(""), err
 	}
 
-	dst := make([]byte, int(sz))
-	if _, err := io.ReadFull(dec.r, dst); err != nil {
+	dst := io.Discard
+	if !discard {
+		dst = dec.getBuffer(int(sz))
+	}
+
+	dec.limitReader.N = int64(sz)
+	dec.limitReader.R = dec.r
+	if _, err := io.Copy(dst, dec.limitReader); err != nil {
 		return StringValue(""), err
 	}
-	return StringValue(string(dst)), nil
+
+	if discard {
+		return StringValue(""), nil
+	}
+	return StringValue(unsafe.String(unsafe.SliceData(dst.(*bytes.Buffer).Bytes()), int(sz))), nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from r.
@@ -199,14 +216,16 @@ func (enc *plainBytesEncoder) Reset(w streamio.Writer) {
 
 // plainBytesDecoder decodes byte arrays from an [streamio.Reader].
 type plainBytesDecoder struct {
-	r streamio.Reader
+	r           streamio.Reader
+	getBuffer   func(size int) *bytes.Buffer
+	limitReader *io.LimitedReader
 }
 
 var _ valueDecoder = (*plainBytesDecoder)(nil)
 
 // newPlainBytesDecoder creates a plainDecoder that reads encoded strings from r.
-func newPlainBytesDecoder(r streamio.Reader) *plainBytesDecoder {
-	return &plainBytesDecoder{r: r}
+func newPlainBytesDecoder(r streamio.Reader, getBuffer func(size int) *bytes.Buffer) *plainBytesDecoder {
+	return &plainBytesDecoder{r: r, getBuffer: getBuffer, limitReader: &io.LimitedReader{}}
 }
 
 // ValueType returns [datasetmd.VALUE_TYPE_BYTE_ARRAY].
@@ -222,7 +241,7 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to len(s) values, storing the results into s. The
 // number of decoded values is returned, followed by an error (if any).
 // At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
+func (dec *plainBytesDecoder) Decode(s []Value, discard bool) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -231,7 +250,7 @@ func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
 	var v Value
 
 	for i := range s {
-		v, err = dec.decode()
+		v, err = dec.decode(discard)
 		if errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
@@ -246,17 +265,27 @@ func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
 }
 
 // decode decodes a string.
-func (dec *plainBytesDecoder) decode() (Value, error) {
+func (dec *plainBytesDecoder) decode(discard bool) (Value, error) {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
 		return ByteArrayValue([]byte{}), err
 	}
 
-	dst := make([]byte, int(sz))
-	if _, err := io.ReadFull(dec.r, dst); err != nil {
+	dst := io.Discard
+	if !discard {
+		dst = dec.getBuffer(int(sz))
+	}
+
+	dec.limitReader.N = int64(sz)
+	dec.limitReader.R = dec.r
+	if _, err := io.Copy(dst, dec.limitReader); err != nil {
 		return ByteArrayValue([]byte{}), err
 	}
-	return ByteArrayValue(dst), nil
+
+	if discard {
+		return ByteArrayValue([]byte{}), nil
+	}
+	return ByteArrayValue(dst.(*bytes.Buffer).Bytes()), nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from r.

@@ -200,7 +200,9 @@ func BenchmarkLogsReader(b *testing.B) {
 	builder, err := dataobj.NewBuilder(opts)
 	require.NoError(b, err)
 
-	for i := 0; i < 10000; i++ {
+	iterations := 10000
+
+	for i := 0; i < iterations; i++ {
 		err := builder.Append(push.Stream{
 			Labels: "{cluster=\"test\",app=\"bar\"}",
 			Entries: []push.Entry{
@@ -208,7 +210,7 @@ func BenchmarkLogsReader(b *testing.B) {
 					Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 					Line:      "hello world " + strconv.Itoa(i),
 					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "123"},
+						{Name: "trace_id", Value: strconv.Itoa(i % 100)},
 						{Name: "pod", Value: "pod-abcd"},
 					},
 				},
@@ -227,27 +229,35 @@ func BenchmarkLogsReader(b *testing.B) {
 	require.NoError(b, err)
 	require.Equal(b, 1, md.LogsSections)
 
+	pred := dataobj.MetadataMatcherPredicate{
+		Key:   "trace_id",
+		Value: "3",
+	}
 	r := dataobj.NewLogsReader(obj, 0)
+	// Set a predicate that matches 1% of logs
+	r.SetPredicate(pred)
 
 	var (
 		recs = make([]dataobj.Record, 128)
 		ctx  = context.Background()
 	)
-	b.ResetTimer()
-	b.ReportAllocs()
-	// Read all the logs we just wrote
-	cnt := 0
-	for i := 0; i < b.N; i++ {
-		for {
-			n, err := r.Read(ctx, recs)
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
+
+	func() {
+		b.ResetTimer()
+		cnt := 0
+		for i := 0; i < b.N; i++ {
+			for {
+				n, err := r.Read(ctx, recs)
+				if n == 0 && errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(b, err)
+				cnt += n
 			}
-			require.NoError(b, err)
-			cnt += n
+			r.Reset(obj, 0)
+			r.SetPredicate(pred)
+			require.Equal(b, 100, cnt)
+			cnt = 0
 		}
-		r.Reset(obj, 0)
-		require.Equal(b, 10000, cnt)
-		cnt = 0
-	}
+	}()
 }

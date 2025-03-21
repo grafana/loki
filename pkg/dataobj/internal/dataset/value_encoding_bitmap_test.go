@@ -29,7 +29,7 @@ func Test_bitmap(t *testing.T) {
 	t.Logf("Buffer size: %d", buf.Len())
 
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -57,7 +57,7 @@ func Test_bitmap_bitpacking(t *testing.T) {
 
 	var actual []uint64
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -88,7 +88,7 @@ func Test_bitmap_bitpacking_partial(t *testing.T) {
 
 	var actual []uint64
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
+		n, err := dec.Decode(decBuf[:batchSize], false)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -139,7 +139,7 @@ func Fuzz_bitmap(f *testing.F) {
 
 		var actual []uint64
 		for {
-			n, err := dec.Decode(decBuf[:batchSize])
+			n, err := dec.Decode(decBuf[:batchSize], false)
 			if errors.Is(err, io.EOF) {
 				break
 			}

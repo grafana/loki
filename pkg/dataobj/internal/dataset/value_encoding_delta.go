@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,9 @@ func init() {
 		datasetmd.VALUE_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
+		func(r streamio.Reader, _ func(size int) *bytes.Buffer) valueDecoder {
+			return newDeltaDecoder(r)
+		},
 	)
 }
 
@@ -97,7 +100,7 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to len(s) values, storing the results into s. The
 // number of decoded values is returned, followed by an error (if any).
 // At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *deltaDecoder) Decode(s []Value) (int, error) {
+func (dec *deltaDecoder) Decode(s []Value, _ bool) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}

@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,9 @@ func init() {
 		datasetmd.VALUE_TYPE_UINT64,
 		datasetmd.ENCODING_TYPE_BITMAP,
 		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newBitmapDecoder(r) },
+		func(r streamio.Reader, _ func(size int) *bytes.Buffer) valueDecoder {
+			return newBitmapDecoder(r)
+		},
 	)
 }
 
@@ -504,7 +507,7 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to len(s) values, storing the results into s. The
 // number of decoded values is returned, followed by an error (if any).
 // At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *bitmapDecoder) Decode(s []Value) (int, error) {
+func (dec *bitmapDecoder) Decode(s []Value, _ bool) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}

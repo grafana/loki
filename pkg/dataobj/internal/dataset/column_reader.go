@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -22,12 +23,15 @@ type columnReader struct {
 	reader *pageReader
 
 	nextRow int64
+
+	getBuffer func(size int) *bytes.Buffer
 }
 
 // newColumnReader creates a new column reader for the given column.
-func newColumnReader(column Column) *columnReader {
+func newColumnReader(column Column, getBuffer func(size int) *bytes.Buffer) *columnReader {
 	var cr columnReader
 	cr.Reset(column)
+	cr.getBuffer = getBuffer
 	return &cr
 }
 
@@ -55,7 +59,7 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 
 			switch cr.reader {
 			case nil:
-				cr.reader = newPageReader(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
+				cr.reader = newPageReader(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression, cr.getBuffer)
 			default:
 				cr.reader.Reset(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
 			}

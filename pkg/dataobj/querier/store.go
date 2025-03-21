@@ -596,7 +596,7 @@ func streamPredicate(matchers []*labels.Matcher, start, end time.Time) dataobj.S
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
-		IncludeEnd:   true,
+		IncludeEnd:   false,
 	}
 
 	// If there are any matchers, combine them with an AND predicate
