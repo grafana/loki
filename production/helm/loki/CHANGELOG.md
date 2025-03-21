@@ -15,8 +15,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.30.0
 
-- [BUGFIX] Added missing `command` spec definition for the `ruler`, `querier` and `tableManager`
-- [CHANGE] Added support for `command` spec definition for the `query-scheduler`, `backend`, `read`, `write`, `table-manager` or single binary
+- [BUGFIX] Added missing `command` spec definition for the `ruler`, `querier` and `table-manager`
+- [CHANGE] Added support for `command` spec definition for the `query-scheduler`, `backend`, `read`, `write` or single binary
 
 ## 6.29.0
 
