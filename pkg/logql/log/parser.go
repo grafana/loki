@@ -129,7 +129,7 @@ func (j *JSONParser) nextKeyPrefix(key []byte) bool {
 
 	sanitized := j.buildSanitizedPrefixFromBuffer()
 	return j.lbs.ParserLabelHints().ShouldExtractPrefix(
-		sanitized,
+		string(sanitized),
 	)
 }
 
@@ -167,17 +167,17 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	j.prefixBuffer = append(j.prefixBuffer, key)
 
 	sanitized := j.buildSanitizedPrefixFromBuffer()
-	keyString, ok := j.keys.Get([]byte(sanitized), func() (string, bool) {
-		if j.lbs.BaseHas(sanitized) {
+	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
+		if j.lbs.BaseHas(string(sanitized)) {
 			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
 		}
 
 		keyPrefix := j.buildSanitizedPrefixFromBuffer()
-		if !j.parserHints.ShouldExtract(keyPrefix) {
+		if !j.parserHints.ShouldExtract(string(keyPrefix)) {
 			return "", false
 		}
 
-		return keyPrefix, true
+		return string(keyPrefix), true
 	})
 
 	if j.captureJSONPath {
@@ -199,7 +199,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	return nil
 }
 
-func (j *JSONParser) buildSanitizedPrefixFromBuffer() string {
+func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	j.santizedPrefixBuffer = j.santizedPrefixBuffer[:0]
 
 	for i, part := range j.prefixBuffer {
@@ -213,8 +213,7 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() string {
 		j.santizedPrefixBuffer = appendSanitized(j.santizedPrefixBuffer, part)
 	}
 
-	result := string(j.santizedPrefixBuffer)
-	return result
+	return j.santizedPrefixBuffer
 }
 
 func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
