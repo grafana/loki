@@ -194,6 +194,17 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
+	// test structured metadata with disallowed label values
+	withBadLabelValue := append(structuredMetadata, labels.Label{Name: "z_badValue", Value: "test�"})
+	expectedStructuredMetadata = append(structuredMetadata, labels.Label{Name: "z_badValue", Value: "test "})
+	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
+
+	_, lbr, matches = p.ForStream(lbs).Process(0, []byte(""), withBadLabelValue...)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedStructuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories]labels.Labels{
@@ -631,10 +642,16 @@ func Benchmark_Pipeline(b *testing.B) {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.Label{Name: "valid_name", Value: "foo"})
 		}
 	})
-	b.Run("pipeline string with invalid structured metadata", func(b *testing.B) {
+	b.Run("pipeline string with invalid structured metadata name", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.Label{Name: "invalid-name", Value: "foo"}, labels.Label{Name: "other-invalid-name", Value: "foo"})
+		}
+	})
+	b.Run("pipeline string with invalid structured metadata value", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.Label{Name: "valid_name", Value: "foo"}, labels.Label{Name: "valid_name_2", Value: "foo�"})
 		}
 	})
 
