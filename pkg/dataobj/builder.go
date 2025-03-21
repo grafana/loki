@@ -166,7 +166,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 			PageSizeHint:     int(cfg.TargetPageSize),
 			BufferSize:       int(cfg.BufferSize),
 			SectionSize:      int(cfg.TargetSectionSize),
-			StripeMergeLimit: int(cfg.SectionStripeMergeLimit),
+			StripeMergeLimit: cfg.SectionStripeMergeLimit,
 		}),
 	}, nil
 }
