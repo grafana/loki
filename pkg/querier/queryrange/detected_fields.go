@@ -406,7 +406,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	line := entry.Line
 	parser := "json"
-	jsonParser := logql_log.NewJSONParser()
+	jsonParser := logql_log.NewJSONParser(true)
 	_, jsonSuccess := jsonParser.Process(0, []byte(line), lblBuilder)
 	if !jsonSuccess || lblBuilder.HasErr() {
 		lblBuilder.Reset()

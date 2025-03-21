@@ -192,7 +192,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		j := NewJSONParser()
+		j := NewJSONParser(true)
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
@@ -234,7 +234,7 @@ func TestKeyShortCircuit(t *testing.T) {
 		p                    Stage
 		LabelFilterParseHint *labels.Matcher
 	}{
-		{"json", jsonLine, NewJSONParser(), labels.MustNewMatcher(labels.MatchEqual, "response_latency_seconds", "nope")},
+		{"json", jsonLine, NewJSONParser(false), labels.MustNewMatcher(labels.MatchEqual, "response_latency_seconds", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), labels.MustNewMatcher(labels.MatchEqual, "pod", "nope")},
 		{"logfmt", logfmtLine, NewLogfmtParser(false, false), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
@@ -275,7 +275,7 @@ func TestLabelShortCircuit(t *testing.T) {
 		p    Stage
 		line []byte
 	}{
-		{"json", NewJSONParser(), simpleJsn},
+		{"json", NewJSONParser(false), simpleJsn},
 		{"logfmt", NewLogfmtParser(false, false), logFmt},
 		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
@@ -721,8 +721,8 @@ func Benchmark_Parser(b *testing.B) {
 		LabelParseHints      []string //  hints to reduce label extractions.
 		LabelFilterParseHint *labels.Matcher
 	}{
-		{"json", jsonLine, NewJSONParser(), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
-		{"jsonParser-not json line", nginxline, NewJSONParser(), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+		{"json", jsonLine, NewJSONParser(false), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+		{"jsonParser-not json line", nginxline, NewJSONParser(false), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
 		{"unpack-not json line", nginxline, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
 		{"logfmt", logfmtLine, NewLogfmtParser(false, false), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
@@ -790,7 +790,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 		p    Stage
 		line []byte
 	}{
-		{"json", NewJSONParser(), simpleJsn},
+		{"json", NewJSONParser(false), simpleJsn},
 		{"logfmt", NewLogfmtParser(false, false), logFmt},
 		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
