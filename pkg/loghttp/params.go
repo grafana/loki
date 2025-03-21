@@ -165,7 +165,26 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 		return def, nil
 	}
 
+	// Try RFC3339 format first
+	if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return ts, nil
+	}
+
 	if strings.Contains(value, ".") {
+		// Validate that the timestamp only contains digits and a single decimal point
+		// This will reject scientific notation like 1.5e9
+		decimalCount := 0
+		for _, char := range value {
+			if char == '.' {
+				decimalCount++
+				if decimalCount > 1 {
+					return time.Time{}, fmt.Errorf("invalid timestamp format: %s (must contain only digits and at most one decimal point)", value)
+				}
+			} else if char < '0' || char > '9' {
+				return time.Time{}, fmt.Errorf("invalid timestamp format: %s (must contain only digits and at most one decimal point)", value)
+			}
+		}
+
 		if t, err := strconv.ParseFloat(value, 64); err == nil {
 			s, ns := math.Modf(t)
 			ns = math.Round(ns*1000) / 1000
@@ -174,9 +193,6 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	}
 	nanos, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
-			return ts, nil
-		}
 		return time.Time{}, err
 	}
 	if len(value) <= 10 {
