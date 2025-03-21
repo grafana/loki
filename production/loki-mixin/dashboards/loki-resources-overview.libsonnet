@@ -1,12 +1,12 @@
 (import 'dashboard-utils.libsonnet') {
-  local read_pod_matcher = 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher,
-  local read_job_matcher = '%s-read' % $._config.ssd.pod_prefix_matcher,
+  local read_pod_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher,
+  local read_job_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else '%s-read' % $._config.ssd.pod_prefix_matcher,
 
-  local write_pod_matcher = 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher,
-  local write_job_matcher = '%s-write' % $._config.ssd.pod_prefix_matcher,
+  local write_pod_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher,
+  local write_job_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else '%s-write' % $._config.ssd.pod_prefix_matcher,
 
-  local backend_pod_matcher = 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher,
-  local backend_job_matcher = '%s-backend' % $._config.ssd.pod_prefix_matcher,
+  local backend_pod_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher,
+  local backend_job_matcher = if $._config.sb.enabled then 'container="loki", pod=~"%s.*"' %$._config.sb.pod_matcher else '%s-backend' % $._config.ssd.pod_prefix_matcher,
 
   // This dashboard is for the single scalable deployment only and it :
   // - replaces the loki-reads-resources dashboards

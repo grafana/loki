@@ -1,0 +1,1102 @@
+{
+      "annotations": {
+         "list": [ ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 0,
+      "hideControls": false,
+      "iteration": 1583185057230,
+      "links": [
+         {
+            "asDropdown": true,
+            "icon": "external link",
+            "includeVars": true,
+            "keepTime": true,
+            "tags": [
+               "loki"
+            ],
+            "targetBlank": false,
+            "title": "Loki Dashboards",
+            "type": "dashboards"
+         }
+      ],
+      "panels": [
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 0,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 35,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(go_goroutines{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"})",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "goroutines",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "s"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 3,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 41,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(go_gc_duration_seconds{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}) by (quantile)",
+                  "legendFormat": "{{quantile}}",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "gc duration",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 6,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 36,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"}[$__rate_interval]))",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "cpu",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "bytes"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 9,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 40,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(container_memory_working_set_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"})",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "working set",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "bytes",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "binBps"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 12,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 38,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(rate(container_network_transmit_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[$__rate_interval]))",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "tx",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "bytes",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "binBps"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 15,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 39,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(rate(container_network_receive_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\"}[$__rate_interval]))",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "rx",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "decbytes",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 18,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 37,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "increase(kube_pod_container_status_last_terminated_reason{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"}[30m]) > 0",
+                  "legendFormat": "{{reason}}",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "restarts",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "bytes",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "ops"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 4,
+               "w": 3,
+               "x": 21,
+               "y": 0
+            },
+            "hiddenSeries": false,
+            "id": 42,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [ ],
+            "spaceLength": 10,
+            "stack": false,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\", exported_pod=~\"$deployment.*\", exported_pod=~\"$pod\", container=~\"$container\"}[$__rate_interval])) by (level)",
+                  "legendFormat": "{{level}}",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "bad words",
+            "tooltip": {
+               "shared": true,
+               "sort": 0,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": true,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "bytes",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "aliasColors": { },
+            "bars": false,
+            "dashLength": 10,
+            "dashes": false,
+            "datasource": "$loki_datasource",
+            "fieldConfig": {
+               "defaults": {
+                  "unit": "ops"
+               }
+            },
+            "fill": 1,
+            "fillGradient": 0,
+            "gridPos": {
+               "h": 7,
+               "w": 24,
+               "x": 0,
+               "y": 4
+            },
+            "hiddenSeries": false,
+            "id": 31,
+            "legend": {
+               "avg": false,
+               "current": false,
+               "max": false,
+               "min": false,
+               "show": false,
+               "total": false,
+               "values": false
+            },
+            "lines": true,
+            "linewidth": 1,
+            "nullPointMode": "null",
+            "options": {
+               "dataLinks": [ ]
+            },
+            "percentage": false,
+            "pointradius": 2,
+            "points": false,
+            "renderer": "flot",
+            "seriesOverrides": [
+               {
+                  "alias": "warn",
+                  "color": "#FF780A"
+               },
+               {
+                  "alias": "error",
+                  "color": "#E02F44"
+               },
+               {
+                  "alias": "info",
+                  "color": "#56A64B"
+               },
+               {
+                  "alias": "debug",
+                  "color": "#3274D9"
+               }
+            ],
+            "spaceLength": 10,
+            "stack": true,
+            "steppedLine": false,
+            "targets": [
+               {
+                  "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" | __error__=\"\" [$__auto])) by (level)",
+                  "intervalFactor": 3,
+                  "legendFormat": "{{level}}",
+                  "refId": "A"
+               }
+            ],
+            "thresholds": [ ],
+            "timeFrom": null,
+            "timeRegions": [ ],
+            "timeShift": null,
+            "title": "Log Rate",
+            "tooltip": {
+               "shared": true,
+               "sort": 2,
+               "value_type": "individual"
+            },
+            "type": "timeseries",
+            "xaxis": {
+               "buckets": null,
+               "mode": "time",
+               "name": null,
+               "show": false,
+               "values": [ ]
+            },
+            "yaxes": [
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": true
+               },
+               {
+                  "format": "short",
+                  "label": null,
+                  "logBase": 1,
+                  "max": null,
+                  "min": null,
+                  "show": false
+               }
+            ],
+            "yaxis": {
+               "align": false,
+               "alignLevel": null
+            }
+         },
+         {
+            "datasource": "$loki_datasource",
+            "gridPos": {
+               "h": 19,
+               "w": 24,
+               "x": 0,
+               "y": 6
+            },
+            "id": 29,
+            "maxDataPoints": "",
+            "options": {
+               "showLabels": false,
+               "showTime": true,
+               "sortOrder": "Descending",
+               "wrapLogMessage": true
+            },
+            "targets": [
+               {
+                  "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\"} | logfmt | level=\"$level\" |= \"$filter\"",
+                  "refId": "A"
+               }
+            ],
+            "timeFrom": null,
+            "timeShift": null,
+            "title": "Logs",
+            "type": "logs"
+         }
+      ],
+      "refresh": "10s",
+      "rows": [ ],
+      "schemaVersion": 14,
+      "style": "dark",
+      "tags": [
+         "loki"
+      ],
+      "templating": {
+         "list": [
+            {
+               "current": {
+                  "text": "default",
+                  "value": "default"
+               },
+               "hide": 0,
+               "label": "Data source",
+               "name": "datasource",
+               "options": [ ],
+               "query": "prometheus",
+               "refresh": 1,
+               "regex": "",
+               "type": "datasource"
+            },
+            {
+               "allValue": null,
+               "current": {
+                  "text": "prod",
+                  "value": "prod"
+               },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": "cluster",
+               "multi": false,
+               "name": "cluster",
+               "options": [ ],
+               "query": "label_values(loki_build_info, cluster)",
+               "refresh": 1,
+               "regex": "",
+               "sort": 2,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "allValue": null,
+               "current": {
+                  "text": "prod",
+                  "value": "prod"
+               },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": "namespace",
+               "multi": false,
+               "name": "namespace",
+               "options": [ ],
+               "query": "label_values(loki_build_info{cluster=~\"$cluster\"}, namespace)",
+               "refresh": 1,
+               "regex": "",
+               "sort": 2,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "hide": 0,
+               "label": null,
+               "name": "loki_datasource",
+               "options": [ ],
+               "query": "loki",
+               "refresh": 1,
+               "regex": "",
+               "type": "datasource"
+            },
+            {
+               "allValue": null,
+               "current": { },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": null,
+               "multi": false,
+               "name": "deployment",
+               "options": [ ],
+               "query": "label_values(kube_deployment_created{cluster=\"$cluster\", namespace=\"$namespace\"}, deployment)",
+               "refresh": 0,
+               "regex": "",
+               "sort": 1,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "allValue": null,
+               "current": { },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": null,
+               "multi": false,
+               "name": "pod",
+               "options": [ ],
+               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\"}, pod)",
+               "refresh": 0,
+               "regex": "",
+               "sort": 1,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "allValue": null,
+               "current": { },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": false,
+               "label": null,
+               "multi": false,
+               "name": "container",
+               "options": [ ],
+               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$pod\", pod=~\"$deployment.*\"}, container)",
+               "refresh": 0,
+               "regex": "",
+               "sort": 1,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
+            },
+            {
+               "allValue": null,
+               "current": {
+                  "selected": true,
+                  "text": "",
+                  "value": ""
+               },
+               "hide": 0,
+               "includeAll": false,
+               "label": "",
+               "multi": true,
+               "name": "level",
+               "options": [
+                  {
+                     "selected": false,
+                     "text": "debug",
+                     "value": "debug"
+                  },
+                  {
+                     "selected": false,
+                     "text": "info",
+                     "value": "info"
+                  },
+                  {
+                     "selected": false,
+                     "text": "warn",
+                     "value": "warn"
+                  },
+                  {
+                     "selected": false,
+                     "text": "error",
+                     "value": "error"
+                  }
+               ],
+               "query": "debug,info,warn,error",
+               "refresh": 0,
+               "type": "custom"
+            },
+            {
+               "current": {
+                  "selected": false,
+                  "text": "",
+                  "value": ""
+               },
+               "label": "LogQL Filter",
+               "name": "filter",
+               "query": "",
+               "type": "textbox"
+            }
+         ]
+      },
+      "time": {
+         "from": "now-1h",
+         "to": "now"
+      },
+      "timepicker": {
+         "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
+         ],
+         "time_options": [
+            "5m",
+            "15m",
+            "1h",
+            "6h",
+            "12h",
+            "24h",
+            "2d",
+            "7d",
+            "30d"
+         ]
+      },
+      "timezone": "utc",
+      "title": "Loki / Logs",
+      "uid": "logs",
+      "version": 0
+   }
