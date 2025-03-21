@@ -489,7 +489,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "level", "info")
 	filter := NewStringLabelFilter(matcher)
 	stages := []Stage{
-		NewJSONParser(),
+		NewJSONParser(false),
 		filter,
 	}
 	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false)

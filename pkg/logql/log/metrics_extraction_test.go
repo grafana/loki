@@ -265,7 +265,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 }
 
 func Test_Extract_ExpectedLabels(t *testing.T) {
-	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser()}, NoopStage))
+	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser(false)}, NoopStage))
 
 	f, lbs, ok := ex.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, `{"duration":"20ms","foo":"json"}`)
 	require.True(t, ok)

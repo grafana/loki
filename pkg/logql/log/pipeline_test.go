@@ -327,7 +327,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 			"drop __error__",
 			[]Stage{
 				NewLogfmtParser(true, false),
-				NewJSONParser(),
+				NewJSONParser(false),
 				NewDropLabels([]NamedLabelMatcher{
 					{
 						nil,
@@ -364,7 +364,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 			"drop __error__ with matching value",
 			[]Stage{
 				NewLogfmtParser(true, false),
-				NewJSONParser(),
+				NewJSONParser(false),
 				NewDropLabels([]NamedLabelMatcher{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
@@ -593,7 +593,7 @@ func Benchmark_Pipeline(b *testing.B) {
 			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
-		NewJSONParser(),
+		NewJSONParser(false),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
@@ -735,11 +735,11 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkJSONParser(b *testing.B) {
-	jsonBenchmark(b, NewJSONParser())
+	jsonBenchmark(b, NewJSONParser(false))
 }
 
 func BenchmarkJSONParserInvalidLine(b *testing.B) {
-	invalidJSONBenchmark(b, NewJSONParser())
+	invalidJSONBenchmark(b, NewJSONParser(false))
 }
 
 func BenchmarkJSONExpressionParser(b *testing.B) {

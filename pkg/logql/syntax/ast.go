@@ -752,7 +752,7 @@ func (e *LineParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
 func (e *LineParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
-		return log.NewJSONParser(), nil
+		return log.NewJSONParser(false), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
