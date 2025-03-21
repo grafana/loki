@@ -77,8 +77,9 @@ type UniversalOptions struct {
 	// default: false
 	DisableIdentity bool
 
-	IdentitySuffix   string
-	UnstableResp3    bool
+	IdentitySuffix string
+	UnstableResp3  bool
+
 }
 
 // Cluster returns cluster options created from the universal options.
