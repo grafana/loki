@@ -48,6 +48,7 @@ type OTLPConfig struct {
 
 type GlobalOTLPConfig struct {
 	DefaultOTLPResourceAttributesAsIndexLabels []string `yaml:"default_resource_attributes_as_index_labels"`
+	RecordScopeUsage                           bool     `yaml:"record_scope_usage,omitempty" doc:"description=Record scope usage"`
 }
 
 // RegisterFlags registers distributor-related flags.

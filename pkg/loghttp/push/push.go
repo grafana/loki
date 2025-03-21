@@ -60,6 +60,12 @@ var (
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
+
+	scopeUsage = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_scope_usage_total",
+		Help:      "The total number of scopes used per tenant.",
+	}, []string{"tenant", "telemetry_sdk_language", "instrumentation_scope_name", "instrumentation_scope_version"})
 )
 
 const (
@@ -103,7 +109,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger, recordUsage bool) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -116,6 +122,7 @@ func NewPushStats() *Stats {
 		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
 		PolicyNumLines:                  map[string]int64{},
 		ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{},
+		ScopeUsage:                      map[string]map[string]map[string]int64{},
 	}
 }
 
@@ -129,6 +136,7 @@ type Stats struct {
 	MostRecentEntryTimestamp        time.Time
 	ContentType                     string
 	ContentEncoding                 string
+	ScopeUsage                      map[string]map[string]map[string]int64
 
 	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
@@ -137,8 +145,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, recordUsage bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger, recordUsage)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
@@ -183,6 +191,14 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	}
 	linesReceivedStats.Inc(totalNumLines)
 
+	for lang, scopes := range pushStats.ScopeUsage {
+		for scope, versions := range scopes {
+			for version, count := range versions {
+				scopeUsage.WithLabelValues(userID, lang, scope, version).Add(float64(count))
+			}
+		}
+	}
+
 	logValues := []interface{}{
 		"msg", "push request parsed",
 		"path", r.URL.Path,
@@ -203,7 +219,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger, _ bool) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
