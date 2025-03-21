@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.30.0
+
+- [BUGFIX] Added missing `command` spec definition for the `ruler`, `querier` and `tableManager`
+- [CHANGE] Added support for `command` spec definition for the `query-scheduler`, `backend`, `read`, `write`, `table-manager` or single binary
+
 ## 6.29.0
 
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
