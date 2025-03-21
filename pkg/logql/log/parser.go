@@ -55,17 +55,17 @@ type JSONParser struct {
 	lbs             *LabelsBuilder
 	captureJSONPath bool
 
-	keys              internedStringSet
-	parserHints       ParserHint
+	keys                 internedStringSet
+	parserHints          ParserHint
 	santizedPrefixBuffer []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
-		prefixBuffer:      [][]byte{},
-		keys:              internedStringSet{},
-		captureJSONPath:   captureJSONPath,
+		prefixBuffer:         [][]byte{},
+		keys:                 internedStringSet{},
+		captureJSONPath:      captureJSONPath,
 		santizedPrefixBuffer: make([]byte, 0, 64),
 	}
 }
@@ -168,7 +168,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	sanitized := j.buildSanitizedPrefixFromBuffer()
 	keyString, ok := j.keys.Get([]byte(sanitized), func() (string, bool) {
-		if j.lbs.BaseHas(string(sanitized)) {
+		if j.lbs.BaseHas(sanitized) {
 			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
 		}
 
@@ -177,7 +177,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			return "", false
 		}
 
-		return string(keyPrefix), true
+		return keyPrefix, true
 	})
 
 	if j.captureJSONPath {
