@@ -174,7 +174,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return string(keyPrefix), true
 	})
 
-	jsonPath := j.buildJsonPathFromPrefixBuffer()
+	jsonPath := j.buildJSONPathFromPrefixBuffer()
 
 	// reset the prefix position
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
@@ -207,11 +207,9 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	return sanitized
 }
 
-func (j *JSONParser) buildJsonPathFromPrefixBuffer() []string {
+func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
-	for _, part := range j.prefixBuffer {
-		jsonPath = append(jsonPath, part)
-	}
+	jsonPath = append(jsonPath, j.prefixBuffer...)
 
 	return jsonPath
 }

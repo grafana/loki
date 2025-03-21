@@ -17,7 +17,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		line         []byte
 		lbs          labels.Labels
 		want         labels.Labels
-		wantJsonPath map[string][]string
+		wantJSONPath map[string][]string
 		hints        ParserHint
 	}{
 		{
@@ -206,8 +206,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 			}
 
 			// Check JSON paths if provided
-			if len(tt.wantJsonPath) > 0 {
-				for k, parts := range tt.wantJsonPath {
+			if len(tt.wantJSONPath) > 0 {
+				for k, parts := range tt.wantJSONPath {
 					require.Equal(t, parts, b.GetJSONPath(k), "incorrect json path parts for key %s", k)
 				}
 			}
