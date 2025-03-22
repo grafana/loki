@@ -54,9 +54,10 @@ func TestLogsReader(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -78,9 +79,10 @@ func TestLogsReader_MatchStreams(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -102,9 +104,10 @@ func TestLogsReader_AddMetadataMatcher(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -126,9 +129,10 @@ func TestLogsReader_AddMetadataFilter(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -195,6 +199,8 @@ func BenchmarkLogsReader(b *testing.B) {
 		TargetSectionSize: 4 * 1024 * 1024,
 		BufferSize:        16 * 1024 * 1024,
 		TargetPageSize:    2 * 1024 * 1024,
+
+		SectionStripeMergeLimit: 2,
 	}
 
 	builder, err := dataobj.NewBuilder(opts)

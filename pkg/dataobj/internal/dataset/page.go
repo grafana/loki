@@ -12,6 +12,8 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
@@ -113,6 +115,8 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
 		zr := zstdPool.Get().(*zstdWrapper)
 		if err := zr.Reset(compressedValuesReader); err != nil {
+			failedZstdResetsTotal.Inc()
+
 			// [zstd.Decoder.Reset] can fail if the underlying reader got closed.
 			// This shouldn't happen in practice (we only close the reader when the
 			// wrapper has been released from the pool), but we handle this for
@@ -120,9 +124,13 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			// directly.
 			zr = zstdPool.New().(*zstdWrapper)
 		}
+
+		getZstdDecodersTotal.Inc()
+
 		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
 			_ = zr.Reset(nil) // Allow releasing the buffer.
 			zstdPool.Put(zr)
+			putZstdDecodersTotal.Inc()
 			return nil
 		}}, nil
 
@@ -155,6 +163,50 @@ func (c *closerFunc) Close() error { return c.onClose() }
 // underlying decoder.
 type zstdWrapper struct{ *zstd.Decoder }
 
+// Metrics to help track whether Zstd decoders are being released back into the
+// pool properly and to ensure that their goroutines are being cleaned up.
+var (
+	getZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_pool_gets_total",
+
+		Help: "Total number of Zstd decoders retrieved from the pool.",
+	})
+
+	failedZstdResetsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_failed_resets_total",
+
+		Help: "Total number of Zstd decoders that failed to reset.",
+	})
+
+	putZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_pool_puts_total",
+
+		Help: "Total number of Zstd decoders returned to the pool.",
+	})
+
+	createdZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_created_total",
+
+		Help: "Total number of Zstd decoders created.",
+	})
+
+	closedZstdDecodersTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki",
+		Subsystem: "dataobj",
+		Name:      "dataset_zstd_decoders_closed_total",
+
+		Help: "Total number of Zstd decoders closed.",
+	})
+)
+
 var zstdPool = sync.Pool{
 	New: func() any {
 		// Despite the name of zstd.WithDecoderLowmem implying we're using more
@@ -168,8 +220,12 @@ var zstdPool = sync.Pool{
 
 		// See doc comment on [zstdWrapper] for why we're doing this.
 		zw := &zstdWrapper{zr}
-		runtime.AddCleanup(zw, func(zr *zstd.Decoder) { zr.Close() }, zr)
+		runtime.AddCleanup(zw, func(zr *zstd.Decoder) {
+			zr.Close()
+			closedZstdDecodersTotal.Inc()
+		}, zr)
 
+		createdZstdDecodersTotal.Inc()
 		return zw
 	},
 }

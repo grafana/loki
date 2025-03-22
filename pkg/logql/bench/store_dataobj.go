@@ -59,6 +59,8 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
 		BufferSize:        16 * 1024 * 1024,  // 16MB
+
+		SectionStripeMergeLimit: 2,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)

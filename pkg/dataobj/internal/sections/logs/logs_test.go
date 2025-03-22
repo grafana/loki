@@ -36,9 +36,10 @@ func Test(t *testing.T) {
 	}
 
 	opts := logs.Options{
-		PageSizeHint: 1024,
-		BufferSize:   256,
-		SectionSize:  4096,
+		PageSizeHint:     1024,
+		BufferSize:       256,
+		SectionSize:      4096,
+		StripeMergeLimit: 2,
 	}
 
 	tracker := logs.New(nil, opts)

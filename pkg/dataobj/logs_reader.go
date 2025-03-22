@@ -235,6 +235,15 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	// call to Read.
 }
 
+// Close closes the LogsReader and releases any resources it holds. Closed
+// LogsReaders can be reused by calling [LogsReader.Reset].
+func (r *LogsReader) Close() error {
+	if r.reader != nil {
+		return r.reader.Close()
+	}
+	return nil
+}
+
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
 	var res dataset.Predicate
 

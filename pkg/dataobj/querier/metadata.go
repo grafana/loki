@@ -185,6 +185,7 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	}
 	defer func() {
 		for _, reader := range readers {
+			_ = reader.Close()
 			streamReaderPool.Put(reader)
 		}
 	}()

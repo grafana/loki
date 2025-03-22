@@ -69,6 +69,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			Dataset: dset,
 			Columns: columns,
 		})
+		defer r.Close()
 
 		var rows [1]dataset.Row
 		for {
