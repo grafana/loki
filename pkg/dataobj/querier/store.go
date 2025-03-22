@@ -19,10 +19,12 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -235,7 +237,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		IncludeEnd:   false,
 	}
 
-	p, expr := buildLogsPredicateFromPipeline(selector)
+	p, expr := buildLogMessagePredicateFromPipeline(selector)
 	if p != nil {
 		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 			Left:  logsPredicate,
@@ -243,6 +245,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		}
 	}
 	req.Plan.AST = expr
+	level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", selector.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
 
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.EntryIterator, len(shardedObjects))
@@ -254,7 +257,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req, logger)
 			if err != nil {
 				return err
 			}
@@ -286,7 +289,6 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 	}
 
 	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
-	// TODO: support more predicates and combine with log.Pipeline.
 	var logsPredicate dataobj.LogsPredicate = dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    start,
 		EndTime:      end,
@@ -294,14 +296,14 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 		IncludeEnd:   false,
 	}
 
-	var predicateFromExpr dataobj.LogsPredicate
-	predicateFromExpr, expr = buildLogsPredicateFromSampleExpr(expr)
-	if predicateFromExpr != nil {
+	logMessagePredicate, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr)
+	if logMessagePredicate != nil {
 		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 			Left:  logsPredicate,
-			Right: predicateFromExpr,
+			Right: logMessagePredicate,
 		}
 	}
+	level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "predicate", logsPredicate.String())
 
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.SampleIterator, len(shardedObjects))
@@ -313,7 +315,7 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, updatedExpr, logger)
 			if err != nil {
 				return err
 			}
@@ -454,14 +456,49 @@ func (s *shardedObject) reset() {
 	clear(s.streams)
 }
 
-func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
+	if err := s.matchStreams(ctx, streamsPredicate); err != nil {
 		return nil, err
 	}
 
-	if err := s.matchStreams(ctx); err != nil {
+	expr, err := req.LogSelector()
+	if err != nil {
 		return nil, err
 	}
+
+	applyLogsPredicate := func(r *dataobj.LogsReader) (syntax.LogSelectorExpr, error) {
+		columns, err := r.Columns(ctx)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read columns desc", "object", s.object.path, "err", err)
+			// skip label filter pushdown if we can't read columns
+			return expr, r.SetPredicate(logsPredicate)
+		}
+
+		metadataColumns := make(map[string]struct{}, len(columns))
+		for _, column := range columns {
+			if column.Type == logsmd.COLUMN_TYPE_METADATA {
+				metadataColumns[column.Info.GetName()] = struct{}{}
+			}
+		}
+
+		finalPredicate := logsPredicate
+
+		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
+		metadataPredicate, expr := buildMetadataFilterPredicateFromPipeline(expr, metadataColumns)
+		if metadataPredicate != nil {
+			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  finalPredicate,
+				Right: metadataPredicate,
+			}
+		}
+
+		if err := r.SetPredicate(finalPredicate); err != nil {
+			return nil, err
+		}
+
+		return expr, nil
+	}
+
 	iterators := make([]iter.EntryIterator, len(s.logReaders))
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -471,6 +508,14 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 				sp.LogKV("msg", "starting selectLogs in section", "index", i)
 				defer sp.LogKV("msg", "selectLogs section done", "index", i)
 			}
+
+			updatedExpr, err := applyLogsPredicate(reader)
+			if err != nil {
+				return err
+			}
+			req.Plan.AST = updatedExpr
+			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "predicate", logsPredicate.String())
+
 			iter, err := newEntryIterator(ctx, s.streams, reader, req)
 			if err != nil {
 				return err
@@ -486,13 +531,42 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr, logger log.Logger) (iter.SampleIterator, error) {
+	if err := s.matchStreams(ctx, streamsPredicate); err != nil {
 		return nil, err
 	}
 
-	if err := s.matchStreams(ctx); err != nil {
-		return nil, err
+	applyLogsPredicate := func(r *dataobj.LogsReader) (syntax.SampleExpr, error) {
+		columns, err := r.Columns(ctx)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read columns desc", "object", s.object.path, "err", err)
+			// skip label filter pushdown if we can't read columns
+			return expr, r.SetPredicate(logsPredicate)
+		}
+
+		metadataColumns := make(map[string]struct{}, len(columns))
+		for _, column := range columns {
+			if column.Type == logsmd.COLUMN_TYPE_METADATA {
+				metadataColumns[column.Info.GetName()] = struct{}{}
+			}
+		}
+
+		finalPredicate := logsPredicate
+
+		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
+		metadataPredicate, expr := buildMetadataFilterPredicateFromSampleExpr(expr, metadataColumns)
+		if metadataPredicate != nil {
+			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  finalPredicate,
+				Right: metadataPredicate,
+			}
+		}
+
+		if err := r.SetPredicate(finalPredicate); err != nil {
+			return nil, err
+		}
+
+		return expr, nil
 	}
 
 	iterators := make([]iter.SampleIterator, len(s.logReaders))
@@ -504,6 +578,14 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 				sp.LogKV("msg", "starting selectSamples in section", "index", i)
 				defer sp.LogKV("msg", "selectSamples section done", "index", i)
 			}
+
+			origExpr := expr
+			expr, err := applyLogsPredicate(reader)
+			if err != nil {
+				return err
+			}
+			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", origExpr.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
+
 			// extractors is not thread safe, so we need to create a new one for each object
 			extractors, err := expr.Extractors()
 			if err != nil {
@@ -525,23 +607,16 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 	return iter.NewSortSampleIterator(iterators), nil
 }
 
-func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate) error {
-	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
-		return err
-	}
-	for _, reader := range s.logReaders {
-		if err := reader.SetPredicate(logsPredicate); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *shardedObject) matchStreams(ctx context.Context) error {
+func (s *shardedObject) matchStreams(ctx context.Context, streamsPredicate dataobj.StreamsPredicate) error {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("msg", "starting matchStreams")
 		defer sp.LogKV("msg", "matchStreams done")
 	}
+
+	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
+		return err
+	}
+
 	streamsPtr := streamsPool.Get().(*[]dataobj.Stream)
 	defer streamsPool.Put(streamsPtr)
 	streams := *streamsPtr
@@ -651,7 +726,7 @@ func parseShards(shards []string) (logql.Shard, error) {
 	return parsed[0], nil
 }
 
-func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredicate, syntax.SampleExpr) {
+func buildLogMessagePredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredicate, syntax.SampleExpr) {
 	var (
 		predicate dataobj.LogsPredicate
 		skip      bool
@@ -667,14 +742,14 @@ func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredi
 				return
 			}
 
-			predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
+			predicate, e.Left.Left = buildLogMessagePredicateFromPipeline(e.Left.Left)
 		}
 	})
 
 	return predicate, expr
 }
 
-func buildLogsPredicateFromPipeline(expr syntax.LogSelectorExpr) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
+func buildLogMessagePredicateFromPipeline(expr syntax.LogSelectorExpr) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
 	// Check if expr is a PipelineExpr, other implementations have no stages
 	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
 	if !ok {
@@ -717,6 +792,7 @@ Outer:
 				Keep: func(line []byte) bool {
 					return f.Filter(line)
 				},
+				Desc: s.String(),
 			})
 
 		default:
@@ -730,4 +806,199 @@ Outer:
 	pipelineExpr.MultiStages = remainingStages
 
 	return predicate, pipelineExpr
+}
+
+func buildMetadataFilterPredicateFromSampleExpr(expr syntax.SampleExpr, metadataColumns map[string]struct{}) (dataobj.LogsPredicate, syntax.SampleExpr) {
+	var (
+		predicate dataobj.LogsPredicate
+		skip      bool
+	)
+	expr.Walk(func(e syntax.Expr) {
+		switch e := e.(type) {
+		case *syntax.BinOpExpr:
+			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
+			skip = true
+			return
+		case *syntax.RangeAggregationExpr:
+			if skip {
+				return
+			}
+
+			predicate, e.Left.Left = buildMetadataFilterPredicateFromPipeline(e.Left.Left, metadataColumns)
+		}
+	})
+
+	return predicate, expr
+}
+
+func buildMetadataFilterPredicateFromPipeline(expr syntax.LogSelectorExpr, metadataColumns map[string]struct{}) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
+	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
+	if !ok {
+		return nil, expr
+	}
+
+	var predicate dataobj.LogsPredicate
+	appendPredicate := func(p dataobj.LogsPredicate) {
+		if predicate == nil {
+			predicate = p
+		} else {
+			predicate = dataobj.AndPredicate[dataobj.LogsPredicate]{Left: predicate, Right: p}
+		}
+	}
+
+	remainingStages := make([]syntax.StageExpr, 0, len(pipelineExpr.MultiStages))
+
+Outer:
+	for i, stage := range pipelineExpr.MultiStages {
+		switch stage := stage.(type) {
+		case *syntax.LabelFmtExpr, *syntax.LineParserExpr, *syntax.LogfmtParserExpr,
+			*syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+			// These stages modify the label set. Labels filter appearing after them cannot be used for row filtering.
+			// TODO(ashwanth): For expression parsers, we know exactly which labels are going to be extracted.
+			// This information can be used to push down filters that operate on labels that are not modified.
+			// Similarly logic applies to Keep and Drop stages.
+			remainingStages = append(remainingStages, pipelineExpr.MultiStages[i:]...)
+			break Outer
+		case *syntax.LabelFilterExpr:
+			p, expr := processLabelFilter(stage.LabelFilterer, metadataColumns)
+			if p != nil {
+				appendPredicate(p)
+			}
+
+			if expr != nil {
+				remainingStages = append(remainingStages, &syntax.LabelFilterExpr{LabelFilterer: expr})
+			}
+		default:
+			remainingStages = append(remainingStages, stage)
+		}
+	}
+
+	if len(remainingStages) == 0 {
+		return predicate, pipelineExpr.Left
+	}
+
+	pipelineExpr.MultiStages = remainingStages
+	return predicate, pipelineExpr
+}
+
+// processLabelFilter converts a label filter expression to a [dataobj.LogsPredicate] if possible.
+// If the expr cannot be fully converted to a predicate, the reduced expression is returned.
+func processLabelFilter(expr logqllog.LabelFilterer, metadataColumns map[string]struct{}) (dataobj.LogsPredicate, logqllog.LabelFilterer) {
+	var predicate dataobj.LogsPredicate
+	switch e := expr.(type) {
+	case *logqllog.StringLabelFilter:
+		if _, ok := metadataColumns[e.Name]; !ok {
+			return nil, expr
+		}
+
+		if e.Matcher.Type == labels.MatchEqual {
+			predicate = dataobj.MetadataMatcherPredicate{
+				Key:   e.Name,
+				Value: e.Value,
+			}
+		} else if e.Matcher.Type == labels.MatchNotEqual {
+			predicate = dataobj.NotPredicate[dataobj.LogsPredicate]{
+				Inner: dataobj.MetadataMatcherPredicate{
+					Key:   e.Name,
+					Value: e.Value,
+				},
+			}
+		} else {
+			predicate = dataobj.MetadataFilterPredicate{
+				Key:  e.Name,
+				Desc: e.String(),
+				Keep: func(_, value string) bool {
+					return e.Matcher.Matches(value)
+				},
+			}
+		}
+
+		// expression is fully consumed
+		return predicate, nil
+	case *logqllog.LineFilterLabelFilter: // optimized filters
+		if _, ok := metadataColumns[e.Name]; !ok {
+			return nil, expr
+		}
+
+		if e.Matcher.Type == labels.MatchEqual {
+			predicate = dataobj.MetadataMatcherPredicate{
+				Key:   e.Name,
+				Value: e.Value,
+			}
+		} else if e.Matcher.Type == labels.MatchNotEqual {
+			predicate = dataobj.NotPredicate[dataobj.LogsPredicate]{
+				Inner: dataobj.MetadataMatcherPredicate{
+					Key:   e.Name,
+					Value: e.Value,
+				},
+			}
+		} else {
+			predicate = dataobj.MetadataFilterPredicate{
+				Key:  e.Name,
+				Desc: e.String(),
+				Keep: func(_, value string) bool {
+					return e.Filter.Filter([]byte(value))
+				},
+			}
+		}
+
+		// expression is fully consumed
+		return predicate, nil
+	case *logqllog.BytesLabelFilter, *logqllog.DurationLabelFilter, *logqllog.NumericLabelFilter:
+		// TODO(ashwanth): we need to support propagating parse errors to support these
+	case *logqllog.BinaryLabelFilter:
+		// AND vs OR predicate push-down strategy:
+		// 1. AND operations: Either side can be pushed down independently, we can break down the filter
+		//    across Predicate and PipelineExpr since sequential pruning is the correct behavior for AND filters.
+		//    For example, filters on metadata columns can be pushed down as a Predicate while keeping the rest in the PipelineExpr.
+		//
+		// 2. OR operations: Both sides must be evaluated together to determine inclusion.
+		//    We can only push down an OR if both operands can be fully pushed.
+		if !e.And {
+			leftP, leftExpr := processLabelFilter(e.Left, metadataColumns)
+			rightP, rightExpr := processLabelFilter(e.Right, metadataColumns)
+
+			// Apply OR predicate only if both operands can be fully pushed down (predicates created and no remaining expressions)
+			if leftP != nil && rightP != nil && leftExpr == nil && rightExpr == nil {
+				return dataobj.OrPredicate[dataobj.LogsPredicate]{Left: leftP, Right: rightP}, nil
+			}
+
+			// Otherwise, keep original behavior
+			return nil, expr
+		}
+
+		// For AND operations, process both sides and combine results
+		leftP, leftExpr := processLabelFilter(e.Left, metadataColumns)
+		rightP, rightExpr := processLabelFilter(e.Right, metadataColumns)
+
+		return reducePredicates(leftP, rightP), reduceLabelFilters(leftExpr, rightExpr)
+	default:
+	}
+
+	return predicate, expr
+}
+
+func reducePredicates(left, right dataobj.LogsPredicate) dataobj.LogsPredicate {
+	if left == nil && right == nil {
+		return nil
+	} else if left == nil {
+		return right
+	} else if right == nil {
+		return left
+	}
+
+	return dataobj.AndPredicate[dataobj.LogsPredicate]{Left: left, Right: right}
+}
+
+func reduceLabelFilters(left, right logqllog.LabelFilterer) logqllog.LabelFilterer {
+	if left == nil && right == nil {
+		return nil
+	} else if left == nil {
+		return right
+	} else if right == nil {
+		return left
+	}
+
+	return logqllog.NewAndLabelFilter(left, right)
 }
