@@ -335,6 +335,7 @@ This is the generated reference for the Loki Helm Chart values.
     "tag": null
   },
   "initContainers": [],
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -534,6 +535,15 @@ null
 			<td>Init containers to add to the backend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -9677,6 +9687,7 @@ false
   },
   "legacyReadTarget": false,
   "lifecycle": {},
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -9881,6 +9892,15 @@ false
 			<td>Lifecycle for the read container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -12016,6 +12036,15 @@ null
 			<td>Lifecycle for the write container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
