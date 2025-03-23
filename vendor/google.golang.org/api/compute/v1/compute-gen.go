@@ -7516,6 +7516,7 @@ type Commitment struct {
 	//   "GRAPHICS_OPTIMIZED"
 	//   "MEMORY_OPTIMIZED"
 	//   "MEMORY_OPTIMIZED_M3"
+	//   "MEMORY_OPTIMIZED_M4"
 	//   "MEMORY_OPTIMIZED_X4_16TB"
 	//   "MEMORY_OPTIMIZED_X4_24TB"
 	//   "MEMORY_OPTIMIZED_X4_32TB"
@@ -34220,6 +34221,9 @@ type PublicDelegatedPrefix struct {
 	//   "EXTERNAL_IPV6_FORWARDING_RULE_CREATION" - The public delegated prefix is
 	// used for creating forwarding rules only. Such prefixes cannot set
 	// publicDelegatedSubPrefixes.
+	//   "EXTERNAL_IPV6_SUBNETWORK_CREATION" - The public delegated prefix is used
+	// for creating dual-mode subnetworks only. Such prefixes cannot set
+	// publicDelegatedSubPrefixes.
 	Mode string `json:"mode,omitempty"`
 	// Name: Name of the resource. Provided by the client when the resource is
 	// created. The name must be 1-63 characters long, and comply with RFC1035.
@@ -34620,6 +34624,9 @@ type PublicDelegatedPrefixPublicDelegatedSubPrefix struct {
 	// sub-delegation only. Such prefixes cannot set allocatablePrefixLength.
 	//   "EXTERNAL_IPV6_FORWARDING_RULE_CREATION" - The public delegated prefix is
 	// used for creating forwarding rules only. Such prefixes cannot set
+	// publicDelegatedSubPrefixes.
+	//   "EXTERNAL_IPV6_SUBNETWORK_CREATION" - The public delegated prefix is used
+	// for creating dual-mode subnetworks only. Such prefixes cannot set
 	// publicDelegatedSubPrefixes.
 	Mode string `json:"mode,omitempty"`
 	// Name: The name of the sub public delegated prefix.
@@ -38807,9 +38814,13 @@ type ResourceStatus struct {
 	// PhysicalHost: [Output Only] The precise location of your instance within the
 	// zone's data center, including the block, sub-block, and host. The field is
 	// formatted as follows: blockId/subBlockId/hostId.
-	PhysicalHost        string                    `json:"physicalHost,omitempty"`
-	Scheduling          *ResourceStatusScheduling `json:"scheduling,omitempty"`
-	UpcomingMaintenance *UpcomingMaintenance      `json:"upcomingMaintenance,omitempty"`
+	PhysicalHost string `json:"physicalHost,omitempty"`
+	// PhysicalHostTopology: [Output Only] A series of fields containing the global
+	// name of the Compute Engine cluster, as well as the ID of the block,
+	// sub-block, and host on which the running instance is located.
+	PhysicalHostTopology *ResourceStatusPhysicalHostTopology `json:"physicalHostTopology,omitempty"`
+	Scheduling           *ResourceStatusScheduling           `json:"scheduling,omitempty"`
+	UpcomingMaintenance  *UpcomingMaintenance                `json:"upcomingMaintenance,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "PhysicalHost") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
@@ -38825,6 +38836,41 @@ type ResourceStatus struct {
 
 func (s ResourceStatus) MarshalJSON() ([]byte, error) {
 	type NoMethod ResourceStatus
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ResourceStatusPhysicalHostTopology: Represents the physical host topology of
+// the host on which the VM is running.
+type ResourceStatusPhysicalHostTopology struct {
+	// Block: [Output Only] The ID of the block in which the running instance is
+	// located. Instances within the same block experience low network latency.
+	Block string `json:"block,omitempty"`
+	// Cluster: [Output Only] The global name of the Compute Engine cluster where
+	// the running instance is located.
+	Cluster string `json:"cluster,omitempty"`
+	// Host: [Output Only] The ID of the host on which the running instance is
+	// located. Instances on the same host experience the lowest possible network
+	// latency.
+	Host string `json:"host,omitempty"`
+	// Subblock: [Output Only] The ID of the sub-block in which the running
+	// instance is located. Instances in the same sub-block experience lower
+	// network latency than instances in the same block.
+	Subblock string `json:"subblock,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Block") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Block") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ResourceStatusPhysicalHostTopology) MarshalJSON() ([]byte, error) {
+	type NoMethod ResourceStatusPhysicalHostTopology
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -41496,6 +41542,8 @@ type Scheduling struct {
 	// ProvisioningModel: Specifies the provisioning model of the instance.
 	//
 	// Possible values:
+	//   "RESERVATION_BOUND" - Bound to the lifecycle of the reservation in which
+	// it is provisioned.
 	//   "SPOT" - Heavily discounted, no guaranteed runtime.
 	//   "STANDARD" - Standard provisioning with user controlled runtime, no
 	// discounts.
@@ -47651,6 +47699,16 @@ type Subnetwork struct {
 	// ranges list. The range can be expanded after creation using
 	// expandIpCidrRange.
 	IpCidrRange string `json:"ipCidrRange,omitempty"`
+	// IpCollection: Reference to the source of IP, like a PublicDelegatedPrefix
+	// (PDP) for BYOIP. The PDP must be a sub-PDP in
+	// EXTERNAL_IPV6_SUBNETWORK_CREATION mode. Use one of the following formats to
+	// specify a sub-PDP when creating a dual stack subnetwork with external access
+	// using BYOIP: - Full resource URL, as in
+	// https://www.googleapis.com/compute/v1/projects/projectId/regions/region
+	// /publicDelegatedPrefixes/sub-pdp-name - Partial URL, as in -
+	// projects/projectId/regions/region/publicDelegatedPrefixes/ sub-pdp-name -
+	// regions/region/publicDelegatedPrefixes/sub-pdp-name
+	IpCollection string `json:"ipCollection,omitempty"`
 	// Ipv6AccessType: The access type of IPv6 address this subnet holds. It's
 	// immutable and can only be specified during creation or the first time the
 	// subnet is updated into IPV4_IPV6 dual stack.
@@ -47663,6 +47721,19 @@ type Subnetwork struct {
 	Ipv6AccessType string `json:"ipv6AccessType,omitempty"`
 	// Ipv6CidrRange: [Output Only] This field is for internal use.
 	Ipv6CidrRange string `json:"ipv6CidrRange,omitempty"`
+	// Ipv6GceEndpoint: [Output Only] Possible endpoints of this subnetwork. It can
+	// be one of the following: - VM_ONLY: The subnetwork can be used for creating
+	// instances and IPv6 addresses with VM endpoint type. Such a subnetwork gets
+	// external IPv6 ranges from a public delegated prefix and cannot be used to
+	// create NetLb. - VM_AND_FR: The subnetwork can be used for creating both VM
+	// instances and Forwarding Rules. It can also be used to reserve IPv6
+	// addresses with both VM and FR endpoint types. Such a subnetwork gets its
+	// IPv6 range from Google IP Pool directly.
+	//
+	// Possible values:
+	//   "VM_AND_FR"
+	//   "VM_ONLY"
+	Ipv6GceEndpoint string `json:"ipv6GceEndpoint,omitempty"`
 	// Kind: [Output Only] Type of the resource. Always compute#subnetwork for
 	// Subnetwork resources.
 	Kind string `json:"kind,omitempty"`

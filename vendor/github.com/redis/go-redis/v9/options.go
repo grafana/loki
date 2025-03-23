@@ -148,8 +148,17 @@ type Options struct {
 	// Enables read only queries on slave/follower nodes.
 	readOnly bool
 
-	// Disable set-lib on connect. Default is false.
+	// DisableIndentity - Disable set-lib on connect.
+	//
+	// default: false
+	//
+	// Deprecated: Use DisableIdentity instead.
 	DisableIndentity bool
+
+	// DisableIdentity is used to disable CLIENT SETINFO command on connect.
+	//
+	// default: false
+	DisableIdentity bool
 
 	// Add suffix to client name. Default is empty.
 	IdentitySuffix string

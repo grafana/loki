@@ -296,6 +296,26 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		}
 		return convertLogsTimePredicate(p, timeColumn)
 
+	case LogMessageFilterPredicate:
+		messageColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
+			return desc.Type == logsmd.COLUMN_TYPE_MESSAGE
+		})
+		if messageColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+
+		return dataset.FuncPredicate{
+			Column: messageColumn,
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
+				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+					// To handle older dataobjs that still use string type for message column. This can be removed in future.
+					return p.Keep([]byte(value.String()))
+				}
+
+				return p.Keep(value.ByteArray())
+			},
+		}
+
 	case MetadataMatcherPredicate:
 		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
 			return desc.Type == logsmd.COLUMN_TYPE_METADATA && desc.Info.Name == p.Key

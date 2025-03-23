@@ -179,13 +179,13 @@ type Instance struct {
 
 // New creates a new Instance with a directory for storing the WAL. The instance
 // will not start until Run is called on the instance.
-func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger) (*Instance, error) {
+func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger, enableReplay bool) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
 	instWALDir := filepath.Join(cfg.Dir, cfg.Tenant)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
-		return wal.NewStorage(logger, metrics, reg, instWALDir)
+		return wal.NewStorage(logger, metrics, reg, instWALDir, enableReplay)
 	}
 
 	return newInstance(cfg, reg, logger, newWal, cfg.Tenant)

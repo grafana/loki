@@ -29,8 +29,103 @@
   "endpoints": [
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.africa-south1.rep.googleapis.com/",
+      "location": "africa-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-east1.rep.googleapis.com/",
+      "location": "asia-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-east2.rep.googleapis.com/",
+      "location": "asia-east2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast1.rep.googleapis.com/",
+      "location": "asia-northeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast2.rep.googleapis.com/",
+      "location": "asia-northeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-south1.rep.googleapis.com/",
+      "location": "asia-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-south2.rep.googleapis.com/",
+      "location": "asia-south2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-southeast1.rep.googleapis.com/",
+      "location": "asia-southeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-southeast2.rep.googleapis.com/",
+      "location": "asia-southeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.australia-southeast1.rep.googleapis.com/",
+      "location": "australia-southeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.australia-southeast2.rep.googleapis.com/",
+      "location": "australia-southeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.eu.rep.googleapis.com/",
+      "location": "eu"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-central2.rep.googleapis.com/",
+      "location": "europe-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-north1.rep.googleapis.com/",
+      "location": "europe-north1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-southwest1.rep.googleapis.com/",
+      "location": "europe-southwest1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west1.rep.googleapis.com/",
+      "location": "europe-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west2.rep.googleapis.com/",
+      "location": "europe-west2"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.europe-west3.rep.googleapis.com/",
       "location": "europe-west3"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west4.rep.googleapis.com/",
+      "location": "europe-west4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west6.rep.googleapis.com/",
+      "location": "europe-west6"
     },
     {
       "description": "Regional Endpoint",
@@ -44,8 +139,28 @@
     },
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west10.rep.googleapis.com/",
+      "location": "europe-west10"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west12.rep.googleapis.com/",
+      "location": "europe-west12"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.me-central2.rep.googleapis.com/",
       "location": "me-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-west1.rep.googleapis.com/",
+      "location": "me-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us.rep.googleapis.com/",
+      "location": "us"
     },
     {
       "description": "Regional Endpoint",
@@ -93,7 +208,7 @@
       "location": "us-west4"
     }
   ],
-  "etag": "\"323434373038373139383836363433393338\"",
+  "etag": "\"363938303832303939373531303639383731\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4364,7 +4479,7 @@
       }
     }
   },
-  "revision": "20250224",
+  "revision": "20250312",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {

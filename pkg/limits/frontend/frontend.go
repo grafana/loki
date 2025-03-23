@@ -174,51 +174,31 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 
 	var (
 		activeStreamsTotal uint64
-		tenantRateBytes    float64
+		rateTotal          float64
 	)
 	// Sum the number of active streams and rates of all responses.
 	for _, resp := range resps {
 		activeStreamsTotal += resp.Response.ActiveStreams
-		tenantRateBytes += float64(resp.Response.Rate)
+		rateTotal += float64(resp.Response.Rate)
 	}
-
 	f.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
 
-	// Take the intersection of unknown streams from all responses by counting
-	// the number of occurrences. If the number of occurrences matches the
-	// number of responses, we know the stream was unknown to all instances.
-	unknownStreams := make(map[uint64]int)
-	for _, resp := range resps {
-		for _, unknownStream := range resp.Response.UnknownStreams {
-			unknownStreams[unknownStream]++
-		}
-	}
-
-	tenantRateLimit := f.rateLimiter.Limit(time.Now(), req.Tenant)
-	if tenantRateBytes > tenantRateLimit {
-		rateLimitedStreams := make([]*logproto.RejectedStream, 0, len(streamHashes))
-		// Rate limit would be exceeded, all streams must be rejected.
-		for _, streamHash := range streamHashes {
-			rateLimitedStreams = append(rateLimitedStreams, &logproto.RejectedStream{
-				StreamHash: streamHash,
-				Reason:     ReasonExceedsRateLimit,
-			})
-		}
-
-		// Count rejections by reason
-		f.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-		f.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsRateLimit).Add(float64(len(rateLimitedStreams)))
-
-		return &logproto.ExceedsLimitsResponse{
-			Tenant:          req.Tenant,
-			RejectedStreams: rateLimitedStreams,
-		}, nil
-	}
-
+	// A slice containing the rejected streams returned to the caller.
+	// If len(rejectedStreams) == 0 then the request does not exceed limits.
 	var rejectedStreams []*logproto.RejectedStream
+
 	// Check if max streams limit would be exceeded.
 	maxGlobalStreams := f.limits.MaxGlobalStreamsPerUser(req.Tenant)
 	if activeStreamsTotal >= uint64(maxGlobalStreams) {
+		// Take the intersection of unknown streams from all responses by counting
+		// the number of occurrences. If the number of occurrences matches the
+		// number of responses, we know the stream was unknown to all instances.
+		unknownStreams := make(map[uint64]int)
+		for _, resp := range resps {
+			for _, unknownStream := range resp.Response.UnknownStreams {
+				unknownStreams[unknownStream]++
+			}
+		}
 		for _, resp := range resps {
 			for _, unknownStream := range resp.Response.UnknownStreams {
 				// If the stream is unknown to all instances, it must be a new
@@ -232,21 +212,29 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 			}
 		}
 	}
+	f.metrics.tenantRejectedStreams.WithLabelValues(
+		req.Tenant,
+		ReasonExceedsMaxStreams,
+	).Add(float64(len(rejectedStreams)))
+
+	// Check if rate limits would be exceeded.
+	tenantRateLimit := f.rateLimiter.Limit(time.Now(), req.Tenant)
+	if rateTotal > tenantRateLimit {
+		// Rate limit would be exceeded, all streams must be rejected.
+		for _, streamHash := range streamHashes {
+			rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
+				StreamHash: streamHash,
+				Reason:     ReasonExceedsRateLimit,
+			})
+		}
+		f.metrics.tenantRejectedStreams.WithLabelValues(
+			req.Tenant,
+			ReasonExceedsRateLimit,
+		).Add(float64(len(streamHashes)))
+	}
 
 	if len(rejectedStreams) > 0 {
 		f.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-
-		// Count rejections by reason
-		exceedsLimitCount := 0
-		for _, rejected := range rejectedStreams {
-			if rejected.Reason == ReasonExceedsMaxStreams {
-				exceedsLimitCount++
-			}
-		}
-
-		if exceedsLimitCount > 0 {
-			f.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, ReasonExceedsMaxStreams).Add(float64(exceedsLimitCount))
-		}
 	}
 
 	return &logproto.ExceedsLimitsResponse{

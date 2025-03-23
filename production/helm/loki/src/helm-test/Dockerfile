@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 FROM golang:${GO_VERSION} as build
 
 # build via Makefile target helm-test-image in root

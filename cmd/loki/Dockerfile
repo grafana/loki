@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 
 # UI build stage
 FROM node:22-alpine AS ui-builder

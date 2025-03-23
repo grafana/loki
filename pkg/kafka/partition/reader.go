@@ -47,13 +47,12 @@ type Reader interface {
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
 type ReaderMetrics struct {
-	recordsPerFetch     prometheus.Histogram
-	fetchesErrors       prometheus.Counter
-	fetchesTotal        prometheus.Counter
-	fetchWaitDuration   prometheus.Histogram
-	receiveDelay        *prometheus.HistogramVec
-	lastCommittedOffset prometheus.Gauge
-	kprom               *kprom.Metrics
+	recordsPerFetch   prometheus.Histogram
+	fetchesErrors     prometheus.Counter
+	fetchesTotal      prometheus.Counter
+	fetchWaitDuration prometheus.Histogram
+	receiveDelay      *prometheus.HistogramVec
+	kprom             *kprom.Metrics
 }
 
 func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {

@@ -13,14 +13,14 @@ import (
 	"unsafe"
 
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -406,13 +406,10 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 
 	c.DeleteRequestsGRPCHandler = deletion.NewGRPCRequestHandler(c.deleteRequestsStore, limits)
 
-	c.deleteRequestsManager = deletion.NewDeleteRequestsManager(
-		c.deleteRequestsStore,
-		c.cfg.DeleteRequestCancelPeriod,
-		c.cfg.DeleteBatchSize,
-		limits,
-		r,
-	)
+	c.deleteRequestsManager, err = deletion.NewDeleteRequestsManager(deletionWorkDir, c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, c.cfg.DeleteBatchSize, limits, r)
+	if err != nil {
+		return err
+	}
 
 	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 	return nil
@@ -853,12 +850,12 @@ func newExpirationChecker(retentionExpiryChecker, deletionExpiryChecker retentio
 	return &expirationChecker{retentionExpiryChecker, deletionExpiryChecker}
 }
 
-func (e *expirationChecker) Expired(ref retention.ChunkEntry, now model.Time) (bool, filter.Func) {
-	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(ref, now); expired {
+func (e *expirationChecker) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, now model.Time) (bool, filter.Func) {
+	if expired, nonDeletedIntervals := e.retentionExpiryChecker.Expired(userID, chk, lbls, seriesID, tableName, now); expired {
 		return expired, nonDeletedIntervals
 	}
 
-	return e.deletionExpiryChecker.Expired(ref, now)
+	return e.deletionExpiryChecker.Expired(userID, chk, lbls, seriesID, tableName, now)
 }
 
 func (e *expirationChecker) MarkPhaseStarted() {
@@ -885,8 +882,12 @@ func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval
 	return e.retentionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID) || e.deletionExpiryChecker.IntervalMayHaveExpiredChunks(interval, userID)
 }
 
-func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime model.Time, now model.Time) bool {
-	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
+func (e *expirationChecker) DropFromIndex(userID []byte, chk retention.Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
+	return e.retentionExpiryChecker.DropFromIndex(userID, chk, labels, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(userID, chk, labels, tableEndTime, now)
+}
+
+func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool {
+	return e.retentionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now) && e.deletionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now)
 }
 
 func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

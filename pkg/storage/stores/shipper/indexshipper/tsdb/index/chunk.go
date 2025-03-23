@@ -151,7 +151,7 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 		return ichk.Checksum >= chk.Checksum
 	})
 
-	if j >= len(c) || c[j] != chk {
+	if j >= len(c) || c[j].Checksum != chk.Checksum || c[j].MinTime != chk.MinTime || c[j].MaxTime != chk.MaxTime {
 		return c, false
 	}
 

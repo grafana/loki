@@ -994,9 +994,7 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			// Assign the Partition IDs.
 			partitions := make(map[string][]int32)
 			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
-			for _, partitionID := range tt.assignedPartitionIDs {
-				partitions["test"] = append(partitions["test"], partitionID)
-			}
+			partitions["test"] = append(partitions["test"], tt.assignedPartitionIDs...)
 			s.partitionManager.Assign(context.Background(), nil, partitions)
 
 			// Call evictOldStreams

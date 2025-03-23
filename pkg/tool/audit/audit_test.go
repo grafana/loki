@@ -44,28 +44,25 @@ func (t testObjClient) GetAttributes(_ context.Context, object string) (client.O
 type testCompactedIdx struct {
 	compactor.CompactedIndex
 
-	chunks []retention.ChunkEntry
+	chunks []retention.Chunk
 }
 
-func (t testCompactedIdx) ForEachChunk(_ context.Context, f retention.ChunkEntryCallback) error {
-	for _, chunk := range t.chunks {
-		if _, err := f(chunk); err != nil {
-			return err
-		}
-	}
-	return nil
+func (t testCompactedIdx) ForEachSeries(_ context.Context, f retention.SeriesCallback) error {
+	var series retention.Series
+	series.AppendChunks(t.chunks...)
+	return f(series)
 }
 
 func TestAuditIndex(t *testing.T) {
 	ctx := context.Background()
 	objClient := testObjClient{}
 	compactedIdx := testCompactedIdx{
-		chunks: []retention.ChunkEntry{
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-1")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-2")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-3")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-4")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("missing-1")}},
+		chunks: []retention.Chunk{
+			{ChunkID: []byte("found-1")},
+			{ChunkID: []byte("found-2")},
+			{ChunkID: []byte("found-3")},
+			{ChunkID: []byte("found-4")},
+			{ChunkID: []byte("missing-1")},
 		},
 	}
 	logger := log.NewNopLogger()
