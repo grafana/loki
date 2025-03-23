@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/klauspost/compress/gzip"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -159,7 +160,7 @@ func openCompactedIndex(path string) (*compactedIndex, error) {
 	return &compactedIndex{indexFile: idxFile}, nil
 }
 
-func (c compactedIndex) ForEachChunk(_ context.Context, _ retention.ChunkEntryCallback) error {
+func (c compactedIndex) ForEachSeries(_ context.Context, _ retention.SeriesCallback) error {
 	return nil
 }
 
@@ -168,6 +169,10 @@ func (c compactedIndex) IndexChunk(_ chunk.Chunk) (bool, error) {
 }
 
 func (c compactedIndex) CleanupSeries(_ []byte, _ labels.Labels) error {
+	return nil
+}
+
+func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ []byte) error {
 	return nil
 }
 

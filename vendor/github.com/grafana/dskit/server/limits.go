@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/tap"
@@ -19,6 +20,12 @@ type GrpcInflightMethodLimiter interface {
 	// otherwise gRPC-server implementation-specific error will be returned to the client (codes.PermissionDenied in grpc@v1.55.0).
 	RPCCallStarting(ctx context.Context, methodName string, md metadata.MD) (context.Context, error)
 
+	// RPCCallProcessing is called by a server interceptor, allowing request pre-processing or request blocking to be
+	// performed. The returned function will be applied after the request is handled, providing any error that occurred while
+	// handling the request.
+	RPCCallProcessing(ctx context.Context, methodName string) (func(error), error)
+
+	// RPCCallFinished is called when an RPC call is finished being handled.
 	RPCCallFinished(ctx context.Context)
 }
 
@@ -45,6 +52,31 @@ func (g *grpcInflightLimitCheck) TapHandle(ctx context.Context, info *tap.Info) 
 	}
 
 	return g.methodLimiter.RPCCallStarting(ctx, info.FullMethodName, info.Header)
+}
+
+func (g *grpcInflightLimitCheck) UnaryServerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	finish, err := g.methodLimiter.RPCCallProcessing(ctx, info.FullMethod)
+	if err != nil {
+		return nil, err
+	}
+	result, err := handler(ctx, req)
+	if finish != nil {
+		finish(err)
+	}
+	return result, err
+
+}
+
+func (g *grpcInflightLimitCheck) StreamServerInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	finish, err := g.methodLimiter.RPCCallProcessing(ss.Context(), info.FullMethod)
+	if err != nil {
+		return err
+	}
+	err = handler(srv, ss)
+	if finish != nil {
+		finish(err)
+	}
+	return err
 }
 
 func (g *grpcInflightLimitCheck) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context {

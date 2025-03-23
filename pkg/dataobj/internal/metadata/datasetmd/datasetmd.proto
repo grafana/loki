@@ -52,6 +52,9 @@ enum ValueType {
 
   // VALUE_TYPE_STRING is a column containing string values.
   VALUE_TYPE_STRING = 3;
+
+  // VALUE_TYPE_BYTE_ARRAY is a column containing bytes with no specific type.
+  VALUE_TYPE_BYTE_ARRAY = 4;
 }
 
 // CompressionType represents the valid compression types that can be used for
