@@ -58,7 +58,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
 		consumptionLag: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_kafka_reader_consumption_lag_seconds",
-			Help: "Delay between producing a record and receiving it.",
+			Help: "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
 		}, []string{"phase"}),
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
