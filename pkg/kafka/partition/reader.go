@@ -3,7 +3,6 @@ package partition
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -51,7 +50,7 @@ type ReaderMetrics struct {
 	fetchesErrors     prometheus.Counter
 	fetchesTotal      prometheus.Counter
 	fetchWaitDuration prometheus.Histogram
-	receiveDelay      *prometheus.HistogramVec
+	receiveDelay      *prometheus.GaugeVec
 	kprom             *kprom.Metrics
 }
 
@@ -75,14 +74,9 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		receiveDelay: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_kafka_reader_receive_delay_seconds",
-			Help:                            "Delay between producing a record and receiving it.",
-			NativeHistogramZeroThreshold:    math.Pow(2, -10),
-			NativeHistogramBucketFactor:     1.2,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
+		receiveDelay: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_kafka_reader_receive_delay_seconds",
+			Help: "Delay between producing a record and receiving it.",
 		}, []string{"phase"}),
 		kprom: client.NewReaderClientMetrics("partition-reader", r),
 	}
@@ -152,7 +146,7 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.receiveDelay.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
+		r.metrics.receiveDelay.WithLabelValues(r.phase).Set(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
 
