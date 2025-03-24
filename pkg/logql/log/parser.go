@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/grafana/jsonparser"
 
@@ -219,7 +220,8 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
-		jsonPath = append(jsonPath, string(part))
+		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		jsonPath = append(jsonPath, partStr)
 	}
 
 	return jsonPath

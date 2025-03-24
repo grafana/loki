@@ -199,12 +199,6 @@ func Test_jsonParser_Parse(t *testing.T) {
 			_, _ = j.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 
-			// Print all JSON paths for debugging
-			fmt.Printf("Test: %s\n", tt.name)
-			for k, v := range b.jsonPaths {
-				fmt.Printf("JSON path for %s: %v\n", k, v)
-			}
-
 			// Check JSON paths if provided
 			if len(tt.wantJSONPath) > 0 {
 				for k, parts := range tt.wantJSONPath {
@@ -763,6 +757,155 @@ func Benchmark_Parser(b *testing.B) {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
+				}
+			})
+		})
+	}
+}
+
+func Benchmark_Parser_JSONPath(b *testing.B) {
+	lbs := labels.FromStrings("cluster", "qa-us-central1",
+		"namespace", "qa",
+		"filename", "/var/log/pods/ingress-nginx_nginx-ingress-controller-7745855568-blq6t_1f8962ef-f858-4188-a573-ba276a3cacc3/ingress-nginx/0.log",
+		"job", "ingress-nginx/nginx-ingress-controller",
+		"name", "nginx-ingress-controller",
+		"pod", "nginx-ingress-controller-7745855568-blq6t",
+		"pod_template_hash", "7745855568",
+		"stream", "stdout",
+	)
+
+	jsonLine := `{
+    "invalid": "a\\xc5z",
+    "proxy_protocol_addr": "",
+    "remote_addr": "3.112.221.14",
+    "remote_user": "",
+    "upstream_addr": "10.12.15.234:5000",
+    "the_real_ip": "3.112.221.14",
+    "timestamp": "2020-12-11T16:20:07+00:00",
+    "protocol": "HTTP/1.1",
+    "upstream_name": "hosted-grafana-hosted-grafana-api-80",
+    "request": {
+      "id": "c8eacb6053552c0cd1ae443bc660e140",
+      "time": "0.001",
+      "method": "GET",
+      "host": "hg-api-qa-us-central1.grafana.net",
+      "uri": "/",
+      "size" : "128",
+      "user_agent":"worldping-api-",
+      "referer": ""
+    },
+    "response": {
+      "status": 200,
+      "upstream_status": "200",
+      "size": "1155",
+      "size_sent": "265",
+      "latency_seconds": "0.001"
+    }
+  }`
+	for _, tt := range []struct {
+		name                 string
+		line                 string
+		s                    Stage
+		LabelParseHints      []string //  hints to reduce label extractions.
+		LabelFilterParseHint *labels.Matcher
+	}{
+		{"json", jsonLine, NewJSONParser(true), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			line := []byte(tt.line)
+			b.Run("no labels hints", func(b *testing.B) {
+				b.ReportAllocs()
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
+				}
+				expectedJSONPath := map[string][]string{
+					"invalid":                  {"invalid"},
+					"proxy_protocol_addr":      {"proxy_protocol_addr"},
+					"remote_addr":              {"remote_addr"},
+					"remote_user":              {"remote_user"},
+					"upstream_addr":            {"upstream_addr"},
+					"the_real_ip":              {"the_real_ip"},
+					"timestamp":                {"timestamp"},
+					"protocol":                 {"protocol"},
+					"upstream_name":            {"upstream_name"},
+					"request_id":               {"request", "id"},
+					"request_time":             {"request", "time"},
+					"request_method":           {"request", "method"},
+					"request_host":             {"request", "host"},
+					"request_uri":              {"request", "uri"},
+					"request_size":             {"request", "size"},
+					"request_user_agent":       {"request", "user_agent"},
+					"request_referer":          {"request", "referer"},
+					"response_status":          {"response", "status"},
+					"response_upstream_status": {"response", "upstream_status"},
+					"response_size":            {"response", "size"},
+					"response_size_sent":       {"response", "size_sent"},
+					"response_latency_seconds": {"response", "latency_seconds"},
+				}
+
+				for k, parts := range expectedJSONPath {
+					require.Equal(b, parts, builder.GetJSONPath(k), "incorrect json path parts for key %s", k)
+				}
+			})
+
+			b.Run("labels hints", func(b *testing.B) {
+				b.ReportAllocs()
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
+
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
+				}
+
+				expectedJSONPath := map[string][]string{
+					"proxy_protocol_addr":      {"proxy_protocol_addr"},
+					"remote_addr":              {"remote_addr"},
+					"remote_user":              {"remote_user"},
+					"upstream_addr":            {"upstream_addr"},
+					"the_real_ip":              {"the_real_ip"},
+					"protocol":                 {"protocol"},
+					"upstream_name":            {"upstream_name"},
+					"response_status":          {"response", "status"},
+					"invalid":                  {"invalid"},
+					"timestamp":                {"timestamp"},
+					"response_upstream_status": {"response", "upstream_status"},
+					"response_size":            {"response", "size"},
+					"response_size_sent":       {"response", "size_sent"},
+					"response_latency_seconds": {"response", "latency_seconds"},
+				}
+
+				for k, parts := range expectedJSONPath {
+					require.Equal(b, parts, builder.GetJSONPath(k), "incorrect json path parts for key %s", k)
+				}
+			})
+
+			b.Run("inline stages", func(b *testing.B) {
+				b.ReportAllocs()
+				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
+				for n := 0; n < b.N; n++ {
+					builder.Reset()
+					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
+				}
+
+				expectedJSONPath := map[string][]string{
+					"invalid":             {"invalid"},
+					"proxy_protocol_addr": {"proxy_protocol_addr"},
+					"remote_addr":         {"remote_addr"},
+					"remote_user":         {"remote_user"},
+					"upstream_addr":       {"upstream_addr"},
+					"the_real_ip":         {"the_real_ip"},
+				}
+
+				for k, parts := range expectedJSONPath {
+					require.Equal(b, parts, builder.GetJSONPath(k), "incorrect json path parts for key %s", k)
 				}
 			})
 		})
