@@ -104,11 +104,11 @@ Since Grafana Alloy is configured to tail logs from all Docker containers, Loki 
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down.png" caption="Grafana Logs Drilldown" alt="Grafana Logs Drilldown" >}}
 
-If you have only the getting started demo deployed in your docker environment, you should see three containers and their logs; `loki-fundamentals-alloy-1`, `loki-fundamentals-grafana-1` and `loki-fundamentals-loki-1`. Click **Show Logs** within the `loki-fundamentals-loki-1` container to drill down into the logs for that container.
+If you have only the getting started demo deployed in your docker environment, you should see three containers and their logs; `loki-fundamentals-alloy-1`, `loki-fundamentals-grafana-1` and `loki-fundamentals-loki-1`.  In the `loki-fundamentals-loki-1` container, click **Show Logs**  to drill down into the logs for that container.
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Grafana Drilldown Service View" alt="Grafana Drilldown Service View" >}}
 
-We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [the Logs Drilldown getting started page](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
+We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [Get started with Grafana Logs Drilldown](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/) page.
 
 <!-- INTERACTIVE page step2.md END -->
 
@@ -116,7 +116,7 @@ We will not cover the rest of the Grafana Logs Drilldown features in this quicks
 
 ## Collect logs from a sample application
 
-Currently, the Loki Stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivourous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
+Currently, the Loki Stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivorous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
@@ -237,7 +237,7 @@ To break this down:
 - `msg="192.168.65.1 - - [21/Feb/2025 16:09:42] "GET /static/style.css HTTP/1.1" 304 -"` is the log message.
 
 <!-- INTERACTIVE copy END -->
-When querying Loki, you can pipe the result of the label selector through a formatter. This extracts attributes from the log line for further processing. For example lets pipe `{container="greenhouse-main_app-1"}` through the `logfmt` formatter to extract the `level` and `line` attributes:
+When querying Loki, you can pipe the result of the label selector through a parser. This extracts attributes from the log line for further processing. For example, lets pipe `{container="greenhouse-main_app-1"}` through the `logfmt` parser to extract the `level` and `line` attributes:
 <!-- INTERACTIVE copy START -->
 ```logql
 {container="greenhouse-main_app-1"} | logfmt
@@ -299,7 +299,7 @@ This is made possible by the `service_name` label and the `env` label that we ha
 ## A look under the hood
 
 At this point you will have a running Loki Stack and a sample application generating logs. You have also queried Loki using Grafana Logs Drilldown and Grafana Explore. 
-In this next section we will take a look under the hood to understand how the Loki Stack has been configured to collect logs, the Loki configuration file, and how the Loki datasource has been configured in Grafana.
+In this next section we will take a look under the hood to understand how the Loki Stack has been configured to collect logs, the Loki configuration file, and how the Loki data source has been configured in Grafana.
 
 ### Grafana Alloy configuration
 
@@ -456,14 +456,14 @@ The above configuration file is a basic configuration file for Loki. For more ad
 
 <!-- INTERACTIVE page step8.md START -->
 
-### Grafana Loki Datasource
+### Grafana Loki Data source
 
 The final piece of the puzzle is the Grafana Loki datasource. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a datasource;
 * **Direct**: This is where you define the datasource in the Grafana UI.
 * **Provisioning**: This is where you define the datasource in a configuration file and have Grafana automatically create the datasource.
 * **API**: This is where you use the Grafana API to create the datasource.
 
-In this case we are using the provisioning method. Instead of mounting the Grafana configuration directory, we have defined the datasource in the `docker-compose.yml` file:
+In this case we are using the provisioning method. Instead of mounting the Grafana configuration directory, we have defined the data source in this portion of the `docker-compose.yml` file:
 
 ```yaml 
   grafana:
@@ -512,7 +512,7 @@ Head back to where you started from to continue with the Loki documentation: [Lo
 {{< /docs/ignore >}}
 
 You have completed the Loki Quickstart demo. So where to go next? Here are a few suggestions:
-* **Deploy:** Loki can be deployed in multiple ways. For production usecases we recommend deploying Loki via the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/).
+* **Deploy:** Loki can be deployed in multiple ways. For production use cases we recommend deploying Loki via the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/).
 * **Send Logs:** In this example we used Grafana Alloy to collect and send logs to Loki. However there are many other methods you can use depending upon your needs. For more information see [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
 * **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 * **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information see [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).
