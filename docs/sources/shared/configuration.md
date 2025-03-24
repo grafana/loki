@@ -2926,6 +2926,11 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -<prefix>.cluster-validation.label
+  [label: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -3501,6 +3506,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
 
+# Enable experimental support for running multiple query variants over the same
+# underlying data. For example, running both a rate() and count_over_time()
+# query over the same range selector.
+# CLI flag: -limits.enable-multi-variant-queries
+[enable_multi_variant_queries: <boolean> | default = false]
+
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
 # log entry.
@@ -3524,7 +3535,7 @@ discover_generic_fields:
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
 
 # Maximum depth to search for log level fields in JSON logs. A value of 0 or
 # less means unlimited depth. Default is 2 which searches the first 2 levels of
@@ -3773,6 +3784,11 @@ discover_generic_fields:
 # disables shuffle sharding for the tenant.
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
+
+# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
+# startup at the cost of not recovering in-memory WAL metrics on restart.
+# CLI flag: -ruler.enable-wal-replay
+[ruler_enable_wal_replay: <boolean> | default = true]
 
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
@@ -4028,9 +4044,14 @@ otlp_config:
   # drop them altogether
   [scope_attributes: <list of attributes_configs>]
 
-  # Configuration for log attributes to store them as Structured Metadata or
-  # drop them altogether
+  # Configuration for log attributes to store them as index labels or Structured
+  # Metadata or drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+  # When true, the severity_text field from log records will be stored as an
+  # index label. It is recommended not to use this option unless absolutely
+  # necessary
+  [severity_text_as_label: <boolean> | default = false]
 
 # Block ingestion for policy until the configured date. The policy '*' is the
 # global policy, which is applied to all streams not matching a policy and can
@@ -4172,6 +4193,11 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.compression-enabled
 [compression_enabled: <boolean> | default = true]
 
+# How frequently to notify watchers when a key changes. Can reduce CPU activity
+# in large memberlist deployments. 0 to notify without delay.
+# CLI flag: -memberlist.notify-interval
+[notify_interval: <duration> | default = 0s]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -4230,6 +4256,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
 
+# How long to keep obsolete entries in the KV store.
+# CLI flag: -memberlist.obsolete-entries-timeout
+[obsolete_entries_timeout: <duration> | default = 30s]
+
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 20s]
@@ -4263,6 +4293,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Maximum number of concurrent writes to other nodes.
+# CLI flag: -memberlist.max-concurrent-writes
+[max_concurrent_writes: <int> | default = 3]
+
+# Timeout for acquiring one of the concurrent write slots. After this time, the
+# message will be dropped.
+# CLI flag: -memberlist.acquire-writer-timeout
+[acquire_writer_timeout: <duration> | default = 250ms]
 
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
@@ -4441,12 +4480,6 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
-
-  # Enable experimental support for running multiple query variants over the
-  # same underlying data. For example, running both a rate() and
-  # count_over_time() query over the same range selector.
-  # CLI flag: -querier.engine.enable-multi-variant-queries
-  [enable_multi_variant_queries: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5469,6 +5502,23 @@ grpc_tls_config:
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -server.cluster-validation.label
+  [label: <string> | default = ""]
+
+  grpc:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.grpc.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.grpc.enabled
+    # CLI flag: -server.cluster-validation.grpc.soft-validation
+    [soft_validation: <boolean> | default = false]
 ```
 
 ### storage_config
