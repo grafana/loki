@@ -24,7 +24,7 @@ import (
 
 func newTestStorage(walDir string) (*Storage, error) {
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	return NewStorage(log.NewNopLogger(), metrics, nil, walDir)
+	return NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
 }
 
 func TestStorage_InvalidSeries(t *testing.T) {
@@ -321,6 +321,53 @@ func TestStorage_TruncateAfterClose(t *testing.T) {
 
 	require.NoError(t, s.Close())
 	require.Error(t, ErrWALClosed, s.Truncate(0))
+}
+
+func TestStorage_DisableReplay(t *testing.T) {
+	walDir := t.TempDir()
+
+	// Create a WAL and write some data to it
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+	s, err := NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
+	require.NoError(t, err)
+
+	app := s.Appender(context.Background())
+
+	// Write some samples
+	payload := buildSeries([]string{"foo", "bar", "baz"})
+	for _, metric := range payload {
+		metric.Write(t, app)
+	}
+
+	require.NoError(t, app.Commit())
+	require.NoError(t, s.Close())
+
+	// Create a new WAL with replay disabled
+	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, false)
+	require.NoError(t, err)
+
+	// Verify that no series were loaded (replay didn't happen)
+	count := 0
+	for range s.series.iterator().Channel() {
+		count++
+	}
+	require.Equal(t, 0, count, "no series should have been loaded with replay disabled")
+
+	require.NoError(t, s.Close())
+
+	// Create a new WAL with replay enabled
+	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, s.Close())
+	}()
+
+	// Verify that series were loaded (replay happened)
+	count = 0
+	for range s.series.iterator().Channel() {
+		count++
+	}
+	require.Equal(t, len(payload), count, "series should have been loaded with replay enabled")
 }
 
 type sample struct {
