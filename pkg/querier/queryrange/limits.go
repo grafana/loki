@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -374,8 +375,10 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 type seriesLimiter struct {
 	hashes map[uint64]struct{}
-	rw     sync.RWMutex
-	buf    []byte // buf used for hashing to avoid allocations.
+	// uniqueSeriesPerVariant maps from a variant label value to a map of series fingerprints
+	uniqueSeriesPerVariant map[string]map[uint64]struct{}
+	rw                     sync.RWMutex
+	buf                    []byte // buf used for hashing to avoid allocations.
 
 	maxSeries int
 	next      queryrangebase.Handler
@@ -392,10 +395,11 @@ func newSeriesLimiter(maxSeries int) queryrangebase.Middleware {
 // The handler returned is thread safe.
 func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return &seriesLimiter{
-		hashes:    make(map[uint64]struct{}),
-		maxSeries: int(slm),
-		buf:       make([]byte, 0, 1024),
-		next:      next,
+		hashes:                 make(map[uint64]struct{}),
+		uniqueSeriesPerVariant: make(map[string]map[uint64]struct{}),
+		maxSeries:              int(slm),
+		buf:                    make([]byte, 0, 1024),
+		next:                   next,
 	}
 }
 
@@ -419,20 +423,67 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	var hash uint64
 	for _, s := range promResponse.Response.Data.Result {
 		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
+
+		// Extract the variant label, if present
+		variant := ""
+		for _, label := range s.Labels {
+			if label.Name == constants.VariantLabel {
+				variant = label.Value
+				break
+			}
+		}
+
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
-		sl.hashes[hash] = struct{}{}
+
+		// If there's a variant label, track it in the variant map
+		if variant != "" {
+			// Get or create the map for this variant
+			variantMap, ok := sl.uniqueSeriesPerVariant[variant]
+			if !ok {
+				variantMap = make(map[uint64]struct{})
+				sl.uniqueSeriesPerVariant[variant] = variantMap
+			}
+
+			variantMap[hash] = struct{}{}
+
+			// Check if adding this series would exceed the limit for this variant
+			if len(variantMap) > sl.maxSeries {
+				sl.rw.Unlock()
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+			}
+		} else {
+			// For non-variant series, track them in the global hashes map
+			sl.hashes[hash] = struct{}{}
+
+			// Check if adding this series would exceed the global limit
+			if len(sl.hashes) > sl.maxSeries {
+				sl.rw.Unlock()
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+			}
+		}
 	}
 	sl.rw.Unlock()
-	if sl.isLimitReached() {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
-	}
+
 	return res, nil
 }
 
 func (sl *seriesLimiter) isLimitReached() bool {
 	sl.rw.RLock()
 	defer sl.rw.RUnlock()
-	return len(sl.hashes) > sl.maxSeries
+
+	// For non-variant series, check the global limit
+	if len(sl.hashes) > sl.maxSeries {
+		return true
+	}
+
+	// For variant series, check each variant separately
+	for _, variantMap := range sl.uniqueSeriesPerVariant {
+		if len(variantMap) > sl.maxSeries {
+			return true
+		}
+	}
+
+	return false
 }
 
 type limitedRoundTripper struct {
