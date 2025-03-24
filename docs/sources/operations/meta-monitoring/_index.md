@@ -1,19 +1,19 @@
 ---
-title: Loki Meta Monitoring
+title: Loki meta-monitoring
 menuTitle: Monitor Loki
 description: Describes the various options for monitoring your Loki environment, and the metrics available.
 aliases: 
  - ../operations/observability
 ---
-# Loki Meta Monitoring
+# Loki meta-monitoring
 
 As part of your Loki implementation, you will also want to monitor your Loki cluster.
 
-As a best practice, you should collect data about Loki in a separate instance of Loki, Prometheus and Grafana, for example, send your Loki cluster data to a [Grafana Cloud account](https://grafana.com/products/cloud/). This will let you troubleshoot a broken Loki cluster from a working one.
+As a best practice, you should collect data about Loki in a separate instance of Loki, Prometheus, and Grafana. For example, send your Loki cluster data to a [Grafana Cloud account](https://grafana.com/products/cloud/). This will let you troubleshoot a broken Loki cluster from a working one.
 
 Loki exposes the following observability data about itself:
 
-- **Metrics**: Loki provides a `/metrics` endpoint that exports information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc etc. Each Loki component exposes its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster see [metrics](#loki-metrics). This important to keep in mind when running a large distributed Loki cluster, see [metrics cardinality](#metrics-cardinality). 
+- **Metrics**: Loki provides a `/metrics` endpoint that exports information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component exposes its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster see [metrics](#loki-metrics). This important to keep in mind when running a large distributed Loki cluster, see [metrics cardinality](#metrics-cardinality). 
   
 - **Logs**: Loki emits a detailed log line `metrics.go` for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance. You can also collect pod logs from your Loki components to monitor to drill down into specific issues.
 
@@ -32,7 +32,7 @@ You should also plan separately for infrastructure-level monitoring, to monitor 
 - [MinIO](https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html)
 - [Kubernetes](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
 
-The Kubernetes Monitoring Helm we use to monitor Loki also provides these features out of the box with K8s monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you can afford to collect.
+The Kubernetes Monitoring Helm chart we use to monitor Loki also provides these features out of the box with K8s monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you can afford to collect.
 
 ## Loki Metrics
 

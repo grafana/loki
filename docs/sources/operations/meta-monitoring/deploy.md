@@ -1,11 +1,11 @@
 ---
-title: Deploy Loki Meta Monitoring
+title: Deploy Loki meta-monitoring
 menuTitle: Deploy Loki Meta Monitoring
 description: Describes how to deploy Meta Monitoring for Loki.
 weight: 100
 ---
 
-# Deploy Loki Meta Monitoring
+# Deploy Loki meta-monitoring
 
 The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This tutorial will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
@@ -21,7 +21,7 @@ We recommend running a production cluster of Loki in distributed mode using Kube
 
 ## Preparing your environment
 
-Before deploying the Kubernetes Monitoring Helm chart, you need to setup several components in your environment. These components include:
+Before deploying the Kubernetes Monitoring Helm chart, you need to set up several components in your environment. These components include:
 
 1. Add the Grafana Helm repository:
 
@@ -125,7 +125,7 @@ Now that you have prepared your environment and collected the necessary credenti
     cluster:
         name: loki-meta-monitoring-cluster
    ```
-1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:
+1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:
 
     ```yaml
     namespaces:

@@ -11,7 +11,7 @@ Loki is instrumented to expose metrics about itself via the `/metrics` endpoint,
 To set up monitoring using the mixin, you need to:
 
 1. Deploy the Kubernetes Monitoring Helm chart. Follow the instructions in the [Deploy Loki Meta Monitoring](https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy) documentation.
-1. Activley storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
+1. Actively storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
 
 This procedure assumes that you have set up Loki using the Helm chart.
 
@@ -21,7 +21,7 @@ Be sure to update the commands and configuration to match your own deployment.
 
 ## Install Loki dashboards in Grafana
 
-After Loki metrics are scraped by the Kubernetes Monitoring Helm and stored in a Prometheus compatible time-series database, you can monitor Loki’s operation using the Loki mixin.
+After Loki metrics are scraped by the Kubernetes Monitoring Helm chart and stored in a Prometheus compatible time-series database, you can monitor Loki’s operation using the Loki mixin.
 
 Each Loki release includes a mixin that includes:
 
@@ -107,7 +107,7 @@ For microservice mode:
 `production/loki-mixin-compiled/rules.yaml`
 
 
-You use `mimirtool` to load the mixin alerts and rules definitions into a Prometheus instance, Mimir or a Grafana Enterprise Metrics cluster. The below examples shows how to load the mixin alerts and rules into a Grafana Cloud instance.
+You use `mimirtool` to load the mixin alerts and rules definitions into a Prometheus instance, Mimir, or a Grafana Enterprise Metrics cluster. The following examples show how to load the mixin alerts and rules into a Grafana Cloud instance.
 
 1. Download [mimirtool](https://github.com/grafana/mimir/releases).
 
