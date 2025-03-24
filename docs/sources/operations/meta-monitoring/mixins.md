@@ -103,8 +103,8 @@ The rules and alerts need to be installed into a Prometheus instance, Mimir or a
 You can find the YAML files for alerts and rules in the following directories in the Loki repo:
 
 For microservice mode:
-`production/loki-mixin-compiled/alerts.yaml`
-`production/loki-mixin-compiled/rules.yaml`
+* `production/loki-mixin-compiled/alerts.yaml` (Optional)
+* `production/loki-mixin-compiled/rules.yaml` (Required)
 
 
 You use `mimirtool` to load the mixin alerts and rules definitions into a Prometheus instance, Mimir, or a Grafana Enterprise Metrics cluster. The following examples show how to load the mixin alerts and rules into a Grafana Cloud instance.

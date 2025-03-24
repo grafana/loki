@@ -10,7 +10,7 @@ weight: 100
 The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This tutorial will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
 {{< admonition type="note" >}}
-We recommend running a production cluster of Loki in distributed mode using Kubernetes. This tutorial assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. Meta Monitoring is still possible but not covered in this tutorial.
+We recommend running a production cluster of Loki in distributed mode using Kubernetes. This tutorial assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this tutorial.
 {{< /admonition >}}
 
 ## Before you begin
