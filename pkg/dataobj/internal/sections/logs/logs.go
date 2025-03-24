@@ -11,7 +11,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -23,8 +23,8 @@ import (
 type Record struct {
 	StreamID  int64
 	Timestamp time.Time
-	Metadata  push.LabelsAdapter
-	Line      string
+	Metadata  labels.Labels
+	Line      []byte
 }
 
 // Options configures the behavior of the logs section.

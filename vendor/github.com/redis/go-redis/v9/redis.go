@@ -350,7 +350,7 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 		return err
 	}
 
-	if !c.opt.DisableIndentity {
+	if !c.opt.DisableIdentity && !c.opt.DisableIndentity {
 		libName := ""
 		libVer := Version()
 		if c.opt.IdentitySuffix != "" {
@@ -359,7 +359,11 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 		p := conn.Pipeline()
 		p.ClientSetInfo(ctx, WithLibraryName(libName))
 		p.ClientSetInfo(ctx, WithLibraryVersion(libVer))
-		_, _ = p.Exec(ctx)
+		// Handle network errors (e.g. timeouts) in CLIENT SETINFO to avoid
+		// out of order responses later on.
+		if _, err = p.Exec(ctx); err != nil && !isRedisError(err) {
+			return err
+		}
 	}
 
 	if c.opt.OnConnect != nil {

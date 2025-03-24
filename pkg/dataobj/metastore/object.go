@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -88,12 +90,47 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	return m.listObjectsFromStores(ctx, storePaths, start, end)
 }
 
-func (m *ObjectMetastore) Labels(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	uniqueLabels := map[string]struct{}{}
+
+	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
+		if _, ok := uniqueLabels[label.Name]; !ok {
+			uniqueLabels[label.Name] = struct{}{}
+		}
+	}, matchers...)
+
+	return slices.Collect(maps.Keys(uniqueLabels)), err
 }
 
-func (m *ObjectMetastore) Values(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	values := map[string]struct{}{}
+
+	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
+		if _, ok := values[label.Value]; !ok {
+			values[label.Value] = struct{}{}
+		}
+	}, matchers...)
+
+	return slices.Collect(maps.Keys(values)), err
+}
+
+func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
+	streams, err := m.Streams(ctx, start, end, matchers...)
+	if err != nil {
+		return err
+	}
+
+	for _, streamLabels := range streams {
+		if streamLabels == nil {
+			continue
+		}
+
+		for _, streamLabel := range *streamLabels {
+			foreach(streamLabel)
+		}
+	}
+
+	return nil
 }
 
 func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) dataobj.StreamsPredicate {

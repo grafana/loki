@@ -11,12 +11,14 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 )
 
 type FileMetadata struct {
@@ -68,6 +70,9 @@ type SectionMetadata struct {
 	TotalUncompressedSize uint64            `json:"totalUncompressedSize"`
 	ColumnCount           int               `json:"columnCount"`
 	Columns               []ColumnWithPages `json:"columns"`
+	Distribution          []uint64          `json:"distribution"`
+	MinTimestamp          time.Time         `json:"minTimestamp"`
+	MaxTimestamp          time.Time         `json:"maxTimestamp"`
 }
 
 func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +95,10 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 
 	metadata := inspectFile(r.Context(), s.bucket, filename)
 	metadata.LastModified = attrs.LastModified.UTC()
+	for _, section := range metadata.Sections {
+		section.MinTimestamp = section.MinTimestamp.UTC().Truncate(time.Second)
+		section.MaxTimestamp = section.MaxTimestamp.UTC().Truncate(time.Second)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
@@ -147,14 +156,16 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 			sectionMeta, err = inspectLogsSection(ctx, reader, section)
 			if err != nil {
 				return FileMetadata{
-					Error: fmt.Sprintf("failed to inspect logs section: %v", err),
+					Sections: make([]SectionMetadata, 0, len(sections)),
+					Error:    fmt.Sprintf("failed to inspect logs section: %v", err),
 				}
 			}
 		case filemd.SECTION_TYPE_STREAMS:
 			sectionMeta, err = inspectStreamsSection(ctx, reader, section)
 			if err != nil {
 				return FileMetadata{
-					Error: fmt.Sprintf("failed to inspect streams section: %v", err),
+					Sections: make([]SectionMetadata, 0, len(sections)),
+					Error:    fmt.Sprintf("failed to inspect streams section: %v", err),
 				}
 			}
 		}
@@ -254,8 +265,10 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section
 	meta.ColumnCount = len(cols)
 
 	// Create error group for parallel execution
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 
+	globalMaxTimestamp := time.Time{}
+	globalMinTimestamp := time.Time{}
 	// Process each column in parallel
 	for i, col := range cols {
 		meta.TotalCompressedSize += col.Info.CompressedSize
@@ -266,6 +279,18 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section
 			pageSets, err := result.Collect(dec.Pages(ctx, []*streamsmd.ColumnDesc{col}))
 			if err != nil {
 				return err
+			}
+
+			if col.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP && col.Info.Statistics != nil {
+				var ts dataset.Value
+				_ = ts.UnmarshalBinary(col.Info.Statistics.MaxValue)
+				globalMaxTimestamp = time.Unix(0, ts.Int64()).UTC()
+			}
+
+			if col.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP && col.Info.Statistics != nil {
+				var ts dataset.Value
+				_ = ts.UnmarshalBinary(col.Info.Statistics.MinValue)
+				globalMinTimestamp = time.Unix(0, ts.Int64()).UTC()
 			}
 
 			var pageInfos []PageInfo
@@ -308,6 +333,28 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section
 	if err := g.Wait(); err != nil {
 		return meta, err
 	}
+
+	if globalMaxTimestamp.IsZero() || globalMinTimestamp.IsZero() {
+		// Short circuit if we don't have any timestamps
+		return meta, nil
+	}
+
+	width := int(globalMaxTimestamp.Add(1 * time.Hour).Truncate(time.Hour).Sub(globalMinTimestamp.Truncate(time.Hour)).Hours())
+	counts := make([]uint64, width)
+	for streamVal := range streams.Iter(ctx, reader) {
+		stream, err := streamVal.Value()
+		if err != nil {
+			return meta, err
+		}
+		for i := stream.MinTimestamp; !i.After(stream.MaxTimestamp); i = i.Add(time.Hour) {
+			hoursBeforeMax := int(globalMaxTimestamp.Sub(i).Hours())
+			counts[hoursBeforeMax]++
+		}
+	}
+
+	meta.MinTimestamp = globalMinTimestamp
+	meta.MaxTimestamp = globalMaxTimestamp
+	meta.Distribution = counts
 
 	return meta, nil
 }

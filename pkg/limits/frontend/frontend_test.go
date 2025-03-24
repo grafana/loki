@@ -33,7 +33,29 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		},
 		expected: nil,
 	}, {
-		name: "below the limit",
+		name: "no response",
+		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{
+				{StreamHash: 0x1},
+			},
+		},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
+			Tenant:       "test",
+			StreamHashes: []uint64{0x1},
+			Partitions:   []int32{0},
+		}},
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}},
+		maxGlobalStreams:        10,
+		ingestionRate:           100,
+		expected:                nil,
+	}, {
+		name: "within limits",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -60,7 +82,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		ingestionRate:    100,
 		expected:         nil,
 	}, {
-		name: "exceeds limit with new streams",
+		name: "exceeds max streams limit, rejects new streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -91,7 +113,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			{StreamHash: 0x2, Reason: ReasonExceedsMaxStreams},
 		},
 	}, {
-		name: "exceeds limit but allows existing streams and rejects new streams",
+		name: "exceeds max streams limit, allows existing streams and rejects new streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -127,56 +149,58 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			{StreamHash: 7, Reason: ReasonExceedsMaxStreams},
 		},
 	}, {
-		name: "no response",
+		// This test checks the case where a tenant's streams are sharded over
+		// two instances, each holding one each stream. Each instance will
+		// return an response stating that it doesn't know about the other
+		// stream. The frontend is responsible for taking the intersection of
+		// the two responses and calculating the actual set of unknown streams.
+		name: "exceeds max streams limit, streams sharded over two instances",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
+				{StreamHash: 0x1}, // Exceeds limits.
+				{StreamHash: 0x2}, // Also exceeds limits.
 			},
 		},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
+				0: time.Now().UnixNano(), // Instance 0 owns partition 0.
 			},
-		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-			Partitions:   []int32{0},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}},
-		maxGlobalStreams:        10,
-		ingestionRate:           100,
-		expected:                nil, // No rejections because activeStreamsTotal is 0
-	}, {
-		name: "rate limit not exceeded",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-				{StreamHash: 0x2},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		}, {
 			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
+				1: time.Now().UnixNano(), // Instance 1 owns partition 1.
 			},
 		}},
+		// The frontend will ask instance 0 for the data for partition 0,
+		// and instance 1 for the data for partition 1.
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
 			Partitions:   []int32{0},
+		}, {
+			Tenant:       "test",
+			StreamHashes: []uint64{0x1, 0x2},
+			Partitions:   []int32{1},
 		}},
+		// Each instance will respond stating that it doesn't know about the
+		// other stream.
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 2,
-			Rate:          50, // Below the limit of 100 bytes/sec
+			Tenant:         "test",
+			ActiveStreams:  1,
+			Rate:           5,
+			UnknownStreams: []uint64{0x2},
+		}, {
+			Tenant:         "test",
+			ActiveStreams:  1,
+			Rate:           5,
+			UnknownStreams: []uint64{0x1},
 		}},
-		maxGlobalStreams: 10,
+		maxGlobalStreams: 1,
 		ingestionRate:    100,
-		expected:         nil,
+		// No streams should be rejected.
+		expected: nil,
 	}, {
-		name: "rate limit exceeded",
+		name: "exceeds rate limits, rejects all streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -201,7 +225,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 		},
 	}, {
-		name: "rate limit exceeded with multiple instances",
+		name: "exceeds rate limits, rates sharded over two instances",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -211,11 +235,11 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				0: 1,
+				0: time.Now().UnixNano(),
 			},
 		}, {
 			AssignedPartitions: map[int32]int64{
-				1: 1,
+				1: time.Now().UnixNano(),
 			},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
@@ -234,7 +258,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 		},
 	}, {
-		name: "both global limit and rate limit exceeded",
+		name: "exceeds both max stream limit and rate limits",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -256,6 +280,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		maxGlobalStreams: 5,
 		ingestionRate:    100,
 		expected: []*logproto.RejectedStream{
+			{StreamHash: 0x6, Reason: ReasonExceedsMaxStreams},
+			{StreamHash: 0x7, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 0x6, Reason: ReasonExceedsRateLimit},
 			{StreamHash: 0x7, Reason: ReasonExceedsRateLimit},
 		},
@@ -289,7 +315,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				gatherer:    NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 
