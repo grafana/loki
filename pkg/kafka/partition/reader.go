@@ -46,16 +46,20 @@ type Reader interface {
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
 type ReaderMetrics struct {
+	consumptionLag    *prometheus.GaugeVec
 	recordsPerFetch   prometheus.Histogram
 	fetchesErrors     prometheus.Counter
 	fetchesTotal      prometheus.Counter
 	fetchWaitDuration prometheus.Histogram
-	receiveDelay      *prometheus.GaugeVec
 	kprom             *kprom.Metrics
 }
 
 func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
+		consumptionLag: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_kafka_reader_consumption_lag_seconds",
+			Help: "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
+		}, []string{"phase"}),
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
 			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
@@ -74,10 +78,6 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		receiveDelay: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_kafka_reader_receive_delay_seconds",
-			Help: "Delay between producing a record and receiving it.",
-		}, []string{"phase"}),
 		kprom: client.NewReaderClientMetrics("partition-reader", r),
 	}
 }
@@ -146,7 +146,7 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.receiveDelay.WithLabelValues(r.phase).Set(time.Since(record.Timestamp).Seconds())
+		r.metrics.consumptionLag.WithLabelValues(r.phase).Set(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
 
