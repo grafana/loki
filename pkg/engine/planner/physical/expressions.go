@@ -133,28 +133,28 @@ func (t BinaryOpType) String() string {
 	}
 }
 
-// Expression is the common interface for all expressions in a physcial plan.
+// Expression is the common interface for all expressions in a physical plan.
 type Expression interface {
 	Type() ExpressionType
 	isExpr()
 }
 
 // UnaryExpression is the common interface for all unary expressions in a
-// physcial plan.
+// physical plan.
 type UnaryExpression interface {
 	Expression
 	isUnaryExpr()
 }
 
 // BinaryExpression is the common interface for all binary expressions in a
-// physcial plan.
+// physical plan.
 type BinaryExpression interface {
 	Expression
 	isBinaryExpr()
 }
 
 // LiteralExpression is the common interface for all literal expressions in a
-// physcial plan.
+// physical plan.
 type LiteralExpression interface {
 	Expression
 	ValueType() ValueType
@@ -162,7 +162,7 @@ type LiteralExpression interface {
 }
 
 // ColumnExpression is the common interface for all column expressions in a
-// physcial plan.
+// physical plan.
 type ColumnExpression interface {
 	Expression
 	isColumnExpr()
