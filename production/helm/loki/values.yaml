@@ -3487,7 +3487,7 @@ minio:
 
 # extraObjects can be of type map or slice.  If slice, keys are ignored and only values are used.
 # items contained within extraObjects can be defined as dict or string and are passed through tpl.
-extraObjects: []
+extraObjects: null
 # - apiVersion: v1
 #   kind: ConfigMap
 #   metadata:
