@@ -131,6 +131,10 @@ func (r *KafkaReader) Partition() int32 {
 // SetPhase sets the phase for the reader. This is used to differentiate between different phases of the reader.
 // For example, we can use this to differentiate between the startup phase and the running phase.
 func (r *KafkaReader) SetPhase(phase string) {
+	if prev := r.phase; prev != "" {
+		// Reset the consumption lag metric for the previous phase.
+		r.metrics.consumptionLag.WithLabelValues(prev).Set(0)
+	}
 	r.phase = phase
 }
 
