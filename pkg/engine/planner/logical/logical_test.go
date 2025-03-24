@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestPlan_String(t *testing.T) {
@@ -15,18 +17,18 @@ func TestPlan_String(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Op:    types.BinOpKindEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
+			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Op:    types.BinOpKindGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
+	).Sort(ColumnRef{Column: "age", Type: types.ColumnTypeMetadata}, true, false)
 
 	// Convert to SSA
 	ssaForm, err := b.ToPlan()
