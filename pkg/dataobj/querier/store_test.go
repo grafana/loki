@@ -40,7 +40,7 @@ func TestStore_SelectSamples(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(Config{}, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -206,7 +206,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
+	store := NewStore(Config{}, builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {

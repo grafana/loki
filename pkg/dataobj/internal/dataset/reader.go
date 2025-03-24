@@ -230,6 +230,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
+
 		return p.Keep(p.Column, row.Values[columnIndex])
 
 	default:

@@ -66,16 +66,33 @@ var (
 	}
 )
 
+type PredicatePushdownConfig struct {
+	EnableForLineFilters     bool `yaml:"enable_for_line_filters"`
+	EnableForMetadataFilters bool `yaml:"enable_for_metadata_filters"`
+}
+
+func (c *PredicatePushdownConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&c.EnableForLineFilters, prefix+"predicate-pushdown.enable-for-line-filters", true, "Apply line filter predicates on dataobj reader.")
+	f.BoolVar(&c.EnableForMetadataFilters, prefix+"predicate-pushdown.enable-for-metadata-filters", true, "Apply metadata filter predicates on dataobj reader.")
+}
+
 type Config struct {
 	Enabled     bool                  `yaml:"enabled" doc:"description=Enable the dataobj querier."`
 	From        storageconfig.DayTime `yaml:"from" doc:"description=The date of the first day of when the dataobj querier should start querying from. In YYYY-MM-DD format, for example: 2018-04-15."`
 	ShardFactor int                   `yaml:"shard_factor" doc:"description=The number of shards to use for the dataobj querier."`
+
+	// Experimental: Configuration for predicate pushdown optimizations.
+	// Predicate pushdown helps reduce the number of rows we need to materialize
+	// by filtering our pages and rows that do not match the applied predicates.
+	// Not every line and label filter can be pushed down.
+	PredicatePushdown PredicatePushdownConfig `yaml:"predicate_pushdown"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "dataobj-querier-enabled", false, "Enable the dataobj querier.")
 	f.Var(&c.From, "dataobj-querier-from", "The start time to query from.")
 	f.IntVar(&c.ShardFactor, "dataobj-querier-shard-factor", 32, "The number of shards to use for the dataobj querier.")
+	c.PredicatePushdown.RegisterFlagsWithPrefix("dataobj-querier.", f)
 }
 
 func (c *Config) Validate() error {
@@ -95,14 +112,16 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 
 // Store implements querier.Store for querying data objects.
 type Store struct {
+	cfg       Config
 	bucket    objstore.Bucket
 	logger    log.Logger
 	metastore metastore.Metastore
 }
 
 // NewStore creates a new Store.
-func NewStore(bucket objstore.Bucket, logger log.Logger, metastore metastore.Metastore) *Store {
+func NewStore(cfg Config, bucket objstore.Bucket, logger log.Logger, metastore metastore.Metastore) *Store {
 	return &Store{
+		cfg:       cfg,
 		bucket:    bucket,
 		logger:    logger,
 		metastore: metastore,
@@ -130,7 +149,7 @@ func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	return selectLogs(ctx, objects, shard, req, logger)
+	return selectLogs(ctx, objects, shard, req, &s.cfg.PredicatePushdown, logger)
 }
 
 // SelectSamples implements querier.Store
@@ -154,7 +173,7 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	return selectSamples(ctx, objects, shard, expr, req.Start, req.End, logger)
+	return selectSamples(ctx, objects, shard, expr, req.Start, req.End, &s.cfg.PredicatePushdown, logger)
 }
 
 // Stats implements querier.Store
@@ -214,7 +233,7 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	return objects, nil
 }
 
-func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
+func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req logql.SelectLogParams, predicatePushdownCfg *PredicatePushdownConfig, logger log.Logger) (iter.EntryIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -237,15 +256,17 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		IncludeEnd:   false,
 	}
 
-	p, expr := buildLogMessagePredicateFromPipeline(selector)
-	if p != nil {
-		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
-			Left:  logsPredicate,
-			Right: p,
+	if predicatePushdownCfg.EnableForLineFilters {
+		p, expr := buildLogMessagePredicateFromPipeline(selector)
+		if p != nil {
+			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  logsPredicate,
+				Right: p,
+			}
 		}
+		req.Plan.AST = expr
+		level.Debug(logger).Log("msg", "line filter predicate pushdown", "noop", p == nil, "orig_expr", selector.String(), "updated_expr", expr.String(), "log_message_filter_predicate", p.String())
 	}
-	req.Plan.AST = expr
-	level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", selector.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
 
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.EntryIterator, len(shardedObjects))
@@ -257,7 +278,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req, logger)
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req, predicatePushdownCfg, logger)
 			if err != nil {
 				return err
 			}
@@ -272,7 +293,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
+func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, predicatePushdownCfg *PredicatePushdownConfig, logger log.Logger) (iter.SampleIterator, error) {
 	shardedObjects, err := shardObjects(ctx, objects, shard, logger)
 	if err != nil {
 		return nil, err
@@ -296,14 +317,17 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 		IncludeEnd:   false,
 	}
 
-	logMessagePredicate, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr)
-	if logMessagePredicate != nil {
-		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
-			Left:  logsPredicate,
-			Right: logMessagePredicate,
+	if predicatePushdownCfg.EnableForLineFilters {
+		p, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr)
+		if p != nil {
+			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  logsPredicate,
+				Right: p,
+			}
 		}
+		level.Debug(logger).Log("msg", "line filter predicate pushdown", "noop", p == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "log_message_filter_predicate", p.String())
+		expr = updatedExpr
 	}
-	level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "predicate", logsPredicate.String())
 
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.SampleIterator, len(shardedObjects))
@@ -315,7 +339,7 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, updatedExpr, logger)
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr, predicatePushdownCfg, logger)
 			if err != nil {
 				return err
 			}
@@ -456,7 +480,7 @@ func (s *shardedObject) reset() {
 	clear(s.streams)
 }
 
-func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams, predicatePushdownCfg *PredicatePushdownConfig, logger log.Logger) (iter.EntryIterator, error) {
 	if err := s.matchStreams(ctx, streamsPredicate); err != nil {
 		return nil, err
 	}
@@ -467,6 +491,10 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	}
 
 	applyLogsPredicate := func(r *dataobj.LogsReader) (syntax.LogSelectorExpr, error) {
+		if !predicatePushdownCfg.EnableForMetadataFilters {
+			return expr, r.SetPredicate(logsPredicate)
+		}
+
 		columns, err := r.Columns(ctx)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to read columns desc", "object", s.object.path, "err", err)
@@ -484,7 +512,7 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 		finalPredicate := logsPredicate
 
 		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
-		metadataPredicate, expr := buildMetadataFilterPredicateFromPipeline(expr, metadataColumns)
+		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromPipeline(expr, metadataColumns)
 		if metadataPredicate != nil {
 			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  finalPredicate,
@@ -496,7 +524,8 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 			return nil, err
 		}
 
-		return expr, nil
+		level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "noop", metadataPredicate == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
+		return updatedExpr, nil
 	}
 
 	iterators := make([]iter.EntryIterator, len(s.logReaders))
@@ -513,10 +542,8 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 			if err != nil {
 				return err
 			}
-			req.Plan.AST = updatedExpr
-			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "predicate", logsPredicate.String())
 
-			iter, err := newEntryIterator(ctx, s.streams, reader, req)
+			iter, err := newEntryIterator(ctx, s.streams, reader, updatedExpr, req.Limit, req.Direction)
 			if err != nil {
 				return err
 			}
@@ -531,12 +558,16 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr, logger log.Logger) (iter.SampleIterator, error) {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr, predicatePushdownCfg *PredicatePushdownConfig, logger log.Logger) (iter.SampleIterator, error) {
 	if err := s.matchStreams(ctx, streamsPredicate); err != nil {
 		return nil, err
 	}
 
 	applyLogsPredicate := func(r *dataobj.LogsReader) (syntax.SampleExpr, error) {
+		if !predicatePushdownCfg.EnableForMetadataFilters {
+			return expr, r.SetPredicate(logsPredicate)
+		}
+
 		columns, err := r.Columns(ctx)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to read columns desc", "object", s.object.path, "err", err)
@@ -554,7 +585,7 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 		finalPredicate := logsPredicate
 
 		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
-		metadataPredicate, expr := buildMetadataFilterPredicateFromSampleExpr(expr, metadataColumns)
+		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromSampleExpr(expr, metadataColumns)
 		if metadataPredicate != nil {
 			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  finalPredicate,
@@ -566,7 +597,8 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 			return nil, err
 		}
 
-		return expr, nil
+		level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "noop", metadataPredicate == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
+		return updatedExpr, nil
 	}
 
 	iterators := make([]iter.SampleIterator, len(s.logReaders))
@@ -579,12 +611,10 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 				defer sp.LogKV("msg", "selectSamples section done", "index", i)
 			}
 
-			origExpr := expr
 			expr, err := applyLogsPredicate(reader)
 			if err != nil {
 				return err
 			}
-			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", origExpr.String(), "updated_expr", expr.String(), "predicate", logsPredicate.String())
 
 			// extractors is not thread safe, so we need to create a new one for each object
 			extractors, err := expr.Extractors()

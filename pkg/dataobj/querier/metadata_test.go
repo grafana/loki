@@ -25,7 +25,7 @@ func TestStore_SelectSeries(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(Config{}, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -168,7 +168,7 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(Config{}, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -236,7 +236,7 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(Config{}, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
