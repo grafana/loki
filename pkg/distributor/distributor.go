@@ -271,16 +271,18 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
+		// These components expect a wrapped registerer to pass to their inner components.
+		kafkaRegisterer := prometheus.WrapRegistererWithPrefix(fmt.Sprintf("%s_distributor_", constants.Loki), registerer)
+
+		kafkaClient, err := kafka_client.NewWriterClient(cfg.KafkaConfig, 20, logger, kafkaRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
-		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
-			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes, kafkaRegisterer)
 
 		// TODO: cleanup/make independent of whether we write kafka as primary?
 		if cfg.TenantTopic.Enabled {
-			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, registerer, logger)
+			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, kafkaRegisterer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
 			}

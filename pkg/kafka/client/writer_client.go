@@ -36,7 +36,7 @@ var writerRequestTimeoutOverhead = 2 * time.Second
 func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := kprom.NewMetrics(
-		"", // No prefix. We expect the input prometheus.Registered to be wrapped with a prefix.
+		"kafka", // Add kafka prefix to match Kafka Producer client metrics. We expect the input Registerer to be wrapped with the usual Loki prefixes.
 		kprom.Registerer(reg),
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 
