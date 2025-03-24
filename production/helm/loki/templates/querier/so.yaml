@@ -1,0 +1,43 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and .Values.querier.kedaAutoscaling.enabled .Values.querier.autoscaling.enabled}}
+{{- fail "Cannot enable both HPA and Keda based autoscaling at the same time."}}
+{{- end }}
+{{- if and $isDistributed .Values.querier.kedaAutoscaling.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "loki.querierFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.querierLabels" . | nindent 4 }}
+spec:
+  advanced:
+    horizontalPodAutoscalerConfig:
+      {{- with .Values.querier.kedaAutoscaling.behavior }}
+      behavior:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  pollingInterval: {{ .Values.kedaAutoscaling.pollingInterval }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "loki.querierFullname" . }}
+  minReplicas: {{ .Values.querier.kedaAutoscaling.minReplicas }}
+  maxReplicas: {{ .Values.querier.kedaAutoscaling.maxReplicas }}
+  triggers:
+  - metadata:
+      {{- if .Values.kedaAutoscaling.authentication.enabled }}
+      authModes: "{{ .Values.kedaAutoscaling.authentication.authModes }}"
+      {{- end }}
+      query: sum(max_over_time(loki_query_scheduler_inflight_requests{namespace="{{ .Release.Namespace }}", quantile="0.75"}[2m]))
+      serverAddress: {{ .Values.kedaAutoscaling.prometheusAddress }}
+      threshold: {{ .Values.querier.kedaAutoscaling.querySchedulerInflightRequestsThreshold | quote }}
+      ignoreNullValues: "{{ .Values.kedaAutoscaling.ignoreNullValues }}"
+      unsafeSsl: "{{ .Values.kedaAutoscaling.unsafeSsl }}"
+    name: querier_autoscaling_metric
+    type: prometheus
+    {{- if .Values.kedaAutoscaling.authentication.enabled }}
+    authenticationRef:
+        name: "keda-triggger-auth"
+    {{- end }}
+{{- end }}
