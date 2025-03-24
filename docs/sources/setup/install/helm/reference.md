@@ -9686,6 +9686,17 @@ null
     "tag": null
   },
   "initContainers": [],
+  "kedaAutoscaling": {
+    "behavior": {
+      "scaleDown": {
+        "stabilizationWindowSeconds": 1800
+      }
+    },
+    "enabled": false,
+    "maxReplicaCount": 10,
+    "minReplicaCount": 1,
+    "querySchedulerInflightRequestsThreshold": "4"
+  },
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
@@ -9950,6 +9961,25 @@ null
 			<td>Init containers to add to the querier pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.kedaAutoscaling</td>
+			<td>object</td>
+			<td>[Experimental] Configure autoscaling via KEDA (https://keda.sh). This requires having KEDA already installed in the Kubernetes cluster. The metrics for scaling are read according to top-level kedaAutoscaling.prometheusAddress (defaulting to metamonitoring remote-write destination). Basic auth and extra HTTP headers from metaMonitoring are ignored, please use customHeaders. The remote URL is used even if metamonitoring is disabled. For more details about KEDA autoscaling, refer to https://grafana.com/docs/loki/latest/operations/autoscaling_queriers</td>
+			<td><pre lang="json">
+{
+  "behavior": {
+    "scaleDown": {
+      "stabilizationWindowSeconds": 1800
+    }
+  },
+  "enabled": false,
+  "maxReplicaCount": 10,
+  "minReplicaCount": 1,
+  "querySchedulerInflightRequestsThreshold": "4"
+}
 </pre>
 </td>
 		</tr>

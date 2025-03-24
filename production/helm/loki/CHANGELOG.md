@@ -219,6 +219,7 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
+- [FEATURE] Added support to use KEDA for autoscaling querier
 
 ## 6.28.0
 
