@@ -28,7 +28,7 @@ cpu: clean
 	go tool pprof -lines *.test cpu.out
 
 edit:
-	@ 1>/dev/null 2>/dev/null gvim -p Makefile *.go &
+	@ 1>/dev/null 2>/dev/null gvim -p Makefile go.mod builder.json *.go &
 
 editor:
 	gofmt -l -s -w *.go
