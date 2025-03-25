@@ -171,7 +171,9 @@ func reuseValuesBuffer(dst []Value, src []Value) []Value {
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
-	// Close any existing reader from a previous pageReader init.
+	// Close any existing reader from a previous pageReader init. Even though
+	// this also happens in [pageReader.Close], we want to do it here as well in
+	// case we seeked backwards in a file.
 	if err := pr.Close(); err != nil {
 		return fmt.Errorf("closing previous page: %w", err)
 	}
@@ -279,6 +281,10 @@ func (pr *pageReader) Reset(page Page, value datasetmd.ValueType, compression da
 
 	pr.pageRow = 0
 	pr.nextRow = 0
+
+	// Close the underlying reader if one is open so resources get released
+	// sooner.
+	_ = pr.Close()
 }
 
 // Close closes the pageReader. Closed pageReaders can be reused by calling

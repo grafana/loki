@@ -326,7 +326,8 @@ func (pr *basicReader) Reset(columns []Column) {
 		clear(pr.columnLookup)
 	}
 
-	// Reset existing readers.
+	// Reset existing readers, which takes the place of otherwise closing
+	// existing ones.
 	pr.columns = columns
 	for i := 0; i < len(pr.readers) && i < len(columns); i++ {
 		pr.readers[i].Reset(columns[i])
