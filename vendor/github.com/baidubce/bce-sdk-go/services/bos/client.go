@@ -183,7 +183,13 @@ func (c *Client) ListObjectVersions(bucket string, args *api.ListObjectsArgs) (*
 //     - error: the return error if any occurs
 func (c *Client) SimpleListObjects(bucket, prefix string, maxKeys int, marker,
 	delimiter string) (*api.ListObjectsResult, error) {
-	args := &api.ListObjectsArgs{delimiter, marker, maxKeys, prefix, ""}
+	args := &api.ListObjectsArgs{
+		Delimiter:       prefix,
+		Marker:          marker,
+		MaxKeys:         maxKeys,
+		Prefix:          prefix,
+		VersionIdMarker: "",
+	}
 	return api.ListObjects(c, bucket, args, c.BosContext)
 }
 

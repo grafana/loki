@@ -326,7 +326,8 @@ func (pr *basicReader) Reset(columns []Column) {
 		clear(pr.columnLookup)
 	}
 
-	// Reset existing readers.
+	// Reset existing readers, which takes the place of otherwise closing
+	// existing ones.
 	pr.columns = columns
 	for i := 0; i < len(pr.readers) && i < len(columns); i++ {
 		pr.readers[i].Reset(columns[i])
@@ -339,12 +340,21 @@ func (pr *basicReader) Reset(columns []Column) {
 		pr.columnLookup[columns[i]] = i
 	}
 
-	// Clear out remaining readers. This needs to clear beyond the final length
-	// of the pr.readers slice (up to its full capacity) so elements beyond the
-	// length can be garbage collected.
+	// Close and clear out remaining readers. This needs to clear beyond the
+	// final length of the pr.readers slice (up to its full capacity) so elements
+	// beyond the length can be garbage collected.
 	pr.readers = pr.readers[:len(columns)]
-	clear(pr.readers[len(columns):cap(pr.readers)])
+	closeAndClear(pr.readers[len(columns):cap(pr.readers)])
 	pr.nextRow = 0
+}
+
+func closeAndClear(r []*columnReader) {
+	for _, c := range r {
+		if c != nil {
+			c.Close()
+		}
+	}
+	clear(r)
 }
 
 // Close closes the basicReader. Closed basicReaders can be reused by calling

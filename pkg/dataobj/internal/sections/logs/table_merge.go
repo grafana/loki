@@ -14,6 +14,42 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// mergeTablesIncremental incrementally merges the provides sorted tables into
+// a single table. Incremental merging limits memory overhead as only mergeSize
+// tables are open at a time.
+//
+// mergeTablesIncremental panics if maxMergeSize is less than 2.
+func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
+	if maxMergeSize < 2 {
+		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
+	}
+
+	// Even if there's only one table, we still pass to mergeTables to ensure
+	// it's compressed with compressionOpts.
+	if len(tables) == 1 {
+		return mergeTables(buf, pageSize, compressionOpts, tables)
+	}
+
+	in := tables
+
+	for len(in) > 1 {
+		var out []*table
+
+		for i := 0; i < len(in); i += maxMergeSize {
+			set := in[i:min(i+maxMergeSize, len(in))]
+			merged, err := mergeTables(buf, pageSize, compressionOpts, set)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, merged)
+		}
+
+		in = out
+	}
+
+	return in[0], nil
+}
+
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
 func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
@@ -58,6 +94,8 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	var rows int
 
 	tree := loser.New(tableSequences, maxValue, tableSequenceValue, rowResultLess, tableSequenceStop)
+	defer tree.Close()
+
 	for tree.Next() {
 		seq := tree.Winner()
 

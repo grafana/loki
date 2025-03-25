@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build unix && !(linux && (amd64 || arm64 || loong64))
+//go:build unix && !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm))
 
 package libc // import "modernc.org/libc"
 
@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -56,21 +55,21 @@ func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigacti
 	signals[signum] = handler
 	switch handler {
 	case signal.SIG_DFL:
-		panic(todo("%v %#x", syscall.Signal(signum), handler))
+		panic(todo("%v %#x", unix.Signal(signum), handler))
 	case signal.SIG_IGN:
 		switch r {
 		case signal.SIG_DFL:
-			gosignal.Ignore(syscall.Signal(signum)) //TODO
+			gosignal.Ignore(unix.Signal(signum)) //TODO
 		case signal.SIG_IGN:
-			gosignal.Ignore(syscall.Signal(signum))
+			gosignal.Ignore(unix.Signal(signum))
 		default:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		}
 	default:
 		switch r {
 		case signal.SIG_DFL:
 			c := make(chan os.Signal, 1)
-			gosignal.Notify(c, syscall.Signal(signum))
+			gosignal.Notify(c, unix.Signal(signum))
 			go func() { //TODO mechanism to stop/cancel
 				for {
 					<-c
@@ -82,9 +81,9 @@ func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigacti
 				}
 			}()
 		case signal.SIG_IGN:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		default:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		}
 	}
 	return r
@@ -140,7 +139,11 @@ func Xremove(t *TLS, pathname uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pathname=%v, (%v:)", t, pathname, origin(2))
 	}
-	panic(todo(""))
+	if err := os.Remove(GoString(pathname)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+	return 0
 }
 
 // long pathconf(const char *path, int name);

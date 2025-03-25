@@ -77,7 +77,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of requests are responded by 5xx server errors."
-              message: "ingester my-route is experiencing 20.48% errors."
+              description: "ingester my-route is experiencing 20.48% errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackWriteRequestErrors
@@ -88,7 +88,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.76% of write requests from gateway in my-ns are returned with server errors."
+              description: "25.76% of write requests from gateway in my-ns are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackReadRequestErrors
@@ -99,7 +99,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.76% of query requests from gateway in my-ns are returned with server errors."
+              description: "25.76% of query requests from gateway in my-ns are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
       - eval_time: 10m
         alertname: LokiRequestPanics
@@ -110,7 +110,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "A panic was triggered."
-              message: "ingester is experiencing an increase of 2 panics."
+              description: "ingester is experiencing an increase of 2 panics."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
       - eval_time: 16m
         alertname: LokiRequestLatency
@@ -122,7 +122,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
-              message: "ingester my-route is experiencing 9.90s 99th percentile latency."
+              description: "ingester my-route is experiencing 9.90s 99th percentile latency."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
       - eval_time: 16m
         alertname: LokiTenantRateLimit
@@ -134,7 +134,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "At least 10% of requests are responded with the rate limit error code."
-              message: "ingester my-route is experiencing 429 errors."
+              description: "ingester my-route is experiencing 429 errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
       - eval_time: 16m
         alertname: LokiStorageSlowWrite
@@ -145,7 +145,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "The storage path is experiencing slow write response rates."
-              message: "The storage path is experiencing slow write response rates."
+              description: "The storage path is experiencing slow write response rates."
               runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
       - eval_time: 16m
         alertname: LokiStorageSlowRead
@@ -156,7 +156,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "The storage path is experiencing slow read response rates."
-              message: "The storage path is experiencing slow read response rates."
+              description: "The storage path is experiencing slow read response rates."
               runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
       - eval_time: 16m
         alertname: LokiWritePathHighLoad
@@ -167,7 +167,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "The write path is experiencing high load, causing backpressure storage flushing."
-              message: "The write path is experiencing high load."
+              description: "The write path is experiencing high load."
               runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
       - eval_time: 16m
         alertname: LokiReadPathHighLoad
@@ -178,7 +178,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "The read path has high volume of queries, causing longer response times."
-              message: "The read path is experiencing high load."
+              description: "The read path is experiencing high load."
               runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"
       - eval_time: 22m
         alertname: LokiDiscardedSamplesWarning
@@ -189,7 +189,7 @@ tests:
               severity: warning
               reason: line_too_long
             exp_annotations:
-              message: |-
+              description: |-
                 Loki in namespace my-ns is discarding samples in the "application" tenant during ingestion.
                 Samples are discarded because of "line_too_long" at a rate of 2 samples per second.
               summary: Loki is discarding samples during ingestion because they fail validation.

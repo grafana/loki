@@ -1,6 +1,35 @@
 <!-- markdownlint-disable MD024 -->
 # Changelog
 
+## v1.34.1 [2025-03-24]
+
+### Bugfixes
+
+- [#16638](https://github.com/influxdata/telegraf/pull/16638) `agent` Condense plugin source information table when multiple plugins in same file
+- [#16674](https://github.com/influxdata/telegraf/pull/16674) `inputs.tail` Do not seek on pipes
+- [#16643](https://github.com/influxdata/telegraf/pull/16643) `inputs.tail` Use correct initial_read_offset persistent offset naming in the code
+- [#16628](https://github.com/influxdata/telegraf/pull/16628) `outputs.influxdb_v2` Use dynamic token secret
+- [#16625](https://github.com/influxdata/telegraf/pull/16625) `outputs.sql` Allow to disable timestamp column
+- [#16682](https://github.com/influxdata/telegraf/pull/16682) `secrets` Make 'insufficient lockable memory' warning work on BSDs
+
+### Dependency Updates
+
+- [#16612](https://github.com/influxdata/telegraf/pull/16612) `deps` Bump github.com/PaesslerAG/gval from 1.2.2 to 1.2.4
+- [#16650](https://github.com/influxdata/telegraf/pull/16650) `deps` Bump github.com/aws/smithy-go from 1.22.2 to 1.22.3
+- [#16680](https://github.com/influxdata/telegraf/pull/16680) `deps` Bump github.com/golang-jwt/jwt/v4 from 4.5.1 to 4.5.2
+- [#16679](https://github.com/influxdata/telegraf/pull/16679) `deps` Bump github.com/golang-jwt/jwt/v5 from 5.2.1 to 5.2.2
+- [#16610](https://github.com/influxdata/telegraf/pull/16610) `deps` Bump github.com/golang/snappy from 0.0.4 to 1.0.0
+- [#16652](https://github.com/influxdata/telegraf/pull/16652) `deps` Bump github.com/hashicorp/consul/api from 1.29.2 to 1.31.2
+- [#16651](https://github.com/influxdata/telegraf/pull/16651) `deps` Bump github.com/leodido/go-syslog/v4 from 4.1.0 to 4.2.0
+- [#16613](https://github.com/influxdata/telegraf/pull/16613) `deps` Bump github.com/linkedin/goavro/v2 from 2.13.0 to 2.13.1
+- [#16671](https://github.com/influxdata/telegraf/pull/16671) `deps` Bump github.com/redis/go-redis/v9 from 9.7.0 to 9.7.3
+- [#16611](https://github.com/influxdata/telegraf/pull/16611) `deps` Bump go.step.sm/crypto from 0.54.0 to 0.59.1
+- [#16640](https://github.com/influxdata/telegraf/pull/16640) `deps` Bump golang.org/x/crypto from 0.35.0 to 0.36.0
+- [#16620](https://github.com/influxdata/telegraf/pull/16620) `deps` Bump golang.org/x/net from 0.35.0 to 0.36.0
+- [#16639](https://github.com/influxdata/telegraf/pull/16639) `deps` Bump golang.org/x/oauth2 from 0.26.0 to 0.28.0
+- [#16653](https://github.com/influxdata/telegraf/pull/16653) `deps` Bump k8s.io/api from 0.32.1 to 0.32.3
+- [#16659](https://github.com/influxdata/telegraf/pull/16659) `deps` Bump tj-actions/changed-files from v45 to v46.0.1
+
 ## v1.34.0 [2025-03-10]
 
 ### New Plugins

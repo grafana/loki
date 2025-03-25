@@ -879,7 +879,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		wantErr   bool
 		wantPanic bool
 	}{
-		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(false), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},

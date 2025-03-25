@@ -292,7 +292,9 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 
 	// There's not much work Reset can do without a context, since it needs to
-	// retrieve page info. We'll defer this work to an init function.
+	// retrieve page info. We'll defer this work to an init function. This also
+	// unfortunately means that we might not reset page readers until the first
+	// call to Read.
 	if r.origColumnLookup == nil {
 		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
 	}

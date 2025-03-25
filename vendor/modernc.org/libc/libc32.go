@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build 386 || arm
-// +build 386 arm
+//go:build !linux && (arm || 386)
 
 package libc // import "modernc.org/libc"
 
