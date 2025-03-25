@@ -72,6 +72,11 @@ func (lit Literal) String() string {
 	}
 }
 
+// Value returns lit's value as untyped interface{}.
+func (lit Literal) Value() any {
+	return lit.val
+}
+
 // IsNull returns true if lit is a [LiteralKindNull] value.
 func (lit Literal) IsNull() bool {
 	return lit.Kind() == types.LiteralKindNull
