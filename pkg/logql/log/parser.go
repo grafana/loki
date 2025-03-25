@@ -56,17 +56,17 @@ type JSONParser struct {
 	lbs             *LabelsBuilder
 	captureJSONPath bool
 
-	keys                 internedStringSet
-	parserHints          ParserHint
+	keys                  internedStringSet
+	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
 func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
-		prefixBuffer:         [][]byte{},
-		keys:                 internedStringSet{},
-		captureJSONPath:      captureJSONPath,
+		prefixBuffer:          [][]byte{},
+		keys:                  internedStringSet{},
+		captureJSONPath:       captureJSONPath,
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
 	}
 }
