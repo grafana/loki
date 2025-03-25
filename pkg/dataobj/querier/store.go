@@ -257,7 +257,12 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 	}
 
 	if predicatePushdownCfg.EnableForLineFilters {
-		if p, expr := buildLogMessagePredicateFromPipeline(selector); p != nil {
+		clonedExpr, err := syntax.Clone(selector)
+		if err != nil {
+			return nil, err
+		}
+
+		if p, expr := buildLogMessagePredicateFromPipeline(clonedExpr); p != nil {
 			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  logsPredicate,
 				Right: p,
@@ -318,7 +323,12 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 	}
 
 	if predicatePushdownCfg.EnableForLineFilters {
-		if p, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr); p != nil {
+		cloned, err := syntax.Clone(expr)
+		if err != nil {
+			return nil, err
+		}
+
+		if p, updatedExpr := buildLogMessagePredicateFromSampleExpr(cloned); p != nil {
 			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  logsPredicate,
 				Right: p,
@@ -509,10 +519,14 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 			}
 		}
 
+		clonedExpr, err := syntax.Clone(expr)
+		if err != nil {
+			return nil, err
+		}
 		finalPredicate := logsPredicate
 
 		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
-		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromPipeline(expr, metadataColumns)
+		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromPipeline(clonedExpr, metadataColumns)
 		if metadataPredicate != nil {
 			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  finalPredicate,
@@ -584,9 +598,13 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 		}
 
 		finalPredicate := logsPredicate
+		clonedExpr, err := syntax.Clone(expr)
+		if err != nil {
+			return nil, err
+		}
 
 		// metadata filter pushdown has to be done at a section level since each section has different set of metadata columns
-		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromSampleExpr(expr, metadataColumns)
+		metadataPredicate, updatedExpr := buildMetadataFilterPredicateFromSampleExpr(clonedExpr, metadataColumns)
 		if metadataPredicate != nil {
 			finalPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  finalPredicate,
