@@ -11,18 +11,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-type exceedsLimitsRequest struct {
+type httpExceedsLimitsRequest struct {
 	TenantID     string   `json:"tenantID"`
 	StreamHashes []uint64 `json:"streamHashes"`
 }
 
-type exceedsLimitsResponse struct {
+type httpExceedsLimitsResponse struct {
 	RejectedStreams []*logproto.RejectedStream `json:"rejectedStreams,omitempty"`
 }
 
 // ServeHTTP implements http.Handler.
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var req exceedsLimitsRequest
+	var req httpExceedsLimitsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "JSON is invalid or does not match expected schema", http.StatusBadRequest)
 		return
@@ -33,7 +33,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streams := make([]*logproto.StreamMetadata, len(req.StreamHashes))
+	streams := make([]*logproto.StreamMetadata, 0, len(req.StreamHashes))
 	for _, streamHash := range req.StreamHashes {
 		streams = append(streams, &logproto.StreamMetadata{
 			StreamHash: streamHash,
@@ -50,14 +50,14 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := f.limits.ExceedsLimits(ctx, protoReq)
+	resp, err := f.ExceedsLimits(ctx, protoReq)
 	if err != nil {
 		level.Error(f.logger).Log("msg", "failed to check limits", "err", err)
 		http.Error(w, "an unexpected error occurred while checking limits", http.StatusInternalServerError)
 		return
 	}
 
-	util.WriteJSONResponse(w, exceedsLimitsResponse{
+	util.WriteJSONResponse(w, httpExceedsLimitsResponse{
 		RejectedStreams: resp.RejectedStreams,
 	})
 }

@@ -5,15 +5,30 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+type httpTenantLimitsResponse struct {
+	Tenant        string  `json:"tenant"`
+	ActiveStreams uint64  `json:"activeStreams"`
+	Rate          float64 `json:"rate"`
+}
+
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
 func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// TODO(grobinson): Avoid acquiring the mutex for the entire duration
+	// of the request.
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
+	tenant := mux.Vars(r)["tenant"]
+	if tenant == "" {
+		http.Error(w, "invalid tenant", http.StatusBadRequest)
+		return
+	}
 
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
@@ -22,19 +37,10 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
 
 	// Calculate stream counts and status per tenant
-	type tenantLimits struct {
-		Tenant        string  `json:"tenant"`
-		ActiveStreams uint64  `json:"activeStreams"`
-		Rate          float64 `json:"rate"`
-	}
-
-	// Get tenant and partitions from query parameters
-	params := r.URL.Query()
-	tenant := params.Get("tenant")
 	var (
 		activeStreams uint64
 		totalSize     uint64
-		response      tenantLimits
+		response      httpTenantLimitsResponse
 	)
 
 	for _, partitions := range s.metadata[tenant] {
@@ -56,14 +62,14 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()
 
 	if activeStreams > 0 {
-		response = tenantLimits{
+		response = httpTenantLimitsResponse{
 			Tenant:        tenant,
 			ActiveStreams: activeStreams,
 			Rate:          calculatedRate,
 		}
 	} else {
 		// If no active streams found, return zeros
-		response = tenantLimits{
+		response = httpTenantLimitsResponse{
 			Tenant:        tenant,
 			ActiveStreams: 0,
 			Rate:          0,

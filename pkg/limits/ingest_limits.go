@@ -3,7 +3,6 @@ package limits
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -21,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -63,68 +61,10 @@ var (
 	)
 )
 
-// Config represents the configuration for the ingest limits service.
-type Config struct {
-	// Enabled enables the ingest limits service.
-	Enabled bool `yaml:"enabled"`
-
-	// WindowSize defines the time window for which stream metadata is considered active.
-	// Stream metadata older than WindowSize will be evicted from the metadata map.
-	WindowSize time.Duration `yaml:"window_size"`
-
-	// RateWindow defines the time window for rate calculation.
-	// This should match the window used in Prometheus rate() queries for consistency,
-	// when using the `loki_ingest_limits_ingested_bytes_total` metric.
-	// Defaults to 5 minutes if not specified.
-	RateWindow time.Duration `yaml:"rate_window"`
-
-	// BucketDuration defines the granularity of time buckets used for sliding window rate calculation.
-	// Smaller buckets provide more precise rate tracking but require more memory.
-	// Defaults to 1 minute if not specified.
-	BucketDuration time.Duration `yaml:"bucket_duration"`
-
-	// LifecyclerConfig is the config to build a ring lifecycler.
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-
-	KafkaConfig kafka.Config `yaml:"-"`
-
-	// The number of partitions for the Kafka topic used to read and write stream metadata.
-	// It is fixed, not a maximum.
-	NumPartitions int `yaml:"num_partitions"`
-}
-
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.", f, util_log.Logger)
-	f.BoolVar(&cfg.Enabled, "ingest-limits.enabled", false, "Enable the ingest limits service.")
-	f.DurationVar(&cfg.WindowSize, "ingest-limits.window-size", 1*time.Hour, "The time window for which stream metadata is considered active.")
-	f.DurationVar(&cfg.RateWindow, "ingest-limits.rate-window", 5*time.Minute, "The time window for rate calculation. This should match the window used in Prometheus rate() queries for consistency.")
-	f.DurationVar(&cfg.BucketDuration, "ingest-limits.bucket-duration", 1*time.Minute, "The granularity of time buckets used for sliding window rate calculation. Smaller buckets provide more precise rate tracking but require more memory.")
-	f.IntVar(&cfg.NumPartitions, "ingest-limits.num-partitions", 64, "The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.")
-}
-
-func (cfg *Config) Validate() error {
-	if cfg.WindowSize <= 0 {
-		return errors.New("window-size must be greater than 0")
-	}
-	if cfg.RateWindow <= 0 {
-		return errors.New("rate-window must be greater than 0")
-	}
-	if cfg.BucketDuration <= 0 {
-		return errors.New("bucket-duration must be greater than 0")
-	}
-	if cfg.RateWindow < cfg.BucketDuration {
-		return errors.New("rate-window must be greater than or equal to bucket-duration")
-	}
-	if cfg.NumPartitions <= 0 {
-		return errors.New("num-partitions must be greater than 0")
-	}
-	return nil
-}
-
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
 
-	kafkaReadLatency    prometheus.Histogram
+	kafkaConsumptionLag prometheus.Histogram
 	kafkaReadBytesTotal prometheus.Counter
 }
 
@@ -135,10 +75,9 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		kafkaReadLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "ingest_limits_kafka_read_latency_seconds",
-			Help:                            "Latency to read stream metadata from Kafka.",
+		kafkaConsumptionLag: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_ingest_limits_kafka_consumption_lag_seconds",
+			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
@@ -380,8 +319,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		case err := <-s.lifecyclerWatcher.Chan():
 			return fmt.Errorf("lifecycler failed: %w", err)
 		default:
-			startTime := time.Now()
-
 			fetches := s.client.PollRecords(ctx, 100)
 			if fetches.IsClientClosed() {
 				return nil
@@ -394,9 +331,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 				continue
 			}
 
-			// Record the latency of successful fetches
-			s.metrics.kafkaReadLatency.Observe(time.Since(startTime).Seconds())
-
 			// Process the fetched records
 			var sizeBytes int
 
@@ -404,6 +338,9 @@ func (s *IngestLimits) running(ctx context.Context) error {
 			for !iter.Done() {
 				record := iter.Next()
 				sizeBytes += len(record.Value)
+
+				// Update the estimated consumption lag.
+				s.metrics.kafkaConsumptionLag.Observe(time.Since(record.Timestamp).Seconds())
 
 				metadata, err := kafka.DecodeStreamMetadata(record)
 				if err != nil {

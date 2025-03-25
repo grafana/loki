@@ -456,7 +456,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
 
 	// Register HTTP handler for metadata
-	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingestLimits)
+	t.Server.HTTP.Path("/ingest-limits/usage/{tenant}").Methods("GET").Handler(ingestLimits)
 
 	return ingestLimits, nil
 }
@@ -516,7 +516,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	// Register HTTP handler to check if a tenant exceeds limits
 	// Returns a JSON response for the frontend to display which
 	// streams are rejected.
-	t.Server.HTTP.Path("/ingest/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
+	t.Server.HTTP.Path("/ingest-limits/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
 
 	return ingestLimitsFrontend, nil
 }

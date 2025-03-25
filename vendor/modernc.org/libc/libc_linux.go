@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !(linux && (amd64 || arm64 || loong64))
+//go:build !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm))
 
 package libc // import "modernc.org/libc"
 
@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"runtime"
 	// "runtime/debug"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -51,8 +50,9 @@ var (
 )
 
 type (
-	long  = types.X__syscall_slong_t
-	ulong = types.X__syscall_ulong_t
+	syscallErrno = unix.Errno
+	long         = types.X__syscall_slong_t
+	ulong        = types.X__syscall_ulong_t
 )
 
 type file uintptr
@@ -387,7 +387,7 @@ func Xwrite(t *TLS, fd int32, buf uintptr, count types.Size_t) types.Ssize_t {
 		trc("t=%v fd=%v buf=%v count=%v, (%v:)", t, fd, buf, count, origin(2))
 	}
 	const retry = 5
-	var err syscall.Errno
+	var err syscallErrno
 	for i := 0; i < retry; i++ {
 		var n uintptr
 		switch n, _, err = unix.Syscall(unix.SYS_WRITE, uintptr(fd), buf, uintptr(count)); err {
@@ -874,7 +874,7 @@ func Xfileno(t *TLS, stream uintptr) int32 {
 	return -1
 }
 
-func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) (r *fts.FTSENT) {
+func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) (r *fts.FTSENT) {
 	var statp uintptr
 	if stat != nil {
 		statp = Xmalloc(t, types.Size_t(unsafe.Sizeof(unix.Stat_t{})))
@@ -898,7 +898,7 @@ func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Err
 	}
 }
 
-func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) uintptr {
+func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) uintptr {
 	p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(fts.FTSENT{})))
 	if p == 0 {
 		panic("OOM")
@@ -1305,7 +1305,7 @@ func Xabort(t *TLS) {
 	}
 	Xsigaction(t, signal.SIGABRT, p, 0)
 	Xfree(t, p)
-	unix.Kill(unix.Getpid(), syscall.Signal(signal.SIGABRT))
+	unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
 	panic(todo("unrechable"))
 }
 
@@ -1546,7 +1546,7 @@ func Xreaddir64(t *TLS, dir uintptr) uintptr {
 	return Xreaddir(t, dir)
 }
 
-func __syscall(r, _ uintptr, errno syscall.Errno) long {
+func __syscall(r, _ uintptr, errno syscallErrno) long {
 	if errno != 0 {
 		return long(-errno)
 	}

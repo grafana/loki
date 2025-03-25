@@ -6,7 +6,6 @@ package libc // import "modernc.org/libc"
 
 import (
 	"strings"
-	"syscall"
 	gotime "time"
 	"unsafe"
 
@@ -661,7 +660,7 @@ func Xgetrlimit64(t *TLS, resource int32, rlim uintptr) int32 {
 	return 0
 }
 
-func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) (r *fts.FTSENT) {
+func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) (r *fts.FTSENT) {
 	var statp uintptr
 	if stat != nil {
 		statp = Xmalloc(t, types.Size_t(unsafe.Sizeof(unix.Stat_t{})))
@@ -896,4 +895,62 @@ func Xclock(t *TLS) time.Clock_t {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
 	return time.Clock_t(gotime.Since(startTime) * gotime.Duration(time.CLOCKS_PER_SEC) / gotime.Second)
+}
+
+func X__maskrune(tls *TLS, _c int32, _f uint64) int32 {
+	return int32(uint32(int32(*(*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(&X_DefaultRuneLocale)) + 60 + uintptr(_c&0xff)*4)))) & uint32(_f))
+}
+
+// int fstatfs(int fd, struct statfs *buf);
+func Xfstatfs(t *TLS, fd int32, buf uintptr) int32 {
+	if err := unix.Fstatfs(int(fd), (*unix.Statfs_t)(unsafe.Pointer(buf))); err != nil {
+		if dmesgs {
+			dmesg("%v: %v: %v FAIL", origin(1), fd, err)
+		}
+		t.setErrno(err)
+		return -1
+	}
+
+	if dmesgs {
+		dmesg("%v: %v: ok", origin(1), fd)
+	}
+	return 0
+}
+
+type lconv = struct {
+	Fdecimal_point      uintptr
+	Fthousands_sep      uintptr
+	Fgrouping           uintptr
+	Fint_curr_symbol    uintptr
+	Fcurrency_symbol    uintptr
+	Fmon_decimal_point  uintptr
+	Fmon_thousands_sep  uintptr
+	Fmon_grouping       uintptr
+	Fpositive_sign      uintptr
+	Fnegative_sign      uintptr
+	Fint_frac_digits    int8
+	Ffrac_digits        int8
+	Fp_cs_precedes      int8
+	Fp_sep_by_space     int8
+	Fn_cs_precedes      int8
+	Fn_sep_by_space     int8
+	Fp_sign_posn        int8
+	Fn_sign_posn        int8
+	Fint_p_cs_precedes  int8
+	Fint_p_sep_by_space int8
+	Fint_n_cs_precedes  int8
+	Fint_n_sep_by_space int8
+	Fint_p_sign_posn    int8
+	Fint_n_sign_posn    int8
+	F__ccgo_pad1        [2]byte
+}
+
+var posix_lconv = lconv{Fdecimal_point: ts + 23, Fthousands_sep: ts + 13, Fgrouping: ts + 13, Fint_curr_symbol: ts + 13, Fcurrency_symbol: ts + 13, Fmon_decimal_point: ts + 13, Fmon_thousands_sep: ts + 13, Fmon_grouping: ts + 13, Fpositive_sign: ts + 13, Fnegative_sign: ts + 13, Fint_frac_digits: Int8FromInt32(255), Ffrac_digits: Int8FromInt32(255), Fp_cs_precedes: Int8FromInt32(255), Fp_sep_by_space: Int8FromInt32(255), Fn_cs_precedes: Int8FromInt32(255), Fn_sep_by_space: Int8FromInt32(255), Fp_sign_posn: Int8FromInt32(255), Fn_sign_posn: Int8FromInt32(255), Fint_p_cs_precedes: Int8FromInt32(255), Fint_p_sep_by_space: Int8FromInt32(255), Fint_n_cs_precedes: Int8FromInt32(255), Fint_n_sep_by_space: Int8FromInt32(255), Fint_p_sign_posn: Int8FromInt32(255), Fint_n_sign_posn: Int8FromInt32(255)} /* localeconv.c:4:27 */
+
+func Xlocaleconv(tls *TLS) uintptr { /* localeconv.c:31:14: */
+	return uintptr(unsafe.Pointer(&posix_lconv))
+}
+
+func X__tolower(tls *TLS, c int32) int32 { /* table.c:1878:20: */
+	return Xtolower(tls, c)
 }
