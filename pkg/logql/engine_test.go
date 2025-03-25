@@ -2502,7 +2502,7 @@ func TestJoinMultiVariantSampleVector(t *testing.T) {
 		limit:     10,
 		start:     now.Add(-time.Hour),
 		end:       now,
-		step:      time.Duration(30 * time.Second),
+		step:      30 * time.Second,
 	}
 
 	testCases := []struct {
@@ -2712,8 +2712,7 @@ func (m *mockStepEvaluator) Close() error {
 	return nil
 }
 
-func (m *mockStepEvaluator) Explain(node Node) {
-	// Not needed for testing
+func (m *mockStepEvaluator) Explain(_ Node) {
 }
 
 // storeSampleResult implements StepResult for testing

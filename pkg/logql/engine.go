@@ -470,9 +470,8 @@ func multiVariantVectorsToSeries(vec promql.Vector, sm map[string]map[uint64]pro
 		}
 
 		variantLabel := p.Metric.Get(constants.VariantLabel)
-		variant, ok := sm[variantLabel]
-		if !ok {
-			variant = make(map[uint64]promql.Series)
+		if _, ok = sm[variantLabel]; !ok {
+			variant := make(map[uint64]promql.Series)
 			sm[variantLabel] = variant
 		}
 
