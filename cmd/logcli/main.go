@@ -43,7 +43,7 @@ var (
 			Default("Local").
 			Short('z').
 			Enum("Local", "UTC")
-	outputTimestampFmt = app.Flag("output-timestamp-format", "Specify the format of timestamps in the default output mode [rfc3339, rfc3339nano, rfc822z, rfc1123z, stampmicro, stampmilli, stampnano,unixdate]").
+	outputTimestampFmt = app.Flag("output-timestamp-format", "Specify the format of timestamps in the default output mode [rfc3339, rfc3339nano, rfc822z, rfc1123z, stampmicro, stampmilli, stampnano, unixdate]").
 				Default("rfc3339").
 				Enum("rfc3339", "rfc3339nano", "rfc822z", "rfc1123z", "stampmicro", "stampmilli", "stampnano", "unixdate")
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").
