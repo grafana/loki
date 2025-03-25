@@ -232,8 +232,8 @@ github.com/axiomhq/hyperloglog v0.2.5 h1:Hefy3i8nAs8zAI/tDp+wE7N+Ltr8JnwiW3875pv
 github.com/axiomhq/hyperloglog v0.2.5/go.mod h1:DLUK9yIzpU5B6YFLjxTIcbHu1g4Y1WQb1m5RH3radaM=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
-github.com/baidubce/bce-sdk-go v0.9.221 h1:x5uTXND33m5TE3UBXYhlePuXcJi5rxNnBBt+bP7kPe0=
-github.com/baidubce/bce-sdk-go v0.9.221/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
+github.com/baidubce/bce-sdk-go v0.9.222 h1:DzH3xbvg7GbvAbpCRNDIQjDThx6ZHt68TCvpcouFmOE=
+github.com/baidubce/bce-sdk-go v0.9.222/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
 github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 h1:6df1vn4bBlDDo4tARvBm7l6KA9iVMnE3NWizDeWSrps=
 github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3/go.mod h1:CIWtjkly68+yqLPbvwwR/fjNJA/idrtULjZWh2v1ys0=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
