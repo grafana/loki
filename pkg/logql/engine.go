@@ -455,6 +455,47 @@ func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
 	}
 }
 
+func multiVariantVectorsToSeries(vec promql.Vector, sm map[string]map[uint64]promql.Series) uint32 {
+	count := uint32(0)
+
+	for _, p := range vec {
+		var (
+			series promql.Series
+			hash   = p.Metric.Hash()
+			ok     bool
+		)
+
+		if !p.Metric.Has(constants.VariantLabel) {
+			return count
+		}
+
+		variantLabel := p.Metric.Get(constants.VariantLabel)
+		variant, ok := sm[variantLabel]
+		if !ok {
+			variant = make(map[uint64]promql.Series)
+			sm[variantLabel] = variant
+		}
+
+		series, ok = sm[variantLabel][hash]
+		if !ok {
+			series = promql.Series{
+				Metric: p.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+			sm[variantLabel][hash] = series
+			count++
+		}
+
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: p.T,
+			F: p.F,
+		})
+		sm[variantLabel][hash] = series
+	}
+
+	return count
+}
+
 func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
@@ -511,6 +552,68 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
+}
+
+func (q *query) JoinMultiVariantSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
+	}
+
+	seriesIndex := map[string]map[uint64]promql.Series{}
+
+	if GetRangeType(q.params) == InstantType {
+		multiVariantVectorsToSeries(vec, seriesIndex)
+		if err := enforceMultiVariantLimit(seriesIndex, maxSeries); err != nil {
+			return nil, err
+		}
+
+		// an instant query sharded first/last_over_time can return a single vector
+		sortByValue, err := Sortable(q.params)
+		if err != nil {
+			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
+		}
+		if !sortByValue {
+			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
+		}
+		return vec, nil
+	}
+
+	seriesCount := uint32(0)
+	for next {
+		vec = r.SampleVector()
+		seriesCount += multiVariantVectorsToSeries(vec, seriesIndex)
+
+		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
+		if err := enforceMultiVariantLimit(seriesIndex, maxSeries); err != nil {
+			return nil, err
+		}
+		next, _, r = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+	series := make([]promql.Series, 0, seriesCount)
+	for _, ss := range seriesIndex {
+		for _, s := range ss {
+			series = append(series, s)
+		}
+	}
+	result := promql.Matrix(series)
+	sort.Sort(result)
+
+	return result, stepEvaluator.Error()
+}
+
+func enforceMultiVariantLimit(seriesIndex map[string]map[uint64]promql.Series, maxSeries int) error {
+	for variant, ss := range seriesIndex {
+		if len(ss) > maxSeries {
+			return logqlmodel.NewMultiVariantSeriesLimitError(maxSeries, variant)
+		}
+	}
+
+	return nil
 }
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
@@ -688,12 +791,7 @@ func (q *query) evalVariants(
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			// TDOO(twhitney): what is merge first last for?
-			mfl := false
-			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
-			// 	mfl = true
-			// }
-			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+			return q.JoinMultiVariantSampleVector(next, vec, stepEvaluator, maxSeries)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
