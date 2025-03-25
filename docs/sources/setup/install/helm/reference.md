@@ -3073,7 +3073,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.4.1"
+    "tag": "weekly-k247-ea079e4"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3091,7 +3091,7 @@ null
       "pullPolicy": "IfNotPresent",
       "registry": "docker.io",
       "repository": "grafana/enterprise-logs-provisioner",
-      "tag": null
+      "tag": "weekly-k247-ea079e4"
     },
     "labels": {},
     "nodeSelector": {},
@@ -3247,7 +3247,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.4.1"
+"weekly-k247-ea079e4"
 </pre>
 </td>
 		</tr>
@@ -3280,7 +3280,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs-provisioner",
-    "tag": null
+    "tag": "weekly-k247-ea079e4"
   },
   "labels": {},
   "nodeSelector": {},
@@ -3370,7 +3370,7 @@ true
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/enterprise-logs-provisioner",
-  "tag": null
+  "tag": "weekly-k247-ea079e4"
 }
 </pre>
 </td>
@@ -3416,7 +3416,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"weekly-k247-ea079e4"
 </pre>
 </td>
 		</tr>
@@ -6159,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.4.2"
+"k247-eb78f22"
 </pre>
 </td>
 		</tr>
@@ -6633,7 +6633,7 @@ true
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": null
+  "tag": "k247-eb78f22"
 }
 </pre>
 </td>
@@ -6679,7 +6679,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"k247-eb78f22"
 </pre>
 </td>
 		</tr>
