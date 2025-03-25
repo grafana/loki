@@ -244,7 +244,7 @@ func TestParseRequest(t *testing.T) {
 			enableServiceDiscovery:    true,
 			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{__aggregated_metric__="stuff", foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
+			expectedBytesUsageTracker: map[string]float64{},
 			expectedLabels:            []labels.Labels{labels.FromStrings("__aggregated_metric__", "stuff", "foo", "bar2", "job", "stuff")},
 			aggregatedMetric:          true,
 		},
@@ -335,7 +335,11 @@ func TestParseRequest(t *testing.T) {
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, totalStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, totalBytes, bytesReceived)
-				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+				if !test.aggregatedMetric {
+					require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+				} else {
+					require.Equal(t, float64(0), tracker.Total(), "aggregated metrics should not be tracked")
+				}
 				require.Equal(t, totalLines, linesReceived)
 
 				for policyName, bytes := range test.expectedStructuredMetadataBytes {

@@ -442,8 +442,10 @@ func shardObjects(
 }
 
 func (s *shardedObject) reset() {
+	_ = s.streamReader.Close()
 	streamReaderPool.Put(s.streamReader)
 	for i, reader := range s.logReaders {
+		_ = reader.Close()
 		logReaderPool.Put(reader)
 		s.logReaders[i] = nil
 	}
