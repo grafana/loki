@@ -20,11 +20,11 @@ Compared to other log aggregation systems, Loki:
 
 A Loki-based logging stack consists of 3 components:
 
-- `promtail` is the agent, responsible for gathering logs and sending them to Loki.
-- `loki` is the main server, responsible for storing logs and processing queries.
+- [Alloy](https://github.com/grafana/alloy) is agent, responsible for gathering logs and sending them to Loki.
+- [Loki](https://github.com/grafana/loki) is the main service, responsible for storing logs and processing queries.
 - [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
 
-**Note that Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy)**
+**Note that Alloy replaced Promtail in the stack, because Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy).**
 
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
 Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
@@ -32,7 +32,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 ## Getting started
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
-* [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
+* [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
 ## Upgrading
@@ -96,16 +96,28 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile)
+You need an up-to-date version of [Go](https://go.dev/), we recommend using the version found in our [Makefile](https://github.com/grafana/loki/blob/main/Makefile)
 
 ```bash
+# Checkout source code
+$ git clone https://github.com/grafana/loki
+$ cd loki
 
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
-
+# Build binary
 $ go build ./cmd/loki
+
+# Run executable
 $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
-...
+```
+
+Alternatively, on Unix systems you can use `make` to build the binary, which adds additional arguments to the `go build` command.
+
+```bash
+# Build binary
+$ make loki
+
+# Run executable
+$ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
 ```
 
 To build Promtail on non-Linux platforms, use the following command:
@@ -138,7 +150,9 @@ with CGO disabled:
 ```bash
 $ CGO_ENABLED=0 go build ./clients/cmd/promtail
 ```
+
 ## Adopters
+
 Please see [ADOPTERS.md](ADOPTERS.md) for some of the organizations using Loki today.
 If you would like to add your organization to the list, please open a PR to add it to the list.
 

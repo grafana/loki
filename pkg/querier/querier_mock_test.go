@@ -515,6 +515,10 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

@@ -626,18 +626,13 @@ func TestCompactor_Compact(t *testing.T) {
 	}
 }
 
-func chunkMetasToChunkEntry(schemaCfg config.SchemaConfig, userID string, lbls labels.Labels, chunkMetas index.ChunkMetas) []retention.ChunkEntry {
-	chunkEntries := make([]retention.ChunkEntry, 0, len(chunkMetas))
+func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lbls labels.Labels, chunkMetas index.ChunkMetas) []retention.Chunk {
+	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
-		chunkEntries = append(chunkEntries, retention.ChunkEntry{
-			ChunkRef: retention.ChunkRef{
-				UserID:   []byte(userID),
-				SeriesID: []byte(lbls.String()),
-				ChunkID:  []byte(schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls))),
-				From:     chunkMeta.From(),
-				Through:  chunkMeta.Through(),
-			},
-			Labels: lbls,
+		chunkEntries = append(chunkEntries, retention.Chunk{
+			ChunkID: []byte(schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls))),
+			From:    chunkMeta.From(),
+			Through: chunkMeta.Through(),
 		})
 	}
 
@@ -658,35 +653,58 @@ func TestCompactedIndex(t *testing.T) {
 	testCtx := setupCompactedIndex(t)
 
 	for name, tc := range map[string]struct {
-		deleteChunks map[string]index.ChunkMetas
+		deleteChunks map[string][]retention.Chunk
 		addChunks    []chunk.Chunk
 		deleteSeries []labels.Labels
 
 		shouldErr           bool
-		finalExpectedChunks map[string]index.ChunkMetas
+		finalExpectedChunks map[string][]retention.Chunk
 	}{
 		"no changes": {
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10)),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(testCtx.schemaCfg, testCtx.userID, testCtx.lbls1, buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10))),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(testCtx.schemaCfg, testCtx.userID, testCtx.lbls2, buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20))),
 			},
 		},
 		"delete some chunks from a stream": {
-			deleteChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)), buildChunkMetas(testCtx.shiftTableStart(7), testCtx.shiftTableStart(8))...),
+			deleteChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					append(
+						buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)),
+						buildChunkMetas(testCtx.shiftTableStart(7), testCtx.shiftTableStart(8))...,
+					),
+				),
 			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)), append(buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(6)), buildChunkMetas(testCtx.shiftTableStart(9), testCtx.shiftTableStart(10))...)...),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					append(
+						buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)),
+						append(buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(6)),
+							buildChunkMetas(testCtx.shiftTableStart(9), testCtx.shiftTableStart(10))...,
+						)...,
+					),
+				),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"delete all chunks from a stream": {
-			deleteChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10)),
+			deleteChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(10)),
+				),
 			},
 			deleteSeries: []labels.Labels{testCtx.lbls1},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"add some chunks to a stream": {
@@ -702,9 +720,15 @@ func TestCompactedIndex(t *testing.T) {
 					Data:     dummyChunkData{},
 				},
 			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"__name__ label should get dropped while indexing chunks": {
@@ -720,9 +744,15 @@ func TestCompactedIndex(t *testing.T) {
 					Data:     dummyChunkData{},
 				},
 			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"add some chunks out of table interval to a stream": {
@@ -749,9 +779,15 @@ func TestCompactedIndex(t *testing.T) {
 					Data:     dummyChunkData{},
 				},
 			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(12)),
+				),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"add and delete some chunks in a stream": {
@@ -767,12 +803,24 @@ func TestCompactedIndex(t *testing.T) {
 					Data:     dummyChunkData{},
 				},
 			},
-			deleteChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)),
+			deleteChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					buildChunkMetas(testCtx.shiftTableStart(3), testCtx.shiftTableStart(5)),
+				),
 			},
-			finalExpectedChunks: map[string]index.ChunkMetas{
-				testCtx.lbls1.String(): append(buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)), buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(12))...),
-				testCtx.lbls2.String(): buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+			finalExpectedChunks: map[string][]retention.Chunk{
+				testCtx.lbls1.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls1,
+					append(
+						buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(2)),
+						buildChunkMetas(testCtx.shiftTableStart(6), testCtx.shiftTableStart(12))...,
+					),
+				),
+				testCtx.lbls2.String(): chunkMetasToRetentionChunk(
+					testCtx.schemaCfg, testCtx.userID, testCtx.lbls2,
+					buildChunkMetas(testCtx.shiftTableStart(0), testCtx.shiftTableStart(20)),
+				),
 			},
 		},
 		"adding chunk to non-existing stream should error": {
@@ -789,19 +837,17 @@ func TestCompactedIndex(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compactedIndex := testCtx.buildCompactedIndex()
 
-			foundChunkEntries := map[string][]retention.ChunkEntry{}
-			err := compactedIndex.ForEachChunk(context.Background(), func(chunkEntry retention.ChunkEntry) (deleteChunk bool, err error) {
-				seriesIDStr := string(chunkEntry.SeriesID)
-				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], chunkEntry)
-				if chks, ok := tc.deleteChunks[string(chunkEntry.SeriesID)]; ok {
+			foundChunkEntries := map[string][]retention.Chunk{}
+			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+				seriesIDStr := string(series.SeriesID())
+				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], series.Chunks()...)
+				if chks, ok := tc.deleteChunks[string(series.SeriesID())]; ok {
 					for _, chk := range chks {
-						if chk.MinTime == int64(chunkEntry.From) && chk.MaxTime == int64(chunkEntry.Through) {
-							return true, nil
-						}
+						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
 					}
 				}
 
-				return false, nil
+				return nil
 			})
 			require.NoError(t, err)
 
@@ -823,9 +869,9 @@ func TestCompactedIndex(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			foundChunks := map[string]index.ChunkMetas{}
+			foundChunks := map[string][]retention.Chunk{}
 			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
+				foundChunks[lbls.String()] = chunkMetasToRetentionChunk(testCtx.schemaCfg, testCtx.userID, lbls, chks)
 				return false
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
@@ -843,11 +889,8 @@ func TestIteratorContextCancelation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	var foundChunkEntries []retention.ChunkEntry
-	err := compactedIndex.ForEachChunk(ctx, func(chunkEntry retention.ChunkEntry) (deleteChunk bool, err error) {
-		foundChunkEntries = append(foundChunkEntries, chunkEntry)
-
-		return false, nil
+	err := compactedIndex.ForEachSeries(ctx, func(_ retention.Series) error {
+		return nil
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -860,7 +903,8 @@ type testContext struct {
 	tableInterval        model.Interval
 	shiftTableStart      func(ms int64) int64
 	buildCompactedIndex  func() *compactedIndex
-	expectedChunkEntries map[string][]retention.ChunkEntry
+	expectedChunkEntries map[string][]retention.Chunk
+	schemaCfg            config.SchemaConfig
 }
 
 func setupCompactedIndex(t *testing.T) *testContext {
@@ -903,12 +947,12 @@ func setupCompactedIndex(t *testing.T) *testContext {
 		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
 	}
 
-	expectedChunkEntries := map[string][]retention.ChunkEntry{
-		lbls1.String(): chunkMetasToChunkEntry(schemaCfg, userID, lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10))),
-		lbls2.String(): chunkMetasToChunkEntry(schemaCfg, userID, lbls2, buildChunkMetas(shiftTableStart(0), shiftTableStart(20))),
+	expectedChunkEntries := map[string][]retention.Chunk{
+		lbls1.String(): chunkMetasToRetentionChunk(schemaCfg, userID, lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10))),
+		lbls2.String(): chunkMetasToRetentionChunk(schemaCfg, userID, lbls2, buildChunkMetas(shiftTableStart(0), shiftTableStart(20))),
 	}
 
-	return &testContext{lbls1, lbls2, userID, tableInterval, shiftTableStart, buildCompactedIndex, expectedChunkEntries}
+	return &testContext{lbls1, lbls2, userID, tableInterval, shiftTableStart, buildCompactedIndex, expectedChunkEntries, schemaCfg}
 }
 
 type dummyChunkData struct {

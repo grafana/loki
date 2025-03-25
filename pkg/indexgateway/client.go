@@ -135,7 +135,8 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		done:                              make(chan struct{}),
 	}
 
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(cfg, sgClient.storeGatewayClientRequestDuration))
+	unaryInterceptors, streamInterceptors := instrumentation(cfg, sgClient.storeGatewayClientRequestDuration)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}

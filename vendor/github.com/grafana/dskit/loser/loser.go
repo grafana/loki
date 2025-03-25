@@ -2,9 +2,9 @@
 
 package loser
 
-import "golang.org/x/exp/constraints"
+import "cmp"
 
-func New[E constraints.Ordered](lists [][]E, maxVal E) *Tree[E] {
+func New[E cmp.Ordered](lists [][]E, maxVal E) *Tree[E] {
 	nLists := len(lists)
 	t := Tree[E]{
 		maxVal: maxVal,
@@ -23,12 +23,12 @@ func New[E constraints.Ordered](lists [][]E, maxVal E) *Tree[E] {
 // A loser tree is a binary tree laid out such that nodes N and N+1 have parent N/2.
 // We store M leaf nodes in positions M...2M-1, and M-1 internal nodes in positions 1..M-1.
 // Node 0 is a special node, containing the winner of the contest.
-type Tree[E constraints.Ordered] struct {
+type Tree[E cmp.Ordered] struct {
 	maxVal E
 	nodes  []node[E]
 }
 
-type node[E constraints.Ordered] struct {
+type node[E cmp.Ordered] struct {
 	index int // This is the loser for all nodes except the 0th, where it is the winner.
 	value E   // Value copied from the loser node, or winner for node 0.
 	items []E // Only populated for leaf nodes.

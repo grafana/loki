@@ -22,6 +22,18 @@ func (e *ProtoMarshaler) TracesSize(td Traces) int {
 	return pb.Size()
 }
 
+func (e *ProtoMarshaler) ResourceSpansSize(rs ResourceSpans) int {
+	return rs.orig.Size()
+}
+
+func (e *ProtoMarshaler) ScopeSpansSize(ss ScopeSpans) int {
+	return ss.orig.Size()
+}
+
+func (e *ProtoMarshaler) SpanSize(span Span) int {
+	return span.orig.Size()
+}
+
 type ProtoUnmarshaler struct{}
 
 func (d *ProtoUnmarshaler) UnmarshalTraces(buf []byte) (Traces, error) {

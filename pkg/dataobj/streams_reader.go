@@ -197,6 +197,15 @@ func (r *StreamsReader) Reset(obj *Object, sectionIndex int) {
 	// call to Read.
 }
 
+// Close closes the StreamsReader and releases any resources it holds. Closed
+// StreamsReaders can be reused by calling [StreamsReader.Reset].
+func (r *StreamsReader) Close() error {
+	if r.reader != nil {
+		return r.reader.Close()
+	}
+	return nil
+}
+
 func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, columnDesc []*streamsmd.ColumnDesc) dataset.Predicate {
 	if p == nil {
 		return nil

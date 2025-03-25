@@ -46,19 +46,19 @@ func Test_mergeTables(t *testing.T) {
 
 	var (
 		tableA = buildTable(&buf, 1024, dataset.CompressionOptions{}, []Record{
-			{StreamID: 1, Timestamp: time.Unix(1, 0), Line: "hello"},
-			{StreamID: 2, Timestamp: time.Unix(2, 0), Line: "are"},
-			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: "goodbye"},
+			{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("hello")},
+			{StreamID: 2, Timestamp: time.Unix(2, 0), Line: []byte("are")},
+			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("goodbye")},
 		})
 
 		tableB = buildTable(&buf, 1024, dataset.CompressionOptions{}, []Record{
-			{StreamID: 1, Timestamp: time.Unix(2, 0), Line: "world"},
-			{StreamID: 3, Timestamp: time.Unix(1, 0), Line: "you"},
+			{StreamID: 1, Timestamp: time.Unix(2, 0), Line: []byte("world")},
+			{StreamID: 3, Timestamp: time.Unix(1, 0), Line: []byte("you")},
 		})
 
 		tableC = buildTable(&buf, 1024, dataset.CompressionOptions{}, []Record{
-			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: "how"},
-			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: "doing?"},
+			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("how")},
+			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("doing?")},
 		})
 	)
 
@@ -87,9 +87,9 @@ func Test_mergeTables(t *testing.T) {
 
 		for _, row := range rows[:n] {
 			require.Len(t, row.Values, 3)
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, row.Values[2].Type())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, row.Values[2].Type())
 
-			actual = append(actual, row.Values[2].String())
+			actual = append(actual, string(row.Values[2].ByteArray()))
 		}
 	}
 

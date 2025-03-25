@@ -7,6 +7,9 @@
 package pcommon
 
 import (
+	"iter"
+	"slices"
+
 	"go.opentelemetry.io/collector/pdata/internal"
 )
 
@@ -55,6 +58,17 @@ func (ms StringSlice) At(i int) string {
 	return (*ms.getOrig())[i]
 }
 
+// All returns an iterator over index-value pairs in the slice.
+func (ms StringSlice) All() iter.Seq2[int, string] {
+	return func(yield func(int, string) bool) {
+		for i := 0; i < ms.Len(); i++ {
+			if !yield(i, ms.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // SetAt sets string item at particular index.
 // Equivalent of stringSlice[i] = val
 func (ms StringSlice) SetAt(i int, val string) {
@@ -100,6 +114,11 @@ func (ms StringSlice) MoveTo(dest StringSlice) {
 func (ms StringSlice) CopyTo(dest StringSlice) {
 	dest.getState().AssertMutable()
 	*dest.getOrig() = copyStringSlice(*dest.getOrig(), *ms.getOrig())
+}
+
+// Equal checks equality with another StringSlice
+func (ms StringSlice) Equal(val StringSlice) bool {
+	return slices.Equal(*ms.getOrig(), *val.getOrig())
 }
 
 func copyStringSlice(dst, src []string) []string {
