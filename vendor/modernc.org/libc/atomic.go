@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build linux && (amd64 || arm64 || loong64)
+//go:build linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)
 
 package libc // import "modernc.org/libc"
 
@@ -36,15 +36,6 @@ func a_store_16(addr uintptr, val uint16) {
 	}
 
 	*(*uint16)(unsafe.Pointer(addr)) = val
-}
-
-// static inline int a_ctz_l(unsigned long x)
-func _a_ctz_l(tls *TLS, x ulong) int32 {
-	if unsafe.Sizeof(x) == 8 {
-		return int32(mbits.TrailingZeros64(x))
-	}
-
-	return int32(mbits.TrailingZeros32(uint32(x)))
 }
 
 // static inline int a_ctz_64(uint64_t x)
