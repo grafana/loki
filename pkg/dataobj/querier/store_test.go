@@ -3,6 +3,7 @@ package querier
 import (
 	"bytes"
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,10 +38,13 @@ func TestStore_SelectSamples(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(Config{}, builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(cfg, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -203,10 +207,13 @@ func TestStore_SelectLogs(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(Config{}, builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
+	store := NewStore(cfg, builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {

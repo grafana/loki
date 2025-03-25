@@ -257,15 +257,15 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 	}
 
 	if predicatePushdownCfg.EnableForLineFilters {
-		p, expr := buildLogMessagePredicateFromPipeline(selector)
-		if p != nil {
+		if p, expr := buildLogMessagePredicateFromPipeline(selector); p != nil {
 			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  logsPredicate,
 				Right: p,
 			}
+
+			req.Plan.AST = expr
+			level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", selector.String(), "updated_expr", expr.String(), "log_message_filter_predicate", p.String())
 		}
-		req.Plan.AST = expr
-		level.Debug(logger).Log("msg", "line filter predicate pushdown", "noop", p == nil, "orig_expr", selector.String(), "updated_expr", expr.String(), "log_message_filter_predicate", p.String())
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -318,15 +318,15 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 	}
 
 	if predicatePushdownCfg.EnableForLineFilters {
-		p, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr)
-		if p != nil {
+		if p, updatedExpr := buildLogMessagePredicateFromSampleExpr(expr); p != nil {
 			logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
 				Left:  logsPredicate,
 				Right: p,
 			}
+
+			level.Debug(logger).Log("msg", "line filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "log_message_filter_predicate", p.String())
+			expr = updatedExpr
 		}
-		level.Debug(logger).Log("msg", "line filter predicate pushdown", "noop", p == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "log_message_filter_predicate", p.String())
-		expr = updatedExpr
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -518,13 +518,14 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 				Left:  finalPredicate,
 				Right: metadataPredicate,
 			}
+
+			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
 		}
 
 		if err := r.SetPredicate(finalPredicate); err != nil {
 			return nil, err
 		}
 
-		level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "noop", metadataPredicate == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
 		return updatedExpr, nil
 	}
 
@@ -591,13 +592,14 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 				Left:  finalPredicate,
 				Right: metadataPredicate,
 			}
+
+			level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
 		}
 
 		if err := r.SetPredicate(finalPredicate); err != nil {
 			return nil, err
 		}
 
-		level.Debug(logger).Log("msg", "metadata filter predicate pushdown", "noop", metadataPredicate == nil, "orig_expr", expr.String(), "updated_expr", updatedExpr.String(), "metadata_filter_predicate", metadataPredicate.String())
 		return updatedExpr, nil
 	}
 
