@@ -81,7 +81,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
 		}),
 		kafkaReadBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
