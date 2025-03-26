@@ -114,44 +114,46 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 	return convertLineFilter(expr.LineFilter)
 }
 
-func convertLabelFilter(expr log.LabelFilterer) Value {
+func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	switch e := expr.(type) {
 	case *log.BinaryLabelFilter:
 		op := types.BinaryOpOr
 		if e.And == true {
 			op = types.BinaryOpAnd
 		}
-		return &BinOp{
-			Left:  convertLabelFilter(e.Left),
-			Right: convertLabelFilter(e.Right),
-			Op:    op,
+		left, err := convertLabelFilter(e.Left)
+		if err != nil {
+			return nil, err
 		}
+		right, err := convertLabelFilter(e.Right)
+		if err != nil {
+			return nil, err
+		}
+		return &BinOp{Left: left, Right: right, Op: op}, nil
 	case *log.BytesLabelFilter:
-		panic("not implemented")
+		return nil, fmt.Errorf("not implemented: %T", e)
 	case *log.NumericLabelFilter:
-		panic("not implemented")
+		return nil, fmt.Errorf("not implemented: %T", e)
 	case *log.DurationLabelFilter:
-		panic("not implemented")
+		return nil, fmt.Errorf("not implemented: %T", e)
 	case *log.NoopLabelFilter:
-		panic("not implemented")
+		return nil, fmt.Errorf("not implemented: %T", e)
 	case *log.StringLabelFilter:
 		m := e.Matcher
 		return &BinOp{
 			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
 			Right: LiteralString(m.Value),
 			Op:    convertLabelMatchType(m.Type),
-		}
+		}, nil
 	case *log.LineFilterLabelFilter:
 		m := e.Matcher
 		return &BinOp{
 			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
 			Right: LiteralString(m.Value),
 			Op:    convertLabelMatchType(m.Type),
-		}
-	case *syntax.LabelFilterExpr:
-		return convertLabelFilter(e.LabelFilterer)
+		}, nil
 	}
-	panic(fmt.Sprintf("invalid label filter %T", expr))
+	return nil, fmt.Errorf("invalid label filter %T", expr)
 }
 
 func convertQueryRangeToPredicate(start, end int64) Value {
@@ -172,22 +174,33 @@ func convertQueryRangeToPredicate(start, end int64) Value {
 	}
 }
 
-func ConvertToLogicalPlan(params logql.Params) (*Plan, bool, error) {
+func ConvertToLogicalPlan(params logql.Params) (*Plan, error) {
 	expr := params.GetExpression()
 
 	var selector Value
 	var predicates []Value
 
+	// TODO(chaudum): Implement a Walk function that can return an error
+	var err error
+
 	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
-		case syntax.LogSelectorExpr:
+		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 		case *syntax.LineFilterExpr:
 			predicates = append(predicates, convertLineFilterExpr(e))
 		case *syntax.LabelFilterExpr:
-			predicates = append(predicates, convertLabelFilter(e))
+			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
+				err = innerErr
+			} else {
+				predicates = append(predicates, val)
+			}
 		}
 	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
+	}
 
 	builder := NewBuilder(
 		&MakeTable{
@@ -211,5 +224,5 @@ func ConvertToLogicalPlan(params logql.Params) (*Plan, bool, error) {
 	builder = builder.Limit(0, limit)
 
 	plan, err := builder.ToPlan()
-	return plan, true, err
+	return plan, err
 }
