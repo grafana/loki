@@ -94,7 +94,7 @@ Since Grafana Alloy is configured to tail logs from all Docker containers, Loki 
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down.png" caption="Grafana Logs Drilldown" alt="Grafana Logs Drilldown" >}}
 
-If you have only the getting started demo deployed in your docker environment, you should see three containers and their logs; `loki-fundamentals-alloy-1`, `loki-fundamentals-grafana-1` and `loki-fundamentals-loki-1`.  In the `loki-fundamentals-loki-1` container, click **Show Logs**  to drill down into the logs for that container.
+If you have only the getting started demo deployed in your Docker environment, you should see three containers and their logs; `loki-fundamentals-alloy-1`, `loki-fundamentals-grafana-1` and `loki-fundamentals-loki-1`.  In the `loki-fundamentals-loki-1` container, click **Show Logs**  to drill down into the logs for that container.
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Grafana Drilldown Service View" alt="Grafana Drilldown Service View" >}}
 
@@ -293,11 +293,11 @@ In this next section we will take a look under the hood to understand how the Lo
 
 ### Grafana Alloy configuration
 
-Grafana Alloy is collecting logs from all the docker containers and forwarding them to Loki. 
+Grafana Alloy is collecting logs from all the Docker containers and forwarding them to Loki. 
 It needs a configuration file to know which logs to collect and where to forward them to. Within the `loki-fundamentals` directory, you will find a file called `config.alloy`:
 
 ```alloy
-// This component is responsible for disovering new containers within the docker environment
+// This component is responsible for discovering new containers within the Docker environment
 discovery.docker "getting_started" {
 	host             = "unix:///var/run/docker.sock"
 	refresh_interval = "5s"
@@ -350,7 +350,7 @@ This configuration file can be viewed visually via the Alloy UI at [http://local
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-alloy-ui.png" caption="Alloy UI" alt="Alloy UI" >}}
 
 In this view you can see the components of the Alloy configuration file and how they are connected:
-* **discovery.docker**: This component queries the metadata of the docker environment via the docker socket and discovers new containers, as well as providing metadata about the containers.
+* **discovery.docker**: This component queries the metadata of the Docker environment via the Docker socket and discovers new containers, as well as providing metadata about the containers.
 * **discovery.relabel**: This component converts a metadata (`__meta_docker_container_name`) label into a Loki label (`container`).
 * **loki.source.docker**: This component collects logs from the discovered containers and forwards them to the next component. It requests the metadata from the `discovery.docker` component and applies the relabeling rules from the `discovery.relabel` component.
 * **loki.process**: This component provides stages for log transformation and extraction. In this case it adds a static label `env=production` to all logs.
@@ -429,7 +429,7 @@ compactor:
   retention_enabled: true
 ```
 To summarize the configuration file:
-* **auth_enabled**: This is set to false, meaning Loki does not need a [tenant ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for ingest or query. Note that this is not recommended for production environments. When deploying the Loki helm chart, this is set to true by default.
+* **auth_enabled**: This is set to false, meaning Loki does not need a [tenant ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for ingest or query. Note that this is not recommended for production environments. When deploying the Loki Helm chart, this is set to true by default.
 * **server**: Defines the ports Loki listens on, the log level, and the maximum number of concurrent gRPC streams.
 * **common**:  Defines the common configuration for Loki. This includes the instance address, storage configuration, replication factor, and ring configuration.
 * **query_range**: This is configured to tell Loki to use inbuilt caching for query results. In production environments of Loki this is handled by a separate cache service such as memcached.
