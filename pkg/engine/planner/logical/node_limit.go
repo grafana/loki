@@ -15,11 +15,11 @@ type Limit struct {
 
 	// Skip is the number of rows to skip before returning results. A value of 0
 	// means no rows are skipped.
-	Skip uint64
+	Skip uint32
 
 	// Fetch is the maximum number of rows to return. A value of 0 means all rows
 	// are returned (after applying Skip).
-	Fetch uint64
+	Fetch uint32
 }
 
 var (

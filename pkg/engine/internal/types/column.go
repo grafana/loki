@@ -15,6 +15,12 @@ const (
 	ColumnTypeMetadata // ColumnTypeMetadata represents a column from a log metadata.
 )
 
+// Names of the builtin columns.
+const (
+	ColumnNameBuiltinTimestamp = "timestamp"
+	ColumnNameBuiltinLog       = "log"
+)
+
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {
 	switch ct {
