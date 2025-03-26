@@ -35,101 +35,6 @@ func (t ExpressionType) String() string {
 	}
 }
 
-// UnaryOpType represents the operator of a [UnaryExpression].
-type UnaryOpType uint32
-
-const (
-	_ UnaryOpType = iota // zero-value is an invalid value
-
-	UnaryOpNot // Logical NOT operation (!)
-	UnaryOpAbs // Absolute operation (abs)
-)
-
-// String returns the string representation of the [UnaryOpType].
-func (t UnaryOpType) String() string {
-	switch t {
-	case UnaryOpNot:
-		return "NOT"
-	case UnaryOpAbs:
-		return "ABS"
-	default:
-		panic(fmt.Sprintf("unknown unary operator type %d", t))
-	}
-}
-
-// BinaryOpType represents the operator of a [BinaryExpression].
-type BinaryOpType uint32
-
-const (
-	_ BinaryOpType = iota // zero-value is an invalid type
-
-	BinaryOpEq          // Equality comparison (==).
-	BinaryOpNeq         // Inequality comparison (!=).
-	BinaryOpGt          // Greater than comparison (>).
-	BinaryOpGte         // Greater than or equal comparison (>=).
-	BinaryOpLt          // Less than comparison (<).
-	BinaryOpLte         // Less than or equal comparison (<=).
-	BinaryOpAnd         // Logical AND operation (&&).
-	BinaryOpOr          // Logical OR operation (||).
-	BinaryOpXor         // Logical XOR operation (^).
-	BinaryOpNot         // Logicaal NOT operation (!).
-	BinaryOpAdd         // Addition operation (+).
-	BinaryOpSub         // Subtraction operation (-).
-	BinaryOpMul         // Multiplication operation (*).
-	BinaryOpDiv         // Division operation (/).
-	BinaryOpMod         // Modulo operation (%).
-	BinaryOpMatchStr    // String matching comparision (|=).
-	BinaryOpNotMatchStr // String not-matching comparison (!=).
-	BinaryOpMatchRe     // Regex matching comparison (=~).
-	BinaryOpNotMatchRe  // Regex not-matching comparison (!~).
-)
-
-// String returns the string representation of the [BinaryOpType].
-func (t BinaryOpType) String() string {
-	switch t {
-	case BinaryOpEq:
-		return "EQ"
-	case BinaryOpNeq:
-		return "NEQ" // convenience for NOT(EQ(expr))
-	case BinaryOpGt:
-		return "GT"
-	case BinaryOpGte:
-		return "GTE"
-	case BinaryOpLt:
-		return "LT" // convenience for NOT(GTE(expr))
-	case BinaryOpLte:
-		return "LTE" // convenience for NOT(GT(expr))
-	case BinaryOpAnd:
-		return "AND"
-	case BinaryOpOr:
-		return "OR"
-	case BinaryOpXor:
-		return "XOR"
-	case BinaryOpNot:
-		return "NOT"
-	case BinaryOpAdd:
-		return "ADD"
-	case BinaryOpSub:
-		return "SUB"
-	case BinaryOpMul:
-		return "MUL"
-	case BinaryOpDiv:
-		return "DIV"
-	case BinaryOpMod:
-		return "MOD"
-	case BinaryOpMatchStr:
-		return "MATCH_STR"
-	case BinaryOpNotMatchStr:
-		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
-	case BinaryOpMatchRe:
-		return "MATCH_RE"
-	case BinaryOpNotMatchRe:
-		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
-	default:
-		panic(fmt.Sprintf("unknown binary operator type %d", t))
-	}
-}
-
 // Expression is the common interface for all expressions in a physical plan.
 type Expression interface {
 	fmt.Stringer
@@ -171,7 +76,7 @@ type UnaryExpr struct {
 	// Left is the expression being operated on
 	Left Expression
 	// Op is the unary operator to apply to the expression
-	Op UnaryOpType
+	Op types.UnaryOp
 }
 
 func (*UnaryExpr) isExpr()      {}
@@ -189,7 +94,7 @@ func (*UnaryExpr) Type() ExpressionType {
 // BinaryExpr is an expression that implements the [BinaryExpression] interface.
 type BinaryExpr struct {
 	Left, Right Expression
-	Op          BinaryOpType
+	Op          types.BinaryOp
 }
 
 func (*BinaryExpr) isExpr()       {}

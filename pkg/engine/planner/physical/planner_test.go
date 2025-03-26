@@ -34,7 +34,7 @@ func TestPlanner_Convert(t *testing.T) {
 			Selector: &logical.BinOp{
 				Left:  &logical.ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: logical.LiteralString("users"),
-				Op:    types.BinOpKindEq,
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Sort(
@@ -48,13 +48,13 @@ func TestPlanner_Convert(t *testing.T) {
 		&logical.BinOp{
 			Left:  &logical.ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: logical.LiteralInt64(21),
-			Op:    types.BinOpKindGt,
+			Op:    types.BinaryOpGt,
 		},
 	).Select(
 		&logical.BinOp{
 			Left:  &logical.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin},
 			Right: logical.LiteralUint64(1742826126000000000),
-			Op:    types.BinOpKindLt,
+			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
 

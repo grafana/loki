@@ -26,14 +26,14 @@ func TestFormatSimpleQuery(t *testing.T) {
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: LiteralString("users"),
-				Op:    types.BinOpKindEq,
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
 			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: LiteralInt64(21),
-			Op:    types.BinOpKindGt,
+			Op:    types.BinaryOpGt,
 		},
 	)
 
@@ -66,14 +66,14 @@ func TestFormatSortQuery(t *testing.T) {
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: LiteralString("users"),
-				Op:    types.BinOpKindEq,
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
 			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: LiteralInt64(21),
-			Op:    types.BinOpKindGt,
+			Op:    types.BinaryOpGt,
 		},
 	).Sort(ColumnRef{Column: "age", Type: types.ColumnTypeMetadata}, true, false)
 

@@ -17,7 +17,7 @@ func TestExpressionTypes(t *testing.T) {
 		{
 			name: "UnaryExpression",
 			expr: &UnaryExpr{
-				Op:   UnaryOpNot,
+				Op:   types.UnaryOpNot,
 				Left: &LiteralExpr{Value: true},
 			},
 			expected: ExprTypeUnary,
@@ -25,7 +25,7 @@ func TestExpressionTypes(t *testing.T) {
 		{
 			name: "BinaryExpression",
 			expr: &BinaryExpr{
-				Op:    BinaryOpEq,
+				Op:    types.BinaryOpEq,
 				Left:  &ColumnExpr{Name: "col"},
 				Right: &LiteralExpr{Value: "foo"},
 			},

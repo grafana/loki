@@ -13,7 +13,7 @@ type BinOp struct {
 	id string
 
 	Left, Right Value
-	Op          types.BinOpKind
+	Op          types.BinaryOp
 }
 
 var (

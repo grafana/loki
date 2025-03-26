@@ -52,7 +52,7 @@ func (p *Planner) convertSelector(inst logical.Value) Expression {
 		return &BinaryExpr{
 			Left:  p.convertSelector(inst.Left),
 			Right: p.convertSelector(inst.Right),
-			Op:    BinaryOpType(inst.Op),
+			Op:    inst.Op,
 		}
 	case *logical.ColumnRef:
 		return &ColumnExpr{
@@ -74,13 +74,13 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 	case *logical.UnaryOp:
 		return &UnaryExpr{
 			Left: p.convertPredicate(inst.Value),
-			Op:   UnaryOpType(inst.Op),
+			Op:   inst.Op,
 		}
 	case *logical.BinOp:
 		return &BinaryExpr{
 			Left:  p.convertPredicate(inst.Left),
 			Right: p.convertPredicate(inst.Right),
-			Op:    BinaryOpType(inst.Op),
+			Op:    inst.Op,
 		}
 	case *logical.ColumnRef:
 		return &ColumnExpr{

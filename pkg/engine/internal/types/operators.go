@@ -2,92 +2,107 @@ package types
 
 import "fmt"
 
-// UnaryOpKind denotes the kind of [UnaryOp] operation to perform.
-type UnaryOpKind int
+// UnaryOp denotes the kind of [UnaryOp] operation to perform.
+type UnaryOp uint32
 
-// Recognized values of [UnaryOpKind].
+// Recognized values of [UnaryOp].
 const (
 	// UnaryOpKindInvalid indicates an invalid unary operation.
-	UnaryOpKindInvalid UnaryOpKind = iota
+	UnaryOpInvalid UnaryOp = iota
 
-	UnaryOpKindNot // Logical NOT operation (!).
+	UnaryOpNot // Logical NOT operation (!).
+	UnaryOpAbs // Mathematical absolute operation (abs).
 )
 
-var unaryOpKindStrings = map[UnaryOpKind]string{
-	UnaryOpKindInvalid: "invalid",
-
-	UnaryOpKindNot: "NOT",
-}
-
-// String returns the string representation of the UnaryOpKind.
-func (k UnaryOpKind) String() string {
-	if s, ok := unaryOpKindStrings[k]; ok {
-		return s
+// String returns the string representation of the UnaryOp.
+func (t UnaryOp) String() string {
+	switch t {
+	case UnaryOpInvalid:
+		return "invalid"
+	case UnaryOpNot:
+		return "NOT"
+	case UnaryOpAbs:
+		return "ABS"
+	default:
+		panic(fmt.Sprintf("unknown unary operator %d", t))
 	}
-	return fmt.Sprintf("UnaryOpKind(%d)", k)
 }
 
-// BinOpKind denotes the kind of [BinOp] operation to perform.
-type BinOpKind int
+// BinaryOp denotes the kind of [BinaryOp] operation to perform.
+type BinaryOp uint32
 
-// Recognized values of [BinOpKind].
+// Recognized values of [BinaryOp].
 const (
-	// BinOpKindInvalid indicates an invalid binary operation.
-	BinOpKindInvalid BinOpKind = iota
+	// BinaryOpInvalid indicates an invalid binary operation.
+	BinaryOpInvalid BinaryOp = iota
 
-	BinOpKindEq  // Equality comparison (==).
-	BinOpKindNeq // Inequality comparison (!=).
-	BinOpKindGt  // Greater than comparison (>).
-	BinOpKindGte // Greater than or equal comparison (>=).
-	BinOpKindLt  // Less than comparison (<).
-	BinOpKindLte // Less than or equal comparison (<=).
-	BinOpKindAnd // Logical AND operation (&&).
-	BinOpKindOr  // Logical OR operation (||).
-	BinOpKindXor // Logical XOR operation (^).
-	BinOpKindNot // Logical NOT operation (!).
+	BinaryOpEq  // Equality comparison (==).
+	BinaryOpNeq // Inequality comparison (!=).
+	BinaryOpGt  // Greater than comparison (>).
+	BinaryOpGte // Greater than or equal comparison (>=).
+	BinaryOpLt  // Less than comparison (<).
+	BinaryOpLte // Less than or equal comparison (<=).
+	BinaryOpAnd // Logical AND operation (&&).
+	BinaryOpOr  // Logical OR operation (||).
+	BinaryOpXor // Logical XOR operation (^).
+	BinaryOpNot // Logical NOT operation (!).
 
-	BinOpKindAdd // Addition operation (+).
-	BinOpKindSub // Subtraction operation (-).
-	BinOpKindMul // Multiplication operation (*).
-	BinOpKindDiv // Division operation (/).
-	BinOpKindMod // Modulo operation (%).
+	BinaryOpAdd // Addition operation (+).
+	BinaryOpSub // Subtraction operation (-).
+	BinaryOpMul // Multiplication operation (*).
+	BinaryOpDiv // Division operation (/).
+	BinaryOpMod // Modulo operation (%).
 
-	BinOpKindMatchStr    // String matching operation.
-	BinOpKindNotMatchStr // String non-matching operation.
-	BinOpKindMatchRe     // Regular expression matching operation.
-	BinOpKindNotMatchRe  // Regular expression non-matching operation.
+	BinaryOpMatchStr    // String matching operation (|=).
+	BinaryOpNotMatchStr // String non-matching operation (!=).
+	BinaryOpMatchRe     // Regular expression matching operation (|~).
+	BinaryOpNotMatchRe  // Regular expression non-matching operation (!~).
 )
-
-var binOpKindStrings = map[BinOpKind]string{
-	BinOpKindInvalid: "invalid",
-
-	BinOpKindEq:  "EQ",
-	BinOpKindNeq: "NEQ",
-	BinOpKindGt:  "GT",
-	BinOpKindGte: "GTE",
-	BinOpKindLt:  "LT",
-	BinOpKindLte: "LTE",
-	BinOpKindAnd: "AND",
-	BinOpKindOr:  "OR",
-	BinOpKindXor: "XOR",
-	BinOpKindNot: "NOT",
-
-	BinOpKindAdd: "ADD",
-	BinOpKindSub: "SUB",
-	BinOpKindMul: "MUL",
-	BinOpKindDiv: "DIV",
-	BinOpKindMod: "MOD",
-
-	BinOpKindMatchStr:    "MATCH_STR",
-	BinOpKindNotMatchStr: "NOT_MATCH_STR",
-	BinOpKindMatchRe:     "MATCH_RE",
-	BinOpKindNotMatchRe:  "NOT_MATCH_RE",
-}
 
 // String returns a human-readable representation of the binary operation kind.
-func (k BinOpKind) String() string {
-	if s, ok := binOpKindStrings[k]; ok {
-		return s
+func (t BinaryOp) String() string {
+	switch t {
+	case BinaryOpInvalid:
+		return "invalid"
+	case BinaryOpEq:
+		return "EQ"
+	case BinaryOpNeq:
+		return "NEQ" // convenience for NOT(EQ(expr))
+	case BinaryOpGt:
+		return "GT"
+	case BinaryOpGte:
+		return "GTE"
+	case BinaryOpLt:
+		return "LT" // convenience for NOT(GTE(expr))
+	case BinaryOpLte:
+		return "LTE" // convenience for NOT(GT(expr))
+	case BinaryOpAnd:
+		return "AND"
+	case BinaryOpOr:
+		return "OR"
+	case BinaryOpXor:
+		return "XOR"
+	case BinaryOpNot:
+		return "NOT"
+	case BinaryOpAdd:
+		return "ADD"
+	case BinaryOpSub:
+		return "SUB"
+	case BinaryOpMul:
+		return "MUL"
+	case BinaryOpDiv:
+		return "DIV"
+	case BinaryOpMod:
+		return "MOD"
+	case BinaryOpMatchStr:
+		return "MATCH_STR"
+	case BinaryOpNotMatchStr:
+		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
+	case BinaryOpMatchRe:
+		return "MATCH_RE"
+	case BinaryOpNotMatchRe:
+		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
+	default:
+		panic(fmt.Sprintf("unknown binary operator %d", t))
 	}
-	return fmt.Sprintf("BinOpKind(%d)", k)
 }

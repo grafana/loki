@@ -12,7 +12,7 @@ import (
 type UnaryOp struct {
 	id string
 
-	Op    types.UnaryOpKind
+	Op    types.UnaryOp
 	Value Value
 }
 
