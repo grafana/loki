@@ -1,6 +1,6 @@
 ---
 title: Loki Tutorial
-weight: 200
+weight: 300
 description: An expanded quick start tutorial taking you though core functions of the Loki stack.
 killercoda:
   title: Loki Tutorial
