@@ -137,14 +137,14 @@ func convertLabelFilter(expr log.LabelFilterer) Value {
 	case *log.StringLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeBuiltin},
+			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
 			Right: LiteralString(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}
 	case *log.LineFilterLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeBuiltin},
+			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
 			Right: LiteralString(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}

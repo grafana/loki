@@ -88,4 +88,27 @@ func TestConvertAST(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	t.Logf("\n%s\n", logicalPlan.String())
+
+	expected := `%1 = EQ label.cluster, "prod"
+%2 = MATCH_RE label.namespace, "loki-.*"
+%3 = AND %1, %2
+%4 = MAKE_TABLE [selector=%3]
+%5 = MATCH_STR ambiguous.foo, "bar"
+%6 = SELECT %4 [predicate=%5]
+%7 = MATCH_STR builtin.log, "metric.go"
+%8 = MATCH_STR builtin.log, "org_id=1"
+%9 = AND %7, %8
+%10 = SELECT %6 [predicate=%9]
+%11 = MATCH_STR builtin.log, "metric.go"
+%12 = SELECT %10 [predicate=%11]
+%13 = GTE builtin.timestamp, 1000
+%14 = LT builtin.timestamp, 2000
+%15 = AND %13, %14
+%16 = SELECT %12 [predicate=%15]
+%17 = SORT %16 [column=builtin.timestamp, asc=true, nulls_first=false]
+%18 = limit %17 [skip=0, fetch=1000]
+RETURN %18
+`
+
+	require.Equal(t, expected, logicalPlan.String())
 }
