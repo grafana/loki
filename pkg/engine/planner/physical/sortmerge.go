@@ -1,10 +1,12 @@
 package physical
 
+import "fmt"
+
 type SortOrder uint8
 
 const (
-	ASC SortOrder = iota
-	DESC
+	DESC SortOrder = iota
+	ASC
 )
 
 // String returns the string representation of the [SortOrder].
@@ -39,6 +41,9 @@ type SortMerge struct {
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
 func (m *SortMerge) ID() string {
+	if m.id == "" {
+		return fmt.Sprintf("%p", m)
+	}
 	return m.id
 }
 
