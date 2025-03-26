@@ -1,20 +1,10 @@
 ---
-title: Quickstart to run Loki locally
-menuTitle: Loki quickstart
+title: Loki Tutorial
 weight: 200
-description: How to deploy Loki locally using Docker Compose.
+description: An expanded quick start tutorial taking you though core functions of the Loki stack.
 killercoda:
-  comment: |
-    The killercoda front matter and the HTML comments that start '<!-- INTERACTIVE ' are used by a transformation tool that converts this Markdown source into a Killercoda tutorial.
-
-    You can find the tutorial in https://github.com/grafana/killercoda/tree/staging/loki/loki-quickstart.
-
-    Changes to this source file affect the Killercoda tutorial.
-
-    For more information about the transformation tool, refer to https://github.com/grafana/killercoda/blob/staging/docs/transformer.md.
-  title: Loki Quickstart Demo
-  
-  description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
+  title: Loki Tutorial
+  description: An expanded quick start tutorial taking you though core functions of the Loki stack.
   details:
     intro:
       foreground: setup.sh
@@ -22,7 +12,7 @@ killercoda:
     imageid: ubuntu
 ---
 <!-- INTERACTIVE page intro.md START -->
-# Quickstart to run Loki locally
+# Loki Tutorial
 
 This quick start guide will walk you through deploying Loki in single binary mode (also known as [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode)) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki Stack**.
 
@@ -41,7 +31,7 @@ Before you start, you need to have the following installed on your local system:
 - Install [Docker Compose](https://docs.docker.com/compose/install)
 
 {{< admonition type="tip" >}}
-Alternatively, you can try out this example in our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart).
+Alternatively, you can try out this example in our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-getting-started-tutorial).
 
 It's a fully configured environment with all the dependencies already installed.
 
