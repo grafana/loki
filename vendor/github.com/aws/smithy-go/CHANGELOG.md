@@ -1,3 +1,23 @@
+# Release (2025-02-17)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.3
+  * **Bug Fix**: Fix HTTP metrics data race.
+  * **Bug Fix**: Replace usages of deprecated ioutil package.
+
+# Release (2025-01-21)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.2
+  * **Bug Fix**: Fix HTTP metrics data race.
+  * **Bug Fix**: Replace usages of deprecated ioutil package.
+
 # Release (2024-11-15)
 
 ## General Highlights

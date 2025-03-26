@@ -56,8 +56,8 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.writeLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.write.podLabels }}
-        {{- toYaml . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.write.podLabels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:

@@ -1521,6 +1521,12 @@ func (dvd DefaultValueDecoders) ValueUnmarshalerDecodeValue(_ DecodeContext, vr 
 		return ValueDecoderError{Name: "ValueUnmarshalerDecodeValue", Types: []reflect.Type{tValueUnmarshaler}, Received: val}
 	}
 
+	if vr.Type() == bsontype.Null {
+		val.Set(reflect.Zero(val.Type()))
+
+		return vr.ReadNull()
+	}
+
 	if val.Kind() == reflect.Ptr && val.IsNil() {
 		if !val.CanSet() {
 			return ValueDecoderError{Name: "ValueUnmarshalerDecodeValue", Types: []reflect.Type{tValueUnmarshaler}, Received: val}

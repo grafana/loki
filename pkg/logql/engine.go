@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -153,8 +154,18 @@ type EngineOpts struct {
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
-	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+".engine.max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.DurationVar(
+		&opts.MaxLookBackPeriod,
+		prefix+".engine.max-lookback-period",
+		30*time.Second,
+		"The maximum amount of time to look back for log lines. Used only for instant log queries.",
+	)
+	f.IntVar(
+		&opts.MaxCountMinSketchHeapSize,
+		prefix+".engine.max-count-min-sketch-heap-size",
+		10_000,
+		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
+	)
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -253,7 +264,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 			"query_hash", queryHash,
 		}
 		tags := httpreq.ExtractQueryTagsFromContext(ctx)
-		tagValues := tagsToKeyValues(tags)
+		tagValues := httpreq.TagsToKeyValues(tags)
 		if GetRangeType(q.params) == InstantType {
 			logValues = append(logValues, "type", "instant")
 		} else {
@@ -305,6 +316,23 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := q.params.GetExpression().(type) {
+	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
+	case syntax.VariantsExpr:
+		tenants, _ := tenant.TenantIDs(ctx)
+		multiVariantEnabled := false
+		for _, t := range tenants {
+			if q.limits.EnableMultiVariantQueries(t) {
+				multiVariantEnabled = true
+				break
+			}
+		}
+
+		if !multiVariantEnabled {
+			return nil, logqlmodel.ErrVariantsDisabled
+		}
+
+		value, err := q.evalVariants(ctx, e)
+		return value, err
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -323,8 +351,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
-	case syntax.VariantsExpr:
-		return nil, logqlmodel.ErrVariantsDisabled
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
@@ -612,4 +638,65 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
+}
+
+func (q *query) evalVariants(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+) (promql_parser.Value, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(
+		tenantIDs,
+		maxIntervalCapture,
+	)
+	if maxQueryInterval != 0 {
+		for i, v := range expr.Variants() {
+			err = q.checkIntervalLimit(v, maxQueryInterval)
+			if err != nil {
+				return nil, err
+			}
+
+			vExpr, err := optimizeSampleExpr(v)
+			if err != nil {
+				return nil, err
+			}
+
+			if err = expr.SetVariant(i, vExpr); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	stepEvaluator, err := q.evaluator.NewVariantsStepEvaluator(ctx, expr, q.params)
+	if err != nil {
+		return nil, err
+	}
+	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
+
+	next, _, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			// TDOO(twhitney): what is merge first last for?
+			mfl := false
+			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+			// 	mfl = true
+			// }
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, errors.New("unexpected empty result")
 }

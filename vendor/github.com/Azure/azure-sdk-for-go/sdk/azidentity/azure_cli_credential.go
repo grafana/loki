@@ -30,9 +30,9 @@ type azTokenProvider func(ctx context.Context, scopes []string, tenant, subscrip
 
 // AzureCLICredentialOptions contains optional parameters for AzureCLICredential.
 type AzureCLICredentialOptions struct {
-	// AdditionallyAllowedTenants specifies tenants for which the credential may acquire tokens, in addition
-	// to TenantID. Add the wildcard value "*" to allow the credential to acquire tokens for any tenant the
-	// logged in account can access.
+	// AdditionallyAllowedTenants specifies tenants to which the credential may authenticate, in addition to
+	// TenantID. When TenantID is empty, this option has no effect and the credential will authenticate to
+	// any requested tenant. Add the wildcard value "*" to allow the credential to authenticate to any tenant.
 	AdditionallyAllowedTenants []string
 
 	// Subscription is the name or ID of a subscription. Set this to acquire tokens for an account other
@@ -70,7 +70,11 @@ func NewAzureCLICredential(options *AzureCLICredentialOptions) (*AzureCLICredent
 	}
 	for _, r := range cp.Subscription {
 		if !(alphanumeric(r) || r == '-' || r == '_' || r == ' ' || r == '.') {
-			return nil, fmt.Errorf("%s: invalid Subscription %q", credNameAzureCLI, cp.Subscription)
+			return nil, fmt.Errorf(
+				"%s: Subscription %q contains invalid characters. If this is the name of a subscription, use its ID instead",
+				credNameAzureCLI,
+				cp.Subscription,
+			)
 		}
 	}
 	if cp.TenantID != "" && !validTenantID(cp.TenantID) {

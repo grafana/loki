@@ -4,7 +4,7 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-bullseye
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
@@ -29,7 +29,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.21.3 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.60.3
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
 
 FROM alpine:3.21.3 AS buf
 ARG TARGETOS
@@ -51,8 +51,8 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 # github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM ${GOLANG_BASE_IMAGE} AS faillint
-RUN GO111MODULE=on go install github.com/fatih/faillint@v1.12.0
-RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
+RUN GO111MODULE=on go install github.com/fatih/faillint@v1.15.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.30.0
 
 FROM ${GOLANG_BASE_IMAGE} AS delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest

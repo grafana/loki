@@ -74,7 +74,7 @@ const (
 	BlockedIngestionPolicy               = "blocked_ingestion_policy"
 	BlockedIngestionPolicyErrorMsg       = "ingestion blocked for user %s until '%s' with status code '%d'"
 	MissingEnforcedLabels                = "missing_enforced_labels"
-	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s"
+	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s for stream %s"
 )
 
 type ErrStreamRateLimit struct {

@@ -207,6 +207,7 @@ function HeadlineStats({
           </div>
         </div>
       )}
+
       {logCount && (
         <div className="rounded-lg bg-muted/50 p-6 shadow-sm">
           <div className="text-sm text-muted-foreground mb-2">Log Count</div>
@@ -278,9 +279,8 @@ function Section({
           Section #{sectionIndex + 1}: {section.type}
         </h3>
         <svg
-          className={`w-5 h-5 transform transition-transform duration-300 ${
-            isExpanded ? "rotate-180" : ""
-          }`}
+          className={`w-5 h-5 transform transition-transform duration-300 ${isExpanded ? "rotate-180" : ""
+            }`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -340,6 +340,43 @@ function SectionStats({ section }: SectionStatsProps) {
           </Badge>
         </div>
       </div>
+      {section.distribution && (
+        <div className="rounded-lg bg-muted/50 p-6 shadow-sm">
+          <div className="text-sm text-muted-foreground mb-2">Stream age distribution</div>
+          <div className="space-y-2">
+
+            <div className="text-sm">
+              Spanning {Math.ceil((new Date(section.maxTimestamp).getTime() - new Date(section.minTimestamp).getTime()) / (1000 * 60 * 60)+1)} hours
+              <span className="text-sm text-muted-foreground">
+                <span> from </span><DateHover date={new Date(section.minTimestamp)} /> to <DateHover date={new Date(section.maxTimestamp)} />
+              </span>
+            </div>
+
+            <div className="text-sm">
+              Age within object
+            </div>
+            <div className="mt-4 space-y-1">
+              {section.distribution.map((count, i) => {
+                const maxCount = Math.max(...section.distribution);
+                const percentage = (count / maxCount) * 100;
+                const hours = i+1;
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="w-26 text-xs text-right">{`${hours}h`}</div>
+                    <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary/50 rounded-full transition-all"
+                        style={{width: `${percentage}%`}}
+                      />
+                    </div>
+                    <div className="w-20 text-xs">{count.toLocaleString()} streams</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -411,9 +448,8 @@ function Column({ column, isExpanded, onToggle }: ColumnProps) {
             </Badge>
           </div>
           <svg
-            className={`w-4 h-4 transform transition-transform ${
-              isExpanded ? "rotate-180" : ""
-            }`}
+            className={`w-4 h-4 transform transition-transform ${isExpanded ? "rotate-180" : ""
+              }`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -480,6 +516,23 @@ function ColumnStats({ column }: ColumnStatsProps) {
           {formatBytes(column.metadata_offset)}
         </div>
       </div>
+      {column.statistics && (
+        <div className="col-span-full">
+          <div className="rounded-lg bg-muted p-6">
+            <div className="text-sm text-muted-foreground mb-4">Statistics</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {column.statistics.cardinality_count !== undefined && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Cardinality</div>
+                  <div className="font-medium">
+                    {column.statistics.cardinality_count.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

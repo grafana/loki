@@ -25,8 +25,8 @@ labels:
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.7.1
-    app.kubernetes.io/version: 0.7.1
+    app.kubernetes.io/instance: loki-operator-v0.8.0
+    app.kubernetes.io/version: 0.8.0
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -40,7 +40,7 @@ configMapGenerator:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.7.1
+  newTag: 0.8.0
 
 # the following config is for teaching kustomize how to do var substitution
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.

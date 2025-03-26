@@ -154,6 +154,14 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		return nil, err
 	}
 
+	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
+	if err != nil {
+		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
+			return iter.NoopEntryIterator, nil
+		}
+		return nil, err
+	}
+
 	params.QueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
@@ -1122,7 +1130,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	line := entry.Line
 	parser := "json"
-	jsonParser := logql_log.NewJSONParser()
+	jsonParser := logql_log.NewJSONParser(true)
 	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 	if !jsonSuccess || lbls.HasErr() {
 		lbls.Reset()

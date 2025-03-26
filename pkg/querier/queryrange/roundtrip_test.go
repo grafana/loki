@@ -1005,7 +1005,6 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
-		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1413,6 +1412,7 @@ type fakeLimits struct {
 	maxStatsCacheFreshness      time.Duration
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
+	enableMultiVariantQueries   bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1542,6 +1542,9 @@ func (f fakeLimits) TSDBShardingStrategy(string) string {
 
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
+}
+func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
+	return f.enableMultiVariantQueries
 }
 
 type ingesterQueryOpts struct {

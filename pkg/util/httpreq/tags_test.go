@@ -96,3 +96,49 @@ func TestQueryMetrics(t *testing.T) {
 		})
 	}
 }
+
+func Test_testToKeyValues(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		exp  []interface{}
+	}{
+		{
+			name: "canonical-form",
+			in:   "Source=logvolhist",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+			},
+		},
+		{
+			name: "canonical-form-multiple-values",
+			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+				"feature",
+				"beta",
+				"user",
+				"Jinx@grafana.com",
+			},
+		},
+		{
+			name: "empty",
+			in:   "",
+			exp:  []interface{}{},
+		},
+		{
+			name: "non-canonical form",
+			in:   "abc",
+			exp:  []interface{}{},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := TagsToKeyValues(c.in)
+			assert.Equal(t, c.exp, got)
+		})
+	}
+}

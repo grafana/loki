@@ -7,11 +7,16 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
+
+func init() {
+	model.NameValidationScheme = model.LegacyValidation
+}
 
 func Test_GroupLoader(t *testing.T) {
 	for _, tc := range []struct {
@@ -250,7 +255,7 @@ groups:
 			err = os.WriteFile(f.Name(), []byte(tc.data), 0777)
 			require.Nil(t, err)
 
-			_, errs := loader.Load(f.Name())
+			_, errs := loader.Load(f.Name(), false)
 			if tc.match != "" {
 				require.NotNil(t, errs)
 				var found bool
@@ -278,14 +283,14 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		groups, errs := cl.Load("filename1")
+		groups, errs := cl.Load("filename1", true)
 		require.Nil(t, errs)
 		require.Equal(t, groups, ruleGroup1)
 
 		rules := cl.AlertingRules()
 		require.Equal(t, rulefmt.Rule{Alert: "alert-1-name"}, rules[0])
 
-		groups, errs = cl.Load("filename2")
+		groups, errs = cl.Load("filename2", true)
 		require.Nil(t, errs)
 		require.Equal(t, groups, ruleGroup2)
 
@@ -303,7 +308,7 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		groups, errs := cl.Load("filename1")
+		groups, errs := cl.Load("filename1", true)
 		require.Equal(t, l.loadErrs, errs)
 		require.Nil(t, groups)
 
@@ -320,10 +325,10 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		_, errs := cl.Load("filename1")
+		_, errs := cl.Load("filename1", true)
 		require.Nil(t, errs)
 
-		_, errs = cl.Load("filename2")
+		_, errs = cl.Load("filename2", true)
 		require.Nil(t, errs)
 
 		cl.Prune([]string{"filename2"})
@@ -347,7 +352,7 @@ type fakeGroupLoader struct {
 	parseErr   error
 }
 
-func (gl *fakeGroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
+func (gl *fakeGroupLoader) Load(identifier string, _ bool) (*rulefmt.RuleGroups, []error) {
 	return gl.ruleGroups[identifier], gl.loadErrs
 }
 

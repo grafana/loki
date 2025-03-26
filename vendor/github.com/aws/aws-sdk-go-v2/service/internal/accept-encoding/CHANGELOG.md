@@ -1,3 +1,11 @@
+# v1.12.3 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+
+# v1.12.2 (2025-01-24)
+
+* **Dependency Update**: Upgrade to smithy-go v1.22.2.
+
 # v1.12.1 (2024-11-18)
 
 * **Dependency Update**: Update to smithy-go v1.22.1.

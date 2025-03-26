@@ -29,6 +29,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // ErrWALClosed is an error returned when a WAL operation can't run because the
@@ -67,8 +69,8 @@ type Storage struct {
 }
 
 // NewStorage makes a new Storage.
-func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
-	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
+func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string, enableReplay bool) (*Storage, error) {
+	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
 	if err != nil {
 		return nil, err
 	}
@@ -104,20 +106,23 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	start := time.Now()
-	if err := storage.replayWAL(); err != nil {
-		metrics.TotalCorruptions.Inc()
+	if enableReplay {
+		if err := storage.replayWAL(); err != nil {
+			metrics.TotalCorruptions.Inc()
 
-		level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
-		if err := w.Repair(err); err != nil {
-			metrics.TotalFailedRepairs.Inc()
-			metrics.ReplayDuration.Observe(time.Since(start).Seconds())
-			return nil, errors.Wrap(err, "repair corrupted WAL")
+			level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
+			if err := w.Repair(err); err != nil {
+				metrics.TotalFailedRepairs.Inc()
+				metrics.ReplayDuration.Observe(time.Since(start).Seconds())
+				return nil, errors.Wrap(err, "repair corrupted WAL")
+			}
+
+			metrics.TotalSucceededRepairs.Inc()
 		}
-
-		metrics.TotalSucceededRepairs.Inc()
+		metrics.ReplayDuration.Observe(time.Since(start).Seconds())
+	} else {
+		level.Info(storage.logger).Log("msg", "WAL replay disabled")
 	}
-
-	metrics.ReplayDuration.Observe(time.Since(start).Seconds())
 
 	go storage.recordSize()
 
@@ -378,7 +383,7 @@ func (w *Storage) Truncate(mint int64) error {
 		w.deletedMtx.Unlock()
 		return ok
 	}
-	if _, err = wlog.Checkpoint(w.logger, w.wal, first, last, keep, mint); err != nil {
+	if _, err = wlog.Checkpoint(util_log.SlogFromGoKit(w.logger), w.wal, first, last, keep, mint); err != nil {
 		return errors.Wrap(err, "create checkpoint")
 	}
 	if err := w.wal.Truncate(last + 1); err != nil {
@@ -655,10 +660,17 @@ func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64
 	return 0, nil
 }
 
+func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram created timestamps
+	return 0, nil
+}
+
 func (a *appender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	// TODO: support created timestamp
 	return 0, nil
 }
+
+func (a *appender) SetOptions(_ *storage.AppendOptions) {}
 
 // Commit submits the collected samples and purges the batch.
 func (a *appender) Commit() error {

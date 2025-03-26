@@ -57,8 +57,8 @@ spec:
       labels:
         app.kubernetes.io/part-of: memberlist
         {{- include "loki.readLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.read.podLabels }}
-        {{- toYaml . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.read.podLabels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
