@@ -58,7 +58,7 @@ func TestPlanner_Convert(t *testing.T) {
 		},
 	).Limit(0, 1000)
 
-	plan, err := b.ToPlan()
+	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
 
 	catalog := &catalog{
@@ -68,8 +68,8 @@ func TestPlanner_Convert(t *testing.T) {
 		},
 	}
 	planner := NewPlanner(catalog)
-	err = planner.Build(plan)
+	physicalPlan, err := planner.Build(logicalPlan)
 	require.NoError(t, err)
 
-	t.Logf("\n%s\n", PrintAsTree(planner.plan))
+	t.Logf("\n%s\n", PrintAsTree(physicalPlan))
 }

@@ -27,27 +27,22 @@ func NewPlanner(catalog Catalog) *Planner {
 
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
-func (p *Planner) Build(lp *logical.Plan) error {
+func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 	p.plan = &Plan{}
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
 			nodes, err := p.process(inst.Value)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if len(nodes) > 1 {
-				return errors.New("plan has more than 1 return value")
+				return nil, errors.New("plan has more than 1 return value")
 			}
+			return p.plan, nil
 		}
 	}
-	return nil
-}
-
-// Plan returns the built physical [Plan]. Requires to run [Plan.Build] first,
-// otherwise it will return nil.
-func (p *Planner) Plan() *Plan {
-	return p.plan
+	return nil, errors.New("logical plan has no return value")
 }
 
 // Convert a stream selector from the [logical.MakeTable] instruction into an [Expression].
@@ -192,14 +187,4 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 		}
 	}
 	return []Node{node}, nil
-}
-
-// Create builds a physical plan from a logical plan using the provided context.
-// It returns the built plan or an error if the build process fails.
-func Create(plan *logical.Plan, ctx *Context) (*Plan, error) {
-	planner := NewPlanner(ctx)
-	if err := planner.Build(plan); err != nil {
-		return nil, err
-	}
-	return planner.Plan(), nil
 }
