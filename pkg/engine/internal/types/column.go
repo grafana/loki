@@ -19,7 +19,7 @@ const (
 func (ct ColumnType) String() string {
 	switch ct {
 	case ColumnTypeInvalid:
-		return "invalid"
+		return typeInvalid
 	case ColumnTypeBuiltin:
 		return "builtin"
 	case ColumnTypeLabel:

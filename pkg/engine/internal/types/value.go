@@ -1,5 +1,9 @@
 package types
 
+const (
+	typeInvalid = "invalid"
+)
+
 // ValueType represents the type of a value, which can either be a literal value, or a column value.
 type ValueType uint32
 

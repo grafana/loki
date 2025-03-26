@@ -17,20 +17,22 @@ const (
 	LiteralKindByteArray // Byte array literal value.
 )
 
-var literalKindStrings = map[LiteralKind]string{
-	LiteralKindInvalid: "invalid",
-
-	LiteralKindNull:      "null",
-	LiteralKindString:    "string",
-	LiteralKindInt64:     "int64",
-	LiteralKindUint64:    "uint64",
-	LiteralKindByteArray: "[]byte",
-}
-
 // String returns the string representation of the LiteralKind.
 func (k LiteralKind) String() string {
-	if s, ok := literalKindStrings[k]; ok {
-		return s
+	switch k {
+	case LiteralKindInvalid:
+		return typeInvalid
+	case LiteralKindNull:
+		return "null"
+	case LiteralKindString:
+		return "string"
+	case LiteralKindInt64:
+		return "int64"
+	case LiteralKindUint64:
+		return "uint64"
+	case LiteralKindByteArray:
+		return "[]byte"
+	default:
+		return fmt.Sprintf("LiteralKind(%d)", k)
 	}
-	return fmt.Sprintf("LiteralKind(%d)", k)
 }

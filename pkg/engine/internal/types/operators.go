@@ -18,7 +18,7 @@ const (
 func (t UnaryOp) String() string {
 	switch t {
 	case UnaryOpInvalid:
-		return "invalid"
+		return typeInvalid
 	case UnaryOpNot:
 		return "NOT"
 	case UnaryOpAbs:
@@ -63,7 +63,7 @@ const (
 func (t BinaryOp) String() string {
 	switch t {
 	case BinaryOpInvalid:
-		return "invalid"
+		return typeInvalid
 	case BinaryOpEq:
 		return "EQ"
 	case BinaryOpNeq:
