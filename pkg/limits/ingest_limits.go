@@ -319,7 +319,7 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		case err := <-s.lifecyclerWatcher.Chan():
 			return fmt.Errorf("lifecycler failed: %w", err)
 		default:
-			fetches := s.client.PollRecords(ctx, 100)
+			fetches := s.client.PollRecords(ctx, -1)
 			if fetches.IsClientClosed() {
 				return nil
 			}
