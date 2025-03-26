@@ -33,7 +33,7 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			NativeHistogramBucketFactor: 1.1,
 		}),
 		currentOffset: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_ingester_partition_current_offset",
+			Name: "loki_ingester_partition_current_offset	",
 			Help: "The current offset of the Kafka ingester consumer.",
 		}),
 	}

@@ -89,6 +89,9 @@ type Config struct {
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
+	// Request parser
+	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
+
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
@@ -118,6 +121,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.TenantTopic.RegisterFlags(fs)
+	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")

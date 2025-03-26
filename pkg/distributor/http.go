@@ -45,7 +45,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams)
+	req, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams)
 	if err != nil {
 		if !errors.Is(err, push.ErrAllLogsFiltered) {
 			if d.tenantConfigs.LogPushRequest(tenantID) {
