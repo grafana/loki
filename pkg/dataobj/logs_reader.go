@@ -264,6 +264,7 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 
 	r.columns = nil
 	r.columnDesc = nil
+	r.sectionInfo = nil
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.
