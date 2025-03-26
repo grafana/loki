@@ -2,7 +2,9 @@ package streams
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -61,25 +63,35 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 			return err
 		}
 
-		for result := range dataset.Iter(ctx, columns) {
-			row, err := result.Value()
-			if err != nil {
-				return err
-			}
+		r := dataset.NewReader(dataset.ReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+		})
+		defer r.Close()
 
-			stream, err := decodeRow(streamsColumns, row)
-			if err != nil {
+		var rows [1]dataset.Row
+		for {
+			n, err := r.Read(ctx, rows[:])
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
-			} else if !yield(stream) {
+			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-		}
 
-		return nil
+			for _, row := range rows[:n] {
+				stream, err := Decode(streamsColumns, row)
+				if err != nil || !yield(stream) {
+					return err
+				}
+			}
+		}
 	})
 }
 
-func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
+// Decode decodes a stream from a [dataset.Row], using the provided columns to
+// determine the column type. The list of columns must match the columns used
+// to create the row.
+func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
 	var stream Stream
 
 	for columnIndex, columnValue := range row.Values {
@@ -112,6 +124,12 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error)
 				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.Rows = int(columnValue.Int64())
+
+		case streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			stream.UncompressedSize = columnValue.Int64()
 
 		case streamsmd.COLUMN_TYPE_LABEL:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {

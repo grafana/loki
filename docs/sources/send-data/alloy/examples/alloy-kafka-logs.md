@@ -4,6 +4,8 @@ menuTitle: Sending Logs to Loki via Kafka using Alloy
 description: Configuring Grafana Alloy to receive logs via Kafka and send them to Loki.
 weight: 250
 killercoda:
+  comment: |
+    This file is used to generate the interactive tutorial for sending logs to Loki via Kafka using Alloy. Please do not change url's with placeholders from the code snippets. This tutorial is assumes they remain static.
   title: Sending Logs to Loki via Kafka using Alloy
   description: Configuring Grafana Alloy to receive logs via Kafka and send them to Loki.
   backend:

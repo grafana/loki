@@ -204,6 +204,11 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 		if validMetadataDirective(args.TaggingDirective) {
 			req.SetHeader(http.BCE_COPY_TAGGING_DIRECTIVE, args.TaggingDirective)
 		}
+		if len(args.ObjectTagging) != 0 {
+			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
+				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
+			}
+		}
 		if validStorageClass(args.StorageClass) {
 			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
 		} else {
@@ -241,6 +246,9 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 	jsonBody := &CopyObjectResult{}
 	if err := resp.ParseJsonBody(jsonBody); err != nil {
 		return nil, err
+	}
+	if resp.Header(http.BCE_VERSION_ID) != "" {
+		jsonBody.VersionId = resp.Header(http.BCE_VERSION_ID)
 	}
 	return jsonBody, nil
 }
@@ -342,6 +350,9 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	if val, ok := headers[toHttpHeaderKey(http.BCE_STORAGE_CLASS)]; ok {
 		result.StorageClass = val
 	}
+	if val, ok := headers[toHttpHeaderKey(http.BCE_VERSION_ID)]; ok {
+		result.VersionId = val
+	}
 	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
 	for k, v := range headers {
 		if strings.Index(k, bcePrefix) == 0 {
@@ -431,6 +442,9 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext) (*Get
 	}
 	if val, ok := headers[http.BCE_OBJECT_TYPE]; ok {
 		result.BceObjectType = val
+	}
+	if val, ok := headers[http.BCE_VERSION_ID]; ok {
+		result.VersionId = val
 	}
 	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
 	for k, v := range headers {
@@ -658,10 +672,13 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 //     - object: the name of the object
 // RETURNS:
 //     - error: nil if ok otherwise the specific error
-func DeleteObject(cli bce.Client, bucket, object string, ctx *BosContext) error {
+func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosContext) error {
 	req := &bce.BceRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.DELETE)
+	if versionId != "" {
+		req.SetParam("versionId", versionId)
+	}
 	ctx.Bucket = bucket
 	resp := &bce.BceResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {

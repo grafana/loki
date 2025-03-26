@@ -466,6 +466,157 @@ var _ interface {
 	ErrorName() string
 } = PolicyValidationError{}
 
+// Validate checks the field values on SourcedMetadata with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *SourcedMetadata) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SourcedMetadata with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SourcedMetadataMultiError, or nil if none found.
+func (m *SourcedMetadata) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SourcedMetadata) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetMetadataMatcher() == nil {
+		err := SourcedMetadataValidationError{
+			field:  "MetadataMatcher",
+			reason: "value is required",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetMetadataMatcher()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SourcedMetadataValidationError{
+					field:  "MetadataMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SourcedMetadataValidationError{
+					field:  "MetadataMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMetadataMatcher()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SourcedMetadataValidationError{
+				field:  "MetadataMatcher",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if _, ok := MetadataSource_name[int32(m.GetMetadataSource())]; !ok {
+		err := SourcedMetadataValidationError{
+			field:  "MetadataSource",
+			reason: "value must be one of the defined enum values",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return SourcedMetadataMultiError(errors)
+	}
+
+	return nil
+}
+
+// SourcedMetadataMultiError is an error wrapping multiple validation errors
+// returned by SourcedMetadata.ValidateAll() if the designated constraints
+// aren't met.
+type SourcedMetadataMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SourcedMetadataMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SourcedMetadataMultiError) AllErrors() []error { return m }
+
+// SourcedMetadataValidationError is the validation error returned by
+// SourcedMetadata.Validate if the designated constraints aren't met.
+type SourcedMetadataValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SourcedMetadataValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SourcedMetadataValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SourcedMetadataValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SourcedMetadataValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SourcedMetadataValidationError) ErrorName() string { return "SourcedMetadataValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SourcedMetadataValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSourcedMetadata.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SourcedMetadataValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SourcedMetadataValidationError{}
+
 // Validate checks the field values on Permission with the rules defined in the
 // proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
@@ -994,6 +1145,48 @@ func (m *Permission) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return PermissionValidationError{
 					field:  "UriTemplate",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *Permission_SourcedMetadata:
+		if v == nil {
+			err := PermissionValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
+
+		if all {
+			switch v := interface{}(m.GetSourcedMetadata()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, PermissionValidationError{
+						field:  "SourcedMetadata",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, PermissionValidationError{
+						field:  "SourcedMetadata",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetSourcedMetadata()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return PermissionValidationError{
+					field:  "SourcedMetadata",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -1595,6 +1788,48 @@ func (m *Principal) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return PrincipalValidationError{
 					field:  "NotId",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *Principal_SourcedMetadata:
+		if v == nil {
+			err := PrincipalValidationError{
+				field:  "Identifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofIdentifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetSourcedMetadata()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, PrincipalValidationError{
+						field:  "SourcedMetadata",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, PrincipalValidationError{
+						field:  "SourcedMetadata",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetSourcedMetadata()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return PrincipalValidationError{
+					field:  "SourcedMetadata",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}

@@ -8,20 +8,38 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var streamsPool = sync.Pool{
+	New: func() any {
+		streams := make([]dataobj.Stream, 1024)
+		return &streams
+	},
+}
 
 // SelectSeries implements querier.Store
 func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
-	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
+	logger := util_log.WithContext(ctx, s.logger)
+
+	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End, logger)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(objects) == 0 {
+		return nil, nil
 	}
 
 	shard, err := parseShards(req.Shards)
@@ -40,7 +58,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 	uniqueSeries := &sync.Map{}
 
-	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard)
+	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
@@ -63,13 +81,18 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 // LabelNamesForMetricName implements querier.Store
 func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	logger := util_log.WithContext(ctx, s.logger)
 	start, end := from.Time(), through.Time()
-	objects, err := s.objectsForTimeRange(ctx, start, end)
+	objects, err := s.objectsForTimeRange(ctx, start, end, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard)
+	if len(objects) == 0 {
+		return nil, nil
+	}
+
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueNames := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -94,6 +117,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 
 // LabelValuesForMetricName implements querier.Store
 func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	logger := util_log.WithContext(ctx, s.logger)
 	start, end := from.Time(), through.Time()
 
 	requireLabel, err := labels.NewMatcher(labels.MatchNotEqual, labelName, "")
@@ -103,12 +127,16 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 
 	matchers = append(matchers, requireLabel)
 
-	objects, err := s.objectsForTimeRange(ctx, start, end)
+	objects, err := s.objectsForTimeRange(ctx, start, end, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard)
+	if len(objects) == 0 {
+		return nil, nil
+	}
+
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueValues := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -129,70 +157,24 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 	return values, nil
 }
 
-var streamsPool = sync.Pool{
-	New: func() any {
-		streams := make([]dataobj.Stream, 1024)
-		return &streams
-	},
-}
-
 // streamProcessor handles processing of unique series with custom collection logic
 type streamProcessor struct {
 	predicate  dataobj.StreamsPredicate
 	seenSeries *sync.Map
-	objects    []*dataobj.Object
+	objects    []object
 	shard      logql.Shard
+	logger     log.Logger
 }
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
-func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard) *streamProcessor {
-	// Create a time range predicate
-	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
-		StartTime:    start,
-		EndTime:      end,
-		IncludeStart: true,
-		IncludeEnd:   true,
-	}
-
-	// If there are any matchers, combine them with an AND predicate
-	if len(matchers) > 0 {
-		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-			Left:  predicate,
-			Right: matchersToPredicate(matchers),
-		}
-	}
-
+func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []object, shard logql.Shard, logger log.Logger) *streamProcessor {
 	return &streamProcessor{
-		predicate:  predicate,
+		predicate:  streamPredicate(matchers, start, end),
 		seenSeries: &sync.Map{},
 		objects:    objects,
 		shard:      shard,
+		logger:     logger,
 	}
-}
-
-// matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
-func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
-	var left dataobj.StreamsPredicate
-	for _, matcher := range matchers {
-		var right dataobj.StreamsPredicate
-		switch matcher.Type {
-		case labels.MatchEqual:
-			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
-		default:
-			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
-				return matcher.Matches(value)
-			}}
-		}
-		if left == nil {
-			left = right
-		} else {
-			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-				Left:  left,
-				Right: right,
-			}
-		}
-	}
-	return left
 }
 
 // ProcessParallel processes series from multiple readers in parallel
@@ -201,6 +183,19 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	if err != nil {
 		return err
 	}
+	defer func() {
+		for _, reader := range readers {
+			_ = reader.Close()
+			streamReaderPool.Put(reader)
+		}
+	}()
+
+	start := time.Now()
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span.LogKV("msg", "processing streams", "total_readers", len(readers))
+	}
+	level.Debug(sp.logger).Log("msg", "processing streams", "total_readers", len(readers))
 
 	// set predicate on all readers
 	for _, reader := range readers {
@@ -210,20 +205,43 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+	var processedStreams atomic.Int64
 	for _, reader := range readers {
 		g.Go(func() error {
-			return sp.processSingleReader(ctx, reader, onNewStream)
+			span, ctx := opentracing.StartSpanFromContext(ctx, "streamProcessor.processSingleReader")
+			defer span.Finish()
+			n, err := sp.processSingleReader(ctx, reader, onNewStream)
+			if err != nil {
+				return err
+			}
+			processedStreams.Add(n)
+			return nil
 		})
 	}
-	return g.Wait()
+	err = g.Wait()
+	if err != nil {
+		return err
+	}
+
+	level.Debug(sp.logger).Log("msg", "finished processing streams",
+		"total_readers", len(readers),
+		"total_streams_processed", processedStreams.Load(),
+		"duration", time.Since(start),
+	)
+	if span != nil {
+		span.LogKV("msg", "streamProcessor.ProcessParallel done", "total_readers", len(readers), "total_streams_processed", processedStreams.Load(), "duration", time.Since(start))
+	}
+
+	return nil
 }
 
-func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) error {
+func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) (int64, error) {
 	var (
 		streamsPtr = streamsPool.Get().(*[]dataobj.Stream)
 		streams    = *streamsPtr
 		buf        = make([]byte, 0, 1024)
 		h          uint64
+		processed  int64
 	)
 
 	defer streamsPool.Put(streamsPtr)
@@ -231,9 +249,9 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 	for {
 		n, err := reader.Read(ctx, streams)
 		if err != nil && err != io.EOF {
-			return err
+			return processed, fmt.Errorf("failed to read streams: %w", err)
 		}
-		if n == 0 {
+		if n == 0 && err == io.EOF {
 			break
 		}
 		for _, stream := range streams[:n] {
@@ -243,9 +261,10 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 				continue
 			}
 			onNewStream(h, stream)
+			processed++
 		}
 	}
-	return nil
+	return processed, nil
 }
 
 func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
@@ -262,37 +281,38 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 }
 
 // shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
-func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
-	// fetch all metadata of objects in parallel
-	g, ctx := errgroup.WithContext(ctx)
-	metadatas := make([]dataobj.Metadata, len(objects))
-	for i, obj := range objects {
-		g.Go(func() error {
-			var err error
-			metadatas[i], err = obj.Metadata(ctx)
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
+func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "shardStreamReaders")
+	defer span.Finish()
+
+	span.SetTag("objects", len(objects))
+
+	metadatas, err := fetchMetadatas(ctx, objects)
+	if err != nil {
 		return nil, err
 	}
+
 	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
 	var sectionIndex uint64
 	var readers []*dataobj.StreamsReader
 	for i, metadata := range metadatas {
-		for j := 0; j < metadata.StreamsSections; j++ {
-			// For sharded queries (e.g., "1 of 2"), we only read sections that belong to our shard
-			// The section is assigned to a shard based on its global index across all objects
-			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
-				if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
-					sectionIndex++
-					continue
-				}
-			}
-			reader := dataobj.NewStreamsReader(objects[i], j)
-			readers = append(readers, reader)
-			sectionIndex++
+		if metadata.StreamsSections > 1 {
+			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
 		}
+
+		// For sharded queries (e.g., "1 of 2"), we only read sections that belong to our shard
+		// The section is assigned to a shard based on its global index across all objects
+		if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
+			if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
+				sectionIndex++
+				continue
+			}
+		}
+		reader := streamReaderPool.Get().(*dataobj.StreamsReader)
+		reader.Reset(objects[i].Object, 0)
+		readers = append(readers, reader)
+		sectionIndex++
 	}
+	span.LogKV("msg", "shardStreamReaders done", "readers", len(readers))
 	return readers, nil
 }

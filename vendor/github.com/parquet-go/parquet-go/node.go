@@ -2,7 +2,8 @@ package parquet
 
 import (
 	"reflect"
-	"sort"
+	"slices"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -288,8 +289,8 @@ func (g Group) Fields() []Field {
 			name: name,
 		})
 	}
-	sort.Slice(groupFields, func(i, j int) bool {
-		return groupFields[i].name < groupFields[j].name
+	slices.SortFunc(groupFields, func(a, b groupField) int {
+		return strings.Compare(a.name, b.name)
 	})
 	fields := make([]Field, len(groupFields))
 	for i := range groupFields {
@@ -486,7 +487,15 @@ func fieldByName(node Node, name string) Field {
 	return nil
 }
 
-func nodesAreEqual(node1, node2 Node) bool {
+// EqualNodes returns true if node1 and node2 are equal.
+//
+// Nodes that are not of the same repetition type (optional, required, repeated) or
+// of the same hierarchical type (leaf, group) are considered not equal.
+// Leaf nodes are considered equal if they are of the same data type.
+// Group nodes are considered equal if their fields have the same names and are recursively equal.
+//
+// Note that the encoding and compression of the nodes are not considered by this function.
+func EqualNodes(node1, node2 Node) bool {
 	if node1.Leaf() {
 		return node2.Leaf() && leafNodesAreEqual(node1, node2)
 	} else {
@@ -528,7 +537,7 @@ func groupNodesAreEqual(node1, node2 Node) bool {
 			return false
 		}
 
-		if !nodesAreEqual(f1, f2) {
+		if !EqualNodes(f1, f2) {
 			return false
 		}
 	}

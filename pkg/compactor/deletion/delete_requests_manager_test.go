@@ -14,8 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -34,13 +32,9 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	streamSelectorWithStructuredMetadataFilters := lblFoo.String() + `| ping="pong"`
 	streamSelectorWithLineAndStructuredMetadataFilters := lblFoo.String() + `| ping="pong" |= "fizz"`
 
-	chunkEntry := retention.ChunkEntry{
-		ChunkRef: retention.ChunkRef{
-			UserID:  []byte(testUserID),
-			From:    now.Add(-12 * time.Hour),
-			Through: now.Add(-time.Hour),
-		},
-		Labels: lblFoo,
+	chunkEntry := retention.Chunk{
+		From:    now.Add(-12 * time.Hour),
+		Through: now.Add(-time.Hour),
 	}
 
 	for _, tc := range []struct {
@@ -939,10 +933,11 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDeleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}
-			mgr := NewDeleteRequestsManager(mockDeleteRequestsStore, time.Hour, tc.batchSize, &fakeLimits{defaultLimit: limit{
+			mgr, err := NewDeleteRequestsManager(t.TempDir(), mockDeleteRequestsStore, time.Hour, tc.batchSize, &fakeLimits{defaultLimit: limit{
 				retentionPeriod: 7 * 24 * time.Hour,
 				deletionMode:    tc.deletionMode.String(),
 			}}, nil)
+			require.NoError(t, err)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			for _, deleteRequests := range mgr.deleteRequestsToProcess {
@@ -951,7 +946,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := mgr.Expired(chunkEntry, model.Now())
+			isExpired, filterFunc := mgr.Expired([]byte(testUserID), chunkEntry, lblFoo, nil, "", model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
@@ -981,7 +976,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			mgr.MarkPhaseFinished()
 
-			processedRequests, err := mockDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusProcessed)
+			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
 			require.NoError(t, err)
 			require.Len(t, processedRequests, len(tc.expectedRequestsMarkedAsProcessed))
 
@@ -1010,7 +1005,8 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr := NewDeleteRequestsManager(&mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+		require.NoError(t, err)
 		require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 		interval := model.Interval{Start: 300, End: 600}
@@ -1018,14 +1014,226 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 }
 
+func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
+	user1 := []byte("user1")
+	user2 := []byte("user2")
+	lblFooBar := mustParseLabel(`{foo="bar"}`)
+	lblFizzBuzz := mustParseLabel(`{fizz="buzz"}`)
+	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+		{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
+	}}
+	type markSeriesProcessed struct {
+		userID, seriesID []byte
+		lbls             labels.Labels
+		tableName        string
+	}
+
+	type chunkEntry struct {
+		userID    []byte
+		chk       retention.Chunk
+		lbls      labels.Labels
+		seriesID  []byte
+		tableName string
+	}
+
+	for _, tc := range []struct {
+		name                  string
+		seriesToMarkProcessed []markSeriesProcessed
+		chunkEntry            chunkEntry
+		expSkipSeries         bool
+		expExpired            bool
+	}{
+		{
+			name: "no series marked as processed",
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "chunk's series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: true,
+			expExpired:    false,
+		},
+		{
+			name: "a different series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFizzBuzz.String()),
+					lbls:      lblFizzBuzz,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "a different users series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user2,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "series from different table marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t2",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: false,
+			expExpired:    true,
+		},
+		{
+			name: "multiple series marked as processed",
+			seriesToMarkProcessed: []markSeriesProcessed{
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+				{
+					userID:    user1,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t2",
+				},
+				{
+					userID:    user2,
+					seriesID:  []byte(lblFooBar.String()),
+					lbls:      lblFooBar,
+					tableName: "t1",
+				},
+			},
+			chunkEntry: chunkEntry{
+				userID: user1,
+				chk: retention.Chunk{
+					From:    10,
+					Through: 20,
+				},
+				lbls:      lblFooBar,
+				seriesID:  []byte(lblFooBar.String()),
+				tableName: "t1",
+			},
+			expSkipSeries: true,
+			expExpired:    false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workingDir := t.TempDir()
+			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			require.NoError(t, err)
+			require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+			for _, m := range tc.seriesToMarkProcessed {
+				require.NoError(t, mgr.MarkSeriesAsProcessed(m.userID, m.seriesID, m.lbls, m.tableName))
+			}
+
+			require.Equal(t, tc.expSkipSeries, mgr.CanSkipSeries(tc.chunkEntry.userID, tc.chunkEntry.lbls, tc.chunkEntry.seriesID, 0, tc.chunkEntry.tableName, 0))
+			isExpired, _ := mgr.Expired(tc.chunkEntry.userID, tc.chunkEntry.chk, tc.chunkEntry.lbls, tc.chunkEntry.seriesID, tc.chunkEntry.tableName, 0)
+			require.Equal(t, tc.expExpired, isExpired)
+
+			// see if stopping the manager properly retains the progress and loads back when initialized
+			storedSeriesProgress := mgr.processedSeries
+			mgr.Stop()
+			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			require.NoError(t, err)
+			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
+
+			// when the mark phase ends, series progress should get cleared
+			mgr.MarkPhaseFinished()
+			require.Len(t, mgr.processedSeries, 0)
+			require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+		})
+	}
+}
+
+type storeAddReqDetails struct {
+	userID, query      string
+	startTime, endTime model.Time
+	shardByInterval    time.Duration
+}
+
+type removeReqDetails struct {
+	userID, reqID string
+}
+
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests           []DeleteRequest
-	addReqs                  []DeleteRequest
+	addReq                   storeAddReqDetails
 	addErr                   error
 	returnZeroDeleteRequests bool
 
-	removeReqs []DeleteRequest
+	removeReqs removeReqDetails
 	removeErr  error
 
 	getUser   string
@@ -1033,14 +1241,19 @@ type mockDeleteRequestsStore struct {
 	getResult []DeleteRequest
 	getErr    error
 
-	getAllUser   string
-	getAllResult []DeleteRequest
-	getAllErr    error
+	getAllUser                           string
+	getAllResult                         []DeleteRequest
+	getAllErr                            error
+	getAllRequestedForQuerytimeFiltering bool
 
 	genNumber string
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
+	return m.getDeleteRequestsByStatus(StatusReceived)
+}
+
+func (m *mockDeleteRequestsStore) getDeleteRequestsByStatus(status DeleteRequestStatus) ([]DeleteRequest, error) {
 	reqs := make([]DeleteRequest, 0, len(m.deleteRequests))
 	for i := range m.deleteRequests {
 		if m.deleteRequests[i].Status == status {
@@ -1050,31 +1263,41 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, s
 	return reqs, nil
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequests(_ context.Context) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
-	m.addReqs = reqs
-	if m.returnZeroDeleteRequests {
-		return []DeleteRequest{}, m.addErr
+func (m *mockDeleteRequestsStore) AddDeleteRequest(_ context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	m.addReq = storeAddReqDetails{
+		userID:          userID,
+		query:           query,
+		startTime:       startTime,
+		endTime:         endTime,
+		shardByInterval: shardByInterval,
 	}
-	return m.addReqs, m.addErr
+	return "", m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
-	m.removeReqs = reqs
+func (m *mockDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, userID string, requestID string) error {
+	m.removeReqs = removeReqDetails{
+		userID: userID,
+		reqID:  requestID,
+	}
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, requestID string) (DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
-	return m.getResult, m.getErr
+	if m.getErr != nil {
+		return DeleteRequest{}, m.getErr
+	}
+	return m.getResult[0], m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
 	m.getAllUser = userID
+	m.getAllRequestedForQuerytimeFiltering = forQuerytimeFiltering
 	return m.getAllResult, m.getAllErr
 }
 
@@ -1082,37 +1305,23 @@ func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ 
 	return m.genNumber, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) UpdateStatus(_ context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req DeleteRequest) error {
 	for i := range m.deleteRequests {
 		if requestsAreEqual(m.deleteRequests[i], req) {
-			m.deleteRequests[i].Status = newStatus
+			m.deleteRequests[i].Status = StatusProcessed
 		}
 	}
 
 	return nil
 }
 
-func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
-	n := 0
-	for i := range m.deleteRequests {
-		for j := range requestsToRemove {
-			if requestsAreEqual(m.deleteRequests[i], requestsToRemove[j]) {
-				continue
-			}
-			m.deleteRequests[n] = m.deleteRequests[i]
-			n++
-			break
-		}
-	}
-
-	m.deleteRequests = m.deleteRequests[:n]
-	m.deleteRequests = append(m.deleteRequests, requestToAdd)
-
+func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
 	return nil
 }
 
 func requestsAreEqual(req1, req2 DeleteRequest) bool {
-	if req1.UserID == req2.UserID &&
+	if req1.RequestID == req2.RequestID &&
+		req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
 		req1.EndTime == req2.EndTime &&
@@ -1122,102 +1331,4 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	}
 
 	return false
-}
-
-func TestDeleteRequestsManager_mergeShardedRequests(t *testing.T) {
-	for _, tc := range []struct {
-		name                   string
-		reqsToAdd              []DeleteRequest
-		shouldMarkProcessed    func(DeleteRequest) bool
-		requestsShouldBeMerged bool
-	}{
-		{
-			name: "no requests in store",
-		},
-		{
-			name:      "none of the requests are processed - should not merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
-				return false
-			},
-		},
-		{
-			name:      "not all requests are processed - should not merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(request DeleteRequest) bool {
-				return request.SequenceNum%2 == 0
-			},
-		},
-		{
-			name:      "all the requests are processed - should merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
-				return true
-			},
-			requestsShouldBeMerged: true,
-		},
-		{ // build requests for 2 different users and mark all requests as processed for just one of the two
-			name: "merging requests from one user should not touch another users requests",
-			reqsToAdd: append(
-				buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-				buildRequests(time.Hour, `{foo="bar"}`, user2, now.Add(-24*time.Hour), now)...,
-			),
-			shouldMarkProcessed: func(request DeleteRequest) bool {
-				return request.UserID == user2
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			mgr := setupManager(t)
-			reqs, err := mgr.deleteRequestsStore.AddDeleteRequestGroup(context.Background(), tc.reqsToAdd)
-			require.NoError(t, err)
-			require.GreaterOrEqual(t, len(reqs), len(tc.reqsToAdd))
-
-			for _, req := range reqs {
-				if !tc.shouldMarkProcessed(req) {
-					continue
-				}
-				require.NoError(t, mgr.deleteRequestsStore.UpdateStatus(context.Background(), req, StatusProcessed))
-			}
-
-			inStoreReqs, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
-			require.NoError(t, err)
-
-			require.NoError(t, mgr.mergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
-			require.NoError(t, err)
-
-			if tc.requestsShouldBeMerged {
-				require.Len(t, inStoreReqsAfterMerging, 1)
-				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
-					UserID:    user1,
-					Query:     tc.reqsToAdd[0].Query,
-					StartTime: tc.reqsToAdd[0].StartTime,
-					EndTime:   tc.reqsToAdd[len(tc.reqsToAdd)-1].EndTime,
-					Status:    StatusProcessed,
-				}))
-			} else {
-				require.Len(t, inStoreReqsAfterMerging, len(inStoreReqs))
-				require.Equal(t, inStoreReqs, inStoreReqsAfterMerging)
-			}
-		})
-	}
-}
-
-func setupManager(t *testing.T) *DeleteRequestsManager {
-	t.Helper()
-	// build the store
-	tempDir := t.TempDir()
-
-	workingDir := filepath.Join(tempDir, "working-dir")
-	objectStorePath := filepath.Join(tempDir, "object-store")
-
-	objectClient, err := local.NewFSObjectClient(local.FSConfig{
-		Directory: objectStorePath,
-	})
-	require.NoError(t, err)
-	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
-	require.NoError(t, err)
-
-	return NewDeleteRequestsManager(ds, time.Hour, 1, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 }

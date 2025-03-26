@@ -2,9 +2,8 @@ package ring
 
 import (
 	"fmt"
+	"slices"
 	"time"
-
-	"golang.org/x/exp/slices"
 )
 
 type PartitionRingReader interface {

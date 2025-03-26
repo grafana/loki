@@ -124,10 +124,8 @@ type ListSnoozesRequest struct {
 	//
 	// For example:
 	//
-	//	```
 	//	interval.start_time > "2022-03-11T00:00:00-08:00" AND
 	//	    interval.end_time < "2022-03-12T00:00:00-08:00"
-	//	```
 	Filter string `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	// Optional. The maximum number of results to return for a single query. The
 	// server may further constrain the maximum number of results returned in a

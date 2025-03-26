@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -108,14 +109,14 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
 // It returns a filter.Func if the chunk is supposed to be deleted partially or the delete request contains line filters.
 // If the filter.Func is nil, the whole chunk is supposed to be deleted.
-func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func) {
-	if d.UserID != unsafeGetString(entry.UserID) {
+func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+	if d.UserID != unsafeGetString(userID) {
 		return false, nil
 	}
 
 	if !intervalsOverlap(model.Interval{
-		Start: entry.From,
-		End:   entry.Through,
+		Start: chunk.From,
+		End:   chunk.Through,
 	}, model.Interval{
 		Start: d.StartTime,
 		End:   d.EndTime,
@@ -136,16 +137,16 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		}
 	}
 
-	if !labels.Selector(d.matchers).Matches(entry.Labels) {
+	if !labels.Selector(d.matchers).Matches(lbls) {
 		return false, nil
 	}
 
-	if d.StartTime <= entry.From && d.EndTime >= entry.Through && !d.logSelectorExpr.HasFilter() {
+	if d.StartTime <= chunk.From && d.EndTime >= chunk.Through && !d.logSelectorExpr.HasFilter() {
 		// Delete request covers the whole chunk and there are no line filters in the logSelectorExpr so the whole chunk will be deleted
 		return true, nil
 	}
 
-	ff, err := d.FilterFunction(entry.Labels)
+	ff, err := d.FilterFunction(lbls)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
 		// So this error should not occur.
@@ -194,4 +195,16 @@ func intervalsOverlap(interval1, interval2 model.Interval) bool {
 	}
 
 	return true
+}
+
+// GetMatchers returns the string representation of the matchers
+func (d *DeleteRequest) GetMatchers() string {
+	if len(d.matchers) == 0 {
+		return ""
+	}
+	var result []string
+	for _, m := range d.matchers {
+		result = append(result, m.String())
+	}
+	return strings.Join(result, ",")
 }

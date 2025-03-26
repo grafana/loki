@@ -52,6 +52,9 @@ enum ValueType {
 
   // VALUE_TYPE_STRING is a column containing string values.
   VALUE_TYPE_STRING = 3;
+
+  // VALUE_TYPE_BYTE_ARRAY is a column containing bytes with no specific type.
+  VALUE_TYPE_BYTE_ARRAY = 4;
 }
 
 // CompressionType represents the valid compression types that can be used for
@@ -86,6 +89,12 @@ message Statistics {
   // Applications must not assume that an unset max_value means that the column
   // is empty; check for values_count == 0 instead.
   bytes max_value = 2;
+
+  // Estimated number of distinct values in the column.
+  //
+  // Applications must not assume that an unset cardinality_count means that
+  // the column has no distinct values; check for values_count == 0 instead.
+  uint64 cardinality_count = 3;
 }
 
 // Page describes an individual page within a column.

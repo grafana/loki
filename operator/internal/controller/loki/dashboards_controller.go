@@ -18,6 +18,8 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers"
 )
 
+const ControllerNameLokiDashboards = "loki-dashboards"
+
 var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	UpdateFunc:  func(e event.UpdateEvent) bool { return false },
 	CreateFunc:  func(e event.CreateEvent) bool { return true },
@@ -63,5 +65,6 @@ func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *DashboardsReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.LokiStack{}, createOrDeletesPred).
+		Named(ControllerNameLokiDashboards).
 		Complete(r)
 }

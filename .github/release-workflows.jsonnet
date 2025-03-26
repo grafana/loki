@@ -7,7 +7,7 @@ local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % re
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
 local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
-local golangCiLintVersion = 'v1.60.3';
+local golangCiLintVersion = 'v1.64.5';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
 local dockerPluginDir = 'clients/cmd/docker-driver';
@@ -180,6 +180,7 @@ local lambdaPromtailJob =
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
+      releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
       useGitHubAppToken=true,
     ), false, false

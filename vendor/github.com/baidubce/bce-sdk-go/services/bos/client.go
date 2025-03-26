@@ -166,6 +166,10 @@ func (c *Client) ListObjects(bucket string,
 	return api.ListObjects(c, bucket, args, c.BosContext)
 }
 
+func (c *Client) ListObjectVersions(bucket string, args *api.ListObjectsArgs) (*api.ListObjectsResult, error) {
+	return api.ListObjectsVersions(c, bucket, args, c.BosContext)
+}
+
 // SimpleListObjects - list all objects of the given bucket with simple arguments
 //
 // PARAMS:
@@ -179,7 +183,13 @@ func (c *Client) ListObjects(bucket string,
 //     - error: the return error if any occurs
 func (c *Client) SimpleListObjects(bucket, prefix string, maxKeys int, marker,
 	delimiter string) (*api.ListObjectsResult, error) {
-	args := &api.ListObjectsArgs{delimiter, marker, maxKeys, prefix}
+	args := &api.ListObjectsArgs{
+		Delimiter:       prefix,
+		Marker:          marker,
+		MaxKeys:         maxKeys,
+		Prefix:          prefix,
+		VersionIdMarker: "",
+	}
 	return api.ListObjects(c, bucket, args, c.BosContext)
 }
 
@@ -1193,7 +1203,11 @@ func (c *Client) SimpleAppendObjectFromFile(bucket, object, filePath string,
 // RETURNS:
 //     - error: any error if it occurs
 func (c *Client) DeleteObject(bucket, object string) error {
-	return api.DeleteObject(c, bucket, object, c.BosContext)
+	return api.DeleteObject(c, bucket, object, "", c.BosContext)
+}
+
+func (c *Client) DeleteObjectVersion(bucket, object, versionId string) error {
+	return api.DeleteObject(c, bucket, object, versionId, c.BosContext)
 }
 
 // DeleteMultipleObjects - delete a list of objects
@@ -2118,8 +2132,8 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		ContentDisposition: objectMeta.ContentDisposition,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
-		ObjectTagging: args.ObjectTagging,
-		TaggingDirective: args.TaggingDirective,
+		ObjectTagging:      args.ObjectTagging,
+		TaggingDirective:   args.TaggingDirective,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {
@@ -2313,4 +2327,12 @@ func (c *Client) DeleteObjectTag(bucket string, object string) error {
 
 func (c *Client) BosShareLinkGet(bucket string, prefix string, shareCode string, duration int) (string, error) {
 	return api.GetBosShareLink(c, bucket, prefix, shareCode, duration)
+}
+
+func (c *Client) PutBucketVersioning(bucket string, putBucketVersioningArgs *api.BucketVersioningArgs) error {
+	return api.PutBucketVersioning(c, bucket, putBucketVersioningArgs, c.BosContext)
+}
+
+func (c *Client) GetBucketVersioning(bucket string) (*api.BucketVersioningArgs, error) {
+	return api.GetBucketVersioning(c, bucket, c.BosContext)
 }

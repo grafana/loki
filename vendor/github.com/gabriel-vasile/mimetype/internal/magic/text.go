@@ -120,7 +120,7 @@ var (
 		[]byte("/usr/bin/env wish"),
 	)
 	// Rtf matches a Rich Text Format file.
-	Rtf = prefix([]byte("{\\rtf1"))
+	Rtf = prefix([]byte("{\\rtf"))
 )
 
 // Text matches a plain text file.

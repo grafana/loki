@@ -240,5 +240,70 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       + step.withRun(|||
         gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
       |||),
-    ]),
+    ]) + job.withOutputs({
+      name: '${{ needs.createRelease.outputs.name }}',
+    }),
+
+  createReleaseBranch: function(branchTemplate='release-v\\${major}.\\${minor}.x')
+    job.new()
+    + job.withNeeds(['publishRelease'])  // always need createRelease for version info
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
+
+      releaseStep('create release branch')
+      + step.withId('create_branch')
+      + step.withEnv({
+        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        VERSION: '${{ needs.publishRelease.outputs.name }}',
+      })
+      + step.withRun(|||
+        # Debug and clean the version variable
+        echo "Original VERSION: $VERSION"
+
+        # Remove all quotes (both single and double)
+        VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
+        echo "After removing quotes: $VERSION"
+
+        # Extract version without the 'v' prefix if it exists
+        VERSION="${VERSION#v}"
+        echo "After removing v prefix: $VERSION"
+
+        # Extract major and minor versions
+        MAJOR=$(echo $VERSION | cut -d. -f1)
+        MINOR=$(echo $VERSION | cut -d. -f2)
+        echo "MAJOR: $MAJOR, MINOR: $MINOR"
+
+        # Create branch name from template
+        BRANCH_TEMPLATE="%s"
+        BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
+        BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
+
+        echo "Checking if branch already exists: $BRANCH_NAME"
+
+        # Check if branch exists
+        if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
+          echo "Branch $BRANCH_NAME already exists, skipping creation"
+          echo "branch_exists=true" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        else
+          echo "Creating branch: $BRANCH_NAME from tag: ${{ needs.publishRelease.outputs.name }}"
+          
+          # Create branch from the tag
+          git fetch --tags
+          git checkout "${{ steps.extract_branch.outputs.branch }}"
+          git checkout -b $BRANCH_NAME
+          git push -u origin $BRANCH_NAME
+          
+          echo "branch_exists=false" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        fi
+      ||| % branchTemplate),
+    ])
+    + job.withOutputs({
+      branchExists: '${{ steps.create_branch.outputs.branch_exists }}',
+      branchName: '${{ steps.create_branch.outputs.branch_name }}',
+    }),
 }

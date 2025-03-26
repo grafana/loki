@@ -56,14 +56,8 @@ spec:
         {{- end }}
       labels:
         app.kubernetes.io/part-of: memberlist
-        {{- include "loki.readSelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.read.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.read.selectorLabels }}
+        {{- include "loki.readLabels" . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.read.podLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
     spec:
@@ -85,7 +79,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}
-            {{- with .Values.read.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -98,11 +92,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.read.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.read.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.read.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.read.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -127,7 +121,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end}}
-            {{- with .Values.read.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.read.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -172,7 +166,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.read.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.read.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   volumeClaimTemplates:

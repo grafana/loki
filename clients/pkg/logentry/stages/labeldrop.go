@@ -17,7 +17,7 @@ const (
 type LabelDropConfig []string
 
 func validateLabelDropConfig(c LabelDropConfig) error {
-	if c == nil || len(c) < 1 {
+	if len(c) < 1 {
 		return errors.New(ErrEmptyLabelDropStageConfig)
 	}
 

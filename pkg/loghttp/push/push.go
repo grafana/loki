@@ -8,6 +8,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -93,11 +94,18 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 	return ""
 }
 
+// StreamResolver is a request-scoped interface that provides retention period and policy for a given stream.
+// The values returned by the resolver will not chance thought the handling of the request
+type StreamResolver interface {
+	RetentionPeriodFor(lbs labels.Labels) time.Duration
+	RetentionHoursFor(lbs labels.Labels) string
+	PolicyFor(lbs labels.Labels) string
+}
+
 type (
-	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
-	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
-	PolicyResolver       func(userID string, lbs labels.Labels) string
+	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -129,8 +137,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, policyResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
@@ -195,7 +203,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -305,14 +313,12 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			)
 		}
 
+		var totalBytesReceived int64
 		var retentionPeriod time.Duration
-		if tenantsRetention != nil {
-			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
-		}
-		totalBytesReceived := int64(0)
 		var policy string
-		if policyResolver != nil {
-			policy = policyResolver(userID, lbs)
+		if streamResolver != nil {
+			retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
+			policy = streamResolver.PolicyFor(lbs)
 		}
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
@@ -335,7 +341,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			}
 		}
 
-		if tracker != nil {
+		if tracker != nil && !pushStats.IsAggregatedMetric {
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
 		}
 
@@ -346,11 +352,10 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 }
 
 func RetentionPeriodToString(retentionPeriod time.Duration) string {
-	var retentionHours string
-	if retentionPeriod > 0 {
-		retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))
+	if retentionPeriod <= 0 {
+		return ""
 	}
-	return retentionHours
+	return strconv.FormatInt(int64(retentionPeriod/time.Hour), 10)
 }
 
 // OTLPError writes an OTLP-compliant error response to the given http.ResponseWriter.
@@ -371,7 +376,7 @@ func RetentionPeriodToString(retentionPeriod time.Duration) string {
 // > 503 Service Unavailable
 // > 504 Gateway Timeout
 // In loki, we expect clients to retry on 500 errors, so we map 500 errors to 503.
-func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger) {
+func OTLPError(w http.ResponseWriter, errorStr string, code int, logger log.Logger) {
 	// Map 500 errors to 503. 500 errors are never retried on the client side, but 503 are.
 	if code == http.StatusInternalServerError {
 		code = http.StatusServiceUnavailable
@@ -381,7 +386,7 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 	w.WriteHeader(code)
 
 	// Status 0 because we omit the Status.code field.
-	status := grpcstatus.New(0, error).Proto()
+	status := grpcstatus.New(0, errorStr).Proto()
 	respBytes, err := proto.Marshal(status)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to marshal error response", "error", err)
@@ -406,8 +411,8 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 
 var _ ErrorWriter = OTLPError
 
-func HTTPError(w http.ResponseWriter, error string, code int, _ log.Logger) {
-	http.Error(w, error, code)
+func HTTPError(w http.ResponseWriter, errorStr string, code int, _ log.Logger) {
+	http.Error(w, errorStr, code)
 }
 
 var _ ErrorWriter = HTTPError
