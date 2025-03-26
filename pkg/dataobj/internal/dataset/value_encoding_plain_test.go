@@ -81,6 +81,40 @@ func Test_plainStringEncoder_partialRead(t *testing.T) {
 	require.Equal(t, testStrings, out)
 }
 
+func Test_plainStringEncoder_reusingValues(t *testing.T) {
+	var buf bytes.Buffer
+
+	var (
+		enc    = newPlainStringEncoder(&buf)
+		dec    = newPlainStringDecoder(&buf)
+		decBuf = make([]Value, batchSize)
+	)
+
+	for _, v := range testStrings {
+		require.NoError(t, enc.Encode(StringValue(v)))
+	}
+
+	var out []string
+
+	for i := range decBuf {
+		decBuf[i] = ByteArrayValue(make([]byte, 64))
+	}
+
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range decBuf[:n] {
+			out = append(out, v.String())
+		}
+	}
+
+	require.Equal(t, testStrings, out)
+}
+
 func Benchmark_plainStringEncoder_Append(b *testing.B) {
 	enc := newPlainStringEncoder(streamio.Discard)
 
@@ -159,6 +193,40 @@ func Test_plainBytesEncoder_partialRead(t *testing.T) {
 
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+	}
+
+	var out []string
+
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range decBuf[:n] {
+			out = append(out, string(v.ByteArray()))
+		}
+	}
+
+	require.Equal(t, testStrings, out)
+}
+
+func Test_plainBytesEncoder_reusingValues(t *testing.T) {
+	var buf bytes.Buffer
+
+	var (
+		enc    = newPlainBytesEncoder(&buf)
+		dec    = newPlainBytesDecoder(&buf)
+		decBuf = make([]Value, batchSize)
+	)
+
+	for _, v := range testStrings {
+		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+	}
+
+	for i := range decBuf {
+		decBuf[i] = ByteArrayValue(make([]byte, 64))
 	}
 
 	var out []string

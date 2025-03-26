@@ -173,7 +173,7 @@ func buildLogsObject(t *testing.T, opts logs.Options) *dataobj.Object {
 func readAllRecords(ctx context.Context, r *dataobj.LogsReader) ([]dataobj.Record, error) {
 	var (
 		res []dataobj.Record
-		buf = make([]dataobj.Record, 128)
+		buf = make([]dataobj.Record, 4)
 	)
 
 	for {
@@ -214,7 +214,7 @@ func BenchmarkLogsReader(b *testing.B) {
 					Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 					Line:      "hello world " + strconv.Itoa(i),
 					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "123"},
+						{Name: "trace_id", Value: strconv.Itoa(i % 100)},
 						{Name: "pod", Value: "pod-abcd"},
 					},
 				},
@@ -233,8 +233,12 @@ func BenchmarkLogsReader(b *testing.B) {
 	require.NoError(b, err)
 	require.Equal(b, 1, md.LogsSections)
 
+	pred := dataobj.MetadataMatcherPredicate{
+		Key:   "trace_id",
+		Value: "3",
+	}
 	r := dataobj.NewLogsReader(obj, 0)
-
+	require.NoError(b, r.SetPredicate(pred))
 	var (
 		recs = make([]dataobj.Record, 128)
 		ctx  = context.Background()
@@ -253,7 +257,8 @@ func BenchmarkLogsReader(b *testing.B) {
 			cnt += n
 		}
 		r.Reset(obj, 0)
-		require.Equal(b, 10000, cnt)
+		r.SetPredicate(pred)
+		require.Equal(b, 100, cnt)
 		cnt = 0
 	}
 }

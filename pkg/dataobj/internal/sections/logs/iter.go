@@ -1,12 +1,14 @@
 package logs
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -125,14 +127,14 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 			}
 			record.Metadata = append(record.Metadata, labels.Label{
 				Name:  column.Info.Name,
-				Value: columnValue.String(),
+				Value: strings.Clone(columnValue.String()),
 			})
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Line = columnValue.ByteArray()
+			record.Line = bytes.Clone(columnValue.ByteArray())
 		}
 	}
 

@@ -33,6 +33,22 @@ type Record struct {
 	Line      []byte        // Line of the log record.
 }
 
+func (r *Record) SetStreamID(id int64) {
+	r.StreamID = id
+}
+
+func (r *Record) SetTimestamp(ts time.Time) {
+	r.Timestamp = ts
+}
+
+func (r *Record) AddMetadata(md labels.Label) {
+	r.Metadata = append(r.Metadata, md)
+}
+
+func (r *Record) SetLine(line []byte) {
+	r.Line = line
+}
+
 // LogsReader reads the set of logs from an [Object].
 type LogsReader struct {
 	obj   *Object
@@ -109,14 +125,36 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
+	r.buf = slices.Grow(r.buf, max(0, len(s)-cap(r.buf)))
 	r.buf = r.buf[:len(s)]
+
+	// Fill the row buffer with empty values so they can re-use the memory we pass in.
+	for i := range r.buf {
+		r.buf[i].Values = slices.Grow(r.buf[i].Values, len(r.columns)-cap(r.buf[i].Values))
+		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
+		for j := range r.buf[i].Values {
+			if r.buf[i].Values[j].IsNil() {
+				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 0, 64))
+			}
+		}
+	}
 
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)
 	} else if n == 0 && errors.Is(err, io.EOF) {
 		return 0, io.EOF
+	}
+
+	metadataColumns := 0
+	for _, column := range r.columnDesc {
+		if column.Type == logsmd.COLUMN_TYPE_METADATA {
+			metadataColumns++
+		}
+	}
+
+	for i := range s {
+		s[i].Metadata = slices.Grow(s[i].Metadata, max(0, metadataColumns-cap(s[i].Metadata)))
 	}
 
 	for i := range r.buf[:n] {
