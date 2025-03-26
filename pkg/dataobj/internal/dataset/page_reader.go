@@ -92,6 +92,11 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
+		// If we've hit EOF, we can immediately close the inner reader to release
+		// any resources back, rather than waiting for the next call to
+		// [pageReader.init] to do it.
+		_ = pr.Close()
+
 		return n, io.EOF
 	} else if count == 0 {
 		return 0, nil
@@ -166,6 +171,13 @@ func reuseValuesBuffer(dst []Value, src []Value) []Value {
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
+	// Close any existing reader from a previous pageReader init. Even though
+	// this also happens in [pageReader.Close], we want to do it here as well in
+	// case we seeked backwards in a file.
+	if err := pr.Close(); err != nil {
+		return fmt.Errorf("closing previous page: %w", err)
+	}
+
 	data, err := pr.page.ReadPage(ctx)
 	if err != nil {
 		return err
@@ -179,11 +191,6 @@ func (pr *pageReader) init(ctx context.Context) error {
 	presenceReader, valuesReader, err := memPage.reader(pr.compression)
 	if err != nil {
 		return fmt.Errorf("opening page for reading: %w", err)
-	}
-
-	// Close any existing reader from a previous pageReader init.
-	if err := pr.Close(); err != nil {
-		return fmt.Errorf("closing previous page: %w", err)
 	}
 
 	if pr.presenceDec == nil {
@@ -274,6 +281,10 @@ func (pr *pageReader) Reset(page Page, value datasetmd.ValueType, compression da
 
 	pr.pageRow = 0
 	pr.nextRow = 0
+
+	// Close the underlying reader if one is open so resources get released
+	// sooner.
+	_ = pr.Close()
 }
 
 // Close closes the pageReader. Closed pageReaders can be reused by calling

@@ -27,8 +27,8 @@ cloud.google.com/go/auth/internal/credsfile
 cloud.google.com/go/auth/internal/jwt
 cloud.google.com/go/auth/internal/transport
 cloud.google.com/go/auth/internal/transport/cert
-# cloud.google.com/go/auth/oauth2adapt v0.2.7
-## explicit; go 1.22
+# cloud.google.com/go/auth/oauth2adapt v0.2.8
+## explicit; go 1.23.0
 cloud.google.com/go/auth/oauth2adapt
 # cloud.google.com/go/bigtable v1.35.0
 ## explicit; go 1.22.7
@@ -623,7 +623,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v28.0.2+incompatible
+# github.com/docker/docker v28.0.4+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -2154,7 +2154,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.227.0
+# google.golang.org/api v0.228.0
 ## explicit; go 1.23.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1

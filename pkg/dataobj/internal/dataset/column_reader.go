@@ -188,6 +188,7 @@ func (cr *columnReader) Reset(column Column) {
 	cr.ranges = sliceclear.Clear(cr.ranges)
 
 	if cr.reader != nil {
+		// Resetting takes the place of calling Close here.
 		cr.reader.Reset(nil, column.ColumnInfo().Type, column.ColumnInfo().Compression)
 	}
 
