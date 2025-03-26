@@ -37,35 +37,12 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 				return nil, err
 			}
 			if len(nodes) > 1 {
-				return nil, errors.New("plan has more than 1 return value")
+				return nil, errors.New("logical plan has more than 1 return value")
 			}
 			return p.plan, nil
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
-}
-
-// Convert a stream selector from the [logical.MakeTable] instruction into an [Expression].
-func (p *Planner) convertSelector(inst logical.Value) Expression {
-	switch inst := inst.(type) {
-	case *logical.BinOp:
-		return &BinaryExpr{
-			Left:  p.convertSelector(inst.Left),
-			Right: p.convertSelector(inst.Right),
-			Op:    inst.Op,
-		}
-	case *logical.ColumnRef:
-		return &ColumnExpr{
-			Name:       inst.Column,
-			ColumnType: inst.Type,
-		}
-	case *logical.Literal:
-		return &LiteralExpr{
-			Value: inst.Value(),
-		}
-	default:
-		panic(fmt.Sprintf("invalid value for selector: %T", inst))
-	}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -113,7 +90,7 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams := p.catalog.ResolveDataObj(p.convertSelector(lp.Selector))
+	objects, streams := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
