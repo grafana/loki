@@ -2516,6 +2516,10 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
+# The maximum size of a received message.
+# CLI flag: -distributor.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 104857600]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
