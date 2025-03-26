@@ -34,7 +34,7 @@ const (
 func Test_Push(t *testing.T) {
 	lbls := labels.New(labels.Label{Name: "test", Value: "test"})
 	structuredMetadata := []logproto.LabelAdapter{
-		logproto.LabelAdapter{Name: constants.LevelLabel, Value: "info"},
+		{Name: constants.LevelLabel, Value: "info"},
 	}
 
 	// create dummy loki server
@@ -146,37 +146,37 @@ func Test_Push(t *testing.T) {
 			wayBack,
 			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service", lbls1),
 			lbls1,
-      structuredMetadata,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			then,
 			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service", lbls1),
 			lbls1,
-      structuredMetadata,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			now,
 			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service", lbls1),
 			lbls1,
-      structuredMetadata,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			wayBack,
 			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service", lbls2),
 			lbls2,
-      structuredMetadata,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			then,
 			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service", lbls2),
 			lbls2,
-      structuredMetadata,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			now,
 			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service", lbls2),
 			lbls2,
-      structuredMetadata,
+			structuredMetadata,
 		)
 
 		p.running.Add(1)

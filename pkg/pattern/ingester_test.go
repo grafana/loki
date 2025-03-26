@@ -287,7 +287,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "test_service"},
 			),
 			[]logproto.LabelAdapter{
-				logproto.LabelAdapter{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+				{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
 			},
 		)
 
@@ -306,7 +306,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "foo_service"},
 			),
 			[]logproto.LabelAdapter{
-				logproto.LabelAdapter{Name: constants.LevelLabel, Value: constants.LogLevelError},
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
 			},
 		)
 
@@ -324,8 +324,8 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "baz_service"},
 			),
-      []logproto.LabelAdapter{
-				logproto.LabelAdapter{Name: constants.LevelLabel, Value: constants.LogLevelError},
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
 			},
 		)
 

@@ -331,7 +331,7 @@ func (i *instance) writeAggregatedMetrics(
 	}
 
 	sturcturedMetadata := []logproto.LabelAdapter{
-		logproto.LabelAdapter{Name: constants.LevelLabel, Value: level},
+		{Name: constants.LevelLabel, Value: level},
 	}
 
 	if i.writer != nil {
