@@ -309,7 +309,11 @@ func (s *IngestLimits) starting(ctx context.Context) (err error) {
 // the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
 func (s *IngestLimits) running(ctx context.Context) error {
 	// Start the eviction goroutine
-	go s.evictOldStreamsPeriodic(ctx)
+	e, err := NewEvictor(ctx, s.cfg.WindowSize/2, s, s.logger)
+	if err != nil {
+		return err
+	}
+	go e.Run()
 
 	for {
 		select {
@@ -354,6 +358,12 @@ func (s *IngestLimits) running(ctx context.Context) error {
 			s.metrics.kafkaReadBytesTotal.Add(float64(sizeBytes))
 		}
 	}
+}
+
+// Implements Evictor interface.
+func (s *IngestLimits) Evict(ctx context.Context) error {
+	s.evictOldStreams(ctx)
+	return nil
 }
 
 // evictOldStreams evicts old streams. A stream is evicted if it has not
