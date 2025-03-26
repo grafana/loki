@@ -6,7 +6,7 @@ package memory // import "modernc.org/memory"
 
 import (
 	"os"
-	"syscall"
+	syscall "golang.org/x/sys/windows"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 const pageSizeLog = 16
 
 var (
-	modkernel32      = syscall.NewLazyDLL("kernel32.dll")
+	modkernel32      = syscall.NewLazySystemDLL("kernel32.dll")
 	osPageMask       = osPageSize - 1
 	osPageSize       = os.Getpagesize()
 	procVirtualAlloc = modkernel32.NewProc("VirtualAlloc")

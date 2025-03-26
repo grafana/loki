@@ -1,5 +1,7 @@
 package physical
 
+import "fmt"
+
 // Limit represents a limiting operation in the physical plan that applies
 // offset and limit to the result set. The offset specifies how many rows to
 // skip before starting to return results, while limit specifies the maximum
@@ -8,14 +10,17 @@ type Limit struct {
 	id string
 
 	// Offset specifies how many initial rows should be skipped.
-	Offset uint32
+	Offset uint64
 	// Limit specifies how many rows should be returned in total.
-	Limit uint32
+	Limit uint64
 }
 
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
 func (l *Limit) ID() string {
+	if l.id == "" {
+		return fmt.Sprintf("%p", l)
+	}
 	return l.id
 }
 
