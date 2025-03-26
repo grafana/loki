@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -23,16 +24,16 @@ func TestFormatSimpleQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
+			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Op:    types.BinaryOpGt,
 		},
 	)
 
@@ -63,18 +64,18 @@ func TestFormatSortQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
+				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
 				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
+			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
 			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Op:    types.BinaryOpGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
+	).Sort(ColumnRef{Column: "age", Type: types.ColumnTypeMetadata}, true, false)
 
 	var sb strings.Builder
 	PrintTree(&sb, b.Value())
