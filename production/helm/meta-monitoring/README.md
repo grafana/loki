@@ -96,7 +96,7 @@ curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer YOUR_
 
 ### Loading Alert and Recording Rules
 
-For Grafana Cloud Prometheus or Grafana Mimir, use `mimirtool` to load the rules:
+For Grafana Cloud Prometheus or Grafana Mimir, use `[mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/#installation)` to load the rules:
 
 ```bash
 # Install mimirtool
