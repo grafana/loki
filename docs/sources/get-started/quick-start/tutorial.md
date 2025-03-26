@@ -14,11 +14,11 @@ killercoda:
 <!-- INTERACTIVE page intro.md START -->
 # Loki Tutorial
 
-This quick start guide will walk you through deploying Loki in single binary mode (also known as [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode)) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki Stack**.
+This quick start guide will walk you through deploying Loki in single binary mode (also known as [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode)) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki stack**.
 
-{{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki Stack" alt="Loki Stack" >}}
+{{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki stack" alt="Loki stack" >}}
 
-The Loki Stack consists of the following components:
+The Loki stack consists of the following components:
 * **Alloy**: [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is an open source telemetry collector for metrics, logs, traces, and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all Docker containers and forward them to Loki.
 * **Loki**: A log aggregation system to store the collected logs. For more information on what Loki is, see the [Loki overview](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/overview/).
 * **Grafana**: [Grafana](https://grafana.com/docs/grafana/latest/) is an open-source platform for monitoring and observability. Grafana will be used to query and visualize the logs stored in Loki.
@@ -45,7 +45,7 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 
 <!-- INTERACTIVE page step1.md START -->
 
-## Deploy the Loki Stack
+## Deploy the Loki stack
 
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="note" >}}
@@ -53,7 +53,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
-**To deploy the Loki Stack locally, follow these steps:**
+**To deploy the Loki stack locally, follow these steps:**
 
 1. Clone the Loki fundamentals repository and checkout the getting-started branch:
 
@@ -106,7 +106,7 @@ We will not cover the rest of the Grafana Logs Drilldown features in this quicks
 
 ## Collect logs from a sample application
 
-Currently, the Loki Stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivorous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
+Currently, the Loki stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivorous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
@@ -288,8 +288,8 @@ This is made possible by the `service_name` label and the `env` label that we ha
 
 ## A look under the hood
 
-At this point you will have a running Loki Stack and a sample application generating logs. You have also queried Loki using Grafana Logs Drilldown and Grafana Explore. 
-In this next section we will take a look under the hood to understand how the Loki Stack has been configured to collect logs, the Loki configuration file, and how the Loki data source has been configured in Grafana.
+At this point you will have a running Loki stack and a sample application generating logs. You have also queried Loki using Grafana Logs Drilldown and Grafana Explore. 
+In this next section we will take a look under the hood to understand how the Loki stack has been configured to collect logs, the Loki configuration file, and how the Loki data source has been configured in Grafana.
 
 ### Grafana Alloy configuration
 
