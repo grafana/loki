@@ -24,7 +24,7 @@ spec:
     metadata:
       labels:
         {{- include "enterprise-logs.adminApiLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.adminApi.labels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.adminApi.labels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist

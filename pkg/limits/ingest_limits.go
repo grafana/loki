@@ -64,7 +64,7 @@ var (
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
 
-	kafkaReadLatency    prometheus.Histogram
+	kafkaConsumptionLag prometheus.Histogram
 	kafkaReadBytesTotal prometheus.Counter
 }
 
@@ -75,14 +75,13 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		kafkaReadLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "ingest_limits_kafka_read_latency_seconds",
-			Help:                            "Latency to read stream metadata from Kafka.",
+		kafkaConsumptionLag: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_ingest_limits_kafka_consumption_lag_seconds",
+			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
 		}),
 		kafkaReadBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -320,8 +319,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		case err := <-s.lifecyclerWatcher.Chan():
 			return fmt.Errorf("lifecycler failed: %w", err)
 		default:
-			startTime := time.Now()
-
 			fetches := s.client.PollRecords(ctx, 100)
 			if fetches.IsClientClosed() {
 				return nil
@@ -334,9 +331,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 				continue
 			}
 
-			// Record the latency of successful fetches
-			s.metrics.kafkaReadLatency.Observe(time.Since(startTime).Seconds())
-
 			// Process the fetched records
 			var sizeBytes int
 
@@ -344,6 +338,9 @@ func (s *IngestLimits) running(ctx context.Context) error {
 			for !iter.Done() {
 				record := iter.Next()
 				sizeBytes += len(record.Value)
+
+				// Update the estimated consumption lag.
+				s.metrics.kafkaConsumptionLag.Observe(time.Since(record.Timestamp).Seconds())
 
 				metadata, err := kafka.DecodeStreamMetadata(record)
 				if err != nil {

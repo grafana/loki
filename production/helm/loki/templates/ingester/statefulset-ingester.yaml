@@ -48,7 +48,7 @@ spec:
       labels:
         {{- include "loki.ingesterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.ingester.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.ingester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:

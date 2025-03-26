@@ -472,6 +472,7 @@ type InitiateMultipartUploadArgs struct {
 	StorageClass       string
 	ObjectTagging      string
 	TaggingDirective   string
+	CannedAcl          string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.

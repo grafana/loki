@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build libc.membrk && !libc.memgrind && !(linux && (amd64 || arm64 || loong64))
+//go:build libc.membrk && !libc.memgrind && !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm))
 
 // This is a debug-only version of the memory handling functions. When a
 // program is built with -tags=libc.membrk a simple but safe version of malloc

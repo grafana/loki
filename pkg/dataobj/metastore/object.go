@@ -302,9 +302,12 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate dataob
 		return err
 	}
 
+	var reader dataobj.StreamsReader
+	defer reader.Close()
+
 	streams := make([]dataobj.Stream, 1024)
 	for i := 0; i < md.StreamsSections; i++ {
-		reader := dataobj.NewStreamsReader(object, i)
+		reader.Reset(object, i)
 		if predicate != nil {
 			err := reader.SetPredicate(predicate)
 			if err != nil {

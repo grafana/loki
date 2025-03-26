@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !(linux && (amd64 || arm64 || loong64))
+//go:build !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm))
 
 package libc // import "modernc.org/libc"
 
@@ -19,7 +19,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -199,7 +198,7 @@ again:
 	case *os.PathError:
 		err = x.Err
 		goto again
-	case syscall.Errno:
+	case syscallErrno:
 		*(*int32)(unsafe.Pointer(t.errnop)) = int32(x)
 	case *os.SyscallError:
 		err = x.Err

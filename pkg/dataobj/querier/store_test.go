@@ -477,6 +477,8 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
 		BufferSize:        1024 * 1024,      // 1MB
+
+		SectionStripeMergeLimit: 2,
 	})
 	require.NoError(t, err)
 
