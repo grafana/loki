@@ -263,6 +263,7 @@ For example, you can use a metric query to count the number of logs per second t
 sum(rate({container="greenhouse-plant_service-1"} | logfmt | level="ERROR" [$__auto]))
 ```
 <!-- INTERACTIVE copy END -->
+It worth changing the visualization from `lines` to `bars` to visualize the error rate over time since the error count is quite low. 
 
 Another example is to get the top 10 services producing the highest rate of errors:
 <!-- INTERACTIVE copy START -->
