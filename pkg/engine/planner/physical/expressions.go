@@ -139,8 +139,7 @@ func NewLiteral(value any) *LiteralExpr {
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.
 type ColumnExpr struct {
-	Name       string
-	ColumnType types.ColumnType
+	ref types.ColumnRef
 }
 
 func (e *ColumnExpr) isExpr()       {}
@@ -149,10 +148,15 @@ func (e *ColumnExpr) isColumnExpr() {}
 // String returns the string representation of the column expression.
 // It contains of the name of the column and its type, joined by a dot (`.`).
 func (e *ColumnExpr) String() string {
-	return fmt.Sprintf("%s.%s", e.Name, e.ColumnType)
+	return e.ref.String()
 }
 
 // ID returns the type of the [ColumnExpr].
 func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
+}
+
+// Ref returns the wrapped [types.ColumnRef].
+func (e *ColumnExpr) Ref() types.ColumnRef {
+	return e.ref
 }

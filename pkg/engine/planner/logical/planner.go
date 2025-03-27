@@ -13,11 +13,11 @@ import (
 )
 
 func timestampColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}
+	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
 func logColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinLog, Type: types.ColumnTypeBuiltin}
+	return NewColumnRef(types.ColumnNameBuiltinLog, types.ColumnTypeBuiltin)
 }
 
 func convertMatcherType(t labels.MatchType) types.BinaryOp {
@@ -39,7 +39,7 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 
 	for i, matcher := range matchers {
 		expr := &BinOp{
-			Left:  &ColumnRef{Column: matcher.Name, Type: types.ColumnTypeLabel},
+			Left:  NewColumnRef(matcher.Name, types.ColumnTypeLabel),
 			Right: NewLiteral(matcher.Value),
 			Op:    convertMatcherType(matcher.Type),
 		}
@@ -141,14 +141,14 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	case *log.StringLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
 			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
 	case *log.LineFilterLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
 			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
