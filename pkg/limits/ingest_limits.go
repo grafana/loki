@@ -313,7 +313,9 @@ func (s *IngestLimits) running(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	go e.Run()
+	go func() {
+		_ = e.Run()
+	}()
 
 	for {
 		select {
