@@ -6878,7 +6878,7 @@ bos:
   [secret_key: <string> | default = ""]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
-# only contain digits and English alphabet letters.
+# only contain digits, English alphabet letters and dashes.
 # CLI flag: -<prefix>.storage-prefix
 [storage_prefix: <string> | default = ""]
 ```

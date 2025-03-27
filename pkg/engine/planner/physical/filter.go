@@ -1,5 +1,7 @@
 package physical
 
+import "fmt"
+
 // Filter represents a filtering operation in the physical plan.
 // It contains a list of predicates (conditional expressions) that are later
 // evaluated against the input columns and produce a result that only contains
@@ -16,6 +18,9 @@ type Filter struct {
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
 func (f *Filter) ID() string {
+	if f.id == "" {
+		return fmt.Sprintf("%p", f)
+	}
 	return f.id
 }
 

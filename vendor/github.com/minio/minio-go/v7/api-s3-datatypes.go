@@ -194,7 +194,6 @@ func (l *ListVersionsResult) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) (e
 			default:
 				return errors.New("unrecognized option:" + tagName)
 			}
-
 		}
 	}
 	return nil
