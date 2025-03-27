@@ -42,3 +42,15 @@ func (ct ColumnType) String() string {
 		return fmt.Sprintf("ColumnType(%d)", ct)
 	}
 }
+
+// A ColumnRef referenes a column within a table relation.
+type ColumnRef struct {
+	Column string     // Name of the column being referenced.
+	Type   ColumnType // Type of the column being referenced.
+}
+
+// Name returns the identifier of the ColumnRef, which combines the column type
+// and column name being referenced.
+func (c *ColumnRef) String() string {
+	return fmt.Sprintf("%s.%s", c.Type, c.Column)
+}

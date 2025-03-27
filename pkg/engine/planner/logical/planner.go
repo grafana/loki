@@ -13,11 +13,11 @@ import (
 )
 
 func timestampColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}
+	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
 func logColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinLog, Type: types.ColumnTypeBuiltin}
+	return NewColumnRef(types.ColumnNameBuiltinLog, types.ColumnTypeBuiltin)
 }
 
 func convertMatcherType(t labels.MatchType) types.BinaryOp {
@@ -39,8 +39,8 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 
 	for i, matcher := range matchers {
 		expr := &BinOp{
-			Left:  &ColumnRef{Column: matcher.Name, Type: types.ColumnTypeLabel},
-			Right: LiteralString(matcher.Value),
+			Left:  NewColumnRef(matcher.Name, types.ColumnTypeLabel),
+			Right: NewLiteral(matcher.Value),
 			Op:    convertMatcherType(matcher.Type),
 		}
 		if i == 0 {
@@ -94,7 +94,7 @@ func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 func convertLineFilter(filter syntax.LineFilter) Value {
 	return &BinOp{
 		Left:  logColumnRef(),
-		Right: LiteralString(filter.Match),
+		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
 	}
 }
@@ -141,15 +141,15 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	case *log.StringLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
-			Right: LiteralString(m.Value),
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
+			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
 	case *log.LineFilterLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  &ColumnRef{Column: m.Name, Type: types.ColumnTypeAmbiguous},
-			Right: LiteralString(m.Value),
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
+			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
 	}
@@ -159,12 +159,12 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 func convertQueryRangeToPredicate(start, end int64) Value {
 	left := &BinOp{
 		Left:  timestampColumnRef(),
-		Right: LiteralUint64(uint64(start)),
+		Right: NewLiteral(uint64(start)),
 		Op:    types.BinaryOpGte,
 	}
 	right := &BinOp{
 		Left:  timestampColumnRef(),
-		Right: LiteralUint64(uint64(end)),
+		Right: NewLiteral(uint64(end)),
 		Op:    types.BinaryOpLt,
 	}
 	return &BinOp{
