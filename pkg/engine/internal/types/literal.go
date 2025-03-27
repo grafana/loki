@@ -26,7 +26,7 @@ func (e *Literal) String() string {
 	case uint64:
 		return strconv.FormatUint(v, 10)
 	case []byte:
-		return fmt.Sprintf(`"%s"`, string(v))
+		return fmt.Sprintf("%v", v)
 	default:
 		return "invalid"
 	}
