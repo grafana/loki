@@ -142,7 +142,7 @@ type Stats struct {
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
-		if errors.Is(err, loki_util.MessageSizeTooLarge) {
+		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
 			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
 		return nil, err

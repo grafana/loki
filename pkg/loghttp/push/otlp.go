@@ -72,7 +72,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	buf, err := io.ReadAll(body)
 	if err != nil {
 		if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
-			return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.MessageSizeTooLarge, size, maxRecvMsgSize)
+			return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 		}
 		return plog.NewLogs(), err
 	}
