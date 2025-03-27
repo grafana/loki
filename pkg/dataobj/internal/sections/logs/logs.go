@@ -25,6 +25,7 @@ type Record struct {
 	Timestamp time.Time
 	Metadata  labels.Labels
 	Line      []byte
+	caps      []int
 }
 
 // Options configures the behavior of the logs section.

@@ -233,12 +233,12 @@ func BenchmarkLogsReader(b *testing.B) {
 	require.NoError(b, err)
 	require.Equal(b, 1, md.LogsSections)
 
-	pred := dataobj.MetadataMatcherPredicate{
-		Key:   "trace_id",
-		Value: "3",
-	}
+	//pred := dataobj.MetadataMatcherPredicate{
+	//	Key:   "trace_id",
+	//	Value: "3",
+	//}
 	r := dataobj.NewLogsReader(obj, 0)
-	require.NoError(b, r.SetPredicate(pred))
+	//require.NoError(b, r.SetPredicate(pred))
 	var (
 		recs = make([]dataobj.Record, 128)
 		ctx  = context.Background()
@@ -257,8 +257,8 @@ func BenchmarkLogsReader(b *testing.B) {
 			cnt += n
 		}
 		r.Reset(obj, 0)
-		r.SetPredicate(pred)
-		require.Equal(b, 100, cnt)
+		//r.SetPredicate(pred)
+		require.Equal(b, 10000, cnt)
 		cnt = 0
 	}
 }

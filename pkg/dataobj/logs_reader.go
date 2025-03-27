@@ -33,22 +33,6 @@ type Record struct {
 	Line      []byte        // Line of the log record.
 }
 
-func (r *Record) SetStreamID(id int64) {
-	r.StreamID = id
-}
-
-func (r *Record) SetTimestamp(ts time.Time) {
-	r.Timestamp = ts
-}
-
-func (r *Record) AddMetadata(md labels.Label) {
-	r.Metadata = append(r.Metadata, md)
-}
-
-func (r *Record) SetLine(line []byte) {
-	r.Line = line
-}
-
 // LogsReader reads the set of logs from an [Object].
 type LogsReader struct {
 	obj   *Object
@@ -58,7 +42,8 @@ type LogsReader struct {
 	matchIDs  map[int64]struct{}
 	predicate LogsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	record logs.Record
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -158,17 +143,15 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		readRecord, err := logs.Decode(r.columnDesc, r.buf[i])
+		err := logs.Decode(r.columnDesc, r.buf[i], &r.record)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
 
-		s[i] = Record{
-			StreamID:  readRecord.StreamID,
-			Timestamp: readRecord.Timestamp,
-			Metadata:  readRecord.Metadata,
-			Line:      readRecord.Line,
-		}
+		s[i].StreamID = r.record.StreamID
+		s[i].Timestamp = r.record.Timestamp
+		copy(s[i].Metadata, r.record.Metadata)
+		copy(s[i].Line, r.record.Line)
 	}
 
 	return n, nil
