@@ -65,9 +65,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 			ColumnType: inst.Type,
 		}
 	case *logical.Literal:
-		return &LiteralExpr{
-			Value: inst.Value(),
-		}
+		return NewLiteral(inst.Value())
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}

@@ -18,14 +18,14 @@ func TestPlan_String(t *testing.T) {
 		&MakeTable{
 			Selector: &BinOp{
 				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
-				Right: LiteralString("users"),
+				Right: NewLiteral("users"),
 				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
 			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
-			Right: LiteralInt64(21),
+			Right: NewLiteral[int64](21),
 			Op:    types.BinaryOpGt,
 		},
 	).Sort(ColumnRef{Column: "age", Type: types.ColumnTypeMetadata}, true, false)
