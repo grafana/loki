@@ -293,7 +293,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			clients := make([]logproto.IngestLimitsClient, len(test.getAssignedPartitionsResponses))
 			instances := make([]ring.InstanceDesc, len(clients))
 
-			for i := 0; i < len(test.getAssignedPartitionsResponses); i++ {
+			for i := range test.getAssignedPartitionsResponses {
 				clients[i] = &mockIngestLimitsClient{
 					getAssignedPartitionsResponse: test.getAssignedPartitionsResponses[i],
 					getStreamUsageResponse:        test.getStreamUsageResponses[i],
@@ -315,7 +315,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), 2),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 
