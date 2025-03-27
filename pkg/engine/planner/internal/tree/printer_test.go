@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrinter(t *testing.T) {
+func dummyPlan() *Node {
 	root := NewNode("Root", "")
 	lvl1 := root.AddChild("Merge", "foo", []Property{
 		{Key: "key_a", Values: []any{"value_a"}, IsMultiValue: true},
@@ -28,6 +28,11 @@ func TestPrinter(t *testing.T) {
 		{Key: "selector", Values: []any{`{env="dev", region=".+"}`}},
 	})
 	_ = lvl1.AddChild("Scan", "baz", []Property{})
+	return root
+}
+
+func TestPrinter(t *testing.T) {
+	root := dummyPlan()
 
 	b := &strings.Builder{}
 	p := NewPrinter(b)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net/http"
@@ -37,43 +36,8 @@ func physicalPlanToMermaid(plan *physical.Plan) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("graph TD\n")
-
-	// Add nodes
-	nodeIDs := make(map[string]bool)
-	for _, node := range plan.Roots() {
-		walkPhysicalPlan(plan, node, &sb, nodeIDs)
-	}
-
+	physical.WriteMermaidFormat(&sb, plan)
 	return sb.String()
-}
-
-// Helper function to walk the physical plan and build the Mermaid diagram
-func walkPhysicalPlan(plan *physical.Plan, node physical.Node, sb *strings.Builder, visited map[string]bool) {
-	if node == nil {
-		return
-	}
-
-	nodeID := node.ID()
-	if visited[nodeID] {
-		return
-	}
-	visited[nodeID] = true
-
-	// Add the node
-	switch n := node.(type) {
-	case *physical.DataObjScan:
-		fmt.Fprintf(sb, "  %s[\"%s: #%s\"]\n", nodeID, n.Type(), n.Location)
-	default:
-		fmt.Fprintf(sb, "  %s[%s: %s]\n", nodeID, node.Type(), node.ID())
-	}
-
-	// Add edges to children
-	for _, child := range plan.Children(node) {
-		childID := child.ID()
-		fmt.Fprintf(sb, "  %s --> %s\n", nodeID, childID)
-		walkPhysicalPlan(plan, child, sb, visited)
-	}
 }
 
 // Convert a logical plan to a Mermaid diagram representation
@@ -83,27 +47,30 @@ func logicalPlanToMermaid(plan *logical.Plan) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("graph BT\n")
-
-	id := 0
-
-	for _, inst := range plan.Instructions {
-		switch inst := inst.(type) {
-		case *logical.Return:
-			nodeID := fmt.Sprintf("node%d", id)
-			fmt.Fprintf(&sb, "  %s[\"%s\"]\n", nodeID, inst.String())
-			child := processLogicalPlan(&sb, &id, inst.Value)
-			childID := fmt.Sprintf("node%d", child)
-			fmt.Fprintf(&sb, "  %s --- %s\n", nodeID, childID)
-		}
-	}
-
+	logical.WriteMermaidFormat(&sb, plan)
 	return sb.String()
+
+	// var sb strings.Builder
+	// sb.WriteString("graph BT\n")
+
+	// id := 0
+
+	// for _, inst := range plan.Instructions {
+	// 	switch inst := inst.(type) {
+	// 	case *logical.Return:
+	// 		nodeID := fmt.Sprintf("node%d", id)
+	// 		fmt.Fprintf(&sb, "  %s[\"%s\"]\n", nodeID, inst.String())
+	// 		child := processLogicalPlan(&sb, &id, inst.Value)
+	// 		childID := fmt.Sprintf("node%d", child)
+	// 		fmt.Fprintf(&sb, "  %s --- %s\n", nodeID, childID)
+	// 	}
+	// }
+
+	// return sb.String()
 }
 
 func safe(s string) string {
-	// return html.EscapeString(s)
-	return html.EscapeString(strings.ReplaceAll(s, `"`, `\"`))
+	return strings.ReplaceAll(s, `"`, `&quot;`)
 }
 
 func processLogicalPlan(sb io.Writer, id *int, inst logical.Value) int {
@@ -111,24 +78,31 @@ func processLogicalPlan(sb io.Writer, id *int, inst logical.Value) int {
 
 	currID := *id
 	nodeID := fmt.Sprintf("node%d", currID)
-	fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 
 	var children []int
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Selector))
 	case *logical.Select:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Table))
 		children = append(children, processLogicalPlan(sb, id, inst.Predicate))
 	case *logical.Sort:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Table))
 	case *logical.Limit:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Table))
 	case *logical.BinOp:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Left))
 		children = append(children, processLogicalPlan(sb, id, inst.Right))
 	case *logical.UnaryOp:
+		fmt.Fprintf(sb, "  %s[\"%s = %s\"]\n", nodeID, safe(inst.Name()), safe(inst.String()))
 		children = append(children, processLogicalPlan(sb, id, inst.Value))
+	case *logical.Literal, *logical.ColumnRef:
+		fmt.Fprintf(sb, "  %s[\"%T(%s)\"]\n", nodeID, inst, safe(inst.Name()))
 	}
 
 	for _, child := range children {
