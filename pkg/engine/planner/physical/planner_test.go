@@ -33,7 +33,7 @@ func TestPlanner_Convert(t *testing.T) {
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
 				Left:  &logical.ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
-				Right: logical.LiteralString("users"),
+				Right: logical.NewLiteral("users"),
 				Op:    types.BinaryOpEq,
 			},
 		},
@@ -47,13 +47,13 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  &logical.ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
-			Right: logical.LiteralInt64(21),
+			Right: logical.NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
 	).Select(
 		&logical.BinOp{
 			Left:  &logical.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin},
-			Right: logical.LiteralUint64(1742826126000000000),
+			Right: logical.NewLiteral(uint64(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
