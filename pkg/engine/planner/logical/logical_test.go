@@ -17,18 +17,18 @@ func TestPlan_String(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: types.ColumnTypeLabel},
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
 				Right: NewLiteral("users"),
 				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: types.ColumnTypeMetadata},
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
 			Right: NewLiteral[int64](21),
 			Op:    types.BinaryOpGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: types.ColumnTypeMetadata}, true, false)
+	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
 
 	// Convert to SSA
 	ssaForm, err := b.ToPlan()

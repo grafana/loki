@@ -60,10 +60,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 			Op:    inst.Op,
 		}
 	case *logical.ColumnRef:
-		return &ColumnExpr{
-			Name:       inst.Column,
-			ColumnType: inst.Type,
-		}
+		return &ColumnExpr{ref: inst.Ref()}
 	case *logical.Literal:
 		return NewLiteral(inst.Value())
 	default:
@@ -126,11 +123,8 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 		order = DESC
 	}
 	node := &SortMerge{
-		Column: &ColumnExpr{
-			Name:       lp.Column.Column,
-			ColumnType: lp.Column.Type,
-		},
-		Order: order,
+		Column: &ColumnExpr{ref: lp.Column.Ref()},
+		Order:  order,
 	}
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
