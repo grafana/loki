@@ -2506,13 +2506,13 @@ func TestJoinMultiVariantSampleVector(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name           string
-		params         Params
-		maxSeries      int
-		initialVector  promql.Vector
-		stepResults    []StepResult
-		expectedResult promql_parser.Value
-		expectedError  error
+		name             string
+		params           Params
+		maxSeries        int
+		initialVector    promql.Vector
+		stepResults      []StepResult
+		expectedResult   promql_parser.Value
+		expectedWarnings []string
 	}{
 		{
 			name:      "instant query within limits",
@@ -2556,7 +2556,11 @@ func TestJoinMultiVariantSampleVector(t *testing.T) {
 				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
 				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
 			},
-			expectedError: logqlmodel.NewMultiVariantSeriesLimitError(3, "0"),
+			expectedResult: promql.Vector{
+				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
+				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
+			},
+			expectedWarnings: []string{"maximum of series (3) reached for variant (0)"},
 		},
 		{
 			name:      "range query with multiple steps within limits",
@@ -2654,7 +2658,17 @@ func TestJoinMultiVariantSampleVector(t *testing.T) {
 					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "qux")},
 				}),
 			},
-			expectedError: logqlmodel.NewMultiVariantSeriesLimitError(3, "1"),
+			expectedResult: promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
+					Floats: []promql.FPoint{
+						{T: 60 * 1000, F: 1},
+						{T: 90 * 1000, F: 2},
+						{T: 120 * 1000, F: 3},
+					},
+				},
+			},
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
 		},
 	}
 
@@ -2669,14 +2683,13 @@ func TestJoinMultiVariantSampleVector(t *testing.T) {
 				t:       t,
 			}
 
-			result, err := q.JoinMultiVariantSampleVector(true, vectorResult(tc.initialVector), mockEvaluator, tc.maxSeries)
+			metadataCtx, ctx := metadata.NewContext(context.Background())
+			result, err := q.JoinMultiVariantSampleVector(ctx, true, vectorResult(tc.initialVector), mockEvaluator, tc.maxSeries)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResult, result)
 
-			if tc.expectedError != nil {
-				require.Error(t, err)
-				require.Equal(t, tc.expectedError.Error(), err.Error())
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.expectedResult, result)
+			if tc.expectedWarnings != nil {
+				require.Equal(t, tc.expectedWarnings, metadataCtx.Warnings())
 			}
 		})
 	}

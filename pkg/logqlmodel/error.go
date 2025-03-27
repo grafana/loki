@@ -97,12 +97,6 @@ func NewSeriesLimitError(limit int) *LimitError {
 	}
 }
 
-func NewMultiVariantSeriesLimitError(limit int, variant string) *LimitError {
-	return &LimitError{
-		error: fmt.Errorf("maximum of series (%d) reached for variant (%s)", limit, variant),
-	}
-}
-
 // Is allows to use errors.Is(err,ErrLimit) on this error.
 func (e LimitError) Is(target error) bool {
 	return target == ErrLimit

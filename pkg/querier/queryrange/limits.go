@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -377,6 +378,7 @@ type seriesLimiter struct {
 	hashes map[uint64]struct{}
 	// uniqueSeriesPerVariant maps from a variant label value to a map of series fingerprints
 	uniqueSeriesPerVariant map[string]map[uint64]struct{}
+	skipVariants           map[string]struct{}
 	rw                     sync.RWMutex
 	buf                    []byte // buf used for hashing to avoid allocations.
 
@@ -397,6 +399,7 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 	return &seriesLimiter{
 		hashes:                 make(map[uint64]struct{}),
 		uniqueSeriesPerVariant: make(map[string]map[uint64]struct{}),
+		skipVariants:           make(map[string]struct{}),
 		maxSeries:              int(slm),
 		buf:                    make([]byte, 0, 1024),
 		next:                   next,
@@ -408,6 +411,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
+
+	metadata := metadata.FromContext(ctx)
+	//TODO(twhitney): Need a way to propagate skipped variants to the queriers
 	res, err := sl.next.Do(ctx, req)
 	if err != nil {
 		return res, err
@@ -420,7 +426,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return res, nil
 	}
 	sl.rw.Lock()
+
 	var hash uint64
+	newResult := make([]queryrangebase.SampleStream, 0, len(promResponse.Response.Data.Result))
 	for _, s := range promResponse.Response.Data.Result {
 		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
 
@@ -437,6 +445,10 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 		// If there's a variant label, track it in the variant map
 		if variant != "" {
+			if _, ok := sl.skipVariants[variant]; ok {
+				continue
+			}
+
 			// Get or create the map for this variant
 			variantMap, ok := sl.uniqueSeriesPerVariant[variant]
 			if !ok {
@@ -448,9 +460,12 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 			// Check if adding this series would exceed the limit for this variant
 			if len(variantMap) > sl.maxSeries {
-				sl.rw.Unlock()
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+				sl.skipVariants[variant] = struct{}{}
+				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
+				continue
 			}
+
+			newResult = append(newResult, s)
 		} else {
 			// For non-variant series, track them in the global hashes map
 			sl.hashes[hash] = struct{}{}
@@ -460,10 +475,13 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 				sl.rw.Unlock()
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 			}
+
+			newResult = append(newResult, s)
 		}
 	}
-	sl.rw.Unlock()
 
+	promResponse.Response.Data.Result = newResult
+	sl.rw.Unlock()
 	return res, nil
 }
 
@@ -474,13 +492,6 @@ func (sl *seriesLimiter) isLimitReached() bool {
 	// For non-variant series, check the global limit
 	if len(sl.hashes) > sl.maxSeries {
 		return true
-	}
-
-	// For variant series, check each variant separately
-	for _, variantMap := range sl.uniqueSeriesPerVariant {
-		if len(variantMap) > sl.maxSeries {
-			return true
-		}
 	}
 
 	return false

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -230,10 +231,11 @@ func Test_seriesLimiter(t *testing.T) {
 
 func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		req           *LokiRequest
-		resp          *LokiPromResponse
-		errorExpected bool
+		name             string
+		req              *LokiRequest
+		resp             *LokiPromResponse
+		expectedResponse *LokiPromResponse
+		expectedWarnings []string
 	}{
 		{
 			name: "single variant under limit should not exceed limit",
@@ -254,6 +256,20 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 					{Name: constants.VariantLabel, Value: "0"},
 				},
 			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+			}),
 		},
 		{
 			name: "multiple variants under limit should not exceed limit",
@@ -261,6 +277,32 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
 			},
 			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
 				{
 					{Name: "job", Value: "app1"},
 					{Name: constants.VariantLabel, Value: "0"},
@@ -310,14 +352,7 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 					{Name: constants.VariantLabel, Value: "1"},
 				},
 			}),
-			errorExpected: true,
-		},
-		{
-			name: "multiple variants over the limit should exceed limit",
-			req: &LokiRequest{
-				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
-			},
-			resp: createPromResponse([][]seriesLabels{
+			expectedResponse: createPromResponse([][]seriesLabels{
 				{
 					{Name: "job", Value: "app1"},
 					{Name: constants.VariantLabel, Value: "1"},
@@ -329,6 +364,23 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 				{
 					{Name: "job", Value: "app3"},
 					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
+		},
+		{
+			name: "multiple variants over the limit should exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
 				},
 				{
 					{Name: "job", Value: "app1"},
@@ -346,8 +398,34 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 					{Name: "job", Value: "app4"},
 					{Name: constants.VariantLabel, Value: "1"},
 				},
+				{
+					{Name: "job", Value: "app5"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
 			}),
-			errorExpected: true,
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
 		},
 	} {
 
@@ -358,13 +436,14 @@ func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
 			}
 			handler := middleware.Wrap(mock)
 
-			resp, err := handler.Do(context.Background(), &LokiRequest{})
-			if test.errorExpected {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), fmt.Sprintf(limitErrTmpl, 3))
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
+			metadata, ctx := metadata.NewContext(context.Background())
+
+			resp, err := handler.Do(ctx, &LokiRequest{})
+			require.NoError(t, err)
+			require.EqualValues(t, test.expectedResponse.Response.Data, resp.(*LokiPromResponse).Response.Data)
+
+			if test.expectedWarnings != nil {
+				require.Equal(t, test.expectedWarnings, metadata.Warnings())
 			}
 		})
 	}

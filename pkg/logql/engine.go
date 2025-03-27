@@ -553,19 +553,23 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 	return result, stepEvaluator.Error()
 }
 
-func (q *query) JoinMultiVariantSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+func (q *query) JoinMultiVariantSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
 	}
 
 	seriesIndex := map[string]map[uint64]promql.Series{}
+	// Track variants that exceed the limit across all steps
+	// use a map for faster lookup
+	skippedVariants := map[string]struct{}{}
 
 	if GetRangeType(q.params) == InstantType {
 		multiVariantVectorsToSeries(vec, seriesIndex)
-		if err := enforceMultiVariantLimit(seriesIndex, maxSeries); err != nil {
-			return nil, err
-		}
+		enforceMultiVariantLimit(ctx, seriesIndex, maxSeries, skippedVariants)
+
+		// Filter the vector to remove skipped variants
+		filterVariantVector(&vec, skippedVariants)
 
 		// an instant query sharded first/last_over_time can return a single vector
 		sortByValue, err := Sortable(q.params)
@@ -581,12 +585,13 @@ func (q *query) JoinMultiVariantSampleVector(next bool, r StepResult, stepEvalua
 	seriesCount := uint32(0)
 	for next {
 		vec = r.SampleVector()
+		// Filter out any samples from variants we've already skipped
+		filterVariantVector(&vec, skippedVariants)
 		seriesCount += multiVariantVectorsToSeries(vec, seriesIndex)
 
-		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
-		if err := enforceMultiVariantLimit(seriesIndex, maxSeries); err != nil {
-			return nil, err
-		}
+		// Get any new variants that exceed limits
+		enforceMultiVariantLimit(ctx, seriesIndex, maxSeries, skippedVariants)
+
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
@@ -605,14 +610,37 @@ func (q *query) JoinMultiVariantSampleVector(next bool, r StepResult, stepEvalua
 	return result, stepEvaluator.Error()
 }
 
-func enforceMultiVariantLimit(seriesIndex map[string]map[uint64]promql.Series, maxSeries int) error {
-	for variant, ss := range seriesIndex {
-		if len(ss) > maxSeries {
-			return logqlmodel.NewMultiVariantSeriesLimitError(maxSeries, variant)
+// filterVariantVector removes samples from the vector that belong to skipped variants
+func filterVariantVector(vec *promql.Vector, skipped map[string]struct{}) {
+	if len(skipped) == 0 {
+		return
+	}
+
+	// Filter the vector
+	filtered := make(promql.Vector, 0, len(*vec))
+	for _, sample := range *vec {
+		if sample.Metric.Has(constants.VariantLabel) {
+			variant := sample.Metric.Get(constants.VariantLabel)
+			if _, shouldSkip := skipped[variant]; !shouldSkip {
+				filtered = append(filtered, sample)
+			}
+		} else {
+			filtered = append(filtered, sample)
 		}
 	}
 
-	return nil
+	*vec = filtered
+}
+
+func enforceMultiVariantLimit(ctx context.Context, seriesIndex map[string]map[uint64]promql.Series, maxSeries int, skippedVariants map[string]struct{}) {
+	metadataCtx := metadata.FromContext(ctx)
+	for variant, ss := range seriesIndex {
+		if len(ss) > maxSeries {
+			skippedVariants[variant] = struct{}{}
+			delete(seriesIndex, variant)
+			metadataCtx.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", maxSeries, variant))
+		}
+	}
 }
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
@@ -790,7 +818,7 @@ func (q *query) evalVariants(
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinMultiVariantSampleVector(next, vec, stepEvaluator, maxSeries)
+			return q.JoinMultiVariantSampleVector(ctx, next, vec, stepEvaluator, maxSeries)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
