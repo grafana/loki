@@ -163,7 +163,7 @@ func (v *DepthFirstTraversal) VisitLabelReplace(e *LabelReplaceExpr) {
 	}
 	if v.VisitLabelReplaceFn != nil {
 		v.VisitLabelReplaceFn(v, e)
-	} else {
+	} else if e.Left != nil {
 		e.Left.Accept(v)
 	}
 }
