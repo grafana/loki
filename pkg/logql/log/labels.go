@@ -141,6 +141,7 @@ type BaseLabelsBuilder struct {
 	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
+	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
 
 	resultCache map[uint64]LabelsResult
 	*hasher
@@ -176,6 +177,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 		parserKeyHints: parserKeyHints,
 		noLabels:       noLabels,
 		without:        without,
+		jsonPaths:      make(map[string][]string),
 	}
 }
 
@@ -411,6 +413,22 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 		b.Set(category, name, l.Value)
 	}
 	return b
+}
+
+// SetJSONPath sets the original JSON path parts that a label came from
+func (b *LabelsBuilder) SetJSONPath(labelName string, jsonPath []string) *LabelsBuilder {
+	b.jsonPaths[labelName] = jsonPath
+	return b
+}
+
+// GetJSONPath gets the original JSON path parts for a given label if available
+func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
+	path, ok := b.jsonPaths[labelName]
+	if !ok {
+		return nil
+	}
+
+	return path
 }
 
 // Labels returns the labels from the builder. If no modifications

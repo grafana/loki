@@ -6,7 +6,6 @@ package libc // import "modernc.org/libc"
 
 import (
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -655,7 +654,7 @@ func Xgetrlimit64(t *TLS, resource int32, rlim uintptr) int32 {
 	return 0
 }
 
-func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) (r *fts.FTSENT) {
+func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) (r *fts.FTSENT) {
 	var statp uintptr
 	if stat != nil {
 		statp = Xmalloc(t, types.Size_t(unsafe.Sizeof(unix.Stat_t{})))

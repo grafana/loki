@@ -135,16 +135,16 @@ func getAmzGrantACL(aCPolicy *accessControlPolicy) map[string][]string {
 	res := map[string][]string{}
 
 	for _, g := range grants {
-		switch {
-		case g.Permission == "READ":
+		switch g.Permission {
+		case "READ":
 			res["X-Amz-Grant-Read"] = append(res["X-Amz-Grant-Read"], "id="+g.Grantee.ID)
-		case g.Permission == "WRITE":
+		case "WRITE":
 			res["X-Amz-Grant-Write"] = append(res["X-Amz-Grant-Write"], "id="+g.Grantee.ID)
-		case g.Permission == "READ_ACP":
+		case "READ_ACP":
 			res["X-Amz-Grant-Read-Acp"] = append(res["X-Amz-Grant-Read-Acp"], "id="+g.Grantee.ID)
-		case g.Permission == "WRITE_ACP":
+		case "WRITE_ACP":
 			res["X-Amz-Grant-Write-Acp"] = append(res["X-Amz-Grant-Write-Acp"], "id="+g.Grantee.ID)
-		case g.Permission == "FULL_CONTROL":
+		case "FULL_CONTROL":
 			res["X-Amz-Grant-Full-Control"] = append(res["X-Amz-Grant-Full-Control"], "id="+g.Grantee.ID)
 		}
 	}

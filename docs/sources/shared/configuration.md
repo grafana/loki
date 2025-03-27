@@ -845,6 +845,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
+      # The maximum number of stripes to merge into a section at once. Must be
+      # greater than 1.
+      # CLI flag: -dataobj-consumer.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
@@ -6873,7 +6878,7 @@ bos:
   [secret_key: <string> | default = ""]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
-# only contain digits and English alphabet letters.
+# only contain digits, English alphabet letters and dashes.
 # CLI flag: -<prefix>.storage-prefix
 [storage_prefix: <string> | default = ""]
 ```

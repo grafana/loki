@@ -47,7 +47,7 @@ func TestInstancePushQuery(t *testing.T) {
 	}
 
 	mockWriter := &mockEntryWriter{}
-	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	inst, err := newInstance(
 		"foo",
@@ -135,7 +135,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		}
 
 		mockWriter := &mockEntryWriter{}
-		mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
+		mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 		inst, err := newInstance(
 			"foo",
@@ -285,8 +285,10 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "test_service"},
-				labels.Label{Name: "level", Value: "info"},
 			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+			},
 		)
 
 		mockWriter.AssertCalled(
@@ -302,8 +304,10 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "foo_service"},
-				labels.Label{Name: "level", Value: "error"},
 			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
+			},
 		)
 
 		mockWriter.AssertCalled(
@@ -319,8 +323,10 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "baz_service"},
-				labels.Label{Name: "level", Value: "error"},
 			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
+			},
 		)
 
 		require.Equal(t, 0, len(inst.aggMetricsByStreamAndLevel))
@@ -331,8 +337,8 @@ type mockEntryWriter struct {
 	mock.Mock
 }
 
-func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels) {
-	_ = m.Called(ts, entry, lbls)
+func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter) {
+	_ = m.Called(ts, entry, lbls, structuredMetadata)
 }
 
 func (m *mockEntryWriter) Stop() {
