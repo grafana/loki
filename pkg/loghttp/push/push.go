@@ -68,7 +68,10 @@ const (
 	AggregatedMetricLabel = "__aggregated_metric__"
 )
 
-var ErrAllLogsFiltered = errors.New("all logs lines filtered during parsing")
+var (
+	ErrAllLogsFiltered     = errors.New("all logs lines filtered during parsing")
+	ErrRequestBodyTooLarge = errors.New("request body too large")
+)
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -139,6 +142,9 @@ type Stats struct {
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
+		if errors.Is(err, loki_util.MessageSizeTooLarge) {
+			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
+		}
 		return nil, err
 	}
 
