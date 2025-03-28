@@ -38,6 +38,10 @@ spec:
   tolerations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- with .nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 
 ---
 
