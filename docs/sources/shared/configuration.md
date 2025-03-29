@@ -2550,6 +2550,9 @@ otlp_config:
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 
+  # Record scope usage
+  [record_scope_usage: <boolean>]
+
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
 [kafka_writes_enabled: <boolean> | default = false]
