@@ -68,7 +68,7 @@ Once you have installed logcli, you can run it in the following way:
 
 `logcli <command> [<flags>, <args> ...]`
 
-`<command>` points to one of the commands, detailed in the [command reference](http://localhost:3002/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/#logcli-command-reference) below.
+`<command>` points to one of the commands, detailed in the [command reference](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/#logcli-command-reference) below.
 
 `<flags>` is one of the subcommands available for each command.
 
