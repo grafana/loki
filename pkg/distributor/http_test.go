@@ -126,6 +126,7 @@ func (p *fakeParser) parseRequest(
 	_ string,
 	_ *http.Request,
 	_ push.Limits,
+	_ int,
 	_ push.UsageTracker,
 	_ push.StreamResolver,
 	_ bool,

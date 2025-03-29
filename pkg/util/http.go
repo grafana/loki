@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -21,7 +22,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
+const messageSizeLargerErrFmt = "%w than max (%d vs %d)"
+
+var ErrMessageSizeTooLarge = errors.New("message size too large")
 
 const (
 	HTTPRateLimited  = "rate_limited"
@@ -193,11 +196,11 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
 	defer func() {
 		if err != nil && len(body) > maxSize {
-			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
+			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(body), maxSize)
 		}
 	}()
 	if expectedSize > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, expectedSize, maxSize)
 	}
 	buffer, ok := tryBufferFromReader(reader)
 	if ok {
@@ -237,7 +240,7 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
 	bufBytes := buffer.Bytes()
 	if len(bufBytes) > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(bufBytes), maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(bufBytes), maxSize)
 	}
 	switch compression {
 	case NoCompression:
@@ -252,7 +255,7 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression Compres
 			return nil, err
 		}
 		if size > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, size, maxSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)
 		if err != nil {
