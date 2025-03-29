@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -50,16 +49,14 @@ type entryWithLabels struct {
 func newEntryIterator(ctx context.Context,
 	streams map[int64]dataobj.Stream,
 	reader *dataobj.LogsReader,
-	req logql.SelectLogParams,
+	selector syntax.LogSelectorExpr,
+	limit uint32,
+	direction logproto.Direction,
 ) (iter.EntryIterator, error) {
 	bufPtr := recordsPool.Get().(*[]dataobj.Record)
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
-	selector, err := req.LogSelector()
-	if err != nil {
-		return nil, err
-	}
 	pipeline, err := selector.Pipeline()
 	if err != nil {
 		return nil, err
@@ -69,7 +66,7 @@ func newEntryIterator(ctx context.Context,
 		prevStreamID    int64 = -1
 		streamExtractor log.StreamPipeline
 		streamHash      uint64
-		top             = newTopK(int(req.Limit), req.Direction)
+		top             = newTopK(int(limit), direction)
 	)
 
 	for {

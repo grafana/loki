@@ -1,6 +1,8 @@
 package dataobj
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -8,6 +10,7 @@ type (
 	// Predicate is an expression used to filter entries in a data object.
 	Predicate interface {
 		isPredicate()
+		String() string
 	}
 
 	// StreamsPredicate is a [Predicate] that can be used to filter streams in a
@@ -62,6 +65,7 @@ type (
 	// predicates.
 	LabelFilterPredicate struct {
 		Name string
+		Desc string // Description of the filter for debugging.
 		Keep func(name, value string) bool
 	}
 
@@ -69,6 +73,7 @@ type (
 	// of the entry to pass a Keep function.
 	LogMessageFilterPredicate struct {
 		Keep func(line []byte) bool
+		Desc string // Description of the filter for debugging.
 	}
 
 	// A MetadataMatcherPredicate is a [LogsPredicate] that requires a metadata
@@ -86,6 +91,7 @@ type (
 	// predicates.
 	MetadataFilterPredicate struct {
 		Key  string
+		Desc string // Description of the filter for debugging.
 		Keep func(key, value string) bool
 	}
 )
@@ -109,3 +115,107 @@ func (LabelFilterPredicate) predicateKind(StreamsPredicate)   {}
 func (MetadataMatcherPredicate) predicateKind(LogsPredicate)  {}
 func (MetadataFilterPredicate) predicateKind(LogsPredicate)   {}
 func (LogMessageFilterPredicate) predicateKind(LogsPredicate) {}
+
+func (p AndPredicate[P]) String() string {
+	var sb strings.Builder
+	sb.WriteString("(")
+	sb.WriteString(p.Left.String())
+	sb.WriteString(" AND ")
+	sb.WriteString(p.Right.String())
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p OrPredicate[P]) String() string {
+	var sb strings.Builder
+	sb.WriteString("(")
+	sb.WriteString(p.Left.String())
+	sb.WriteString(" OR ")
+	sb.WriteString(p.Right.String())
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p NotPredicate[P]) String() string {
+	var sb strings.Builder
+	sb.WriteString("NOT(")
+	sb.WriteString(p.Inner.String())
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p TimeRangePredicate[P]) String() string {
+	var sb strings.Builder
+
+	// Use standard mathematical interval notation
+	sb.WriteString("TimeRange")
+	if p.IncludeStart {
+		sb.WriteString("[")
+	} else {
+		sb.WriteString("(")
+	}
+
+	sb.WriteString(p.StartTime.Format(time.RFC3339))
+	sb.WriteString(", ")
+	sb.WriteString(p.EndTime.Format(time.RFC3339))
+
+	if p.IncludeEnd {
+		sb.WriteString("]")
+	} else {
+		sb.WriteString(")")
+	}
+
+	return sb.String()
+}
+
+func (p LabelMatcherPredicate) String() string {
+	var sb strings.Builder
+	sb.WriteString("Label(")
+	sb.WriteString(p.Name)
+	sb.WriteString("=")
+	sb.WriteString(p.Value)
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p LabelFilterPredicate) String() string {
+	var sb strings.Builder
+	sb.WriteString("LabelFilter(")
+	sb.WriteString(p.Name)
+	if p.Desc != "" {
+		sb.WriteString(fmt.Sprintf(", description=%q", p.Desc))
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p LogMessageFilterPredicate) String() string {
+	var sb strings.Builder
+	sb.WriteString("LogMessageFilter(")
+	if p.Desc != "" {
+		sb.WriteString(fmt.Sprintf("description=%q", p.Desc))
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p MetadataMatcherPredicate) String() string {
+	var sb strings.Builder
+	sb.WriteString("Metadata(")
+	sb.WriteString(p.Key)
+	sb.WriteString("=")
+	sb.WriteString(p.Value)
+	sb.WriteString(")")
+	return sb.String()
+}
+
+func (p MetadataFilterPredicate) String() string {
+	var sb strings.Builder
+	sb.WriteString("MetadataFilter(")
+	sb.WriteString(p.Key)
+	if p.Desc != "" {
+		sb.WriteString(fmt.Sprintf(", description=%q", p.Desc))
+	}
+	sb.WriteString(")")
+	return sb.String()
+}

@@ -875,6 +875,15 @@ dataobj:
     # CLI flag: -dataobj-querier-shard-factor
     [shard_factor: <int> | default = 32]
 
+    predicate_pushdown:
+      # Apply line filter predicates on dataobj reader.
+      # CLI flag: -dataobj-querier.predicate-pushdown.enable-for-line-filters
+      [enable_for_line_filters: <boolean> | default = true]
+
+      # Apply metadata filter predicates on dataobj reader.
+      # CLI flag: -dataobj-querier.predicate-pushdown.enable-for-metadata-filters
+      [enable_for_metadata_filters: <boolean> | default = true]
+
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]

@@ -3,6 +3,7 @@ package querier
 import (
 	"bytes"
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,10 +38,13 @@ func TestStore_SelectSamples(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
+	store := NewStore(cfg, builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -203,10 +207,13 @@ func TestStore_SelectLogs(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	// Setup test data
 	now := setupTestData(t, builder)
 	meta := metastore.NewObjectMetastore(builder.bucket)
-	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
+	store := NewStore(cfg, builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -820,131 +827,62 @@ func TestShardSections(t *testing.T) {
 }
 
 func TestBuildLogsPredicateFromPipeline(t *testing.T) {
-	var evalPredicate func(p dataobj.Predicate, item []byte) bool
-	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
-		switch p := p.(type) {
-		case dataobj.LogMessageFilterPredicate:
-			return p.Keep(line)
-		case dataobj.AndPredicate[dataobj.LogsPredicate]:
-			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
-		default:
-			t.Fatalf("unsupported predicate type: %T", p)
-			return false
-		}
-	}
-
-	// helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
-		t.Helper()
-		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
-
-		for i, line := range testData {
-			result := evalPredicate(pred, line)
-			require.Equal(t, expected[i], result, "predicate mismatch for line: %s", line)
-		}
-	}
-
-	// Create test data sets
-	testData := [][]byte{
-		[]byte("this is an error message"),
-		[]byte("this is a critical error"),
-		[]byte("this is a success message"),
-		[]byte("this is a warning message"),
-	}
-
 	for _, tt := range []struct {
-		name         string
-		query        syntax.LogSelectorExpr
-		expectedExpr syntax.LogSelectorExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		name              string
+		query             syntax.LogSelectorExpr
+		expectedExpr      syntax.LogSelectorExpr
+		expectedPredicate string
 	}{
 		{
-			name:         "single line match equal filter",
-			query:        mustParseLogSelector(t, `{app="foo"} |= "error"`),
-			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
-
-				// Verify the predicate works correctly
-				expected := []bool{true, true, false, false}
-				testPredicate(t, pred, testData, expected)
-			},
+			name:              "single line match equal filter",
+			query:             mustParseLogSelector(t, `{app="foo"} |= "error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
+			expectedPredicate: `LogMessageFilter(description="|= \"error\"")`,
 		},
 		{
-			name:         "single line match not equal filter",
-			query:        mustParseLogSelector(t, `{app="foo"} != "error"`),
-			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
-
-				// Verify the predicate works correctly
-				expected := []bool{false, false, true, true}
-				testPredicate(t, pred, testData, expected)
-			},
+			name:              "single line match not equal filter",
+			query:             mustParseLogSelector(t, `{app="foo"} != "error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
+			expectedPredicate: `LogMessageFilter(description="!= \"error\"")`,
 		},
 		{
-			name:         "multiple line filters",
-			query:        mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
-			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				// we might expect AND predicate here, but the original expression
-				// only contains a single Filterer stage with chained OR filters
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
-
-				// The result should match logs containing both "error" and "critical"
-				expected := []bool{false, true, false, false}
-				testPredicate(t, pred, testData, expected)
-			},
+			name:              "multiple line filters",
+			query:             mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
+			expectedPredicate: `LogMessageFilter(description="|= \"error\" |= \"critical\"")`,
 		},
 		{
 			name:         "line filter stage after line_format",
 			query:        mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`), // No filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				// Line filters after stages that mutate the line should be ignored
-				require.Nil(t, pred, "expected nil predicate for line filter after parser")
-			},
 		},
 		{
 			name:         "no line filter",
 			query:        mustParseLogSelector(t, `{app="foo"} | json | bar>100`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | bar>100`), // No filters to remove
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.Nil(t, pred, "expected nil predicate for query without line filter")
-			},
 		},
 		{
-			name:         "line filter stage after label_fmt",
-			query:        mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
-			expectedExpr: mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
-
-				// Verify the predicate works correctly
-				expected := []bool{true, true, false, false}
-				testPredicate(t, pred, testData, expected)
-			},
+			name:              "line filter stage after label_fmt",
+			query:             mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
+			expectedPredicate: `LogMessageFilter(description="|= \"error\"")`,
 		},
 		{
-			name:         "mixed filters with some removable",
-			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
-			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
-				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
-				expected := []bool{false, true, false, false}
-				testPredicate(t, pred, testData, expected)
-			},
+			name:              "mixed filters with some removable",
+			query:             mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
+			expectedPredicate: `(LogMessageFilter(description="|= \"error\"") AND LogMessageFilter(description="|= \"critical\""))`,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, actualExpr := buildLogsPredicateFromPipeline(tt.query)
+			p, actualExpr := buildLogMessagePredicateFromPipeline(tt.query)
 
-			tt.testFunc(t, p)
+			if tt.expectedPredicate == "" {
+				require.Nil(t, p)
+			} else {
+				require.NotNil(t, p)
+				require.Equal(t, tt.expectedPredicate, p.String())
+			}
 
 			// Verify the updated expression
 			syntax.AssertExpressions(t, tt.expectedExpr, actualExpr)
@@ -954,54 +892,208 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 
 func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 	for _, tt := range []struct {
-		name         string
-		query        syntax.SampleExpr
-		expectedExpr syntax.SampleExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		name              string
+		query             syntax.SampleExpr
+		expectedExpr      syntax.SampleExpr
+		expectedPredicate string
 	}{
 		{
-			name:         "range aggregation with line filter",
-			query:        mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
-			expectedExpr: mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
-				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
-			},
+			name:              "range aggregation with line filter",
+			query:             mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
+			expectedExpr:      mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
+			expectedPredicate: `LogMessageFilter(description="|= \"error\"")`,
 		},
 		{
-			name:         "vector aggregation with line filter",
-			query:        mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
-			expectedExpr: mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
-				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
-			},
+			name:              "vector aggregation with line filter",
+			query:             mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
+			expectedExpr:      mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
+			expectedPredicate: `LogMessageFilter(description="|= \"error\"")`,
 		},
 		{
 			name:         "binary expressions are not modified",
 			query:        mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
-				require.Nil(t, p)
-			},
 		},
 		{
-			name:         "label replace with line filter",
-			query:        mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
-			expectedExpr: mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
-				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
-			},
+			name:              "label replace with line filter",
+			query:             mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
+			expectedExpr:      mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
+			expectedPredicate: `LogMessageFilter(description="|= \"error\"")`,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, actualExpr := buildLogsPredicateFromSampleExpr(tt.query)
+			p, actualExpr := buildLogMessagePredicateFromSampleExpr(tt.query)
 
-			tt.testFunc(t, p)
+			if tt.expectedPredicate == "" {
+				require.Nil(t, p)
+			} else {
+				require.NotNil(t, p)
+				require.Equal(t, tt.expectedPredicate, p.String())
+			}
 
 			// Verify the updated expression
 			syntax.AssertExpressions(t, tt.expectedExpr, actualExpr)
+		})
+	}
+}
+
+func TestBuildMetadataFilterPredicateFromPipeline(t *testing.T) {
+	tests := []struct {
+		name              string
+		metadataColumns   map[string]struct{}
+		expr              syntax.LogSelectorExpr
+		expectedExpr      syntax.LogSelectorExpr
+		expectedPredicate string
+	}{
+		{
+			name:         "no label filter",
+			expr:         mustParseLogSelector(t, `{app="foo"}`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`),
+		},
+		{
+			name:            "label filter with non-metadata column",
+			metadataColumns: map[string]struct{}{"level": {}},
+			expr:            mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+			expectedExpr:    mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+		},
+		{
+			name:              "label filter with metadata column equality",
+			metadataColumns:   map[string]struct{}{"level": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} | level="error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`),
+			expectedPredicate: `Metadata(level=error)`,
+		},
+		{
+			name:              "label filter with metadata column inequality",
+			metadataColumns:   map[string]struct{}{"level": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} | level!="error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`),
+			expectedPredicate: `NOT(Metadata(level=error))`,
+		},
+		{
+			name:              "label filter with metadata column regex",
+			metadataColumns:   map[string]struct{}{"level": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} | level=~"err.*"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`),
+			expectedPredicate: `MetadataFilter(level, description="level=~\"err.*\"")`,
+		},
+		{
+			name:              "multiple label filters with metadata columns",
+			metadataColumns:   map[string]struct{}{"level": {}, "source": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} | level="error" | source="backend"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"}`),
+			expectedPredicate: `(Metadata(level=error) AND Metadata(source=backend))`,
+		},
+		{
+			name:              "mixed metadata and non-metadata filters",
+			metadataColumns:   map[string]struct{}{"level": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} | level="error" | app="bar"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"} | app="bar"`),
+			expectedPredicate: `Metadata(level=error)`,
+		},
+		{
+			name:            "label filter after line parser",
+			metadataColumns: map[string]struct{}{"level": {}},
+			expr:            mustParseLogSelector(t, `{app="foo"} | json | level="error"`),
+			expectedExpr:    mustParseLogSelector(t, `{app="foo"} | json | level="error"`),
+		},
+		{
+			name:              "mixed line and label filters",
+			metadataColumns:   map[string]struct{}{"level": {}},
+			expr:              mustParseLogSelector(t, `{app="foo"} |= "error" | level="error"`),
+			expectedExpr:      mustParseLogSelector(t, `{app="foo"} |= "error"`),
+			expectedPredicate: `Metadata(level=error)`,
+		},
+		{
+			name:              "AND with both metadata columns",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | meta1="value1" and meta2="value2"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `(Metadata(meta1=value1) AND Metadata(meta2=value2))`,
+		},
+		{
+			name:              "AND with one metadata column",
+			metadataColumns:   map[string]struct{}{"meta1": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | meta1="value1" and other="value2"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"} | other="value2"`),
+			expectedPredicate: `Metadata(meta1=value1)`,
+		},
+		{
+			name:              "OR with both metadata columns",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | meta1="value1" or meta2="value2"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `(Metadata(meta1=value1) OR Metadata(meta2=value2))`,
+		},
+		{
+			name:            "OR with one metadata column",
+			metadataColumns: map[string]struct{}{"meta1": {}},
+			expr:            mustParseLogSelector(t, `{foo="bar"} | meta1="value1" or other="value2"`),
+			expectedExpr:    mustParseLogSelector(t, `{foo="bar"} | meta1="value1" or other="value2"`),
+		},
+		{
+			name:              "OR with regex matchers on metadata columns",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | meta1=~"value.*" or meta2=~"test.*"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `(MetadataFilter(meta1, description="meta1=~\"value.*\"") OR MetadataFilter(meta2, description="meta2=~\"test.*\""))`,
+		},
+		{
+			name:              "nested AND expressions",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}, "meta4": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | (meta1="value1" and meta2="value2") and (meta3="value3" and meta4="value4")`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) AND (Metadata(meta3=value3) AND Metadata(meta4=value4)))`,
+		},
+		{
+			name:              "mixed AND/OR - AND at top level",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | (meta1="value1" or meta2="value2") and other="value3"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"} | other="value3"`),
+			expectedPredicate: `(Metadata(meta1=value1) OR Metadata(meta2=value2))`,
+		},
+		{
+			name:              "mixed AND/OR - OR at top level",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | (meta1="value1" and meta2="value2") or meta3="value3"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3))`,
+		},
+		{
+			name:              "nested OR with non-metadata column",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | (meta1="value1" or meta2="value2") or other="value3"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"} | (meta1="value1" or meta2="value2") or other="value3"`),
+			expectedPredicate: "",
+		},
+		{
+			name:              "deeply nested expressions with mixed operators",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}, "meta4": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | ((meta1="value1" and meta2="value2") or meta3="value3") and meta4="value4"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"}`),
+			expectedPredicate: `(((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3)) AND Metadata(meta4=value4))`,
+		},
+		{
+			name:              "deeply nested expressions with mixed operators and non-metadata column",
+			metadataColumns:   map[string]struct{}{"meta1": {}, "meta2": {}, "meta3": {}},
+			expr:              mustParseLogSelector(t, `{foo="bar"} | ((meta1="value1" and meta2="value2") or meta3="value3") and other="value4"`),
+			expectedExpr:      mustParseLogSelector(t, `{foo="bar"} | other="value4"`),
+			expectedPredicate: `((Metadata(meta1=value1) AND Metadata(meta2=value2)) OR Metadata(meta3=value3))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			predicate, newExpr := buildMetadataFilterPredicateFromPipeline(tt.expr, tt.metadataColumns)
+
+			if tt.expectedPredicate == "" {
+				require.Nil(t, predicate, "expected no predicate to be created")
+			} else {
+				require.NotNil(t, predicate, "expected a predicate to be created")
+				require.Equal(t, tt.expectedPredicate, predicate.String(), "unexpected predicate")
+			}
+
+			syntax.AssertExpressions(t, tt.expectedExpr, newExpr)
 		})
 	}
 }
