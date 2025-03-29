@@ -24,17 +24,19 @@ var (
 // RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
 // limits instances.
 type RingStreamUsageGatherer struct {
-	logger log.Logger
-	ring   ring.ReadRing
-	pool   *ring_client.Pool
+	logger        log.Logger
+	ring          ring.ReadRing
+	pool          *ring_client.Pool
+	numPartitions int
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
-		logger: logger,
-		ring:   ring,
-		pool:   pool,
+		logger:        logger,
+		ring:          ring,
+		pool:          pool,
+		numPartitions: numPartitions,
 	}
 }
 
@@ -62,10 +64,32 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 	}
 
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(rs.Instances))
+	var owningInstances []ring.InstanceDesc
+
+outer:
+	for _, hash := range r.StreamHashes {
+		for _, instance := range rs.Instances {
+			partitionID := int32(hash % uint64(g.numPartitions))
+
+			if !slices.Contains(partitions[instance.Addr], partitionID) {
+				continue
+			}
+
+			for _, owning := range owningInstances {
+				if owning.Addr == instance.Addr {
+					continue outer
+				}
+			}
+
+			owningInstances = append(owningInstances, instance)
+			continue outer
+		}
+	}
+
+	responses := make([]GetStreamUsageResponse, len(owningInstances))
 
 	// TODO: We shouldn't query all instances since we know which instance holds which stream.
-	for i, instance := range rs.Instances {
+	for i, instance := range owningInstances {
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(instance.Addr)
 			if err != nil {

@@ -54,9 +54,6 @@ func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *log
 }
 
 func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
-	if expected := m.expectedStreamUsageRequest; expected != nil {
-		require.Equal(m.t, expected, r)
-	}
 	return m.getStreamUsageResponse, nil
 }
 

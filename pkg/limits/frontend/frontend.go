@@ -89,7 +89,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	)
 
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, cfg.NumPartitions)
 
 	f := &Frontend{
 		cfg:         cfg,
