@@ -1,5 +1,12 @@
 ## Main
 
+## [0.8.1](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.8.1) (2025-03-25)
+
+
+### Bug Fixes
+
+* **operator:** use description annotation for Prometheus alerts instead of message ([#16574](https://github.com/grafana/loki/issues/16574)) ([89cb731](https://github.com/grafana/loki/commit/89cb731f93fcef1646d5ae9b9463685bf62184cf))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 
