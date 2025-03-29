@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/dustin/go-humanize"
 )
 
@@ -388,7 +390,7 @@ func (v *variantsStreamSampleExtractorWrapper) ProcessString(
 func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
 	newLbls := lbls.Stream()
 	newLbls = append(newLbls, labels.Label{
-		Name:  "__variant__",
+		Name:  constants.VariantLabel,
 		Value: strconv.Itoa(variantIndex),
 	})
 	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())

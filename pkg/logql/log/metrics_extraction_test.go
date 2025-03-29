@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -536,8 +538,8 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			input:       "test line",
 			labels:      labels.FromStrings("foo", "bar"),
 			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", "__variant__", "0"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "0"),
+			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
 		},
 		{
 			name:        "extraction with variant 1",
@@ -545,8 +547,8 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			input:       "test line",
 			labels:      labels.FromStrings("foo", "bar"),
 			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", "__variant__", "1"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "1"),
+			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
 		},
 		{
 			name:               "with structured metadata",
@@ -558,12 +560,12 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			wantLbs: labels.FromStrings(
 				"foo",
 				"bar",
-				"__variant__",
+				constants.VariantLabel,
 				"2",
 				"meta",
 				"data",
 			),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "2"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "2"),
 		},
 	}
 
