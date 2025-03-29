@@ -24,9 +24,9 @@ import (
 	"strings"
 )
 
-// reservedHeaders that change the connection, are set by Prometheus, or can
+// ReservedHeaders that change the connection, are set by Prometheus, or can
 // be changed otherwise.
-var reservedHeaders = map[string]struct{}{
+var ReservedHeaders = map[string]struct{}{
 	"Authorization":                       {},
 	"Host":                                {},
 	"Content-Encoding":                    {},
@@ -72,7 +72,7 @@ func (h *Headers) SetDirectory(dir string) {
 // Validate validates the Headers config.
 func (h *Headers) Validate() error {
 	for n := range h.Headers {
-		if _, ok := reservedHeaders[http.CanonicalHeaderKey(n)]; ok {
+		if _, ok := ReservedHeaders[http.CanonicalHeaderKey(n)]; ok {
 			return fmt.Errorf("setting header %q is not allowed", http.CanonicalHeaderKey(n))
 		}
 	}
