@@ -544,12 +544,12 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
 	f(e)
-	if e.Left != nil {
-		e.Left.Walk(f)
-	}
-	if e.Or != nil {
-		e.Or.Walk(f)
-	}
+	// if e.Left != nil {
+	// 	e.Left.Walk(f)
+	// }
+	// if e.Or != nil {
+	// 	e.Or.Walk(f)
+	// }
 }
 
 func (e *LineFilterExpr) Accept(v RootVisitor) {
