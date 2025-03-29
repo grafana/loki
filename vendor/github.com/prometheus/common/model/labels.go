@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	// AlertNameLabel is the name of the label containing the an alert's name.
+	// AlertNameLabel is the name of the label containing the alert's name.
 	AlertNameLabel = "alertname"
 
 	// ExportedLabelPrefix is the prefix to prepend to the label names present in
