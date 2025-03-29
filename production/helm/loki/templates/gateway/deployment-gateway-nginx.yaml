@@ -31,9 +31,6 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/gateway/configmap-gateway.yaml") }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
         {{- with .Values.gateway.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
