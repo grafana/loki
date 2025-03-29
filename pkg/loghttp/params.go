@@ -158,31 +158,56 @@ func parseInt(value string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-// parseTimestamp parses a ns unix timestamp from a string
-// if the value is empty it returns a default value passed as second parameter
+// parseTimestamp parses a string into a unix nanosecond timestamp.
+// If the value is empty it returns a default value passed as second parameter.
+// The function returns an error if the string cannot be parsed.
 func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {
 		return def, nil
 	}
 
-	if strings.Contains(value, ".") {
-		if t, err := strconv.ParseFloat(value, 64); err == nil {
-			s, ns := math.Modf(t)
-			ns = math.Round(ns*1000) / 1000
-			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
-		}
+	// Try parsing a datetime string in RFC3339Nano format
+	if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return ts, nil
 	}
-	nanos, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
-			return ts, nil
+
+	// Parse a float value string, can be either regular or scientific notation.
+	// 1 to 9-digit numbers are considered second precision
+	// 10 to 18-digit numbers are considered nanosecond precision
+	if strings.Contains(value, ".") {
+		t, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return time.Time{}, err
 		}
+		if math.IsNaN(t) || math.IsInf(t, 0) {
+			return time.Time{}, fmt.Errorf("floating point timestamp is NaN or Inf")
+		}
+		high, low := math.Modf(t)
+		if high > math.MaxInt64 || high < math.MinInt64 {
+			return time.Time{}, fmt.Errorf("floating point timestamp exceeds integer range")
+		}
+		// treat high as seconds
+		if high <= 1e10 {
+			low = math.Round(low*1000) / 1000
+			return time.Unix(int64(high), int64(low*float64(time.Second))), nil
+		}
+		// treat high as nanoseconds and discard low
+		return time.Unix(0, int64(high)), nil
+	}
+
+	// Parse an integer value string, can be either regular or scientific notation.
+	// 1 to 9-digit numbers are considered second precision
+	// 10 to 18-digit numbers are considered nanosecond precision
+	val, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
 		return time.Time{}, err
 	}
-	if len(value) <= 10 {
-		return time.Unix(nanos, 0), nil
+	// treat val as seconds
+	if val <= 1e10 {
+		return time.Unix(val, 0), nil
 	}
-	return time.Unix(0, nanos), nil
+	// treat val as nanoseconds
+	return time.Unix(0, val), nil
 }
 
 // parseDirection parses a logproto.Direction from a string
