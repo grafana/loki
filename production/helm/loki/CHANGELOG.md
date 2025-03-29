@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.30.0
+
+- [BUGFIX] Added missing `command` spec definition for the `ruler`, `querier` and `table-manager`
+- [CHANGE] Added support for `command` spec definition for the `query-scheduler`, `backend`, `read`, `write` or single binary
+
 ## 6.29.0
 
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
