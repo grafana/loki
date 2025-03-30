@@ -785,6 +785,10 @@ http {
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
   {{- end }}
 
+  {{- if .Values.loki.tenants }}
+  proxy_set_header X-Scope-OrgID $remote_user;
+  {{- end }}
+
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
   {{- tpl . $ | nindent 2 }}
   {{- end }}
@@ -983,11 +987,17 @@ http {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
+      {{- if .Values.loki.tenants }}
+      proxy_set_header X-Scope-OrgID $remote_user;
+      {{- end }}
     }
     location = /loki/api/v1/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
+      {{- if .Values.loki.tenants }}
+      proxy_set_header X-Scope-OrgID $remote_user;
+      {{- end }}
     }
     location ^~ /api/prom/ {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
@@ -1001,6 +1011,9 @@ http {
       set $query_tags "noop=";
     }
     location ^~ /loki/api/v1/ {
+      {{- if .Values.loki.tenants }}
+      proxy_set_header X-Scope-OrgID $remote_user;
+      {{- end }}
       # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
       proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
