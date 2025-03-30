@@ -1167,8 +1167,7 @@ gateway:
     # -- Allows appending custom configuration to the server block
     serverSnippet: ""
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
-    httpSnippet: >-
-      {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    httpSnippet: ""
     # -- Allows customizing the `client_max_body_size` directive
     clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.
