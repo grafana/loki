@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.22.5 as builder
+FROM golang:1.23.2 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
