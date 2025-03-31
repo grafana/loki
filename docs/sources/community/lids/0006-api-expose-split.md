@@ -91,3 +91,16 @@ The response body is JSON encoded
 *Cons*
 - A new API endpoint increases the compatiblity surface area and thus maintanence overhead for Loki maintainers.
 
+### Proposal 2: Support Apache Arrow Flight RPC
+
+Loki could support Apache [Arrow Flight RPC](https://arrow.apache.org/docs/format/Flight.html) which is designed to
+exchange large data sets in shards between services.
+
+*Pros*
+- Supporting an open standard comes with support for other non-Loki clients.
+
+*Cons*
+- Loki would have to support Apache Arrow which make the implementation more complicated.
+- Arrow Flight RPC assumes the data is being queried on the first request. Which means all shards are available at the
+  same time. However, the intend of this document is that shards can be queried independently.
+  shard
