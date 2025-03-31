@@ -13,9 +13,9 @@ As a best practice, you should collect data about Loki in a separate instance of
 
 Loki exposes the following observability data about itself:
 
-- **Metrics**: Loki provides a `/metrics` endpoint that exports information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component exposes its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster see [metrics](#loki-metrics). This important to keep in mind when running a large distributed Loki cluster, see [metrics cardinality](#metrics-cardinality). 
+- **Metrics**: Loki provides a `/metrics` endpoint that sends information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component sends its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster see [metrics](#loki-metrics). This important to keep in mind when running a large distributed Loki cluster, see [metrics cardinality](#metrics-cardinality). 
   
-- **Logs**: Loki emits a detailed log line `metrics.go` for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance. You can also collect pod logs from your Loki components to monitor to drill down into specific issues.
+- **Logs**: Loki emits a detailed log line `metrics.go` for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance. You can also collect pod logs from your Loki components to monitor and drill down into specific issues.
 
 ## Monitoring Loki
 
@@ -25,14 +25,14 @@ There three primary components to monitoring Loki:
 
 1. [Grafana Cloud account](https://grafana.com/products/cloud/) or a seperate LGTM stack: The data collected from the Loki cluster can be sent to a Grafana Cloud account or a separate LGTM stack. We recommend using Grafana Cloud since it is Grafana Lab's responsiblity to maintain the availability and performance of the Grafana Cloud services. 
 
-1. [The Loki mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin-compiled): is an opinionated set of dashboards, alerts and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance. To install the Loki mixin, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins).
+1. [The Loki mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin-compiled): is an opinionated set of dashboards, alerts, and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance. To install the Loki mixin, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins).
 
 You should also plan separately for infrastructure-level monitoring, to monitor the capacity or throughput of your storage provider, for example, or your networking layer.
 
 - [MinIO](https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html)
 - [Kubernetes](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
 
-The Kubernetes Monitoring Helm chart we use to monitor Loki also provides these features out of the box with K8s monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you can afford to collect.
+The Kubernetes Monitoring Helm chart Grafana Labs uses to monitor Loki also provides these features out of the box with Kubernetes monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you can afford to collect.
 
 ## Loki Metrics
 
@@ -58,10 +58,10 @@ All components of Loki expose the following metrics:
 Note that most of the metrics are counters and should continuously increase during normal operations.
 
 1. Your app emits a log line to a file that is tracked by Alloy.
-2. Alloy reads the new line and increases its counters.
-3. Alloy forwards the log line to a Loki distributor, where the received
+1. Alloy reads the new line and increases its counters.
+1. Alloy forwards the log line to a Loki distributor, where the received
    counters should increase.
-4. The Loki distributor forwards the log line to a Loki ingester, where the
+1. The Loki distributor forwards the log line to a Loki ingester, where the
    request duration counter should increase.
 
 If Alloy uses any pipelines with metrics stages, those metrics will also be
@@ -69,7 +69,7 @@ exposed by Alloy at its `/metrics` endpoint.
 
 ### Metrics cardinality
 
-Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus labels discourage increasing cardinality in this way. The Kubernetes Monitoring Helm chart provides best practises for monitoring Loki, including how to manage cardinality, however it is important to be aware of this when implementing auto scaling of components in your Loki cluster.
+Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus labels discourage increasing cardinality in this way. The Kubernetes Monitoring Helm chart provides best practices for monitoring Loki, including how to manage cardinality, however it is important to be aware of cardinality when implementing auto scaling of components in your Loki cluster.
 
 ## Example Loki log line: metrics.go
 

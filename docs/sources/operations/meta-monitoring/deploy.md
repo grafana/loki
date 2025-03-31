@@ -15,13 +15,14 @@ We recommend running a production cluster of Loki in distributed mode using Kube
 
 ## Before you begin
 
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/)
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster with a running Loki deployment.
 - A Grafana Cloud account or a separate LGTM stack for monitoring.
 
 ## Preparing your environment
 
-Before deploying the Kubernetes Monitoring Helm chart, you need to set up several components in your environment. These components include:
+Before deploying the Kubernetes Monitoring Helm chart, you need to set up several components in your environment. 
 
 1. Add the Grafana Helm repository:
 
