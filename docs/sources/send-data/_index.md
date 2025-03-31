@@ -19,14 +19,14 @@ While all clients can be used simultaneously to cover multiple use cases, which 
 The following clients are developed and supported (for those customers who have purchased a support contract) by Grafana Labs for sending logs to Loki:
 
 - [Grafana Alloy](https://grafana.com/docs/alloy/latest/) - Grafana Alloy is a vendor-neutral distribution of the OpenTelemetry (OTel) Collector. Alloy offers native pipelines for OTel, Prometheus, Pyroscope, Loki, and many other metrics, logs, traces, and profile tools. In addition, you can use Alloy pipelines to do different tasks, such as configure alert rules in Loki and Mimir. Alloy is fully compatible with the OTel Collector, Prometheus Agent, and Promtail. You can use Alloy as an alternative to either of these solutions or combine it into a hybrid system of multiple collectors and agents. You can deploy Alloy anywhere within your IT infrastructure and pair it with your Grafana LGTM stack, a telemetry backend from Grafana Cloud, or any other compatible backend from any other vendor.
-    {{< docs/shared source="alloy" lookup="agent-deprecation.md" version="next" >}}
-- [Grafana Agent](/docs/agent/latest/) - The Grafana Agent is a client for the Grafana stack. It can  collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
-- [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. Promtail and Prometheus running together in Kubernetes enables powerful debugging: if Prometheus and Promtail use the same labels, users can use tools like Grafana to switch between metrics and logs based on the label set. Promtail can be configured to tail logs from all files given a host path. It is the easiest way to send logs to Loki from plain-text files (for example, things that log to `/var/log/*.log`).
-Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message.
-{{< admonition type="note" >}}
-Promtail is feature complete.  All future feature development will occur in Grafana Alloy.
-{{< /admonition >}}
+ {{< docs/shared source="alloy" lookup="agent-deprecation.md" version="next" >}}
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
+- [Grafana Agent](/docs/agent/latest/) (DEPRECATED) - The Grafana Agent is a client for the Grafana stack. It can collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
+- [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (DEPRECATED) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. 
+{{< admonition type="caution" >}}
+Promtail is deprecated. If you are currently using Promtail, you should plan your [migration to Alloy](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-alloy/). All future feature development will occur in Grafana Alloy.
+{{< /admonition >}}
+
 
 ## OpenTelemetry Collector
 
@@ -35,11 +35,11 @@ For more information, see [Ingesting logs to Loki using OpenTelemetry Collector]
 
 ## Third-party clients
 
-The following clients have been developed by the Loki community or other third-parties and can be used to send log data to Loki.  
+The following clients have been developed by the Loki community or other third-parties and can be used to send log data to Loki.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Grafana Labs cannot provide support for third-party clients. Once an issue has been determined to be with the client and not Loki, it is the responsibility of the customer to work with the associated vendor or project for bug fixes to these clients.
-{{% /admonition %}}
+{{< /admonition >}}
 
 The following are popular third-party Loki clients:
 
@@ -56,17 +56,21 @@ By adding our output plugin you can quickly try Loki without doing big configura
 These third-party clients also enable sending logs to Loki:
 
 - [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)
+- [GrafanaLokiLogger](https://github.com/antoniojmsjr/GrafanaLokiLogger) (Delphi/Lazarus)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
+- [loki-logger-handler](https://github.com/xente/loki-logger-handler) (Python 3)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
-- [python-logging-loki](https://pypi.org/project/python-logging-loki/) (Python 3)
+- [python-logging-loki](https://pypi.org/project/python-logging-loki-v2/) (Python 3)
 - [nextlog](https://pypi.org/project/nextlog/) (Python 3)
 - [Rails Loki Exporter](https://github.com/planninghow/rails-loki-exporter) (Rails)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
+- [serilog-sinks-grafana-loki](https://github.com/serilog-contrib/serilog-sinks-grafana-loki) (C#)
 - [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
+- [yet-another-serilog-sinks-loki](https://github.com/ramonesz297/yet-another-serilog-sinks-loki) (C#)

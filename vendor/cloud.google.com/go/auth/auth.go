@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package auth provides utilities for managing Google Cloud credentials,
+// including functionality for creating, caching, and refreshing OAuth2 tokens.
+// It offers customizable options for different OAuth2 flows, such as 2-legged
+// (2LO) and 3-legged (3LO) OAuth, along with support for PKCE and automatic
+// token management.
 package auth
 
 import (
@@ -19,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,6 +33,7 @@ import (
 
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/jwt"
+	"github.com/googleapis/gax-go/v2/internallog"
 )
 
 const (
@@ -101,6 +108,20 @@ func (t *Token) IsValid() bool {
 	return t.isValidWithEarlyExpiry(defaultExpiryDelta)
 }
 
+// MetadataString is a convenience method for accessing string values in the
+// token's metadata. Returns an empty string if the metadata is nil or the value
+// for the given key cannot be cast to a string.
+func (t *Token) MetadataString(k string) string {
+	if t.Metadata == nil {
+		return ""
+	}
+	s, ok := t.Metadata[k].(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
 func (t *Token) isValidWithEarlyExpiry(earlyExpiry time.Duration) bool {
 	if t.isEmpty() {
 		return false
@@ -116,7 +137,9 @@ func (t *Token) isEmpty() bool {
 }
 
 // Credentials holds Google credentials, including
-// [Application Default Credentials](https://developers.google.com/accounts/docs/application-default-credentials).
+// [Application Default Credentials].
+//
+// [Application Default Credentials]: https://developers.google.com/accounts/docs/application-default-credentials
 type Credentials struct {
 	json           []byte
 	projectID      CredentialsPropertyProvider
@@ -206,9 +229,7 @@ type CredentialsOptions struct {
 	UniverseDomainProvider CredentialsPropertyProvider
 }
 
-// NewCredentials returns new [Credentials] from the provided options. Most users
-// will want to build this object a function from the
-// [cloud.google.com/go/auth/credentials] package.
+// NewCredentials returns new [Credentials] from the provided options.
 func NewCredentials(opts *CredentialsOptions) *Credentials {
 	creds := &Credentials{
 		TokenProvider:  opts.TokenProvider,
@@ -221,8 +242,8 @@ func NewCredentials(opts *CredentialsOptions) *Credentials {
 	return creds
 }
 
-// CachedTokenProviderOptions provided options for configuring a
-// CachedTokenProvider.
+// CachedTokenProviderOptions provides options for configuring a cached
+// [TokenProvider].
 type CachedTokenProviderOptions struct {
 	// DisableAutoRefresh makes the TokenProvider always return the same token,
 	// even if it is expired. The default is false. Optional.
@@ -232,7 +253,7 @@ type CachedTokenProviderOptions struct {
 	// seconds. Optional.
 	ExpireEarly time.Duration
 	// DisableAsyncRefresh configures a synchronous workflow that refreshes
-	// stale tokens while blocking. The default is false. Optional.
+	// tokens in a blocking manner. The default is false. Optional.
 	DisableAsyncRefresh bool
 }
 
@@ -244,7 +265,7 @@ func (ctpo *CachedTokenProviderOptions) autoRefresh() bool {
 }
 
 func (ctpo *CachedTokenProviderOptions) expireEarly() time.Duration {
-	if ctpo == nil {
+	if ctpo == nil || ctpo.ExpireEarly == 0 {
 		return defaultExpiryDelta
 	}
 	return ctpo.ExpireEarly
@@ -259,12 +280,7 @@ func (ctpo *CachedTokenProviderOptions) blockingRefresh() bool {
 
 // NewCachedTokenProvider wraps a [TokenProvider] to cache the tokens returned
 // by the underlying provider. By default it will refresh tokens asynchronously
-// (non-blocking mode) within a window that starts 3 minutes and 45 seconds
-// before they expire. The asynchronous (non-blocking) refresh can be changed to
-// a synchronous (blocking) refresh using the
-// CachedTokenProviderOptions.DisableAsyncRefresh option. The time-before-expiry
-// duration can be configured using the CachedTokenProviderOptions.ExpireEarly
-// option.
+// a few minutes before they expire.
 func NewCachedTokenProvider(tp TokenProvider, opts *CachedTokenProviderOptions) TokenProvider {
 	if ctp, ok := tp.(*cachedTokenProvider); ok {
 		return ctp
@@ -307,7 +323,9 @@ func (c *cachedTokenProvider) tokenNonBlocking(ctx context.Context) (*Token, err
 		defer c.mu.Unlock()
 		return c.cachedToken, nil
 	case stale:
-		c.tokenAsync(ctx)
+		// Call tokenAsync with a new Context because the user-provided context
+		// may have a short timeout incompatible with async token refresh.
+		c.tokenAsync(context.Background())
 		// Return the stale token immediately to not block customer requests to Cloud services.
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -322,13 +340,14 @@ func (c *cachedTokenProvider) tokenState() tokenState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	t := c.cachedToken
+	now := timeNow()
 	if t == nil || t.Value == "" {
 		return invalid
 	} else if t.Expiry.IsZero() {
 		return fresh
-	} else if timeNow().After(t.Expiry.Round(0)) {
+	} else if now.After(t.Expiry.Round(0)) {
 		return invalid
-	} else if timeNow().After(t.Expiry.Round(0).Add(-c.expireEarly)) {
+	} else if now.After(t.Expiry.Round(0).Add(-c.expireEarly)) {
 		return stale
 	}
 	return fresh
@@ -473,13 +492,18 @@ type Options2LO struct {
 	// UseIDToken requests that the token returned be an ID token if one is
 	// returned from the server. Optional.
 	UseIDToken bool
+	// Logger is used for debug logging. If provided, logging will be enabled
+	// at the loggers configured level. By default logging is disabled unless
+	// enabled by setting GOOGLE_SDK_GO_LOGGING_LEVEL in which case a default
+	// logger will be used. Optional.
+	Logger *slog.Logger
 }
 
 func (o *Options2LO) client() *http.Client {
 	if o.Client != nil {
 		return o.Client
 	}
-	return internal.CloneDefaultClient()
+	return internal.DefaultClient()
 }
 
 func (o *Options2LO) validate() error {
@@ -503,12 +527,13 @@ func New2LOTokenProvider(opts *Options2LO) (TokenProvider, error) {
 	if err := opts.validate(); err != nil {
 		return nil, err
 	}
-	return tokenProvider2LO{opts: opts, Client: opts.client()}, nil
+	return tokenProvider2LO{opts: opts, Client: opts.client(), logger: internallog.New(opts.Logger)}, nil
 }
 
 type tokenProvider2LO struct {
 	opts   *Options2LO
 	Client *http.Client
+	logger *slog.Logger
 }
 
 func (tp tokenProvider2LO) Token(ctx context.Context) (*Token, error) {
@@ -543,10 +568,12 @@ func (tp tokenProvider2LO) Token(ctx context.Context) (*Token, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tp.logger.DebugContext(ctx, "2LO token request", "request", internallog.HTTPRequest(req, []byte(v.Encode())))
 	resp, body, err := internal.DoRequest(tp.Client, req)
 	if err != nil {
 		return nil, fmt.Errorf("auth: cannot fetch token: %w", err)
 	}
+	tp.logger.DebugContext(ctx, "2LO token response", "response", internallog.HTTPResponse(resp, body))
 	if c := resp.StatusCode; c < http.StatusOK || c >= http.StatusMultipleChoices {
 		return nil, &Error{
 			Response: resp,

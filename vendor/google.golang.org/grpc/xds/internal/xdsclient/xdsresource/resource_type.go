@@ -46,11 +46,17 @@ func init() {
 type Producer interface {
 	// WatchResource uses xDS to discover the resource associated with the
 	// provided resource name. The resource type implementation determines how
-	// xDS requests are sent out and how responses are deserialized and
-	// validated. Upon receipt of a response from the management server, an
-	// appropriate callback on the watcher is invoked.
+	// xDS responses are are deserialized and validated, as received from the
+	// xDS management server. Upon receipt of a response from the management
+	// server, an appropriate callback on the watcher is invoked.
 	WatchResource(rType Type, resourceName string, watcher ResourceWatcher) (cancel func())
 }
+
+// OnDoneFunc is a function to be invoked by watcher implementations upon
+// completing the processing of a callback from the xDS client. Failure to
+// invoke this callback prevents the xDS client from reading further messages
+// from the xDS server.
+type OnDoneFunc func()
 
 // ResourceWatcher wraps the callbacks to be invoked for different events
 // corresponding to the resource being watched.
@@ -58,7 +64,7 @@ type ResourceWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
 	// The ResourceData parameter needs to be type asserted to the appropriate
 	// type for the resource being watched.
-	OnUpdate(ResourceData)
+	OnUpdate(ResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -68,11 +74,11 @@ type ResourceWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 // TODO: Once the implementation is complete, rename this interface as
@@ -113,11 +119,9 @@ type Type interface {
 // provide an implementation of this interface to represent the configuration
 // received from the xDS management server.
 type ResourceData interface {
-	isResourceData()
-
-	// Equal returns true if the passed in resource data is equal to that of the
-	// receiver.
-	Equal(ResourceData) bool
+	// RawEqual returns true if the passed in resource data is equal to that of
+	// the receiver, based on the underlying raw protobuf message.
+	RawEqual(ResourceData) bool
 
 	// ToJSON returns a JSON string representation of the resource data.
 	ToJSON() string

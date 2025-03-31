@@ -32,10 +32,18 @@ import (
 func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return nil, err
+		return nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return nil, err
+		return nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 
 	gctx, cancel := context.WithCancel(ctx)
@@ -310,7 +318,7 @@ func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
 	response := <-o.resCh
 
 	// Return any error to the top level.
-	if response.Error != nil {
+	if response.Error != nil && response.Error != io.EOF {
 		return response, response.Error
 	}
 
@@ -332,7 +340,7 @@ func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
 	// Data are ready on the wire, no need to reinitiate connection in lower level
 	o.seekData = false
 
-	return response, nil
+	return response, response.Error
 }
 
 // setOffset - handles the setting of offsets for
@@ -649,10 +657,18 @@ func newObject(ctx context.Context, cancel context.CancelFunc, reqCh chan<- getR
 func (c *Client) getObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (io.ReadCloser, ObjectInfo, http.Header, error) {
 	// Validate input arguments.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return nil, ObjectInfo{}, nil, err
+		return nil, ObjectInfo{}, nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return nil, ObjectInfo{}, nil, err
+		return nil, ObjectInfo{}, nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 
 	// Execute GET on objectName.

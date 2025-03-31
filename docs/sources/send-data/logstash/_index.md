@@ -12,6 +12,20 @@ Grafana Loki has a [Logstash](https://www.elastic.co/logstash) output plugin cal
 `logstash-output-loki` that enables shipping logs to a Loki
 instance or [Grafana Cloud](/products/cloud/).
 
+{{< admonition type="warning" >}}
+Grafana Labs does not recommend using the Logstash plugin for new deployments. Even as a mechanism for quickly testing Loki with your existing Beats/Logstash infrastructure we highly discourage the use of this plugin.
+
+Our experience over the years has found numerous significant challenges using Logstash and this plugin:
+
+  * It is very difficult to configure labels correctly.  Conceptually Elasticsearch is a very different database from Loki and users almost always end up sending too many high cardinality labels to Loki, which makes getting started with Loki unnecessarily complicated and confusing vs. using other clients.
+  * Logstash and the upstream Beats components implement backoff and flow control which we've found hard to observe, leading to ingestion delays into Loki which are extremely difficult to address.
+  * We at Grafana Labs have no expertise at configuring Logstash or understanding of its configuration language, so we cannot provide support for it.
+  * It's very hard to troubleshoot and debug. Our experience has shown that in nearly every case where it was assumed this would be the fast path to getting logs to Loki, that was not the case and it ended up taking far longer than anticipated.
+  
+Please strongly consider using any alternative mechanism to sending logs to Loki. We recommend using [Grafana Alloy](/docs/loki/latest/send-data/alloy/).  This is the tool we build and where we can offer the best experience and most support.
+
+{{< /admonition >}}
+
 ## Installation
 
 ### Local
@@ -225,7 +239,7 @@ An array of fields which will be mapped to labels and sent to Loki, when this li
 
 #### metadata_fields
 
-An array of fields which will be mapped to [structured metadata]({{< relref "../../get-started/labels/structured-metadata.md" >}}) and sent to Loki for each log line
+An array of fields which will be mapped to [structured metadata](../../get-started/labels/structured-metadata/) and sent to Loki for each log line
 
 #### batch_wait
 

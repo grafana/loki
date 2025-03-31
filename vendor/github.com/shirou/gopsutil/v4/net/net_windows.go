@@ -5,14 +5,16 @@ package net
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"syscall"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -136,10 +138,6 @@ type mibIfRow2 struct {
 	OutQLen                     uint64
 }
 
-func IOCounters(pernic bool) ([]IOCountersStat, error) {
-	return IOCountersWithContext(context.Background(), pernic)
-}
-
 func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, error) {
 	ifs, err := net.Interfaces()
 	if err != nil {
@@ -195,35 +193,17 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 	}
 
 	if !pernic {
-		return getIOCountersAll(counters)
+		return getIOCountersAll(counters), nil
 	}
 	return counters, nil
 }
 
-// IOCountersByFile exists just for compatibility with Linux.
-func IOCountersByFile(pernic bool, filename string) ([]IOCountersStat, error) {
-	return IOCountersByFileWithContext(context.Background(), pernic, filename)
-}
-
 func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename string) ([]IOCountersStat, error) {
-	return IOCounters(pernic)
-}
-
-// Return a list of network connections
-// Available kind:
-//
-//	reference to netConnectionKindMap
-func Connections(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithContext(context.Background(), kind)
+	return IOCounters(pernic) //nolint:contextcheck //FIXME
 }
 
 func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsPidWithContext(ctx, kind, 0)
-}
-
-// ConnectionsPid Return a list of network connections opened by a process
-func ConnectionsPid(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithContext(context.Background(), kind, pid)
 }
 
 func ConnectionsPidWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
@@ -260,7 +240,7 @@ func getProcInet(kinds []netConnectionKindType, pid int32) ([]ConnectionStat, er
 
 func getNetStatWithKind(kindType netConnectionKindType) ([]ConnectionStat, error) {
 	if kindType.filename == "" {
-		return nil, fmt.Errorf("kind filename must be required")
+		return nil, errors.New("kind filename must be required")
 	}
 
 	switch kindType.filename {
@@ -277,73 +257,45 @@ func getNetStatWithKind(kindType netConnectionKindType) ([]ConnectionStat, error
 	return nil, fmt.Errorf("invalid kind filename, %s", kindType.filename)
 }
 
-// Return a list of network connections opened returning at most `max`
-// connections for each running process.
-func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsMaxWithContext(context.Background(), kind, max)
+// Deprecated: use process.PidsWithContext instead
+func PidsWithContext(ctx context.Context) ([]int32, error) {
+	return nil, common.ErrNotImplementedError
 }
 
-func ConnectionsMaxWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return []ConnectionStat{}, common.ErrNotImplementedError
-}
-
-// Return a list of network connections opened, omitting `Uids`.
-// WithoutUids functions are reliant on implementation details. They may be altered to be an alias for Connections or be
-// removed from the API in the future.
-func ConnectionsWithoutUids(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithoutUidsWithContext(context.Background(), kind)
+func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithContext(ctx, kind, 0, maxConn)
 }
 
 func ConnectionsWithoutUidsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsMaxWithoutUidsWithContext(ctx, kind, 0)
 }
 
-func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, max)
-}
-
-func ConnectionsPidWithoutUids(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithoutUidsWithContext(context.Background(), kind, pid)
+func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, maxConn)
 }
 
 func ConnectionsPidWithoutUidsWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
 	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, 0)
 }
 
-func ConnectionsPidMaxWithoutUids(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, false)
 }
 
-func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max)
+func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, true)
 }
 
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(_ context.Context, _ string, _ int32, _ int, _ bool) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
-}
-
-func FilterCounters() ([]FilterStat, error) {
-	return FilterCountersWithContext(context.Background())
 }
 
 func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConntrackStats(percpu bool) ([]ConntrackStat, error) {
-	return ConntrackStatsWithContext(context.Background(), percpu)
-}
-
 func ConntrackStatsWithContext(ctx context.Context, percpu bool) ([]ConntrackStat, error) {
 	return nil, common.ErrNotImplementedError
-}
-
-// ProtoCounters returns network statistics for the entire system
-// If protocols is empty then all protocols are returned, otherwise
-// just the protocols in the list are returned.
-// Not Implemented for Windows
-func ProtoCounters(protocols []string) ([]ProtoCountersStat, error) {
-	return ProtoCountersWithContext(context.Background(), protocols)
 }
 
 func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
@@ -376,7 +328,7 @@ func getTableUintptr(family uint32, buf []byte) uintptr {
 	return p
 }
 
-func getTableInfo(filename string, table interface{}) (index, step, length int) {
+func getTableInfo(filename string, table any) (index, step, length int) {
 	switch filename {
 	case kindTCP4.filename:
 		index = int(unsafe.Sizeof(table.(pmibTCPTableOwnerPidAll).DwNumEntries))
@@ -410,7 +362,7 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 	)
 
 	if family == 0 {
-		return nil, fmt.Errorf("faimly must be required")
+		return nil, errors.New("faimly must be required")
 	}
 
 	for {
@@ -440,7 +392,7 @@ func getTCPConnections(family uint32) ([]ConnectionStat, error) {
 		if err == nil {
 			break
 		}
-		if err != windows.ERROR_INSUFFICIENT_BUFFER {
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
 		buf = make([]byte, size)
@@ -491,7 +443,7 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 	)
 
 	if family == 0 {
-		return nil, fmt.Errorf("faimly must be required")
+		return nil, errors.New("faimly must be required")
 	}
 
 	for {
@@ -523,7 +475,7 @@ func getUDPConnections(family uint32) ([]ConnectionStat, error) {
 		if err == nil {
 			break
 		}
-		if err != windows.ERROR_INSUFFICIENT_BUFFER {
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
 			return nil, err
 		}
 		buf = make([]byte, size)

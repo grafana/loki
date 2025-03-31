@@ -1,15 +1,22 @@
 local lokiRelease = import 'main.jsonnet';
 local build = lokiRelease.build;
+
+
+local buildImage = 'grafana/loki-build-image:0.34.3';
+local dockerPluginDir = 'clients/cmd/docker-driver';
+
 {
   '.github/workflows/release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
+        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage),
       },
+      buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       imagePrefix='trevorwhitney075',
-      releaseLibRef='release-1.12.x',
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
@@ -21,12 +28,14 @@ local build = lokiRelease.build;
     lokiRelease.releasePRWorkflow(
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
+        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage),
       },
+      buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       dryRun=true,
       imagePrefix='trevorwhitney075',
-      releaseLibRef='release-1.12.x',
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
@@ -41,11 +50,13 @@ local build = lokiRelease.build;
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x'],
       buildArtifactsBucket='loki-build-artifacts',
-      getDockerCredsFromVault=true,
+      dockerUsername='trevorwhitney075',
+      getDockerCredsFromVault=false,
       imagePrefix='trevorwhitney075',
-      releaseLibRef='release-1.12.x',
+      pluginBuildDir=dockerPluginDir,
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
-      useGitHubAppToken=false,
+      useGitHubAppToken=true,
     ) + {
       name: 'Create Release',
       on+: {

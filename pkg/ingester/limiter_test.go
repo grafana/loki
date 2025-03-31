@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -14,12 +15,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
+type fixedStrategy struct {
+	localLimit int
+}
+
+func (strategy *fixedStrategy) convertGlobalToLocalLimit(_ int, _ string) int {
+	return strategy.localLimit
+}
 func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	tests := map[string]struct {
 		maxLocalStreamsPerUser  int
 		maxGlobalStreamsPerUser int
-		ringReplicationFactor   int
-		ringIngesterCount       int
+		calculatedLocalLimit    int
 		streams                 int
 		expected                error
 		useOwnedStreamService   bool
@@ -29,80 +36,63 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 		"both local and global limit are disabled": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       1,
+			calculatedLocalLimit:    0,
 			streams:                 100,
 			expected:                nil,
 		},
 		"current number of streams is below the limit": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    300,
 			streams:                 299,
 			expected:                nil,
 		},
 		"current number of streams is above the limit": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    300,
 			streams:                 300,
 			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 300, 300, 0, 1000, 300),
 		},
 		"both local and global limits are disabled": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       1,
+			calculatedLocalLimit:    0,
 			streams:                 math.MaxInt32 - 1,
 			expected:                nil,
 		},
 		"only local limit is enabled": {
 			maxLocalStreamsPerUser:  1000,
 			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       1,
+			calculatedLocalLimit:    1000,
 			streams:                 3000,
-			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 1000, 1000, 0, 0),
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 1000, 1000, 0, 1000),
 		},
-		"only global limit is enabled with replication-factor=1": {
+		"only global limit is enabled": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   1,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    100,
 			streams:                 3000,
 			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 100, 0, 1000, 100),
-		},
-		"only global limit is enabled with replication-factor=3": {
-			maxLocalStreamsPerUser:  0,
-			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
-			streams:                 3000,
-			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 0, 1000, 300),
 		},
 		"both local and global limits are set with local limit < global limit": {
 			maxLocalStreamsPerUser:  150,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    150,
 			streams:                 3000,
-			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 150, 150, 1000, 300),
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 150, 150, 1000, 150),
 		},
 		"both local and global limits are set with local limit > global limit": {
 			maxLocalStreamsPerUser:  500,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    300,
 			streams:                 3000,
 			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 3000, 300, 500, 1000, 300),
 		},
 		"actual limit must be used if it's greater than fixed limit": {
 			maxLocalStreamsPerUser:  500,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    300,
 			useOwnedStreamService:   true,
 			fixedLimit:              20,
 			ownedStreamCount:        3000,
@@ -111,18 +101,16 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 		"fixed limit must be used if it's greater than actual limit": {
 			maxLocalStreamsPerUser:  500,
 			maxGlobalStreamsPerUser: 1000,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    500,
 			useOwnedStreamService:   true,
 			fixedLimit:              2000,
 			ownedStreamCount:        2001,
-			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 2001, 2000, 500, 1000, 300),
+			expected:                fmt.Errorf(errMaxStreamsPerUserLimitExceeded, "test", 2001, 2000, 500, 1000, 500),
 		},
 		"fixed limit must not be used if both limits are disabled": {
 			maxLocalStreamsPerUser:  0,
 			maxGlobalStreamsPerUser: 0,
-			ringReplicationFactor:   3,
-			ringIngesterCount:       10,
+			calculatedLocalLimit:    0,
 			useOwnedStreamService:   true,
 			fixedLimit:              2000,
 			ownedStreamCount:        2001,
@@ -131,12 +119,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
-			// Mock the ring
-			ring := &ringCountMock{count: testData.ringIngesterCount}
-
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
@@ -147,9 +130,10 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: testData.ownedStreamCount,
+				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
 			}
-			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
+			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
+			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
@@ -197,10 +181,8 @@ func TestLimiter_minNonZero(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
-			limiter := NewLimiter(nil, NilMetrics, nil, 0)
+			limiter := NewLimiter(nil, NilMetrics, nil, nil)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))
 		})
 	}
@@ -281,7 +263,7 @@ func (m *MockRing) HealthyInstancesInZoneCount() int {
 	return m.healthyInstancesInZoneCount
 }
 
-func TestConvertGlobalToLocalLimit(t *testing.T) {
+func TestConvertGlobalToLocalLimit_IngesterRing(t *testing.T) {
 	tests := []struct {
 		name                        string
 		globalLimit                 int
@@ -299,19 +281,87 @@ func TestConvertGlobalToLocalLimit(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name+"_ingesterStrategy", func(t *testing.T) {
 			mockRing := &MockRing{
 				zonesCount:                  tc.zonesCount,
 				healthyInstancesCount:       tc.healthyInstancesCount,
 				healthyInstancesInZoneCount: tc.healthyInstancesInZoneCount,
 			}
 
-			limiter := &Limiter{
-				ring:              mockRing,
-				replicationFactor: tc.replicationFactor,
+			strategy := newIngesterRingLimiterStrategy(mockRing, tc.replicationFactor)
+
+			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit, "test")
+			if localLimit != tc.expectedLocalLimit {
+				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
+			}
+		})
+	}
+}
+
+func newMockPartitionRingWithPartitions(activeCount int, inactiveCount int) *ring.PartitionRing {
+	partitionRing := ring.PartitionRingDesc{
+		Partitions: map[int32]ring.PartitionDesc{},
+		Owners:     map[string]ring.OwnerDesc{},
+	}
+
+	for i := 0; i < activeCount; i++ {
+		id := int32(i)
+
+		partitionRing.Partitions[id] = ring.PartitionDesc{
+			Id:     id,
+			Tokens: []uint32{uint32(id)},
+			State:  ring.PartitionActive,
+		}
+		partitionRing.Owners[fmt.Sprintf("test%d", id)] = ring.OwnerDesc{
+			OwnedPartition: id,
+			State:          ring.OwnerActive,
+		}
+	}
+	for i := activeCount; i < activeCount+inactiveCount; i++ {
+		id := int32(i)
+
+		partitionRing.Partitions[id] = ring.PartitionDesc{
+			Id:     id,
+			Tokens: []uint32{uint32(id)},
+			State:  ring.PartitionInactive,
+		}
+	}
+	return ring.NewPartitionRing(partitionRing)
+}
+
+func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
+	tests := []struct {
+		name               string
+		globalLimit        int
+		activePartitions   int
+		inactivePartitions int
+		shardsPerUser      int
+		expectedLocalLimit int
+	}{
+		{"GlobalLimitZero", 0, 1, 0, 0, 0},
+		{"SinglePartition", 100, 1, 0, 0, 100},
+		{"MultiplePartitions", 200, 3, 0, 0, 66},
+		{"NoActivePartitions", 200, 0, 3, 0, 0},
+		{"PartialActivePartitions", 60, 3, 3, 0, 20},
+		{"LimitLessThanActivePartitions", 3, 10, 0, 0, 0},
+		{"LimitLessThanActivePartitions", 3, 10, 0, 0, 0},
+		{"MultiplePartitionsWithLimitedShardsPerUser", 200, 3, 0, 2, 100},
+		{"MultiplePartitionsWithMoreShardsPerUserThanPartitions", 200, 3, 0, 10, 66},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name+"_partitionStrategy", func(t *testing.T) {
+			ringReader := &mockPartitionRingReader{
+				ring: newMockPartitionRingWithPartitions(tc.activePartitions, tc.inactivePartitions),
 			}
 
-			localLimit := limiter.convertGlobalToLocalLimit(tc.globalLimit)
+			getPartitionsForUser := func(_ string) int {
+				return tc.shardsPerUser
+			}
+
+			strategy := newPartitionRingLimiterStrategy(ringReader, getPartitionsForUser)
+
+			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit, "test")
 			if localLimit != tc.expectedLocalLimit {
 				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
 			}

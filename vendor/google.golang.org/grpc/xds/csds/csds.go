@@ -27,7 +27,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
@@ -55,22 +54,14 @@ func prefixLogger(s *ClientStatusDiscoveryServer) *internalgrpclog.PrefixLogger 
 // https://github.com/grpc/proposal/blob/master/A40-csds-support.md.
 type ClientStatusDiscoveryServer struct {
 	logger *internalgrpclog.PrefixLogger
-
-	mu             sync.Mutex
-	xdsClient      xdsclient.XDSClient
-	xdsClientClose func()
 }
 
 // NewClientStatusDiscoveryServer returns an implementation of the CSDS server
 // that can be registered on a gRPC server.
 func NewClientStatusDiscoveryServer() (*ClientStatusDiscoveryServer, error) {
-	c, close, err := xdsclient.New()
-	if err != nil {
-		logger.Warningf("Failed to create xDS client: %v", err)
-	}
-	s := &ClientStatusDiscoveryServer{xdsClient: c, xdsClientClose: close}
+	s := &ClientStatusDiscoveryServer{}
 	s.logger = prefixLogger(s)
-	s.logger.Infof("Created CSDS server, with xdsClient %p", c)
+	s.logger.Infof("Created CSDS server")
 	return s, nil
 }
 
@@ -104,24 +95,14 @@ func (s *ClientStatusDiscoveryServer) FetchClientStatus(_ context.Context, req *
 //
 // If it returns an error, the error is a status error.
 func (s *ClientStatusDiscoveryServer) buildClientStatusRespForReq(req *v3statuspb.ClientStatusRequest) (*v3statuspb.ClientStatusResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.xdsClient == nil {
-		return &v3statuspb.ClientStatusResponse{}, nil
-	}
 	// Field NodeMatchers is unsupported, by design
 	// https://github.com/grpc/proposal/blob/master/A40-csds-support.md#detail-node-matching.
 	if len(req.NodeMatchers) != 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "node_matchers are not supported, request contains node_matchers: %v", req.NodeMatchers)
 	}
 
-	return s.xdsClient.DumpResources()
+	return xdsclient.DumpResources(), nil
 }
 
 // Close cleans up the resources.
-func (s *ClientStatusDiscoveryServer) Close() {
-	if s.xdsClientClose != nil {
-		s.xdsClientClose()
-	}
-}
+func (s *ClientStatusDiscoveryServer) Close() {}

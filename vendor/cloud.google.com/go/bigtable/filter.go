@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	btpb "google.golang.org/genproto/googleapis/bigtable/v2"
+	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
 )
 
 // A Filter represents a row filter.

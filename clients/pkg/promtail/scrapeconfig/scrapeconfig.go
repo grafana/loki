@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/dskit/server"

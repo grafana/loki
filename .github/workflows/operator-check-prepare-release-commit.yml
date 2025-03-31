@@ -14,6 +14,14 @@ jobs:
       github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' && 
       contains(github.event.pull_request.title, 'chore( operator): community release')
     steps:
+      - id: "get_github_app_token"
+        name: Get GitHub Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
       - name: Extract release version
         id: pr_semver
         env:
@@ -31,7 +39,7 @@ jobs:
       - name: Check main commits for prepare release commit
         id: check_commit
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
         working-directory: "release"
         run: |
           COMMIT=$(gh search commits "chore(operator): prepare community release v${{ steps.pr_semver.outputs.semver }}")

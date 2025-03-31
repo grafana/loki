@@ -10,13 +10,23 @@ on:
         type: string
         required: true
     secrets:
-      GRAFANABOT_GITHUB_TOKEN:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
         required: true
 
 jobs:
   create-operator-pull-request:
     runs-on: ubuntu-latest
     steps:
+      - id: "get_github_app_token"
+        name: Get GitHub App Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
       - name: Set redhat-openshift-ecosystem specific variables
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
         env:
@@ -36,7 +46,7 @@ jobs:
 
       - name: Sync fork
         env:
-          GH_TOKEN: ${{ secrets.GRAFANABOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
         run: |
           # synchronizing the fork is fast, and avoids the need to fetch the full upstream repo
           # (fetching the upstream repo with "--depth 1" would lead to "shallow update not allowed"
@@ -49,13 +59,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: grafanabot/${{ inputs.repo }}
-          token: ${{ secrets.GRAFANABOT_GITHUB_TOKEN }}
+          token: ${{ steps.get_github_app_token.outputs.token }}
 
       - name: Checkout loki to tmp/ directory
         uses: actions/checkout@v4
         with:
           repository: grafana/loki
-          token: ${{ secrets.GRAFANABOT_GITHUB_TOKEN }}
+          token: ${{ steps.get_github_app_token.outputs.token }}
           path: tmp/
 
       - name: Update version
@@ -85,7 +95,7 @@ jobs:
       - name: Create pull request against ${{ inputs.org }}/${{ inputs.repo }}
         env:
           VERSION: ${{ env.version }}
-          GH_TOKEN: ${{ secrets.GRAFANABOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
         run: |
           message="Update the loki-operator to $VERSION"
           body="Release loki-operator \`$VERSION\`.

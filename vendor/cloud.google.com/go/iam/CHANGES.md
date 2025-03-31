@@ -1,6 +1,77 @@
 # Changes
 
 
+## [1.4.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.0...iam/v1.4.1) (2025-03-06)
+
+
+### Bug Fixes
+
+* **iam:** Fix out-of-sync version.go ([28f0030](https://github.com/googleapis/google-cloud-go/commit/28f00304ebb13abfd0da2f45b9b79de093cca1ec))
+
+## [1.4.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.1...iam/v1.4.0) (2025-02-12)
+
+
+### Features
+
+* **iam/admin:** Regenerate client ([#11570](https://github.com/googleapis/google-cloud-go/issues/11570)) ([eab87d7](https://github.com/googleapis/google-cloud-go/commit/eab87d73bea884c636ec88f03b9aa90102a2833f)), refs [#8219](https://github.com/googleapis/google-cloud-go/issues/8219)
+
+## [1.3.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.0...iam/v1.3.1) (2025-01-02)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
+## [1.3.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.2...iam/v1.3.0) (2024-12-04)
+
+
+### Features
+
+* **iam:** Add ResourcePolicyMember to google/iam/v1 ([8dedb87](https://github.com/googleapis/google-cloud-go/commit/8dedb878c070cc1e92d62bb9b32358425e3ceffb))
+
+## [1.2.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.1...iam/v1.2.2) (2024-10-23)
+
+
+### Bug Fixes
+
+* **iam:** Update google.golang.org/api to v0.203.0 ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+* **iam:** WARNING: On approximately Dec 1, 2024, an update to Protobuf will change service registration function signatures to use an interface instead of a concrete type in generated .pb.go files. This change is expected to affect very few if any users of this client library. For more information, see https://togithub.com/googleapis/google-cloud-go/issues/11020. ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+
+## [1.2.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.0...iam/v1.2.1) (2024-09-12)
+
+
+### Bug Fixes
+
+* **iam:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+
+## [1.2.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.13...iam/v1.2.0) (2024-08-20)
+
+
+### Features
+
+* **iam:** Add support for Go 1.23 iterators ([84461c0](https://github.com/googleapis/google-cloud-go/commit/84461c0ba464ec2f951987ba60030e37c8a8fc18))
+
+## [1.1.13](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.12...iam/v1.1.13) (2024-08-08)
+
+
+### Bug Fixes
+
+* **iam:** Update google.golang.org/api to v0.191.0 ([5b32644](https://github.com/googleapis/google-cloud-go/commit/5b32644eb82eb6bd6021f80b4fad471c60fb9d73))
+
+## [1.1.12](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.11...iam/v1.1.12) (2024-07-24)
+
+
+### Bug Fixes
+
+* **iam:** Update dependencies ([257c40b](https://github.com/googleapis/google-cloud-go/commit/257c40bd6d7e59730017cf32bda8823d7a232758))
+
+## [1.1.11](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.10...iam/v1.1.11) (2024-07-10)
+
+
+### Bug Fixes
+
+* **iam:** Bump google.golang.org/grpc@v1.64.1 ([8ecc4e9](https://github.com/googleapis/google-cloud-go/commit/8ecc4e9622e5bbe9b90384d5848ab816027226c5))
+
 ## [1.1.10](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.9...iam/v1.1.10) (2024-07-01)
 
 

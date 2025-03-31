@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -293,6 +295,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
+	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
+	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
+
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
 	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
@@ -306,6 +311,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.AlibabaStorageConfig.RegisterFlags(f)
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
@@ -319,6 +325,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
+
+	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
+	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -357,12 +366,18 @@ func (cfg *Config) Validate() error {
 	if err := cfg.BloomShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom shipper config")
 	}
+	if err := cfg.ObjectStore.Validate(); err != nil {
+		return errors.Wrap(err, "invalid object store config")
+	}
+	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Alibaba Storage config")
+	}
 
 	return cfg.NamedStores.Validate()
 }
 
 // NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
+func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
 
 	switch true {
 	case util.StringsContain(types.TestingStorageTypes, periodCfg.IndexType):
@@ -393,7 +408,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return client, nil
 			}
 
-			objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+			objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
@@ -454,8 +469,34 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
+
+	if cfg.UseThanosObjstore {
+		// Check if this is a named store and get its type
+		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
+			storeType = st
+		}
+
+		var (
+			c   client.ObjectClient
+			err error
+		)
+		c, err = NewObjectClient(name, component, cfg, clientMetrics)
+		if err != nil {
+			return nil, err
+		}
+
+		var encoder client.KeyEncoder
+		if storeType == bucket.Filesystem {
+			encoder = client.FSEncoder
+		} else if cfg.CongestionControl.Enabled {
+			// Apply congestion control wrapper for non-filesystem storage
+			c = cc.Wrap(c)
+		}
+
+		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
 
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
@@ -467,7 +508,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 	case util.StringsContain(types.TestingStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -477,14 +518,14 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -494,7 +535,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeGCS:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -535,7 +576,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
+func NewTableClient(name, component string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
 	switch true {
 	case util.StringsContain(types.TestingStorageTypes, name):
 		switch name {
@@ -544,7 +585,7 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 		}
 
 	case util.StringsContain(types.SupportedIndexTypes, name):
-		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+		objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
@@ -599,7 +640,11 @@ func (c *ClientMetrics) Unregister() {
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	if cfg.UseThanosObjstore {
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+	}
+
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
@@ -614,16 +659,16 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
-		storeType  = name
+		storeType  = storeName
 	)
 
 	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
+	if nsType, ok := cfg.NamedStores.storeType[storeName]; ok {
 		storeType = nsType
-		namedStore = name
+		namedStore = storeName
 	}
 
 	switch storeType {
@@ -635,10 +680,15 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			awsCfg, ok := cfg.NamedStores.AWS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named aws storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named aws storage config %s", storeName)
 			}
 			s3Cfg = awsCfg.S3Config
 		}
+
+		if cfg.CongestionControl.Enabled {
+			s3Cfg.BackoffConfig.MaxRetries = 1
+		}
+
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -646,7 +696,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.AlibabaCloud[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", storeName)
 			}
 
 			ossCfg = (alibaba.OssConfig)(nsCfg)
@@ -658,7 +708,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.GCS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", storeName)
 			}
 			gcsCfg = (gcp.GCSConfig)(nsCfg)
 		}
@@ -675,7 +725,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Azure[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named azure storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
 		}
@@ -686,7 +736,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Swift[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named swift storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named swift storage config %s", storeName)
 			}
 			swiftCfg = (openstack.SwiftConfig)(nsCfg)
 		}
@@ -697,7 +747,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Filesystem[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named filesystem storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named filesystem storage config %s", storeName)
 			}
 			fsCfg = (local.FSConfig)(nsCfg)
 		}
@@ -708,7 +758,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.BOS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named bos storage config %s", storeName)
 			}
 
 			bosCfg = (baidubce.BOSStorageConfig)(nsCfg)
@@ -720,7 +770,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.COS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named cos storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named cos storage config %s", storeName)
 			}
 
 			cosCfg = (ibmcloud.COSConfig)(nsCfg)
@@ -728,6 +778,6 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
 	}
 }

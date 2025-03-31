@@ -21,11 +21,10 @@
 package xdsclient
 
 import (
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
-
-	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 // XDSClient is a full fledged gRPC client which queries a set of discovery APIs
@@ -34,9 +33,9 @@ import (
 type XDSClient interface {
 	// WatchResource uses xDS to discover the resource associated with the
 	// provided resource name. The resource type implementation determines how
-	// xDS requests are sent out and how responses are deserialized and
-	// validated. Upon receipt of a response from the management server, an
-	// appropriate callback on the watcher is invoked.
+	// xDS responses are are deserialized and validated, as received from the
+	// xDS management server. Upon receipt of a response from the management
+	// server, an appropriate callback on the watcher is invoked.
 	//
 	// Most callers will not have a need to use this API directly. They will
 	// instead use a resource-type-specific wrapper API provided by the relevant
@@ -48,11 +47,13 @@ type XDSClient interface {
 	// the watcher is canceled. Callers need to handle this case.
 	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
 
-	// DumpResources returns the status of the xDS resources. Returns a map of
-	// resource type URLs to a map of resource names to resource state.
-	DumpResources() (*v3statuspb.ClientStatusResponse, error)
-
 	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 
 	BootstrapConfig() *bootstrap.Config
+}
+
+// DumpResources returns the status and contents of all xDS resources. It uses
+// xDS clients from the default pool.
+func DumpResources() *v3statuspb.ClientStatusResponse {
+	return DefaultPool.DumpResources()
 }

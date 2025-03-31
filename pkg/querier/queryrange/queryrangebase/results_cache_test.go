@@ -419,7 +419,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
@@ -466,7 +466,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
@@ -577,7 +577,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				tc.shouldCache,
-				func(_ context.Context, tenantIDs []string, r Request) int {
+				func(_ context.Context, _ []string, _ Request) int {
 					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,

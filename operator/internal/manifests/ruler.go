@@ -14,7 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -226,7 +226,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 							// TODO: should we verify that this is possible with the given storage class first?
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceStorage: opts.ResourceRequirements.Ruler.PVCSize,
 							},
@@ -245,7 +245,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 							// TODO: should we verify that this is possible with the given storage class first?
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},

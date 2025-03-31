@@ -13,30 +13,32 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func Test_recalculateOwnedStreams_newRecalculateOwnedStreams(t *testing.T) {
+func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.T) {
 	mockInstancesSupplier := &mockTenantsSuplier{tenants: []*instance{}}
 	mockRing := newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
 	}, 0)
-	service := newRecalculateOwnedStreams(mockInstancesSupplier.get, "test", mockRing, 50*time.Millisecond, log.NewNopLogger())
-	require.Equal(t, 0, mockRing.getAllHealthyCallsCount, "ring must be called only after service's start up")
+	strategy := newOwnedStreamsIngesterStrategy("test", mockRing, log.NewNopLogger())
+	service := newRecalculateOwnedStreamsSvc(mockInstancesSupplier.get, strategy, 50*time.Millisecond, log.NewNopLogger())
+	require.Equal(t, int32(0), mockRing.getAllHealthyCallsCount.Load(), "ring must be called only after service's start up")
 	ctx := context.Background()
 	require.NoError(t, service.StartAsync(ctx))
 	require.NoError(t, service.AwaitRunning(ctx))
 	require.Eventually(t, func() bool {
-		return mockRing.getAllHealthyCallsCount >= 2
+		return mockRing.getAllHealthyCallsCount.Load() >= 2
 	}, 1*time.Second, 50*time.Millisecond, "expected at least two runs of the iteration")
 }
 
-func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
+func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) {
 	tests := map[string]struct {
 		featureEnabled              bool
-		expectedOwnedStreamCount    int
+		expectedOwnedStreamCount    int64
 		expectedNotOwnedStreamCount int
 	}{
 		"expected streams ownership to be recalculated": {
@@ -69,7 +71,8 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 				UseOwnedStreamCount:     testData.featureEnabled,
 			}, nil)
 			require.NoError(t, err)
-			limiter := NewLimiter(limits, NilMetrics, mockRing, 1)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(mockRing, 1), &TenantBasedStrategy{limits: limits})
+			tenantsRetention := retention.NewTenantsRetention(limits)
 
 			tenant, err := newInstance(
 				defaultConfig(),
@@ -86,6 +89,7 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 				NewStreamRateCalculator(),
 				nil,
 				nil,
+				tenantsRetention,
 			)
 			require.NoError(t, err)
 			require.Equal(t, 100, tenant.ownedStreamsSvc.getFixedLimit(), "MaxGlobalStreamsPerUser is 100 at this moment")
@@ -100,13 +104,14 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 			mockRing.addMapping(createStream(t, tenant, 100), true)
 			mockRing.addMapping(createStream(t, tenant, 250), true)
 
-			require.Equal(t, 7, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, int64(7), tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, 0)
 
 			mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{tenant}}
 
-			service := newRecalculateOwnedStreams(mockTenantsSupplier.get, currentIngesterName, mockRing, 50*time.Millisecond, log.NewNopLogger())
-			//change the limit to assert that fixed limit is updated after the recalculation
+			strategy := newOwnedStreamsIngesterStrategy(currentIngesterName, mockRing, log.NewNopLogger())
+			service := newRecalculateOwnedStreamsSvc(mockTenantsSupplier.get, strategy, 50*time.Millisecond, log.NewNopLogger())
+			// change the limit to assert that fixed limit is updated after the recalculation
 			limits.DefaultLimits().MaxGlobalStreamsPerUser = 50
 
 			service.recalculate()
@@ -114,11 +119,10 @@ func Test_recalculateOwnedStreams_recalculate(t *testing.T) {
 			if testData.featureEnabled {
 				require.Equal(t, 50, tenant.ownedStreamsSvc.getFixedLimit(), "fixed limit must be updated after recalculation")
 			}
-			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, testData.expectedNotOwnedStreamCount)
 		})
 	}
-
 }
 
 type mockStreamsOwnershipRing struct {
@@ -153,14 +157,13 @@ func (r *mockStreamsOwnershipRing) Get(streamToken uint32, _ ring.Operation, _ [
 	return set, nil
 }
 
-func Test_recalculateOwnedStreams_checkRingForChanges(t *testing.T) {
+func Test_ownedStreamsIngesterStrategy_checkRingForChanges(t *testing.T) {
 	mockRing := &readRingMock{
 		replicationSet: ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{{Addr: "ingester-0", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{100, 200, 300}}},
 		},
 	}
-	mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{{}}}
-	service := newRecalculateOwnedStreams(mockTenantsSupplier.get, "ingester-0", mockRing, 50*time.Millisecond, log.NewNopLogger())
+	service := newOwnedStreamsIngesterStrategy("ingester-0", mockRing, log.NewNopLogger())
 
 	ringChanged, err := service.checkRingForChanges()
 	require.NoError(t, err)
@@ -176,6 +179,64 @@ func Test_recalculateOwnedStreams_checkRingForChanges(t *testing.T) {
 	ringChanged, err = service.checkRingForChanges()
 	require.NoError(t, err)
 	require.True(t, ringChanged)
+}
+
+func newMockPartitionRingWithActivePartitions(activePartitions ...int32) *ring.PartitionRing {
+	partitionRing := ring.PartitionRingDesc{
+		Partitions: map[int32]ring.PartitionDesc{},
+		Owners:     map[string]ring.OwnerDesc{},
+	}
+
+	for _, id := range activePartitions {
+		partitionRing.Partitions[id] = ring.PartitionDesc{
+			Id:     id,
+			Tokens: []uint32{uint32(id)},
+			State:  ring.PartitionActive,
+		}
+		partitionRing.Owners[fmt.Sprintf("test%d", id)] = ring.OwnerDesc{
+			OwnedPartition: id,
+			State:          ring.OwnerActive,
+		}
+	}
+	return ring.NewPartitionRing(partitionRing)
+}
+
+func Test_ownedStreamsPartitionStrategy_checkRingForChanges(t *testing.T) {
+	ringReader := &mockPartitionRingReader{
+		ring: newMockPartitionRingWithActivePartitions(1),
+	}
+	service := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+
+	ringChanged, err := service.checkRingForChanges()
+	require.NoError(t, err)
+	require.True(t, ringChanged, "expected ring to be changed because it was not initialized yet")
+
+	ringChanged, err = service.checkRingForChanges()
+	require.NoError(t, err)
+	require.False(t, ringChanged, "expected ring not to be changed because token ranges is not changed")
+
+	ringReader.ring = newMockPartitionRingWithActivePartitions(1, 2)
+
+	ringChanged, err = service.checkRingForChanges()
+	require.NoError(t, err)
+	require.True(t, ringChanged)
+}
+
+func Test_ownedStreamsPartitionStrategy_isOwnedStream(t *testing.T) {
+	ringReader := &mockPartitionRingReader{
+		ring: newMockPartitionRingWithActivePartitions(1, 2, 3),
+	}
+	stream := &stream{tenant: "test1", labelsString: "mock=1"} // has a hashkey mapping to partition 1
+
+	service1 := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+	owned, err := service1.isOwnedStream(stream)
+	require.NoError(t, err)
+	require.True(t, owned)
+
+	service2 := newOwnedStreamsPartitionStrategy(2, ringReader, func(string) int { return 1 }, log.NewNopLogger())
+	owned, err = service2.isOwnedStream(stream)
+	require.NoError(t, err)
+	require.False(t, owned)
 }
 
 func createStream(t *testing.T, inst *instance, fingerprint int) *stream {
@@ -194,4 +255,12 @@ type mockTenantsSuplier struct {
 
 func (m *mockTenantsSuplier) get() []*instance {
 	return m.tenants
+}
+
+type mockPartitionRingReader struct {
+	ring *ring.PartitionRing
+}
+
+func (m mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
+	return m.ring
 }

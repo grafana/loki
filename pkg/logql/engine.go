@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -146,10 +147,25 @@ type EngineOpts struct {
 
 	// LogExecutingQuery will control if we log the query when Exec is called.
 	LogExecutingQuery bool `yaml:"-"`
+
+	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
+	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
+	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+	f.DurationVar(
+		&opts.MaxLookBackPeriod,
+		prefix+".engine.max-lookback-period",
+		30*time.Second,
+		"The maximum amount of time to look back for log lines. Used only for instant log queries.",
+	)
+	f.IntVar(
+		&opts.MaxCountMinSketchHeapSize,
+		prefix+".engine.max-count-min-sketch-heap-size",
+		10_000,
+		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
+	)
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -176,7 +192,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	}
 	return &Engine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
 		limits:           l,
 		opts:             opts,
 	}
@@ -241,11 +257,21 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	if q.logExecQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
-		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
-		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+
+		logValues := []interface{}{
+			"msg", "executing query",
+			"query", q.params.QueryString(),
+			"query_hash", queryHash,
 		}
+		tags := httpreq.ExtractQueryTagsFromContext(ctx)
+		tagValues := httpreq.TagsToKeyValues(tags)
+		if GetRangeType(q.params) == InstantType {
+			logValues = append(logValues, "type", "instant")
+		} else {
+			logValues = append(logValues, "type", "range", "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+		}
+		logValues = append(logValues, tagValues...)
+		level.Info(logutil.WithContext(ctx, q.logger)).Log(logValues...)
 	}
 
 	rangeType := GetRangeType(q.params)
@@ -290,6 +316,23 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := q.params.GetExpression().(type) {
+	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
+	case syntax.VariantsExpr:
+		tenants, _ := tenant.TenantIDs(ctx)
+		multiVariantEnabled := false
+		for _, t := range tenants {
+			if q.limits.EnableMultiVariantQueries(t) {
+				multiVariantEnabled = true
+				break
+			}
+		}
+
+		if !multiVariantEnabled {
+			return nil, logqlmodel.ErrVariantsDisabled
+		}
+
+		value, err := q.evalVariants(ctx, e)
+		return value, err
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -376,7 +419,11 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			}
 			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
 		case ProbabilisticQuantileVector:
-			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
+			return JoinQuantileSketchVector(next, vec, stepEvaluator, q.params)
+		case CountMinSketchVector:
+			return JoinCountMinSketchVector(next, vec, stepEvaluator, q.params)
+		case HeapCountMinSketchVector:
+			return JoinCountMinSketchVector(next, vec.CountMinSketchVector, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
@@ -470,11 +517,10 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 	var err error
 	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
-		case *syntax.RangeAggregationExpr:
-			if e.Left == nil || e.Left.Interval <= limit {
-				return
+		case *syntax.LogRangeExpr:
+			if e.Interval > limit {
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
-			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
 		}
 	})
 	return err
@@ -592,4 +638,65 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
+}
+
+func (q *query) evalVariants(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+) (promql_parser.Value, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(
+		tenantIDs,
+		maxIntervalCapture,
+	)
+	if maxQueryInterval != 0 {
+		for i, v := range expr.Variants() {
+			err = q.checkIntervalLimit(v, maxQueryInterval)
+			if err != nil {
+				return nil, err
+			}
+
+			vExpr, err := optimizeSampleExpr(v)
+			if err != nil {
+				return nil, err
+			}
+
+			if err = expr.SetVariant(i, vExpr); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	stepEvaluator, err := q.evaluator.NewVariantsStepEvaluator(ctx, expr, q.params)
+	if err != nil {
+		return nil, err
+	}
+	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
+
+	next, _, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			// TDOO(twhitney): what is merge first last for?
+			mfl := false
+			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+			// 	mfl = true
+			// }
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, errors.New("unexpected empty result")
 }

@@ -1,0 +1,70 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5@sha256:3902bab19972cd054fd08b2a4e08612ae7e68861ee5d9a5cf22d828f27e2f479
+
+USER root
+
+RUN microdnf update -y \
+ && microdnf install -y git gzip java-17-openjdk-headless tar tzdata-java \
+ && microdnf reinstall -y tzdata \
+ && microdnf clean all
+
+ENV JAVA_HOME=/usr/lib/jvm/jre-17
+
+# https://docs.oracle.com/javase/7/docs/technotes/guides/net/properties.html
+# Ensure Java doesn't cache any dns results
+RUN cd /etc/java/java-17-openjdk/*/conf/security \
+ && sed -e '/networkaddress.cache.ttl/d' -e '/networkaddress.cache.negative.ttl/d' -i java.security \
+ && echo 'networkaddress.cache.ttl=0' >> java.security \
+ && echo 'networkaddress.cache.negative.ttl=0' >> java.security
+
+ARG SCALA_VERSION="2.13"
+ARG KAFKA_VERSION="3.6.2"
+
+WORKDIR /tmp
+
+# https://github.com/apache/kafka/blob/2e2b0a58eda3e677763af974a44a6aaa3c280214/tests/docker/Dockerfile#L77-L105
+ARG KAFKA_MIRROR="https://s3-us-west-2.amazonaws.com/kafka-packages"
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN --mount=type=bind,target=.,rw=true \
+    mkdir -p "/opt/kafka-${KAFKA_VERSION}" \
+ && chmod a+rw "/opt/kafka-${KAFKA_VERSION}" \
+ && if [ "$KAFKA_VERSION" = "4.0.0" ]; then \
+       microdnf install -y java-17-openjdk-devel \
+    && mkdir -p /usr/src/kafka \
+    && : PIN TO COMMIT OF 4.0 BRANCH BEFORE KAFKA-17616 ZOOKEEPER REMOVAL STARTED \
+    && curl --fail -sSL https://github.com/apache/kafka/archive/d1504649fbe45064a0b0120ff33de9326b2fc662.tar.gz | \
+         tar zxf - -C /usr/src/kafka --strip-components=1 \
+    && cd /usr/src/kafka \
+    && export JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=80 \
+    && sed -e '/version=/s/-SNAPSHOT//' -e '/org.gradle.jvmargs/d' -e '/org.gradle.parallel/s/true/false/' -i gradle.properties && ./gradlew -PmaxParallelForks=1 -PmaxScalacThreads=1 --no-daemon releaseTarGz -x siteDocsTar -x javadoc \
+    && tar xzf core/build/distributions/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz --strip-components=1 -C "/opt/kafka-${KAFKA_VERSION}" \
+    && cp /tmp/server.properties "/opt/kafka-${KAFKA_VERSION}/config/" \
+    && microdnf remove -y java-17-openjdk-devel \
+    && rm -rf /usr/src/kafka ; \
+    else \
+      curl -s "$KAFKA_MIRROR/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" | tar xz --strip-components=1 -C "/opt/kafka-${KAFKA_VERSION}" ; \
+    fi
+
+# older kafka versions depend upon jaxb-api being bundled with the JDK, but it
+# was removed from Java 11 so work around that by including it in the kafka
+# libs dir regardless
+RUN curl -sLO "https://repo1.maven.org/maven2/javax/xml/bind/jaxb-api/2.3.0/jaxb-api-2.3.0.jar" \
+ && for DIR in /opt/kafka-*; do cp -v jaxb-api-2.3.0.jar $DIR/libs/ ; done \
+ && rm -f jaxb-api-2.3.0.jar
+
+# older kafka versions with the zookeeper 3.4.13 client aren't compatible with Java 17 so quietly bump them to 3.5.9
+RUN [ -f "/opt/kafka-${KAFKA_VERSION}/libs/zookeeper-3.4.13.jar" ] || exit 0 ; \
+    rm -f "/opt/kafka-${KAFKA_VERSION}/libs/zookeeper-3.4.13.jar" \
+ && curl --fail -sSL -o "/opt/kafka-${KAFKA_VERSION}/libs/zookeeper-3.5.9.jar" "https://repo1.maven.org/maven2/org/apache/zookeeper/zookeeper/3.5.9/zookeeper-3.5.9.jar" \
+ && curl --fail -sSL -o "/opt/kafka-${KAFKA_VERSION}/libs/zookeeper-jute-3.5.9.jar" "https://repo1.maven.org/maven2/org/apache/zookeeper/zookeeper-jute/3.5.9/zookeeper-jute-3.5.9.jar"
+
+WORKDIR /opt/kafka-${KAFKA_VERSION}
+
+ENV JAVA_MAJOR_VERSION=17
+
+RUN sed -e "s/JAVA_MAJOR_VERSION=.*/JAVA_MAJOR_VERSION=${JAVA_MAJOR_VERSION}/" -i"" ./bin/kafka-run-class.sh
+
+COPY entrypoint.sh /
+
+USER 65534:65534
+
+ENTRYPOINT ["/entrypoint.sh"]

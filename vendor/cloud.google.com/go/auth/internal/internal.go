@@ -16,7 +16,7 @@ package internal
 
 import (
 	"context"
-	"crypto/rsa"
+	"crypto"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -38,42 +38,61 @@ const (
 	// QuotaProjectEnvVar is the environment variable for setting the quota
 	// project.
 	QuotaProjectEnvVar = "GOOGLE_CLOUD_QUOTA_PROJECT"
-	projectEnvVar      = "GOOGLE_CLOUD_PROJECT"
-	maxBodySize        = 1 << 20
+	// UniverseDomainEnvVar is the environment variable for setting the default
+	// service domain for a given Cloud universe.
+	UniverseDomainEnvVar = "GOOGLE_CLOUD_UNIVERSE_DOMAIN"
+	projectEnvVar        = "GOOGLE_CLOUD_PROJECT"
+	maxBodySize          = 1 << 20
 
 	// DefaultUniverseDomain is the default value for universe domain.
 	// Universe domain is the default service domain for a given Cloud universe.
 	DefaultUniverseDomain = "googleapis.com"
 )
 
-// CloneDefaultClient returns a [http.Client] with some good defaults.
-func CloneDefaultClient() *http.Client {
+type clonableTransport interface {
+	Clone() *http.Transport
+}
+
+// DefaultClient returns an [http.Client] with some defaults set. If
+// the current [http.DefaultTransport] is a [clonableTransport], as
+// is the case for an [*http.Transport], the clone will be used.
+// Otherwise the [http.DefaultTransport] is used directly.
+func DefaultClient() *http.Client {
+	if transport, ok := http.DefaultTransport.(clonableTransport); ok {
+		return &http.Client{
+			Transport: transport.Clone(),
+			Timeout:   30 * time.Second,
+		}
+	}
+
 	return &http.Client{
-		Transport: http.DefaultTransport.(*http.Transport).Clone(),
+		Transport: http.DefaultTransport,
 		Timeout:   30 * time.Second,
 	}
 }
 
 // ParseKey converts the binary contents of a private key file
-// to an *rsa.PrivateKey. It detects whether the private key is in a
+// to an crypto.Signer. It detects whether the private key is in a
 // PEM container or not. If so, it extracts the the private key
 // from PEM container before conversion. It only supports PEM
 // containers with no passphrase.
-func ParseKey(key []byte) (*rsa.PrivateKey, error) {
+func ParseKey(key []byte) (crypto.Signer, error) {
 	block, _ := pem.Decode(key)
 	if block != nil {
 		key = block.Bytes
 	}
-	parsedKey, err := x509.ParsePKCS8PrivateKey(key)
+	var parsedKey crypto.PrivateKey
+	var err error
+	parsedKey, err = x509.ParsePKCS8PrivateKey(key)
 	if err != nil {
 		parsedKey, err = x509.ParsePKCS1PrivateKey(key)
 		if err != nil {
 			return nil, fmt.Errorf("private key should be a PEM or plain PKCS1 or PKCS8: %w", err)
 		}
 	}
-	parsed, ok := parsedKey.(*rsa.PrivateKey)
+	parsed, ok := parsedKey.(crypto.Signer)
 	if !ok {
-		return nil, errors.New("private key is invalid")
+		return nil, errors.New("private key is not a signer")
 	}
 	return parsed, nil
 }
@@ -162,6 +181,7 @@ func (p StaticProperty) GetProperty(context.Context) (string, error) {
 // ComputeUniverseDomainProvider fetches the credentials universe domain from
 // the google cloud metadata service.
 type ComputeUniverseDomainProvider struct {
+	MetadataClient     *metadata.Client
 	universeDomainOnce sync.Once
 	universeDomain     string
 	universeDomainErr  error
@@ -171,7 +191,7 @@ type ComputeUniverseDomainProvider struct {
 // metadata service.
 func (c *ComputeUniverseDomainProvider) GetProperty(ctx context.Context) (string, error) {
 	c.universeDomainOnce.Do(func() {
-		c.universeDomain, c.universeDomainErr = getMetadataUniverseDomain(ctx)
+		c.universeDomain, c.universeDomainErr = getMetadataUniverseDomain(ctx, c.MetadataClient)
 	})
 	if c.universeDomainErr != nil {
 		return "", c.universeDomainErr
@@ -180,13 +200,14 @@ func (c *ComputeUniverseDomainProvider) GetProperty(ctx context.Context) (string
 }
 
 // httpGetMetadataUniverseDomain is a package var for unit test substitution.
-var httpGetMetadataUniverseDomain = func(ctx context.Context) (string, error) {
-	client := metadata.NewClient(&http.Client{Timeout: time.Second})
-	return client.GetWithContext(ctx, "universe/universe_domain")
+var httpGetMetadataUniverseDomain = func(ctx context.Context, client *metadata.Client) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	return client.GetWithContext(ctx, "universe/universe-domain")
 }
 
-func getMetadataUniverseDomain(ctx context.Context) (string, error) {
-	universeDomain, err := httpGetMetadataUniverseDomain(ctx)
+func getMetadataUniverseDomain(ctx context.Context, client *metadata.Client) (string, error) {
+	universeDomain, err := httpGetMetadataUniverseDomain(ctx, client)
 	if err == nil {
 		return universeDomain, nil
 	}
@@ -195,4 +216,10 @@ func getMetadataUniverseDomain(ctx context.Context) (string, error) {
 		return DefaultUniverseDomain, nil
 	}
 	return "", err
+}
+
+// FormatIAMServiceAccountResource sets a service account name in an IAM resource
+// name.
+func FormatIAMServiceAccountResource(name string) string {
+	return fmt.Sprintf("projects/-/serviceAccounts/%s", name)
 }

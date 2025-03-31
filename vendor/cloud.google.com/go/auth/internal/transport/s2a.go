@@ -15,12 +15,14 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"cloud.google.com/go/auth/internal/transport/cert"
 	"cloud.google.com/go/compute/metadata"
@@ -31,41 +33,38 @@ const (
 )
 
 var (
-	// The period an MTLS config can be reused before needing refresh.
-	configExpiry = time.Hour
+	mtlsConfiguration *mtlsConfig
 
-	// mdsMTLSAutoConfigSource is an instance of reuseMTLSConfigSource, with metadataMTLSAutoConfig as its config source.
 	mtlsOnce sync.Once
 )
 
 // GetS2AAddress returns the S2A address to be reached via plaintext connection.
 // Returns empty string if not set or invalid.
-func GetS2AAddress() string {
-	c, err := getMetadataMTLSAutoConfig().Config()
-	if err != nil {
+func GetS2AAddress(logger *slog.Logger) string {
+	getMetadataMTLSAutoConfig(logger)
+	if !mtlsConfiguration.valid() {
 		return ""
 	}
-	if !c.Valid() {
-		return ""
-	}
-	return c.S2A.PlaintextAddress
+	return mtlsConfiguration.S2A.PlaintextAddress
 }
 
-type mtlsConfigSource interface {
-	Config() (*mtlsConfig, error)
+// GetMTLSS2AAddress returns the S2A address to be reached via MTLS connection.
+// Returns empty string if not set or invalid.
+func GetMTLSS2AAddress(logger *slog.Logger) string {
+	getMetadataMTLSAutoConfig(logger)
+	if !mtlsConfiguration.valid() {
+		return ""
+	}
+	return mtlsConfiguration.S2A.MTLSAddress
 }
 
 // mtlsConfig contains the configuration for establishing MTLS connections with Google APIs.
 type mtlsConfig struct {
-	S2A    *s2aAddresses `json:"s2a"`
-	Expiry time.Time
+	S2A *s2aAddresses `json:"s2a"`
 }
 
-func (c *mtlsConfig) Valid() bool {
-	return c != nil && c.S2A != nil && !c.expired()
-}
-func (c *mtlsConfig) expired() bool {
-	return c.Expiry.Before(time.Now())
+func (c *mtlsConfig) valid() bool {
+	return c != nil && c.S2A != nil
 }
 
 // s2aAddresses contains the plaintext and/or MTLS S2A addresses.
@@ -76,78 +75,37 @@ type s2aAddresses struct {
 	MTLSAddress string `json:"mtls_address"`
 }
 
-// getMetadataMTLSAutoConfig returns mdsMTLSAutoConfigSource, which is backed by config from MDS with auto-refresh.
-func getMetadataMTLSAutoConfig() mtlsConfigSource {
+func getMetadataMTLSAutoConfig(logger *slog.Logger) {
+	var err error
 	mtlsOnce.Do(func() {
-		mdsMTLSAutoConfigSource = &reuseMTLSConfigSource{
-			src: &metadataMTLSAutoConfig{},
+		mtlsConfiguration, err = queryConfig(logger)
+		if err != nil {
+			log.Printf("Getting MTLS config failed: %v", err)
 		}
 	})
-	return mdsMTLSAutoConfigSource
 }
 
-// reuseMTLSConfigSource caches a valid version of mtlsConfig, and uses `src` to refresh upon config expiry.
-// It implements the mtlsConfigSource interface, so calling Config() on it returns an mtlsConfig.
-type reuseMTLSConfigSource struct {
-	src    mtlsConfigSource // src.Config() is called when config is expired
-	mu     sync.Mutex       // mutex guards config
-	config *mtlsConfig      // cached config
+var httpGetMetadataMTLSConfig = func(logger *slog.Logger) (string, error) {
+	metadataClient := metadata.NewWithOptions(&metadata.Options{
+		Logger: logger,
+	})
+	return metadataClient.GetWithContext(context.Background(), configEndpointSuffix)
 }
 
-func (cs *reuseMTLSConfigSource) Config() (*mtlsConfig, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	if cs.config.Valid() {
-		return cs.config, nil
-	}
-	c, err := cs.src.Config()
+func queryConfig(logger *slog.Logger) (*mtlsConfig, error) {
+	resp, err := httpGetMetadataMTLSConfig(logger)
 	if err != nil {
-		return nil, err
-	}
-	cs.config = c
-	return c, nil
-}
-
-// metadataMTLSAutoConfig is an implementation of the interface mtlsConfigSource
-// It has the logic to query MDS and return an mtlsConfig
-type metadataMTLSAutoConfig struct{}
-
-var httpGetMetadataMTLSConfig = func() (string, error) {
-	return metadata.Get(configEndpointSuffix)
-}
-
-func (cs *metadataMTLSAutoConfig) Config() (*mtlsConfig, error) {
-	resp, err := httpGetMetadataMTLSConfig()
-	if err != nil {
-		log.Printf("querying MTLS config from MDS endpoint failed: %v", err)
-		return defaultMTLSConfig(), nil
+		return nil, fmt.Errorf("querying MTLS config from MDS endpoint failed: %w", err)
 	}
 	var config mtlsConfig
 	err = json.Unmarshal([]byte(resp), &config)
 	if err != nil {
-		log.Printf("unmarshalling MTLS config from MDS endpoint failed: %v", err)
-		return defaultMTLSConfig(), nil
+		return nil, fmt.Errorf("unmarshalling MTLS config from MDS endpoint failed: %w", err)
 	}
-
 	if config.S2A == nil {
-		log.Printf("returned MTLS config from MDS endpoint is invalid: %v", config)
-		return defaultMTLSConfig(), nil
+		return nil, fmt.Errorf("returned MTLS config from MDS endpoint is invalid: %v", config)
 	}
-
-	// set new expiry
-	config.Expiry = time.Now().Add(configExpiry)
 	return &config, nil
-}
-
-func defaultMTLSConfig() *mtlsConfig {
-	return &mtlsConfig{
-		S2A: &s2aAddresses{
-			PlaintextAddress: "",
-			MTLSAddress:      "",
-		},
-		Expiry: time.Now().Add(configExpiry),
-	}
 }
 
 func shouldUseS2A(clientCertSource cert.Provider, opts *Options) bool {

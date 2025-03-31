@@ -32,6 +32,18 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 		"s3.us-east-2.amazonaws.com",
 		"s3.dualstack.us-east-2.amazonaws.com",
 	},
+	"us-iso-east-1": {
+		"s3.us-iso-east-1.c2s.ic.gov",
+		"s3.dualstack.us-iso-east-1.c2s.ic.gov",
+	},
+	"us-isob-east-1": {
+		"s3.us-isob-east-1.sc2s.sgov.gov",
+		"s3.dualstack.us-isob-east-1.sc2s.sgov.gov",
+	},
+	"us-iso-west-1": {
+		"s3.us-iso-west-1.c2s.ic.gov",
+		"s3.dualstack.us-iso-west-1.c2s.ic.gov",
+	},
 	"us-west-2": {
 		"s3.us-west-2.amazonaws.com",
 		"s3.dualstack.us-west-2.amazonaws.com",
@@ -43,6 +55,10 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 	"ca-central-1": {
 		"s3.ca-central-1.amazonaws.com",
 		"s3.dualstack.ca-central-1.amazonaws.com",
+	},
+	"ca-west-1": {
+		"s3.ca-west-1.amazonaws.com",
+		"s3.dualstack.ca-west-1.amazonaws.com",
 	},
 	"eu-west-1": {
 		"s3.eu-west-1.amazonaws.com",

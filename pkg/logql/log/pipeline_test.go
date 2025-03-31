@@ -56,6 +56,18 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
+	// test structured metadata with disallowed label names
+	structuredMetadata = append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "zsomething-bad", Value: "foo"})
+	expectedStructuredMetadata := append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "zsomething_bad", Value: "foo"})
+	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
+
+	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), structuredMetadata...)
+	require.Equal(t, []byte(""), l)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedStructuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+
 	pipeline.Reset()
 	require.Len(t, pipeline.cache, 0)
 }
@@ -170,6 +182,17 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	require.Equal(t, "", ls)
 	require.Equal(t, nil, lbr)
 	require.Equal(t, false, matches)
+
+	// test structured metadata with disallowed label names
+	withBadLabel := append(structuredMetadata, labels.Label{Name: "zsomething-bad", Value: "foo"})
+	expectedStructuredMetadata := append(structuredMetadata, labels.Label{Name: "zsomething_bad", Value: "foo"})
+	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
+
+	_, lbr, matches = p.ForStream(lbs).Process(0, []byte(""), withBadLabel...)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedStructuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
@@ -304,8 +327,8 @@ func TestDropLabelsPipeline(t *testing.T) {
 			"drop __error__",
 			[]Stage{
 				NewLogfmtParser(true, false),
-				NewJSONParser(),
-				NewDropLabels([]DropLabel{
+				NewJSONParser(false),
+				NewDropLabels([]NamedLabelMatcher{
 					{
 						nil,
 						"__error__",
@@ -341,8 +364,8 @@ func TestDropLabelsPipeline(t *testing.T) {
 			"drop __error__ with matching value",
 			[]Stage{
 				NewLogfmtParser(true, false),
-				NewJSONParser(),
-				NewDropLabels([]DropLabel{
+				NewJSONParser(false),
+				NewDropLabels([]NamedLabelMatcher{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
 						"",
@@ -408,7 +431,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep all",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{}),
+				NewKeepLabels([]NamedLabelMatcher{}),
 			},
 			lines: [][]byte{
 				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
@@ -444,7 +467,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep by name",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{
+				NewKeepLabels([]NamedLabelMatcher{
 					{
 						nil,
 						"level",
@@ -475,7 +498,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			name: "keep by matcher",
 			stages: []Stage{
 				NewLogfmtParser(false, false),
-				NewKeepLabels([]KeepLabel{
+				NewKeepLabels([]NamedLabelMatcher{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
 						"",
@@ -523,6 +546,42 @@ func TestKeepLabelsPipeline(t *testing.T) {
 
 }
 
+func TestUnsafeGetBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []byte
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "simple string",
+			input: "hello",
+			want:  []byte{'h', 'e', 'l', 'l', 'o'},
+		},
+		{
+			name:  "string with spaces",
+			input: "hello world",
+			want:  []byte{'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd'},
+		},
+		{
+			name:  "string with special characters",
+			input: "hello\nworld\t!",
+			want:  []byte{'h', 'e', 'l', 'l', 'o', '\n', 'w', 'o', 'r', 'l', 'd', '\t', '!'},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unsafeGetBytes(tt.input)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
@@ -534,7 +593,7 @@ func Benchmark_Pipeline(b *testing.B) {
 			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
-		NewJSONParser(),
+		NewJSONParser(false),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
@@ -563,6 +622,19 @@ func Benchmark_Pipeline(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			resLineString, resLbs, resMatches = sp.ProcessString(0, lineString)
+		}
+	})
+
+	b.Run("pipeline bytes no invalid structured metadata", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.Label{Name: "valid_name", Value: "foo"})
+		}
+	})
+	b.Run("pipeline string with invalid structured metadata", func(b *testing.B) {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.Label{Name: "invalid-name", Value: "foo"}, labels.Label{Name: "other-invalid-name", Value: "foo"})
 		}
 	})
 
@@ -663,11 +735,11 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkJSONParser(b *testing.B) {
-	jsonBenchmark(b, NewJSONParser())
+	jsonBenchmark(b, NewJSONParser(false))
 }
 
 func BenchmarkJSONParserInvalidLine(b *testing.B) {
-	invalidJSONBenchmark(b, NewJSONParser())
+	invalidJSONBenchmark(b, NewJSONParser(false))
 }
 
 func BenchmarkJSONExpressionParser(b *testing.B) {

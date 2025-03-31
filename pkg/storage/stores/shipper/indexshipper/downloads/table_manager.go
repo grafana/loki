@@ -3,8 +3,10 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -180,6 +182,10 @@ func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, c
 }
 
 func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
+	if tm.ctx.Err() != nil {
+		return nil, errors.New("table manager is stopping")
+	}
+
 	// if table is already there, use it.
 	start := time.Now()
 	tm.tablesMtx.RLock()
@@ -214,7 +220,8 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
-	defer tm.tablesMtx.RUnlock()
+	tables := slices.Collect(maps.Keys(tm.tables))
+	tm.tablesMtx.RUnlock()
 
 	start := time.Now()
 	var err error
@@ -231,11 +238,24 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 
 	level.Info(tm.logger).Log("msg", "syncing tables")
 
-	for name, table := range tm.tables {
+	for _, name := range tables {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		level.Debug(tm.logger).Log("msg", "syncing table", "table", name)
 		start := time.Now()
+
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[name]
+		tm.tablesMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
 		err := table.Sync(ctx)
-		duration := float64(time.Since(start))
+		duration := time.Since(start).Seconds()
 		if err != nil {
 			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
 			return errors.Wrapf(err, "failed to sync table '%s'", name)

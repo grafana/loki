@@ -3,7 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"flag"
-	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -15,61 +15,65 @@ import (
 )
 
 // PoolConfig is config for creating a Pool.
-// It has the same fields as "github.com/grafana/dskit/ring/client.PoolConfig" so it can be cast.
 type PoolConfig struct {
-	CheckInterval             time.Duration `yaml:"check_interval"`
-	HealthCheckEnabled        bool          `yaml:"enable_health_check"`
-	HealthCheckTimeout        time.Duration `yaml:"health_check_timeout"`
-	MaxConcurrentHealthChecks int           `yaml:"-"`
+	CheckInterval time.Duration `yaml:"check_interval"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.CheckInterval, prefix+"check-interval", 10*time.Second, "How frequently to clean up clients for servers that have gone away or are unhealthy.")
-	f.BoolVar(&cfg.HealthCheckEnabled, prefix+"enable-health-check", true, "Run a health check on each server during periodic cleanup.")
-	f.DurationVar(&cfg.HealthCheckTimeout, prefix+"health-check-timeout", 1*time.Second, "Timeout for the health check if health check is enabled.")
+	f.DurationVar(&cfg.CheckInterval, prefix+"check-interval", 15*time.Second, "How frequently to update the list of servers.")
 }
 
 func (cfg *PoolConfig) Validate() error {
 	return nil
 }
 
-type JumpHashClientPool struct {
-	*client.Pool
-	*jumphash.Selector
+// compiler check
+var _ clientPool = &JumpHashClientPool{}
 
-	done   chan struct{}
-	logger log.Logger
+type ClientFactory func(addr string) (client.PoolClient, error)
+
+func (f ClientFactory) New(addr string) (client.PoolClient, error) {
+	return f(addr)
+}
+
+type JumpHashClientPool struct {
+	services.Service
+	*jumphash.Selector
+	sync.RWMutex
+
+	provider AddressProvider
+	logger   log.Logger
+
+	clients       map[string]client.PoolClient
+	clientFactory ClientFactory
 }
 
 type AddressProvider interface {
 	Addresses() []string
 }
 
-func NewJumpHashClientPool(pool *client.Pool, dnsProvider AddressProvider, updateInterval time.Duration, logger log.Logger) *JumpHashClientPool {
-	selector := jumphash.DefaultSelector()
+func NewJumpHashClientPool(clientFactory ClientFactory, dnsProvider AddressProvider, updateInterval time.Duration, logger log.Logger) (*JumpHashClientPool, error) {
+	selector := jumphash.DefaultSelector("bloomgateway")
 	err := selector.SetServers(dnsProvider.Addresses()...)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error updating servers", "err", err)
 	}
 
 	p := &JumpHashClientPool{
-		Pool:     pool,
-		Selector: selector,
-		done:     make(chan struct{}),
-		logger:   logger,
+		Selector:      selector,
+		clientFactory: clientFactory,
+		provider:      dnsProvider,
+		logger:        logger,
+		clients:       make(map[string]client.PoolClient, len(dnsProvider.Addresses())),
 	}
-	go p.updateLoop(dnsProvider, updateInterval)
 
-	return p
+	p.Service = services.NewTimerService(updateInterval, nil, p.updateLoop, nil)
+	return p, services.StartAndAwaitRunning(context.Background(), p.Service)
 }
 
-func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
-	addr, err := p.FromUInt64(fp)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
+func (p *JumpHashClientPool) Stop() {
+	_ = services.StopAndAwaitTerminated(context.Background(), p.Service)
 }
 
 func (p *JumpHashClientPool) Addr(key string) (string, error) {
@@ -80,35 +84,42 @@ func (p *JumpHashClientPool) Addr(key string) (string, error) {
 	return addr.String(), nil
 }
 
-func (p *JumpHashClientPool) Start() {
-	ctx := context.Background()
-	_ = services.StartAndAwaitRunning(ctx, p.Pool)
-}
-
-func (p *JumpHashClientPool) Stop() {
-	ctx := context.Background()
-	_ = services.StopAndAwaitTerminated(ctx, p.Pool)
-	close(p.done)
-}
-
-func (p *JumpHashClientPool) updateLoop(provider AddressProvider, updateInterval time.Duration) {
-	ticker := time.NewTicker(updateInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-p.done:
-			return
-		case <-ticker.C:
-			servers := provider.Addresses()
-			// ServerList deterministically maps keys to _index_ of the server list.
-			// Since DNS returns records in different order each time, we sort to
-			// guarantee best possible match between nodes.
-			sort.Strings(servers)
-			err := p.SetServers(servers...)
-			if err != nil {
-				level.Warn(p.logger).Log("msg", "error updating servers", "err", err)
-			}
-		}
+func (p *JumpHashClientPool) updateLoop(_ context.Context) error {
+	err := p.SetServers(p.provider.Addresses()...)
+	if err != nil {
+		level.Warn(p.logger).Log("msg", "error updating servers", "err", err)
 	}
+	return nil
+}
+
+// GetClientFor implements clientPool.
+func (p *JumpHashClientPool) GetClientFor(addr string) (client.PoolClient, error) {
+	client, ok := p.fromCache(addr)
+	if ok {
+		return client, nil
+	}
+
+	// No client in cache so create one
+	p.Lock()
+	defer p.Unlock()
+
+	// Check if a client has been created just after checking the cache and before acquiring the lock.
+	client, ok = p.clients[addr]
+	if ok {
+		return client, nil
+	}
+
+	client, err := p.clientFactory.New(addr)
+	if err != nil {
+		return nil, err
+	}
+	p.clients[addr] = client
+	return client, nil
+}
+
+func (p *JumpHashClientPool) fromCache(addr string) (client.PoolClient, bool) {
+	p.RLock()
+	defer p.RUnlock()
+	client, ok := p.clients[addr]
+	return client, ok
 }

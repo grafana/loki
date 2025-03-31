@@ -14,20 +14,26 @@ keywords:
 
 # Visualize log data
 
-Grafana Loki does not have its own user interface. Most users [install Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/installation/) in order to visualize their log data. Grafana versions after 6.3 have built-in support for Grafana Loki and [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).  
+Grafana Loki does not have its own user interface. Most users [install Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/installation/) in order to visualize their log data. Grafana versions after 6.3 have built-in support for Grafana Loki and [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
 There are several different options for how to visualize your log data in Grafana:
 
-- [Explore Logs](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) lets you explore logs from your Loki data source without writing LogQL queries. Explore Logs is now available in public preview.
+- [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) lets you explore logs from your Loki data source without writing LogQL queries.
 - [Grafana Explore](https://grafana.com/docs/grafana/latest/explore/logs-integration/) helps you build and iterate on queries written in LogQL. Once you have a query that finds the data you're looking for, you can consider using your query in a Grafana dashboard.
 - [Loki Mixins](https://grafana.com/docs/loki/latest/operations/observability/#mixins) include a pre-built set of dashboards, recording rules, and alerts for monitoring Loki.
 - [Grafana Dashboards](https://grafana.com/docs/grafana/latest/dashboards/) let you query, transform, visualize, and understand your log data. You can create your own custom dashboards, or import and modify public dashboards shared by the community.
 
-## Explore Logs
+## Logs Drilldown
 
-Explore Logs lets you automatically visualize and explore logs. Explore Logs makes assumptions about what data you might want to see to help you quickly get started viewing your logs without having to learn LogQL and write queries.
+Grafana Logs Drilldown lets you automatically visualize and explore logs. Logs Drilldown makes assumptions about what data you might want to see to help you quickly get started viewing your logs without having to learn LogQL and write queries.
 
-If you are a Grafana Cloud user, you can access Explore Logs in the Grafana Cloud main navigation menu. If you are not a Grafana Cloud user, you can install the [Explore Logs plugin](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/access/). For more information, refer to the [Explore Logs documentation](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/).
+- If you are a Grafana Cloud user, you can access Logs Drilldown from the Grafana Cloud main navigation menu: select **Explore** > **Logs**.
+
+- If you are an open source or Grafana Enterprise Logs user, you can install the [Logs Drilldown plugin](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/access/). For more information, refer to the [Logs Drilldown documentation](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/).
+
+{{< admonition type="note" >}}
+Starting with Grafana v11.3, the plugin for the Logs Drilldown app is installed in Grafana by default.
+{{< /admonition >}}
 
 ## Grafana Explore
 
@@ -38,11 +44,12 @@ If you are a Grafana Cloud user, you can access Explore Logs in the Grafana Clou
 1. Click the **+ Add new data source** button.
 1. Search for, or choose Loki from the list.
 1. On the **Settings** tab, the **URL** field should be the address of your Loki server.
-For example,when running locally or with Docker using port mapping, the address is likely `http://localhost:3100`.
+For example, when running locally or with Docker using port mapping, the address is likely `http://localhost:3100`.
 When running with docker-compose or Kubernetes, the address is likely `http://loki:3100`.
 When running Grafana (with Docker) and trying to connect to a locally built Loki instance, the address (for the URL field) is:
    On Mac: `docker.for.mac.localhost`
    On Windows: `docker.for.win.localhost`
+1. If your Loki server has [multi-tenancy](https://grafana.com/docs/loki/latest/operations/multi-tenancy/) enabled, then you must provide your tenant ID in the `X-Scope-OrgID` header. Click the **+ Add header** button under **HTTP headers**, enter `X-Scope-OrgID` in the **Header** field, and your tenant ID in the **Value** field. Multi-tenancy is enabled by default when running Loki with Helm on Kubernetes.
 1. To view your logs, click **Explore** in the main menu.
 1. Select the Loki datasource in the top-left menu.
 1. You can click **Kick start your query** to select from a list of common queries, or use the **Label filters** to start choosing labels that you want to query. For more information about the Loki query language, refer to the [LogQL section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).

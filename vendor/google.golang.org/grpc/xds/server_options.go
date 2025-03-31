@@ -23,11 +23,13 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/internal/xds/bootstrap"
+	"google.golang.org/grpc/xds/internal/xdsclient"
 )
 
 type serverOptions struct {
-	modeCallback                ServingModeCallbackFunc
-	bootstrapContentsForTesting []byte
+	modeCallback         ServingModeCallbackFunc
+	clientPoolForTesting *xdsclient.Pool
 }
 
 type serverOption struct {
@@ -71,6 +73,28 @@ type ServingModeChangeArgs struct {
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
-func BootstrapContentsForTesting(contents []byte) grpc.ServerOption {
-	return &serverOption{apply: func(o *serverOptions) { o.bootstrapContentsForTesting = contents }}
+func BootstrapContentsForTesting(bootstrapContents []byte) grpc.ServerOption {
+	config, err := bootstrap.NewConfigFromContents(bootstrapContents)
+	if err != nil {
+		logger.Warningf("Failed to parse bootstrap contents %s for server options: %v", string(bootstrapContents), err)
+		return &serverOption{apply: func(o *serverOptions) { o.clientPoolForTesting = nil }}
+	}
+	return ClientPoolForTesting(xdsclient.NewPool(config))
+}
+
+// ClientPoolForTesting returns a grpc.ServerOption with the pool for xds
+// clients. It allows users to set a pool for xDS clients sharing the bootstrap
+// contents for this server.
+//
+// # Testing Only
+//
+// This function should ONLY be used for testing and may not work with some
+// other features, including the CSDS service.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
+func ClientPoolForTesting(pool *xdsclient.Pool) grpc.ServerOption {
+	return &serverOption{apply: func(o *serverOptions) { o.clientPoolForTesting = pool }}
 }

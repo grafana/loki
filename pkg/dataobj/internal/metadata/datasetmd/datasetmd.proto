@@ -1,0 +1,147 @@
+// datasetmd.proto holds metadata types for storing columnar data.
+syntax = "proto3";
+
+package dataobj.metadata.dataset.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd";
+
+// ColumnInfo describes an individual column within a data set.
+message ColumnInfo {
+  // Optional name of the column.
+  string name = 1;
+
+  // Type of values stored within the column.
+  ValueType value_type = 2;
+
+  // Total number of rows in the entire column.
+  uint64 rows_count = 3;
+
+  // Compression type used for all pages.
+  CompressionType compression = 4;
+
+  // Total uncompressed size of all pages in the column.
+  uint64 uncompressed_size = 5;
+
+  // Total compressed size of all pages in the column. Compressed size may
+  // match uncompressed size if no compression is used.
+  uint64 compressed_size = 6;
+
+  // Byte offset from the start of the data object to the column's metadata.
+  uint64 metadata_offset = 7;
+
+  // Size of the column's metadata in bytes.
+  uint64 metadata_size = 8;
+
+  // Statistics for the column.
+  Statistics statistics = 9;
+
+  // Total number of non-NULL values in the entire column.
+  uint64 values_count = 10;
+}
+
+// ValueType represents the valid types that values within a column can have.
+enum ValueType {
+  // Invalid value type.
+  VALUE_TYPE_UNSPECIFIED = 0;
+
+  // VALUE_TYPE_INT64 is a column containing 64-bit integer values.
+  VALUE_TYPE_INT64 = 1;
+
+  // VALUE_TYPE_UINT64 is a column containing 64-bit unsigned integer values.
+  VALUE_TYPE_UINT64 = 2;
+
+  // VALUE_TYPE_STRING is a column containing string values.
+  VALUE_TYPE_STRING = 3;
+
+  // VALUE_TYPE_BYTE_ARRAY is a column containing bytes with no specific type.
+  VALUE_TYPE_BYTE_ARRAY = 4;
+}
+
+// CompressionType represents the valid compression types that can be used for
+// compressing values in a page.
+enum CompressionType {
+  // Invalid compression type.
+  COMPRESSION_TYPE_UNSPECIFIED = 0;
+
+  // No compression.
+  COMPRESSION_TYPE_NONE = 1;
+
+  // Snappy compression.
+  COMPRESSION_TYPE_SNAPPY = 2;
+
+  // Zstd compression.
+  COMPRESSION_TYPE_ZSTD = 3;
+}
+
+// Statistics about a column or a page. All statistics are optional and are
+// conditionally set depending on the column type.
+message Statistics {
+  // Minimum value. Applications should only set min_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, min_value should be unset.
+  //
+  // Applications must not assume that an unset min_value means that the column
+  // is empty; check for values_count == 0 instead.
+  bytes min_value = 1;
+
+  // Maximum value. Applications should only set max_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, max_value should be unset.
+  //
+  // Applications must not assume that an unset max_value means that the column
+  // is empty; check for values_count == 0 instead.
+  bytes max_value = 2;
+
+  // Estimated number of distinct values in the column.
+  //
+  // Applications must not assume that an unset cardinality_count means that
+  // the column has no distinct values; check for values_count == 0 instead.
+  uint64 cardinality_count = 3;
+}
+
+// Page describes an individual page within a column.
+message PageInfo {
+  // Uncompressed size of the page within the data object.
+  uint64 uncompressed_size = 1;
+
+  // Compressed size of the page within the data object. Compression size
+  // will match uncompressed size if no compression is used.
+  uint64 compressed_size = 2;
+
+  // CRC32 checksum of the page data.
+  uint32 crc32 = 3;
+
+  // Number of rows in the page.
+  uint64 rows_count = 4;
+
+  // Encoding type used for the page.
+  EncodingType encoding = 5;
+
+  // Byte offset from the start of the data object to the page's data.
+  uint64 data_offset = 6;
+
+  // Size of the page's data in bytes.
+  uint64 data_size = 7;
+
+  // Optional statistics for the page.
+  Statistics statistics = 8;
+
+  // Total number of non-NULL values in the page.
+  uint64 values_count = 9;
+}
+
+// EncodingType represents the valid types that a sequence of values which a
+// column can be encoded with.
+enum EncodingType {
+  // Invalid encoding type.
+  ENCODING_TYPE_UNSPECIFIED = 0;
+
+  // Plain encoding; data is stored as-is.
+  ENCODING_TYPE_PLAIN = 1;
+
+  // Delta encoding. The first value within the page is stored as-is, and
+  // subsequent values are stored as the delta from the previous value.
+  ENCODING_TYPE_DELTA = 2;
+
+  // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
+  // integers using a combination of run-length encoding and bitpacking.
+  ENCODING_TYPE_BITMAP = 3;
+}

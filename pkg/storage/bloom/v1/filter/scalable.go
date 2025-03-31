@@ -71,9 +71,7 @@ type ScalableBloomFilter struct {
 const fillCheckFraction = 100
 
 // NewScalableBloomFilter creates a new Scalable Bloom Filter with the
-// specified target false-positive rate and tightening ratio. Use
-// NewDefaultScalableBloomFilter if you don't want to calculate these
-// parameters.
+// specified target false-positive rate and tightening ratio.
 func NewScalableBloomFilter(hint uint, fpRate, r float64) *ScalableBloomFilter {
 	s := &ScalableBloomFilter{
 		filters: make([]*PartitionedBloomFilter, 0, 1),
@@ -86,12 +84,6 @@ func NewScalableBloomFilter(hint uint, fpRate, r float64) *ScalableBloomFilter {
 
 	s.addFilter()
 	return s
-}
-
-// NewDefaultScalableBloomFilter creates a new Scalable Bloom Filter with the
-// specified target false-positive rate and an optimal tightening ratio.
-func NewDefaultScalableBloomFilter(fpRate float64) *ScalableBloomFilter {
-	return NewScalableBloomFilter(10000, fpRate, 0.8)
 }
 
 // Capacity returns the current Scalable Bloom Filter capacity, which is the
@@ -115,6 +107,10 @@ func (s *ScalableBloomFilter) Count() (ct int) {
 		ct += int(filter.Count())
 	}
 	return
+}
+
+func (s *ScalableBloomFilter) IsEmpty() bool {
+	return s.Count() == 0
 }
 
 // FillRatio returns the average ratio of set bits across every filter.
@@ -150,7 +146,7 @@ func (s *ScalableBloomFilter) Add(data []byte) Filter {
 	return s
 }
 
-// addWithMaxSize adds a new element to the filter,
+// AddWithMaxSize adds a new element to the filter,
 // unless adding would require the filter to grow above a given maxSize (0 for unlimited).
 // returns true if the filter is full, in which case the key was not added
 func (s *ScalableBloomFilter) AddWithMaxSize(data []byte, maxSize int) (full bool) {
@@ -205,14 +201,6 @@ func (s *ScalableBloomFilter) TestAndAddWithMaxSize(data []byte, maxSize int) (e
 	member := s.Test(data)
 	full = s.AddWithMaxSize(data, maxSize)
 	return member, full
-}
-
-// Reset restores the Bloom filter to its original state. It returns the filter
-// to allow for chaining.
-func (s *ScalableBloomFilter) Reset() *ScalableBloomFilter {
-	s.filters = make([]*PartitionedBloomFilter, 0, 1)
-	s.addFilter()
-	return s
 }
 
 func (s *ScalableBloomFilter) nextFilterCapacity() (m uint, fpRate float64) {

@@ -11,6 +11,8 @@ weight:
 
 This document explains how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 This document assumes, that reader have `gcloud` installed and have the required permissions (as mentioned in [Roles and Permission](#roles-and-permission) section).
 
 There are two flavours of how to configure this:
@@ -236,7 +238,7 @@ We need a service account with the following permissions:
 
 This enables Promtail to read log entries from the pubsub subscription created before.
 
-You can find an example for Promtail scrape config for `gcplog` [here]({{< relref "../../scraping#gcp-log-scraping" >}})
+You can find an example for Promtail scrape config for `gcplog` [here](../../scraping/#gcp-log-scraping)
 
 If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
 

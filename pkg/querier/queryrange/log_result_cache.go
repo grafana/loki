@@ -86,7 +86,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {

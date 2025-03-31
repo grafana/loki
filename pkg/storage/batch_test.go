@@ -100,7 +100,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	var tests map[string]testCase
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -1000,7 +999,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for _, schemaConfig := range schemaConfigs {
 		s := schemaConfig
 		for name, tt := range tests {
-			tt := tt
 			t.Run(name, func(t *testing.T) {
 				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
 				require.NoError(t, err)
@@ -1416,12 +1414,22 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		tt := tt
 		t.Run(name, func(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)
 
-			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
+			it, err := newSampleBatchIterator(
+				context.Background(),
+				s,
+				NilMetrics,
+				tt.chunks,
+				tt.batchSize,
+				newMatchers(tt.matchers),
+				tt.start,
+				tt.end,
+				nil,
+				ex,
+			)
 			require.NoError(t, err)
 			series, _, err := iter.ReadSampleBatch(it, 1000)
 			_ = it.Close()
@@ -1649,9 +1657,9 @@ func TestBuildHeapIterator(t *testing.T) {
 				ctx:      ctx,
 				pipeline: log.NewNoopPipeline(),
 			}
-			it, err := b.buildHeapIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
 			if err != nil {
-				t.Errorf("buildHeapIterator error = %v", err)
+				t.Errorf("buildMergeIterator error = %v", err)
 				return
 			}
 			req := newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil)

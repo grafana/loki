@@ -182,23 +182,128 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         + step.with({
           imageDir: 'images',
           imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
         }),
       ]
     ),
 
-  publishRelease: job.new()
-                  + job.withNeeds(['createRelease', 'publishImages'])
-                  + job.withSteps([
-                    common.fetchReleaseRepo,
-                    common.githubAppToken,
-                    common.setToken,
-                    releaseStep('publish release')
-                    + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
-                    + step.withEnv({
-                      GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
-                    })
-                    + step.withRun(|||
-                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
-                    |||),
-                  ]),
+  publishDockerPlugins: function(path, getDockerCredsFromVault=false, dockerUsername='grafanabot')
+    job.new()
+    + job.withNeeds(['createRelease'])
+    + job.withSteps(
+      [
+        common.fetchReleaseLib,
+        common.fetchReleaseRepo,
+        common.googleAuth,
+        common.setupGoogleCloudSdk,
+        step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+        step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      ] + (if getDockerCredsFromVault then [
+             step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+           ] else [
+             step.new('Login to DockerHub (from secrets)', 'docker/login-action@v3')
+             + step.with({
+               username: dockerUsername,
+               password: '${{ secrets.DOCKER_PASSWORD }}',
+             }),
+           ]) +
+      [
+        step.new('download and prepare plugins')
+        + step.withRun(|||
+          echo "downloading images to $(pwd)/plugins"
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
+          mkdir -p "release/%s"
+        ||| % path),
+        step.new('publish docker driver', './lib/actions/push-images')
+        + step.with({
+          imageDir: 'plugins',
+          imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          isPlugin: true,
+          buildDir: 'release/%s' % path,
+          isLatest: '${{ needs.createRelease.outputs.isLatest }}',
+        }),
+      ]
+    ),
+
+  publishRelease: function(dependencies=['createRelease'])
+    job.new()
+    + job.withNeeds(dependencies)
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.githubAppToken,
+      common.setToken,
+      releaseStep('publish release')
+      + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
+      + step.withEnv({
+        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+      })
+      + step.withRun(|||
+        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+      |||),
+    ]) + job.withOutputs({
+      name: '${{ needs.createRelease.outputs.name }}',
+    }),
+
+  createReleaseBranch: function(branchTemplate='release-v\\${major}.\\${minor}.x')
+    job.new()
+    + job.withNeeds(['publishRelease'])  // always need createRelease for version info
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.extractBranchName,
+      common.githubAppToken,
+      common.setToken,
+
+      releaseStep('create release branch')
+      + step.withId('create_branch')
+      + step.withEnv({
+        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        VERSION: '${{ needs.publishRelease.outputs.name }}',
+      })
+      + step.withRun(|||
+        # Debug and clean the version variable
+        echo "Original VERSION: $VERSION"
+
+        # Remove all quotes (both single and double)
+        VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
+        echo "After removing quotes: $VERSION"
+
+        # Extract version without the 'v' prefix if it exists
+        VERSION="${VERSION#v}"
+        echo "After removing v prefix: $VERSION"
+
+        # Extract major and minor versions
+        MAJOR=$(echo $VERSION | cut -d. -f1)
+        MINOR=$(echo $VERSION | cut -d. -f2)
+        echo "MAJOR: $MAJOR, MINOR: $MINOR"
+
+        # Create branch name from template
+        BRANCH_TEMPLATE="%s"
+        BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
+        BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
+
+        echo "Checking if branch already exists: $BRANCH_NAME"
+
+        # Check if branch exists
+        if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
+          echo "Branch $BRANCH_NAME already exists, skipping creation"
+          echo "branch_exists=true" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        else
+          echo "Creating branch: $BRANCH_NAME from tag: ${{ needs.publishRelease.outputs.name }}"
+          
+          # Create branch from the tag
+          git fetch --tags
+          git checkout "${{ steps.extract_branch.outputs.branch }}"
+          git checkout -b $BRANCH_NAME
+          git push -u origin $BRANCH_NAME
+          
+          echo "branch_exists=false" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        fi
+      ||| % branchTemplate),
+    ])
+    + job.withOutputs({
+      branchExists: '${{ steps.create_branch.outputs.branch_exists }}',
+      branchName: '${{ steps.create_branch.outputs.branch_name }}',
+    }),
 }

@@ -433,7 +433,7 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 			} {
 				t.Run(fmt.Sprintf("version %d nChks %d pageSize %d", version, nChks, pageSize), func(t *testing.T) {
 					chks := mkChks(nChks)
-					var w Writer
+					var w Creator
 					w.Version = version
 					primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 					scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -583,7 +583,7 @@ func TestSearchWithPageMarkers(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%s-pagesize-%d", tc.desc, pageSize), func(t *testing.T) {
-				var w Writer
+				var w Creator
 				w.Version = FormatV3
 				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -697,7 +697,7 @@ func TestDecoderChunkStats(t *testing.T) {
 				},
 			} {
 				t.Run(fmt.Sprintf("%s_version=%d_pageSize=%d", tc.desc, version, pageSize), func(t *testing.T) {
-					var w Writer
+					var w Creator
 					w.Version = version
 					primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 					scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -722,7 +722,7 @@ func BenchmarkChunkStats(b *testing.B) {
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
 		for _, version := range []int{FormatV2, FormatV3} {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
-				var w Writer
+				var w Creator
 				w.Version = version
 				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -747,7 +747,7 @@ func BenchmarkReadChunks(b *testing.B) {
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
 		for _, version := range []int{FormatV2, FormatV3} {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
-				var w Writer
+				var w Creator
 				w.Version = version
 				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
 				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})

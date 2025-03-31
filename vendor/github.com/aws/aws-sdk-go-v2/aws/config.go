@@ -3,13 +3,14 @@ package aws
 import (
 	"net/http"
 
+	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 )
 
 // HTTPClient provides the interface to provide custom HTTPClients. Generally
 // *http.Client is sufficient for most use cases. The HTTPClient should not
-// follow redirects.
+// follow 301 or 302 redirects.
 type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -25,10 +26,22 @@ type Config struct {
 	// information on AWS regions.
 	Region string
 
-	// The credentials object to use when signing requests. Defaults to a
-	// chain of credential providers to search for credentials in environment
-	// variables, shared credential file, and EC2 Instance Roles.
+	// The credentials object to use when signing requests.
+	// Use the LoadDefaultConfig to load configuration from all the SDK's supported
+	// sources, and resolve credentials using the SDK's default credential chain.
 	Credentials CredentialsProvider
+
+	// The Bearer Authentication token provider to use for authenticating API
+	// operation calls with a Bearer Authentication token. The API clients and
+	// operation must support Bearer Authentication scheme in order for the
+	// token provider to be used. API clients created with NewFromConfig will
+	// automatically be configured with this option, if the API client support
+	// Bearer Authentication.
+	//
+	// The SDK's config.LoadDefaultConfig can automatically populate this
+	// option for external configuration options such as SSO session.
+	// https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
+	BearerAuthTokenProvider smithybearer.TokenProvider
 
 	// The HTTP Client the SDK's API clients will use to invoke HTTP requests.
 	// The SDK defaults to a BuildableClient allowing API clients to create
@@ -55,6 +68,12 @@ type Config struct {
 	//
 	// See the `aws.EndpointResolverWithOptions` documentation for additional
 	// usage information.
+	//
+	// Deprecated: with the release of endpoint resolution v2 in API clients,
+	// EndpointResolver and EndpointResolverWithOptions are deprecated.
+	// Providing a value for this field will likely prevent you from using
+	// newer endpoint-related service features. See API client options
+	// EndpointResolverV2 and BaseEndpoint.
 	EndpointResolverWithOptions EndpointResolverWithOptions
 
 	// RetryMaxAttempts specifies the maximum number attempts an API client
@@ -119,6 +138,60 @@ type Config struct {
 	// `config.LoadDefaultConfig`. You should not populate this structure
 	// programmatically, or rely on the values here within your applications.
 	RuntimeEnvironment RuntimeEnvironment
+
+	// AppId is an optional application specific identifier that can be set.
+	// When set it will be appended to the User-Agent header of every request
+	// in the form of App/{AppId}. This variable is sourced from environment
+	// variable AWS_SDK_UA_APP_ID or the shared config profile attribute sdk_ua_app_id.
+	// See https://docs.aws.amazon.com/sdkref/latest/guide/settings-reference.html for
+	// more information on environment variables and shared config settings.
+	AppID string
+
+	// BaseEndpoint is an intermediary transfer location to a service specific
+	// BaseEndpoint on a service's Options.
+	BaseEndpoint *string
+
+	// DisableRequestCompression toggles if an operation request could be
+	// compressed or not. Will be set to false by default. This variable is sourced from
+	// environment variable AWS_DISABLE_REQUEST_COMPRESSION or the shared config profile attribute
+	// disable_request_compression
+	DisableRequestCompression bool
+
+	// RequestMinCompressSizeBytes sets the inclusive min bytes of a request body that could be
+	// compressed. Will be set to 10240 by default and must be within 0 and 10485760 bytes inclusively.
+	// This variable is sourced from environment variable AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES or
+	// the shared config profile attribute request_min_compression_size_bytes
+	RequestMinCompressSizeBytes int64
+
+	// Controls how a resolved AWS account ID is handled for endpoint routing.
+	AccountIDEndpointMode AccountIDEndpointMode
+
+	// RequestChecksumCalculation determines when request checksum calculation is performed.
+	//
+	// There are two possible values for this setting:
+	//
+	// 1. RequestChecksumCalculationWhenSupported (default): The checksum is always calculated
+	//    if the operation supports it, regardless of whether the user sets an algorithm in the request.
+	//
+	// 2. RequestChecksumCalculationWhenRequired: The checksum is only calculated if the user
+	//    explicitly sets a checksum algorithm in the request.
+	//
+	// This setting is sourced from the environment variable AWS_REQUEST_CHECKSUM_CALCULATION
+	// or the shared config profile attribute "request_checksum_calculation".
+	RequestChecksumCalculation RequestChecksumCalculation
+
+	// ResponseChecksumValidation determines when response checksum validation is performed
+	//
+	// There are two possible values for this setting:
+	//
+	// 1. ResponseChecksumValidationWhenSupported (default): The checksum is always validated
+	//    if the operation supports it, regardless of whether the user sets the validation mode to ENABLED in request.
+	//
+	// 2. ResponseChecksumValidationWhenRequired: The checksum is only validated if the user
+	//    explicitly sets the validation mode to ENABLED in the request
+	// This variable is sourced from environment variable AWS_RESPONSE_CHECKSUM_VALIDATION or
+	// the shared config profile attribute "response_checksum_validation".
+	ResponseChecksumValidation ResponseChecksumValidation
 }
 
 // NewConfig returns a new Config pointer that can be chained with builder
@@ -127,8 +200,7 @@ func NewConfig() *Config {
 	return &Config{}
 }
 
-// Copy will return a shallow copy of the Config object. If any additional
-// configurations are provided they will be merged into the new config returned.
+// Copy will return a shallow copy of the Config object.
 func (c Config) Copy() Config {
 	cp := c
 	return cp

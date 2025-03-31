@@ -19,6 +19,7 @@ package cdsbalancer
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -63,6 +64,10 @@ var (
 		return builder.Build(cc, opts), nil
 	}
 	buildProvider = buildProviderFunc
+
+	// x509SystemCertPoolFunc is used for mocking the system cert pool for
+	// tests.
+	x509SystemCertPoolFunc = x509.SystemCertPool
 )
 
 func init() {
@@ -207,10 +212,16 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 	}
 
 	// A root provider is required whether we are using TLS or mTLS.
-	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs
-	rootProvider, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
-	if err != nil {
-		return err
+	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
+	var rootProvider certprovider.Provider
+	if config.UseSystemRootCerts {
+		rootProvider = systemRootCertsProvider{}
+	} else {
+		rp, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
+		if err != nil {
+			return err
+		}
+		rootProvider = rp
 	}
 
 	// The identity provider is only present when using mTLS.
@@ -309,8 +320,8 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 	b.lbCfg = lbCfg
 
 	// Handle the update in a blocking fashion.
-	done := make(chan struct{})
-	ok = b.serializer.Schedule(func(context.Context) {
+	errCh := make(chan error, 1)
+	callback := func(context.Context) {
 		// A config update with a changed top-level cluster name means that none
 		// of our old watchers make any sense any more.
 		b.closeAllWatchers()
@@ -319,20 +330,20 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 		// could end up creating more watchers if turns out to be an aggregate
 		// cluster.
 		b.createAndAddWatcherForCluster(lbCfg.ClusterName)
-		close(done)
-	})
-	if !ok {
+		errCh <- nil
+	}
+	onFailure := func() {
 		// The call to Schedule returns false *only* if the serializer has been
 		// closed, which happens only when we receive an update after close.
-		return errBalancerClosed
+		errCh <- errBalancerClosed
 	}
-	<-done
-	return nil
+	b.serializer.ScheduleOr(callback, onFailure)
+	return <-errCh
 }
 
 // ResolverError handles errors reported by the xdsResolver.
 func (b *cdsBalancer) ResolverError(err error) {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		// Resource not found error is reported by the resolver when the
 		// top-level cluster resource is removed by the management server.
 		if xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
@@ -351,7 +362,7 @@ func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.Sub
 	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
-// Closes all registered cluster wathers and removes them from the internal map.
+// Closes all registered cluster watchers and removes them from the internal map.
 //
 // Only executed in the context of a serializer callback.
 func (b *cdsBalancer) closeAllWatchers() {
@@ -364,7 +375,7 @@ func (b *cdsBalancer) closeAllWatchers() {
 // Close cancels the CDS watch, closes the child policy and closes the
 // cdsBalancer.
 func (b *cdsBalancer) Close() {
-	b.serializer.Schedule(func(ctx context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		b.closeAllWatchers()
 
 		if b.childLB != nil {
@@ -384,7 +395,7 @@ func (b *cdsBalancer) Close() {
 }
 
 func (b *cdsBalancer) ExitIdle() {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		if b.childLB == nil {
 			b.logger.Warningf("Received ExitIdle with no child policy")
 			return
@@ -668,4 +679,20 @@ func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Addr
 		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
 	}
 	ccw.ClientConn.UpdateAddresses(sc, newAddrs)
+}
+
+// systemRootCertsProvider implements a certprovider.Provider that returns the
+// system default root certificates for validation.
+type systemRootCertsProvider struct{}
+
+func (systemRootCertsProvider) Close() {}
+
+func (systemRootCertsProvider) KeyMaterial(context.Context) (*certprovider.KeyMaterial, error) {
+	rootCAs, err := x509SystemCertPoolFunc()
+	if err != nil {
+		return nil, err
+	}
+	return &certprovider.KeyMaterial{
+		Roots: rootCAs,
+	}, nil
 }

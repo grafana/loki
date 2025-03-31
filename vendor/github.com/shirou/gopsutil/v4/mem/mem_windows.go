@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -77,26 +78,42 @@ func SwapMemory() (*SwapMemoryStat, error) {
 }
 
 func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
+	// Use the performance counter to get the swap usage percentage
+	counter, err := common.NewWin32PerformanceCounter("swap_percentage", `\Paging File(_Total)\% Usage`)
+	if err != nil {
+		return nil, err
+	}
+	defer common.PdhCloseQuery.Call(uintptr(counter.Query))
+
+	usedPercent, err := counter.GetValue()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get total memory from performance information
 	var perfInfo performanceInformation
 	perfInfo.cb = uint32(unsafe.Sizeof(perfInfo))
 	mem, _, _ := procGetPerformanceInfo.Call(uintptr(unsafe.Pointer(&perfInfo)), uintptr(perfInfo.cb))
 	if mem == 0 {
 		return nil, windows.GetLastError()
 	}
-	tot := perfInfo.commitLimit * perfInfo.pageSize
-	used := perfInfo.commitTotal * perfInfo.pageSize
-	free := tot - used
-	var usedPercent float64
-	if tot == 0 {
-		usedPercent = 0
+	totalPhys := perfInfo.physicalTotal * perfInfo.pageSize
+	totalSys := perfInfo.commitLimit * perfInfo.pageSize
+	total := totalSys - totalPhys
+
+	var used uint64
+	if total > 0 {
+		used = uint64(0.01 * usedPercent * float64(total))
 	} else {
-		usedPercent = float64(used) / float64(tot) * 100
+		usedPercent = 0.0
+		used = 0
 	}
+
 	ret := &SwapMemoryStat{
-		Total:       tot,
+		Total:       total,
 		Used:        used,
-		Free:        free,
-		UsedPercent: usedPercent,
+		Free:        total - used,
+		UsedPercent: common.Round(usedPercent, 1),
 	}
 
 	return ret, nil

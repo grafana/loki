@@ -87,13 +87,13 @@ func TestParseStream_NewlineSeparated(t *testing.T) {
 func TestParseStream_InvalidStream(t *testing.T) {
 	r := strings.NewReader("invalid")
 
-	err := syslogparser.ParseStream(false, r, func(res *syslog.Result) {}, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, func(_ *syslog.Result) {}, defaultMaxMessageLength)
 	require.EqualError(t, err, "invalid or unsupported framing. first byte: 'i'")
 }
 
 func TestParseStream_EmptyStream(t *testing.T) {
 	r := strings.NewReader("")
 
-	err := syslogparser.ParseStream(false, r, func(res *syslog.Result) {}, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, r, func(_ *syslog.Result) {}, defaultMaxMessageLength)
 	require.Equal(t, err, io.EOF)
 }

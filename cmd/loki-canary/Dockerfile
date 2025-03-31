@@ -1,11 +1,12 @@
-ARG GO_VERSION=1.22
-FROM golang:${GO_VERSION} as build
+ARG GO_VERSION=1.24
+FROM golang:${GO_VERSION} AS build
+ARG IMAGE_TAG
 
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false loki-canary
+RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki-canary
 
-FROM gcr.io/distroless/base-nossl:debug
+FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/loki-canary/loki-canary /usr/bin/loki-canary
 SHELL [ "/busybox/sh", "-c" ]

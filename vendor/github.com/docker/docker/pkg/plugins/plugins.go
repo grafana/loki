@@ -204,14 +204,14 @@ func (p *Plugin) implements(kind string) bool {
 func loadWithRetry(name string, retry bool) (*Plugin, error) {
 	registry := NewLocalRegistry()
 	start := time.Now()
-	var testTimeOut int
+	var testTimeOut time.Duration
 	if name == testNonExistingPlugin {
 		// override the timeout in tests
-		testTimeOut = 2
+		testTimeOut = 2 * time.Second
 	}
 	var retries int
 	for {
-		pl, err := registry.Plugin(name)
+		plugin, err := registry.Plugin(name)
 		if err != nil {
 			if !retry {
 				return nil, err
@@ -232,18 +232,17 @@ func loadWithRetry(name string, retry bool) (*Plugin, error) {
 			storage.Unlock()
 			return pl, pl.activate()
 		}
-		storage.plugins[name] = pl
+		storage.plugins[name] = plugin
 		storage.Unlock()
 
-		err = pl.activate()
-
+		err = plugin.activate()
 		if err != nil {
 			storage.Lock()
 			delete(storage.plugins, name)
 			storage.Unlock()
 		}
 
-		return pl, err
+		return plugin, err
 	}
 }
 

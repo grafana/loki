@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -17,14 +18,11 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -33,27 +31,19 @@ import (
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/deletion"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
-	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/push"
 )
-
-const (
-	// How long the Tailer should wait - once there are no entries to read from ingesters -
-	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
-	// check loop)
-	tailerWaitEntryThrottle = time.Second / 2
-)
-
-var nowFunc = func() time.Time { return time.Now() }
 
 type interval struct {
 	start, end time.Time
@@ -71,6 +61,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -84,6 +75,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -99,64 +91,78 @@ type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
-	Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
-	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
-	WithPatternQuerier(patternQuerier PatterQuerier)
+	WithPatternQuerier(patternQuerier pattern.PatterQuerier)
 }
-
-type Limits querier_limits.Limits
 
 // Store is the store interface we need on the querier.
 type Store interface {
-	storage.SelectStore
-	index.BaseReader
-	index.StatsReader
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
+	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	GetShards(
+		ctx context.Context,
+		userID string,
+		from, through model.Time,
+		targetBytesPerShard uint64,
+		predicate chunk.Predicate,
+	) (*logproto.ShardsResponse, error)
 }
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
 	store           Store
-	limits          Limits
+	limits          querier_limits.Limits
 	ingesterQuerier *IngesterQuerier
-	patternQuerier  PatterQuerier
-	deleteGetter    deleteGetter
-	metrics         *Metrics
+	patternQuerier  pattern.PatterQuerier
+	deleteGetter    deletion.DeleteGetter
 	logger          log.Logger
 }
 
-type deleteGetter interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
-}
-
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
-	return &SingleTenantQuerier{
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
 		deleteGetter:    d,
-		metrics:         NewMetrics(r),
 		logger:          logger,
-	}, nil
+	}
+
+	return q, nil
 }
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
-	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	params.Start, params.End, err = querier_limits.ValidateQueryRequest(ctx, params, q.limits)
 	if err != nil {
 		return nil, err
 	}
 
-	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
+	if err != nil {
+		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
+			return iter.NoopEntryIterator, nil
+		}
+		return nil, err
+	}
+
+	params.QueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
@@ -209,13 +215,16 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
-	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	params.Start, params.End, err = querier_limits.ValidateQueryRequest(ctx, params, q.limits)
 	if err != nil {
 		return nil, err
 	}
 
-	params.SampleQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	params.SampleQueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
@@ -253,34 +262,6 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, storeIter)
 	}
 	return iter.NewMergeSampleIterator(ctx, iters), nil
-}
-
-func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	d, err := q.deleteGetter.GetAllDeleteRequestsForUser(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	start := startT.UnixNano()
-	end := endT.UnixNano()
-
-	var deletes []*logproto.Delete
-	for _, del := range d {
-		if del.StartTime.UnixNano() <= end && del.EndTime.UnixNano() >= start {
-			deletes = append(deletes, &logproto.Delete{
-				Selector: del.Query,
-				Start:    del.StartTime.UnixNano(),
-				End:      del.EndTime.UnixNano(),
-			})
-		}
-	}
-
-	return deletes, nil
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
@@ -391,7 +372,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 		return nil, err
 	}
 
-	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+	if *req.Start, *req.End, err = querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
 		return nil, err
 	}
 
@@ -458,86 +439,6 @@ func (*SingleTenantQuerier) Check(_ context.Context, _ *grpc_health_v1.HealthChe
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-// Tail keeps getting matching logs from all ingesters for given query
-func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error) {
-	err := q.checkTailRequestLimit(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if req.Plan == nil {
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, err
-		}
-		req.Plan = &plan.QueryPlan{
-			AST: parsed,
-		}
-	}
-
-	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
-	if err != nil {
-		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
-	}
-
-	histReq := logql.SelectLogParams{
-		QueryRequest: &logproto.QueryRequest{
-			Selector:  req.Query,
-			Start:     req.Start,
-			End:       time.Now(),
-			Limit:     req.Limit,
-			Direction: logproto.BACKWARD,
-			Deletes:   deletes,
-			Plan:      req.Plan,
-		},
-	}
-
-	histReq.Start, histReq.End, err = q.validateQueryRequest(ctx, histReq)
-	if err != nil {
-		return nil, err
-	}
-
-	// Enforce the query timeout except when tailing, otherwise the tailing
-	// will be terminated once the query timeout is reached
-	tailCtx := ctx
-	tenantID, err := tenant.TenantID(tailCtx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load tenant")
-	}
-	queryTimeout := q.limits.QueryTimeout(tailCtx, tenantID)
-	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
-	defer cancelQuery()
-
-	tailClients, err := q.ingesterQuerier.Tail(tailCtx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	histIterators, err := q.SelectLogs(queryCtx, histReq)
-	if err != nil {
-		return nil, err
-	}
-
-	reversedIterator, err := iter.NewReversedIter(histIterators, req.Limit, true)
-	if err != nil {
-		return nil, err
-	}
-
-	return newTailer(
-		time.Duration(req.DelayFor)*time.Second,
-		tailClients,
-		reversedIterator,
-		func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-			return q.ingesterQuerier.TailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
-		},
-		q.cfg.TailMaxDuration,
-		tailerWaitEntryThrottle,
-		categorizedLabels,
-		q.metrics,
-		q.logger,
-	), nil
-}
-
 // Series fetches any matching series for a list of matcher sets
 func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
@@ -545,7 +446,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 		return nil, err
 	}
 
-	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
+	if req.Start, req.End, err = querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
 
@@ -687,89 +588,13 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 	return ids, nil
 }
 
-func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-
-	selector, err := req.LogSelector()
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	matchers := selector.Matchers()
-
-	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(ctx, userID)
-	if len(matchers) > maxStreamMatchersPerQuery {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest,
-			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
-	}
-
-	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
-}
-
-type TimeRangeLimits querier_limits.TimeRangeLimits
-
-func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
-	now := nowFunc()
-	// Clamp the time range based on the max query lookback.
-	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
-	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
-		origStartTime := from
-		from = now.Add(-maxQueryLookback)
-
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-			"original", origStartTime,
-			"updated", from)
-
-	}
-	maxQueryLength := limits.MaxQueryLength(ctx, userID)
-	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), model.Duration(maxQueryLength))
-	}
-	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooOld, model.Duration(maxQueryLookback))
-	}
-	return from, through, nil
-}
-
-func (q *SingleTenantQuerier) checkTailRequestLimit(ctx context.Context) error {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return err
-	}
-
-	responses, err := q.ingesterQuerier.TailersCount(ctx)
-	// We are only checking active ingesters, and any error returned stops checking other ingesters
-	// so return that error here as well.
-	if err != nil {
-		return err
-	}
-
-	var maxCnt uint32
-	maxCnt = 0
-	for _, resp := range responses {
-		if resp > maxCnt {
-			maxCnt = resp
-		}
-	}
-	l := uint32(q.limits.MaxConcurrentTailRequests(ctx, userID))
-	if maxCnt >= l {
-		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, l)
-	}
-
-	return nil
-}
-
 func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	start, end, err := querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
 	if err != nil {
 		return nil, err
 	}
@@ -803,7 +628,7 @@ func (q *SingleTenantQuerier) IndexShards(
 		return nil, err
 	}
 
-	start, end, err := validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
+	start, end, err := querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End)
 	if err != nil {
 		return nil, err
 	}
@@ -931,7 +756,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	if req.Start, req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
+	if req.Start, req.End, err = querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
@@ -964,7 +789,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			var err error
 			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
-			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs")
+			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
 			for _, label := range storeLabels {
 				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
 				if err != nil {
@@ -996,7 +821,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -1011,7 +836,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -1040,12 +865,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	return detectedLabels
 }
 
-type PatterQuerier interface {
-	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
-	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
-}
-
-func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
+func (q *SingleTenantQuerier) WithPatternQuerier(pq pattern.PatterQuerier) {
 	q.patternQuerier = pq
 }
 
@@ -1054,22 +874,6 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	return res, err
-}
-
-func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	if q.patternQuerier == nil {
-		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
-	}
-	res, err := q.patternQuerier.Samples(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
 	return res, err
 }
 
@@ -1088,11 +892,14 @@ func containsAllIDTypes(values []string) bool {
 	return true
 }
 
+// TODO(twhitney): Delete this method and the GRPC service signature. This is now handled in the query frontend.
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
 		return nil, err
 	}
+	// just incject the header to categorize labels
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, (string)(httpreq.FlagCategorizeLabels))
 	params := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     req.Start,
@@ -1118,7 +925,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.Limit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1128,21 +935,24 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
 			continue
 		}
-
+		p := v.parsers
+		if len(p) == 0 {
+			p = nil
+		}
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parsers:     v.parsers,
+			Parsers:     p,
 		}
 
 		fieldCount++
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		FieldLimit: req.GetFieldLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
 }
 
@@ -1152,15 +962,11 @@ type parsedFields struct {
 	parsers   []string
 }
 
-func newParsedFields(parser *string) *parsedFields {
-	p := ""
-	if parser != nil {
-		p = *parser
-	}
+func newParsedFields(parsers []string) *parsedFields {
 	return &parsedFields{
 		sketch:    hyperloglog.New(),
 		fieldType: logproto.DetectedFieldString,
-		parsers:   []string{p},
+		parsers:   parsers,
 	}
 }
 
@@ -1214,15 +1020,20 @@ func determineType(value string) logproto.DetectedFieldType {
 func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
-	emtpyparser := ""
+	emtpyparsers := []string{}
 
 	for _, stream := range streams {
+		streamLbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			streamLbls = labels.EmptyLabels()
+		}
+
 		for _, entry := range stream.Entries {
 			structuredMetadata := getStructuredMetadata(entry)
 			for k, vals := range structuredMetadata {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields(&emtpyparser)
+					df = newParsedFields(emtpyparsers)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1244,11 +1055,12 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			detected, parser := parseLine(entry.Line)
-			for k, vals := range detected {
+			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			parsedLabels, parsers := parseEntry(entry, streamLbls)
+			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields(parser)
+					df = newParsedFields(parsers)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1257,8 +1069,10 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 					continue
 				}
 
-				if !slices.Contains(df.parsers, *parser) {
-					df.parsers = append(df.parsers, *parser)
+				for _, parser := range parsers {
+					if !slices.Contains(df.parsers, parser) {
+						df.parsers = append(df.parsers, parser)
+					}
 				}
 
 				detectType := true
@@ -1301,24 +1115,50 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string) (map[string][]string, *string) {
-	parser := "logfmt"
-	logFmtParser := logql_log.NewLogfmtParser(true, false)
+func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
+	origParsed := getParsedLabels(entry)
+	parsed := make(map[string][]string, len(origParsed))
 
-	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
-	if !logfmtSuccess || lbls.HasErr() {
-		parser = "json"
-		jsonParser := logql_log.NewJSONParser()
+	for lbl, values := range origParsed {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
+
+		parsed[lbl] = values
+	}
+
+	line := entry.Line
+	parser := "json"
+	jsonParser := logql_log.NewJSONParser(true)
+	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
+	if !jsonSuccess || lbls.HasErr() {
 		lbls.Reset()
-		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
-		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}, nil
+
+		logFmtParser := logql_log.NewLogfmtParser(false, false)
+		parser = "logfmt"
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
+		if !logfmtSuccess || lbls.HasErr() {
+			return parsed, nil
 		}
 	}
 
 	parsedLabels := map[string]map[string]struct{}{}
-	for _, lbl := range lbls.LabelsResult().Labels() {
+	for lbl, values := range parsed {
+		if vals, ok := parsedLabels[lbl]; ok {
+			for _, value := range values {
+				vals[value] = struct{}{}
+			}
+		} else {
+			parsedLabels[lbl] = map[string]struct{}{}
+			for _, value := range values {
+				parsedLabels[lbl][value] = struct{}{}
+			}
+		}
+	}
+
+	lblsResult := lbls.LabelsResult().Parsed()
+	for _, lbl := range lblsResult {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
@@ -1328,6 +1168,10 @@ func parseLine(line string) (map[string][]string, *string) {
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
 		vals := make([]string, 0, len(values))
 		for v := range values {
 			vals = append(vals, v)
@@ -1335,13 +1179,32 @@ func parseLine(line string) (map[string][]string, *string) {
 		result[lbl] = vals
 	}
 
-	return result, &parser
+	return result, []string{parser}
+}
+
+func getParsedLabels(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.Parsed {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.
-// If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
-// structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
-// Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
 func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
@@ -1357,12 +1220,28 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
 		if lastEntry.Unix() < 0 || shouldOutput {
-			stream, ok := streams[streamLabels]
+			allLbls, err := syntax.ParseLabels(streamLabels)
+			if err != nil {
+				continue
+			}
+
+			parsedLbls := logproto.FromLabelAdaptersToLabels(entry.Parsed)
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+
+			onlyStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(allLbls, 0)
+			allLbls.Range(func(l labels.Label) {
+				if parsedLbls.Has(l.Name) || structuredMetadata.Has(l.Name) {
+					onlyStreamLbls.Del(l.Name)
+				}
+			})
+
+			lblStr := onlyStreamLbls.LabelsResult().String()
+			stream, ok := streams[lblStr]
 			if !ok {
 				stream = &logproto.Stream{
-					Labels: streamLabels,
+					Labels: lblStr,
 				}
-				streams[streamLabels] = stream
+				streams[lblStr] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
 			lastEntry = i.At().Timestamp

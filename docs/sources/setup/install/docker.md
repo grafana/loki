@@ -30,15 +30,15 @@ The configuration files associated with these installation instructions run Loki
 1. Copy and paste the following commands into your command line to download `loki-local-config.yaml` and `promtail-docker-config.yaml` to your `loki` directory.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.0.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/v3.0.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
     ```
 
 1. Copy and paste the following commands into your command line to start the Docker containers using the configuration files you downloaded in the previous step.
 
     ```bash
-    docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:3.0.0 -config.file=/mnt/config/loki-config.yaml
-    docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.0.0 -config.file=/mnt/config/promtail-config.yaml
+    docker run --name loki -d -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:3.4.1 -config.file=/mnt/config/loki-config.yaml
+    docker run --name promtail -d -v $(pwd):/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.4.1 -config.file=/mnt/config/promtail-config.yaml
     ```
 
     {{< admonition type="note" >}}
@@ -56,8 +56,8 @@ The configuration files associated with these installation instructions run Loki
     ```bash
 
     CONTAINER ID   IMAGE                    COMMAND                  CREATED              STATUS              PORTS                                       NAMES
-    9485de9ad351   grafana/promtail:3.0.0   "/usr/bin/promtail -…"   About a minute ago   Up About a minute                                               promtail
-    cece1df84519   grafana/loki:3.0.0       "/usr/bin/loki -conf…"   About a minute ago   Up About a minute   0.0.0.0:3100->3100/tcp, :::3100->3100/tcp   loki
+    9485de9ad351   grafana/promtail:3.4.1   "/usr/bin/promtail -…"   About a minute ago   Up About a minute                                               promtail
+    cece1df84519   grafana/loki:3.4.1       "/usr/bin/loki -conf…"   About a minute ago   Up About a minute   0.0.0.0:3100->3100/tcp, :::3100->3100/tcp   loki
     ```
 
 1. Verify that Loki is up and running.
@@ -71,15 +71,15 @@ The configuration files associated with these installation instructions run Loki
 
 ```bash
 cd "<local-path>"
-wget https://raw.githubusercontent.com/grafana/loki/v3.0.0/cmd/loki/loki-local-config.yaml -O loki-config.yaml
-wget https://raw.githubusercontent.com/grafana/loki/v3.0.0/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/cmd/loki/loki-local-config.yaml -O loki-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/clients/cmd/promtail/promtail-docker-config.yaml -O promtail-config.yaml
 ```
 
 1. Copy and paste the following commands into your command line to start the Docker containers using the configuration files you downloaded in the previous step. Note that you will need to replace the `<local-path>` in the commands with your local path.
 
 ```bash
-docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:3.0.0 --config.file=/mnt/config/loki-config.yaml
-docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.0.0 --config.file=/mnt/config/promtail-config.yaml
+docker run --name loki -v <local-path>:/mnt/config -p 3100:3100 grafana/loki:3.4.1 --config.file=/mnt/config/loki-config.yaml
+docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.4.1 --config.file=/mnt/config/promtail-config.yaml
 ```
 
 1. Verify that Loki is up and running.
@@ -101,7 +101,7 @@ Run the following commands in your command line. They work for Windows or Linux 
 1. Copy and paste the following command into your command line to download the `docker-compose` file.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.0.0/production/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/production/docker-compose.yaml -O docker-compose.yaml
     ```
 
 1. With `loki` as the current working directory, run the following 'docker-compose` command:
@@ -113,13 +113,9 @@ Run the following commands in your command line. They work for Windows or Linux 
     You should see something similar to the following:
 
     ```bash
-    ✔ Container mydevice-minio-1     Started              0.0s
-    ✔ Container mydevice-flog-1      Started              0.0s
-    ✔ Container mydevice-write-1     Started              0.0s
-    ✔ Container mydevice-read-1      Started              0.0s
-    ✔ Container mydevice-gateway-1   Started              0.0s
-    ✔ Container mydevice-grafana-1   Started              0.0s
-    ✔ Container mydevice-promtail-1  Started              0.0s
+    ✔ Container loki-loki-1      Started              0.0s
+    ✔ Container loki-grafana-1   Started              0.0s
+    ✔ Container loki-promtail-1  Started              0.0s
     ```
 
 1. Verify that Loki is up and running.

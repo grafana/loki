@@ -609,7 +609,6 @@ func (s *SelectResults) start(pipeWriter *io.PipeWriter) {
 				closeResponse(s.resp)
 				return
 			}
-
 		}
 	}()
 }
@@ -669,7 +668,6 @@ func extractHeader(body io.Reader, myHeaders http.Header) error {
 		}
 
 		myHeaders.Set(headerTypeName, headerValueName)
-
 	}
 	return nil
 }

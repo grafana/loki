@@ -106,14 +106,21 @@ func FromHeader(hs http.Header) []*Header {
 	return result
 }
 
-// Errorf returns a HTTP gRPC error than is correctly forwarded over
+// Error returns a HTTP gRPC error that is correctly forwarded over
+// gRPC, and can eventually be converted back to a HTTP response with
+// HTTPResponseFromError.
+func Error(code int, msg string) error {
+	return ErrorFromHTTPResponse(&HTTPResponse{
+		Code: int32(code),
+		Body: []byte(msg),
+	})
+}
+
+// Errorf returns a HTTP gRPC error that is correctly forwarded over
 // gRPC, and can eventually be converted back to a HTTP response with
 // HTTPResponseFromError.
 func Errorf(code int, tmpl string, args ...interface{}) error {
-	return ErrorFromHTTPResponse(&HTTPResponse{
-		Code: int32(code),
-		Body: []byte(fmt.Sprintf(tmpl, args...)),
-	})
+	return Error(code, fmt.Sprintf(tmpl, args...))
 }
 
 // ErrorFromHTTPResponse converts an HTTP response into a grpc error, and uses HTTP response body as an error message.

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -71,8 +72,8 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 }
 
 type QuerierConfig struct {
-	// MinTableOffset is derived from the compactor's MinTableOffset
-	MinTableOffset int
+	BuildInterval    time.Duration
+	BuildTableOffset int
 }
 
 // BloomQuerier is a store-level abstraction on top of Client
@@ -101,10 +102,10 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
-func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
+func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, bool, error) {
 	// Shortcut that does not require any filtering
-	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
-		return chunkRefs, nil
+	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLabelMatchers(queryPlan.AST)) == 0 {
+		return chunkRefs, false, nil
 	}
 
 	logger, ctx := spanlogger.NewWithLogger(ctx, bq.logger, "bloomquerier.FilterChunkRefs")
@@ -112,36 +113,34 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
-	grouped = groupChunkRefs(chunkRefs, grouped)
+	grouped = groupChunkRefs(series, chunkRefs, grouped)
 
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
 
 	// Do not attempt to filter chunks for which there are no blooms
-	if bq.cfg.MinTableOffset > 0 {
-		minAge := truncateDay(model.Now()).Add(-1 * config.ObjectStorageIndexRequiredPeriod * time.Duration(bq.cfg.MinTableOffset-1))
-		if through.After(minAge) {
-			level.Debug(logger).Log(
-				"msg", "skip too recent chunks",
-				"tenant", tenant,
-				"from", from.Time(),
-				"through", through.Time(),
-				"responses", 0,
-				"preFilterChunks", preFilterChunks,
-				"postFilterChunks", preFilterChunks,
-				"filteredChunks", 0,
-				"preFilterSeries", preFilterSeries,
-				"postFilterSeries", preFilterSeries,
-				"filteredSeries", 0,
-			)
+	minAge := model.Now().Add(-1 * (config.ObjectStorageIndexRequiredPeriod*time.Duration(bq.cfg.BuildTableOffset) + 2*bq.cfg.BuildInterval))
+	if through.After(minAge) {
+		level.Info(logger).Log(
+			"msg", "skip too recent chunks",
+			"tenant", tenant,
+			"from", from.Time(),
+			"through", through.Time(),
+			"responses", 0,
+			"preFilterChunks", preFilterChunks,
+			"postFilterChunks", preFilterChunks,
+			"filteredChunks", 0,
+			"preFilterSeries", preFilterSeries,
+			"postFilterSeries", preFilterSeries,
+			"filteredSeries", 0,
+		)
 
-			bq.metrics.chunksTotal.Add(float64(preFilterChunks))
-			bq.metrics.chunksFiltered.Add(0)
-			bq.metrics.seriesTotal.Add(float64(preFilterSeries))
-			bq.metrics.seriesFiltered.Add(0)
+		bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+		bq.metrics.chunksFiltered.Add(0)
+		bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+		bq.metrics.seriesFiltered.Add(0)
 
-			return chunkRefs, nil
-		}
+		return chunkRefs, false, nil
 	}
 
 	var skippedGrps [][]*logproto.GroupedChunkRefs
@@ -149,15 +148,15 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
-		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
+		day := bloomshipper.NewInterval(s.day.Time, s.day.Add(Day))
 		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		refs, err := bq.c.FilterChunks(ctx, tenant, s.interval, blocks, queryPlan)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		skippedGrps = append(skippedGrps, skipped)
@@ -167,7 +166,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// add chunk refs from series that were not mapped to any blocks
 	skippedDeduped, err := mergeSeries(skippedGrps, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to dedupe skipped series")
+		return nil, false, errors.Wrap(err, "failed to dedupe skipped series")
 	}
 
 	var chunksSkipped int
@@ -177,7 +176,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	deduped, err := mergeSeries(responses, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to dedupe results")
+		return nil, false, errors.Wrap(err, "failed to dedupe results")
 	}
 
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
@@ -218,14 +217,14 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	bq.metrics.seriesSkipped.Add(float64(len(skippedDeduped)))
 	bq.metrics.seriesFiltered.Add(float64(preFilterSeries - postFilterSeries))
 
-	return result, nil
+	return result, true, nil
 }
 
 // groupChunkRefs takes a slice of chunk refs sorted by their fingerprint and
 // groups them by fingerprint.
 // The second argument `grouped` can be used to pass a buffer to avoid allocations.
 // If it's nil, the returned slice will be allocated.
-func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
+func groupChunkRefs(series map[uint64]labels.Labels, chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
 	seen := make(map[uint64]int, len(grouped))
 	for _, chunkRef := range chunkRefs {
 		if idx, found := seen[chunkRef.Fingerprint]; found {
@@ -234,10 +233,14 @@ func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedC
 			seen[chunkRef.Fingerprint] = len(grouped)
 			grouped = append(grouped, &logproto.GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
-				Tenant:      chunkRef.UserID,
-				Refs:        []*logproto.ShortRef{convertToShortRef(chunkRef)},
+				Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(series[chunkRef.Fingerprint]),
+				},
+				Tenant: chunkRef.UserID,
+				Refs:   []*logproto.ShortRef{convertToShortRef(chunkRef)},
 			})
 		}
 	}
+
 	return grouped
 }

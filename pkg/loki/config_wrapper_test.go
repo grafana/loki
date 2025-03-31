@@ -16,6 +16,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/loki/common"
+	azurebucket "github.com/grafana/loki/v3/pkg/storage/bucket/azure"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -144,11 +148,15 @@ common:
 		// * ingester
 		// * distributor
 		// * ruler
+		// * ingest limits
+		// * ingest limits frontend
 
 		t.Run("does not automatically configure memberlist when no top-level memberlist config is provided", func(t *testing.T) {
 			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ingester.LifecyclerConfig.RingConfig.KVStore.Store, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, defaults.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, defaults.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("when top-level memberlist join_members are provided, all applicable rings are defaulted to use memberlist", func(t *testing.T) {
@@ -162,6 +170,8 @@ memberlist:
 			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via config file are preserved", func(t *testing.T) {
@@ -180,6 +190,8 @@ distributor:
 
 			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via command line are preserved", func(t *testing.T) {
@@ -195,6 +207,8 @@ memberlist:
 
 			assert.EqualValues(t, memberlistStr, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 	})
 
@@ -219,12 +233,16 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when multiple configs are provided, an error is returned", func(t *testing.T) {
@@ -256,6 +274,7 @@ memberlist:
       secret_access_key: def789
       insecure: true
       disable_dualstack: true
+      chunk_delimiter: "-"
       http_config:
         response_header_timeout: 5m`
 
@@ -281,6 +300,7 @@ memberlist:
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.True(t, actual.DisableDualstack)
+				assert.Equal(t, "-", actual.ChunkDelimiter)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -296,12 +316,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common s3 storage config is provided (with session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -341,6 +366,7 @@ memberlist:
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
 				assert.False(t, actual.DisableDualstack)
+				assert.Equal(t, "", actual.ChunkDelimiter)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -356,12 +382,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common gcs storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -392,12 +423,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common azure storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -444,6 +480,8 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
@@ -451,6 +489,8 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common bos storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -482,6 +522,8 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
@@ -489,6 +531,8 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common swift storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -516,9 +560,9 @@ memberlist:
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []swift.Config{
-				config.Ruler.StoreConfig.Swift.Config,
-				config.StorageConfig.Swift.Config,
+			for _, actual := range []openstack.SwiftConfig{
+				config.Ruler.StoreConfig.Swift,
+				config.StorageConfig.Swift,
 			} {
 				assert.Equal(t, 3, actual.AuthVersion)
 				assert.Equal(t, "http://example.com", actual.AuthURL)
@@ -526,7 +570,7 @@ memberlist:
 				assert.Equal(t, "example.com", actual.UserDomainName)
 				assert.Equal(t, "1", actual.UserDomainID)
 				assert.Equal(t, "27", actual.UserID)
-				assert.Equal(t, "supersecret", actual.Password)
+				assert.Equal(t, flagext.SecretWithValue("supersecret"), actual.Password)
 				assert.Equal(t, "2", actual.DomainID)
 				assert.Equal(t, "test.com", actual.DomainName)
 				assert.Equal(t, "13", actual.ProjectID)
@@ -549,12 +593,103 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
+		})
+
+		t.Run("when common alibaba storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+			configInput := `common:
+  storage:
+    alibabacloud:
+      bucket: testbucket
+      endpoint: https://example.com
+      access_key_id: abc123
+      secret_access_key: def789`
+
+			config, defaults := testContext(configInput, nil)
+
+			assert.Equal(t, "alibaba", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []alibaba.OssConfig{
+				config.Ruler.StoreConfig.AlibabaCloud,
+				config.StorageConfig.AlibabaStorageConfig,
+			} {
+				assert.Equal(t, "testbucket", actual.Bucket)
+				assert.Equal(t, "https://example.com", actual.Endpoint)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, "def789", actual.SecretAccessKey)
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
+		})
+
+		t.Run("when common cos storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+			configInput := `common:
+  storage:
+    cos:
+      bucketnames: testbucket
+      endpoint: https://example.com
+      region: test-region
+      access_key_id: abc123
+      secret_access_key: def789`
+
+			config, defaults := testContext(configInput, nil)
+
+			assert.Equal(t, "cos", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []ibmcloud.COSConfig{
+				config.Ruler.StoreConfig.COS,
+				config.StorageConfig.COSConfig,
+			} {
+				assert.Equal(t, "testbucket", actual.BucketNames)
+				assert.Equal(t, "https://example.com", actual.Endpoint)
+				assert.Equal(t, "test-region", actual.Region)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, flagext.SecretWithValue("def789"), actual.SecretAccessKey)
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common filesystem/local config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -618,7 +753,7 @@ ruler:
 		})
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
-			specificRulerConfig := `common:
+			explicitStorageConfig := `common:
   storage:
     gcs:
       bucket_name: foobar
@@ -631,7 +766,7 @@ storage_config:
     access_key_id: abc123
     secret_access_key: def789`
 
-			config, defaults := testContext(specificRulerConfig, nil)
+			config, defaults := testContext(explicitStorageConfig, nil)
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
 			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
@@ -645,6 +780,43 @@ storage_config:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+		})
+
+		t.Run("when common object_store config is provided, storage_config and rulers should use it", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17`
+
+			config, _ := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 17, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
+		})
+
+		t.Run("explicit thanos object storage config provided via config file is preserved", func(t *testing.T) {
+			explicitStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17
+storage_config:
+  object_store:
+    gcs:
+      bucket_name: barfoo
+      chunk_buffer_size: 27`
+
+			config, _ := testContext(explicitStorageConfig, nil)
+
+			assert.Equal(t, "barfoo", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 27, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
 		})
 
 		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
@@ -685,6 +857,48 @@ storage_config:
 			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Region)
 			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.AccessKeyID)
 			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.SecretAccessKey.String())
+		})
+
+		t.Run("named storage config (thanos) provided via config file is preserved", func(t *testing.T) {
+			namedStoresConfig := `common:
+  storage:
+    object_store:
+      s3:
+        endpoint: s3://common-bucket
+        region: us-east1
+        access_key_id: abc123
+        secret_access_key: def789
+storage_config:
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: s3://foo-bucket
+          region: us-west1
+          access_key_id: 123abc
+          secret_access_key: 789def
+        store-2:
+          endpoint: s3://bar-bucket
+          region: us-west2
+          access_key_id: 456def
+          secret_access_key: 789abc`
+			config, _ := testContext(namedStoresConfig, nil)
+
+			// should be set by common config
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.ObjectStore.S3.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.ObjectStore.S3.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.ObjectStore.S3.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.ObjectStore.S3.SecretAccessKey.String())
+
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.ObjectStore.NamedStores.S3["store-1"].Endpoint)
+			assert.Equal(t, "us-west1", config.StorageConfig.ObjectStore.NamedStores.S3["store-1"].Region)
+			assert.Equal(t, "123abc", config.StorageConfig.ObjectStore.NamedStores.S3["store-1"].AccessKeyID)
+			assert.Equal(t, "789def", config.StorageConfig.ObjectStore.NamedStores.S3["store-1"].SecretAccessKey.String())
+
+			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.ObjectStore.NamedStores.S3["store-2"].Endpoint)
+			assert.Equal(t, "us-west2", config.StorageConfig.ObjectStore.NamedStores.S3["store-2"].Region)
+			assert.Equal(t, "456def", config.StorageConfig.ObjectStore.NamedStores.S3["store-2"].AccessKeyID)
+			assert.Equal(t, "789abc", config.StorageConfig.ObjectStore.NamedStores.S3["store-2"].SecretAccessKey.String())
 		})
 
 		t.Run("partial ruler config from file is honored for overriding things like bucket names", func(t *testing.T) {
@@ -1314,6 +1528,8 @@ common:
 		assert.NoError(t, err)
 
 		assert.Equal(t, "", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "", config.IngestLimits.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "", config.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "", config.IndexGateway.Ring.TokensFilePath)
@@ -1329,6 +1545,8 @@ common:
 		assert.NoError(t, err)
 
 		assert.Equal(t, "/loki/ingester.tokens", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/loki/ingestlimits.tokens", config.IngestLimits.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/loki/ingestlimitsfrontend.tokens", config.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/loki/compactor.tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/loki/scheduler.tokens", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "/loki/indexgateway.tokens", config.IndexGateway.Ring.TokensFilePath)
@@ -1339,6 +1557,12 @@ common:
 ingester:
   lifecycler:
     tokens_file_path: /loki/toookens
+ingest_limits:
+  lifecycler:
+    tokens_file_path: /limits/toookens
+ingest_limits_frontend:
+  lifecycler:
+    tokens_file_path: /limitsfrontend/toookens
 compactor:
   compactor_ring:
     tokens_file_path: /foo/tokens
@@ -1356,6 +1580,8 @@ common:
 		assert.NoError(t, err)
 
 		assert.Equal(t, "/loki/toookens", config.Ingester.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/limits/toookens", config.IngestLimits.LifecyclerConfig.TokensFilePath)
+		assert.Equal(t, "/limitsfrontend/toookens", config.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath)
 		assert.Equal(t, "/foo/tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "/looki/tookens", config.IndexGateway.Ring.TokensFilePath)
@@ -1373,6 +1599,8 @@ ingester:
 		assert.NoError(t, err)
 
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
@@ -1396,6 +1624,8 @@ ingester:
 
 		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 
+		assert.Equal(t, "memberlist", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "memberlist", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "memberlist", config.Distributor.DistributorRing.KVStore.Store)
 		assert.Equal(t, "memberlist", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "memberlist", config.QueryScheduler.SchedulerRing.KVStore.Store)
@@ -1415,6 +1645,8 @@ func TestRingInterfaceNames(t *testing.T) {
 
 		assert.Contains(t, config.Common.Ring.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ingester.LifecyclerConfig.InfNames, defaultIface)
+		assert.Contains(t, config.IngestLimits.LifecyclerConfig.InfNames, defaultIface)
+		assert.Contains(t, config.IngestLimitsFrontend.LifecyclerConfig.InfNames, defaultIface)
 		assert.Contains(t, config.Distributor.DistributorRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ruler.Ring.InstanceInterfaceNames, defaultIface)
@@ -1429,6 +1661,8 @@ func TestRingInterfaceNames(t *testing.T) {
 		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
 		assert.NoError(t, err)
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"ingesteriface"})
+		assert.Equal(t, config.IngestLimits.LifecyclerConfig.InfNames, []string{"ingesteriface"})
+		assert.Equal(t, config.IngestLimitsFrontend.LifecyclerConfig.InfNames, []string{"ingesteriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"ingesteriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ingesteriface"})
 		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"ingesteriface"})
@@ -1439,6 +1673,14 @@ func TestRingInterfaceNames(t *testing.T) {
   ring:
     instance_interface_names:
     - distributoriface
+ingest_limits:
+  lifecycler:
+    interface_names:
+    - ingestlimitsiface
+ingest_limits_frontend:
+  lifecycler:
+    interface_names:
+    - ingestlimitsfrontendiface
 ruler:
   ring:
     instance_interface_names:
@@ -1455,6 +1697,8 @@ ingester:
 		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
 		assert.NoError(t, err)
 		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"ingesteriface"})
+		assert.Equal(t, config.IngestLimits.LifecyclerConfig.InfNames, []string{"ingestlimitsiface"})
+		assert.Equal(t, config.IngestLimitsFrontend.LifecyclerConfig.InfNames, []string{"ingestlimitsfrontendiface"})
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
@@ -1465,6 +1709,14 @@ ingester:
   ring:
     instance_interface_names:
     - distributoriface
+ingest_limits:
+  lifecycler:
+    interface_names:
+    - ingestlimitsiface
+ingest_limits_frontend:
+  lifecycler:
+    interface_names:
+    - ingestlimitsfrontendiface
 ruler:
   ring:
     instance_interface_names:
@@ -1476,6 +1728,8 @@ query_scheduler:
 
 		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
 		assert.NoError(t, err)
+		assert.Equal(t, config.IngestLimits.LifecyclerConfig.InfNames, []string{"ingestlimitsiface"})
+		assert.Equal(t, config.IngestLimitsFrontend.LifecyclerConfig.InfNames, []string{"ingestlimitsfrontendiface"})
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
@@ -1548,6 +1802,8 @@ func TestCommonRingConfigSection(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
@@ -1574,6 +1830,8 @@ ingester:
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 	})
 
 	t.Run("if only ingester ring is provided, reuse it for all rings", func(t *testing.T) {
@@ -1586,6 +1844,8 @@ ingester:
 		assert.NoError(t, err)
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
@@ -1612,6 +1872,12 @@ ingester:
 
 		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IngestLimits.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IngestLimitsFrontend.LifecyclerConfig.HeartbeatPeriod)
 
 		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
@@ -1647,6 +1913,12 @@ distributor:
 		assert.Equal(t, "inmemory", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.Ingester.LifecyclerConfig.HeartbeatPeriod)
 
+		assert.Equal(t, "inmemory", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IngestLimits.LifecyclerConfig.HeartbeatPeriod)
+
+		assert.Equal(t, "inmemory", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, 5*time.Minute, config.IngestLimitsFrontend.LifecyclerConfig.HeartbeatPeriod)
+
 		assert.Equal(t, "inmemory", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, 5*time.Minute, config.Ruler.Ring.HeartbeatPeriod)
 
@@ -1671,6 +1943,8 @@ distributor:
 		assert.NoError(t, err)
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 		assert.Equal(t, "consul", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "consul", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "consul", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "consul", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "consul", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "consul", config.CompactorConfig.CompactorRing.KVStore.Store)
@@ -1689,6 +1963,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "etcd", config.Distributor.DistributorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
+		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.Ruler.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
@@ -1808,6 +2084,12 @@ func Test_instanceAddr(t *testing.T) {
 ingester:
   lifecycler:
     address: myingester
+ingest_limits:
+  lifecycler:
+    address: myingestlimits
+ingest_limits_frontend:
+  lifecycler:
+    address: myingestlimitsfrontend
 memberlist:
   advertise_addr: mymemberlist
 ruler:
@@ -1832,6 +2114,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "myingestlimits", config.IngestLimits.LifecyclerConfig.Addr)
+		assert.Equal(t, "myingestlimitsfrontend", config.IngestLimitsFrontend.LifecyclerConfig.Addr)
 		assert.Equal(t, "mymemberlist", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
@@ -1847,6 +2131,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.IngestLimits.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.IngestLimitsFrontend.LifecyclerConfig.Addr)
 		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
@@ -1865,6 +2151,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "22.22.22.22", config.IngestLimits.LifecyclerConfig.Addr)
+		assert.Equal(t, "22.22.22.22", config.IngestLimitsFrontend.LifecyclerConfig.Addr)
 		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr) /// not a ring.
 		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
@@ -1884,6 +2172,14 @@ ingester:
   lifecycler:
     interface_names:
     - myingester
+ingest_limits:
+  lifecycler:
+    interface_names:
+    - myingestlimits
+ingest_limits_frontend:
+  lifecycler:
+    interface_names:
+    - myingestlimitsfrontend
 ruler:
   ring:
     instance_interface_names:
@@ -1913,6 +2209,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"mydistributor"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"myingester"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"myingestlimits"}, config.IngestLimits.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"myingestlimitsfrontend"}, config.IngestLimitsFrontend.LifecyclerConfig.InfNames)
 		assert.Equal(t, []string{"myruler"}, config.Ruler.Ring.InstanceInterfaceNames)
 		assert.Equal(t, []string{"myscheduler"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"myfrontend"}, config.Frontend.FrontendV2.InfNames)
@@ -1928,6 +2226,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"commoninterface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"commoninterface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.IngestLimits.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"commoninterface"}, config.IngestLimitsFrontend.LifecyclerConfig.InfNames)
 		assert.Equal(t, []string{"commoninterface"}, config.Ruler.Ring.InstanceInterfaceNames)
 		assert.Equal(t, []string{"commoninterface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"commoninterface"}, config.Frontend.FrontendV2.InfNames)
@@ -1947,6 +2247,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.IngestLimits.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.IngestLimitsFrontend.LifecyclerConfig.InfNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
@@ -1966,6 +2268,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"interface"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"interface"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"interface"}, config.IngestLimits.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"interface"}, config.IngestLimitsFrontend.LifecyclerConfig.InfNames)
 		assert.Equal(t, []string{"interface"}, config.Ruler.Ring.InstanceInterfaceNames)
 		assert.Equal(t, []string{"interface"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"interface"}, config.Frontend.FrontendV2.InfNames)
@@ -1986,6 +2290,8 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Distributor.DistributorRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ingester.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.IngestLimits.LifecyclerConfig.InfNames)
+		assert.Equal(t, []string{"ringsshouldusethis"}, config.IngestLimitsFrontend.LifecyclerConfig.InfNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.Ruler.Ring.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
@@ -2123,5 +2429,93 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		expected.Endpoint = "oss.test"
 
 		assert.Equal(t, expected, (alibaba.OssConfig)(nsCfg.AlibabaCloud["store-8"]))
+	})
+}
+
+func TestBucketNamedStores_applyDefaults(t *testing.T) {
+	namedStoresConfig := `storage_config:
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: s3.test
+          bucket_name: foobar
+          dualstack_enabled: false
+      azure:
+        store-2:
+          account_name: foo
+          container_name: bar
+          max_retries: 3
+      gcs:
+        store-3:
+          bucket_name: foobar
+      filesystem:
+        store-4:
+          dir: foobar
+      swift:
+        store-5:
+          container_name: foobar
+          request_timeout: 30s
+`
+	// make goconst happy
+	bucketName := "foobar"
+
+	config, defaults, err := configWrapperFromYAML(t, namedStoresConfig, nil)
+	require.NoError(t, err)
+
+	nsCfg := config.StorageConfig.ObjectStore.NamedStores
+
+	t.Run("s3", func(t *testing.T) {
+		assert.Len(t, nsCfg.S3, 1)
+
+		// expect the defaults to be set on named store config
+		expected := defaults.StorageConfig.ObjectStore.S3
+		expected.BucketName = bucketName
+		expected.Endpoint = "s3.test"
+		// override defaults
+		expected.DualstackEnabled = false
+
+		assert.Equal(t, expected, (s3.Config)(nsCfg.S3["store-1"]))
+	})
+
+	t.Run("azure", func(t *testing.T) {
+		assert.Len(t, nsCfg.Azure, 1)
+
+		expected := defaults.StorageConfig.ObjectStore.Azure
+		expected.StorageAccountName = "foo"
+		expected.ContainerName = "bar"
+		// overrides defaults
+		expected.MaxRetries = 3
+
+		assert.Equal(t, expected, (azurebucket.Config)(nsCfg.Azure["store-2"]))
+	})
+
+	t.Run("gcs", func(t *testing.T) {
+		assert.Len(t, nsCfg.GCS, 1)
+
+		expected := defaults.StorageConfig.ObjectStore.GCS
+		expected.BucketName = bucketName
+
+		assert.Equal(t, expected, (gcs.Config)(nsCfg.GCS["store-3"]))
+	})
+
+	t.Run("filesystem", func(t *testing.T) {
+		assert.Len(t, nsCfg.Filesystem, 1)
+
+		expected := defaults.StorageConfig.ObjectStore.Filesystem
+		expected.Directory = bucketName
+
+		assert.Equal(t, expected, (filesystem.Config)(nsCfg.Filesystem["store-4"]))
+	})
+
+	t.Run("swift", func(t *testing.T) {
+		assert.Len(t, nsCfg.Swift, 1)
+
+		expected := defaults.StorageConfig.ObjectStore.Swift
+		expected.ContainerName = bucketName
+		// override defaults
+		expected.RequestTimeout = 30 * time.Second
+
+		assert.Equal(t, expected, (swift.Config)(nsCfg.Swift["store-5"]))
 	})
 }

@@ -1,11 +1,10 @@
 ---
-title: Autoscaling Loki queriers
+title: Manage varying workloads at scale with autoscaling queriers
 menuTitle: Autoscaling queriers
 description: Describes how to use KEDA to autoscale the quantity of queriers for a microsevices mode Kubernetes deployment.
 weight: 
 ---
-
-# Autoscaling Loki queriers
+# Manage varying workloads at scale with autoscaling queriers
 
 A microservices deployment of a Loki cluster that runs on Kubernetes typically handles a
 workload that varies throughout the day.

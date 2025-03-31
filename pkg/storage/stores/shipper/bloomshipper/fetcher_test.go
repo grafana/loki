@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -176,12 +177,11 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 				size: 1, workers: 0, err: "queue requires at least 1 worker",
 			},
 		} {
-			tc := tc
 			t.Run(tc.err, func(t *testing.T) {
 				_, err := newDownloadQueue[bool, bool](
 					tc.size,
 					tc.workers,
-					func(ctx context.Context, r downloadRequest[bool, bool]) {},
+					func(_ context.Context, _ downloadRequest[bool, bool]) {},
 					log.NewNopLogger(),
 				)
 				require.ErrorContains(t, err, tc.err)
@@ -329,16 +329,16 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 
 	refs := []BlockRef{
 		// no directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Codec: compression.None},
 		// invalid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Codec: compression.Snappy},
 		// valid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Codec: compression.GZIP},
 	}
 	dirs := []string{
-		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
+		localFilePathWithoutExtension(refs[0], resolver),
+		localFilePathWithoutExtension(refs[1], resolver),
+		localFilePathWithoutExtension(refs[2], resolver),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -360,7 +360,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	require.Len(t, found, 1)
 	require.Len(t, missing, 2)
 
-	require.Equal(t, refs[2], found[0].BlockRef)
+	require.Equal(t, refs[2].Ref, found[0].Ref)
 	require.ElementsMatch(t, refs[0:2], missing)
 }
 
@@ -437,16 +437,54 @@ func TestFetcher_IsBlockDir(t *testing.T) {
 	})
 }
 
-func metasFromCache(data map[string][]byte) []Meta {
-	metas := make([]Meta, 0, len(data))
-	for _, v := range data {
-		meta := Meta{
-			MetaRef: MetaRef{},
-		}
-		_ = json.Unmarshal(v, &meta)
-		metas = append(metas, meta)
+func Benchmark_Fetcher_processMetasCacheResponse(b *testing.B) {
+	b.Log(b.N)
+
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{b.TempDir()},
 	}
-	return metas
+
+	c, err := NewBloomClient(cfg, nil, log.NewNopLogger())
+	require.NoError(b, err)
+	f, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(b, err)
+
+	step := math.MaxUint64 / uint64(b.N)
+
+	refs := make([]MetaRef, 0, b.N)
+	keys := make([]string, 0, b.N)
+	bufs := make([][]byte, 0, b.N)
+
+	for i := 0; i < b.N; i++ {
+		minFp := model.Fingerprint(uint64(i) * step)
+		maxFp := model.Fingerprint(uint64(i)*step + step)
+
+		ref := Ref{
+			TenantID:       "fake",
+			TableName:      "tsdb_index_20000",
+			Bounds:         v1.NewBounds(minFp, maxFp),
+			StartTimestamp: model.Earliest,
+			EndTimestamp:   model.Latest,
+		}
+		metaRef := MetaRef{Ref: ref}
+		refs = append(refs, metaRef)
+
+		keys = append(keys, f.client.Meta(metaRef).Addr())
+
+		meta := Meta{
+			MetaRef: metaRef,
+			Blocks:  []BlockRef{{Ref: ref}},
+		}
+
+		buf, _ := json.Marshal(meta)
+		bufs = append(bufs, buf)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	_, _, _ = f.processMetasCacheResponse(context.TODO(), refs, keys, bufs)
 }
 
 func metaRefs(metas []Meta) []MetaRef {

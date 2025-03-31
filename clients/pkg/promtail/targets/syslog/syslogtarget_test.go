@@ -305,7 +305,6 @@ func Benchmark_SyslogTarget(b *testing.B) {
 		{"tcp", protocolTCP, fmtOctetCounting},
 		{"udp", protocolUDP, fmtOctetCounting},
 	} {
-		tt := tt
 		b.Run(tt.name, func(b *testing.B) {
 			client := fake.New(func() {})
 
@@ -366,7 +365,6 @@ func TestSyslogTarget(t *testing.T) {
 		{"udp newline separated", protocolUDP, fmtNewline},
 		{"udp octetcounting", protocolUDP, fmtOctetCounting},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			w := log.NewSyncWriter(os.Stderr)
 			logger := log.NewLogfmtLogger(w)
@@ -481,7 +479,6 @@ func TestSyslogTarget_RFC5424Messages(t *testing.T) {
 		{"tcp newline separated", protocolTCP, fmtNewline},
 		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			w := log.NewSyncWriter(os.Stderr)
 			logger := log.NewLogfmtLogger(w)

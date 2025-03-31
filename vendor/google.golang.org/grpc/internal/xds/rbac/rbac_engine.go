@@ -219,6 +219,9 @@ func newRPCData(ctx context.Context) (*rpcData, error) {
 	if !ok {
 		return nil, errors.New("missing method in incoming context")
 	}
+	// gRPC-Go strips :path from the headers given to the application, but RBAC should be
+	// able to match against it.
+	md[":path"] = []string{mn}
 
 	// The connection is needed in order to find the destination address and
 	// port of the incoming RPC Call.
@@ -237,12 +240,9 @@ func newRPCData(ctx context.Context) (*rpcData, error) {
 
 	var authType string
 	var peerCertificates []*x509.Certificate
-	if pi.AuthInfo != nil {
-		tlsInfo, ok := pi.AuthInfo.(credentials.TLSInfo)
-		if ok {
-			authType = pi.AuthInfo.AuthType()
-			peerCertificates = tlsInfo.State.PeerCertificates
-		}
+	if tlsInfo, ok := pi.AuthInfo.(credentials.TLSInfo); ok {
+		authType = pi.AuthInfo.AuthType()
+		peerCertificates = tlsInfo.State.PeerCertificates
 	}
 
 	return &rpcData{
@@ -281,15 +281,16 @@ func (e *engine) doAuditLogging(rpcData *rpcData, rule string, authorized bool) 
 	// In the RBAC world, we need to have a SPIFFE ID as the principal for this
 	// to be meaningful
 	principal := ""
-	if rpcData.peerInfo != nil && rpcData.peerInfo.AuthInfo != nil && rpcData.peerInfo.AuthInfo.AuthType() == "tls" {
+	if rpcData.peerInfo != nil {
 		// If AuthType = tls, then we can cast AuthInfo to TLSInfo.
-		tlsInfo := rpcData.peerInfo.AuthInfo.(credentials.TLSInfo)
-		if tlsInfo.SPIFFEID != nil {
-			principal = tlsInfo.SPIFFEID.String()
+		if tlsInfo, ok := rpcData.peerInfo.AuthInfo.(credentials.TLSInfo); ok {
+			if tlsInfo.SPIFFEID != nil {
+				principal = tlsInfo.SPIFFEID.String()
+			}
 		}
 	}
 
-	//TODO(gtcooke94) check if we need to log before creating the event
+	// TODO(gtcooke94) check if we need to log before creating the event
 	event := &audit.Event{
 		FullMethodName: rpcData.fullMethod,
 		Principal:      principal,

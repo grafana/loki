@@ -162,24 +162,22 @@ func TestIteratorMultipleLabels(t *testing.T) {
 func TestMergeIteratorPrefetch(t *testing.T) {
 	t.Parallel()
 
-	type tester func(t *testing.T, i HeapIterator)
+	type tester func(t *testing.T, i MergeEntryIterator)
 
 	tests := map[string]tester{
-		"prefetch on IsEmpty() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on IsEmpty() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.Equal(t, false, i.IsEmpty())
 		},
-		"prefetch on Peek() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on Peek() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.Equal(t, time.Unix(0, 0), i.Peek())
 		},
-		"prefetch on Next() when called as first method": func(t *testing.T, i HeapIterator) {
+		"prefetch on Next() when called as first method": func(t *testing.T, i MergeEntryIterator) {
 			assert.True(t, i.Next())
 			assert.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 0), Line: "0"}, i.At())
 		},
 	}
 
 	for testName, testFunc := range tests {
-		testFunc := testFunc
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

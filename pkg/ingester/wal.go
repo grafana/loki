@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
@@ -81,7 +82,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, wlog.CompressionNone)
+	tsdbWAL, err := wlog.NewSize(util_log.SlogFromGoKit(util_log.Logger), registerer, cfg.Dir, walSegmentSize, wlog.CompressionNone)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,7 @@ func (w *walWrapper) Log(record *wal.Record) error {
 	}
 	select {
 	case <-w.quit:
-		return nil
+		return errors.New("wal is stopped")
 	default:
 		buf := recordPool.GetBytes()
 		defer func() {

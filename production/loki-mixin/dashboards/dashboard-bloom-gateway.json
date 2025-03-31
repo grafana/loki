@@ -19,7 +19,6 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "collapsed": false,
@@ -43,8 +42,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds",
-            "seriesBy": "last"
+            "mode": "thresholds"
           },
           "custom": {
             "axisBorderShow": false,
@@ -53,9 +51,10 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
-            "gradientMode": "none",
+            "gradientMode": "scheme",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -66,7 +65,7 @@
             "lineStyle": {
               "fill": "solid"
             },
-            "lineWidth": 2,
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -111,7 +110,7 @@
       },
       "gridPos": {
         "h": 6,
-        "w": 6,
+        "w": 12,
         "x": 0,
         "y": 1
       },
@@ -129,6 +128,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0-77765",
       "targets": [
         {
           "datasource": {
@@ -136,7 +136,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(loki_bloom_gateway_filtered_chunks_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_chunks_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+          "expr": "sum(rate(loki_bloom_gateway_filtered_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+          "hide": false,
           "instant": false,
           "legendFormat": "Chunks",
           "range": true,
@@ -149,7 +150,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(loki_bloom_gateway_filtered_series_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_series_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+          "expr": "sum(rate(loki_bloom_gateway_filtered_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
           "legendFormat": "Series",
@@ -157,7 +158,7 @@
           "refId": "B"
         }
       ],
-      "title": "Filter ratio",
+      "title": "Filter ratio - Bloom Gateway (server)",
       "type": "timeseries"
     },
     {
@@ -202,7 +203,7 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 6,
+        "x": 12,
         "y": 1
       },
       "id": 75,
@@ -221,7 +222,7 @@
         "showThresholdMarkers": true,
         "sizing": "auto"
       },
-      "pluginVersion": "11.1.0-70005",
+      "pluginVersion": "11.4.0-77765",
       "targets": [
         {
           "datasource": {
@@ -230,7 +231,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(loki_bloom_gateway_filtered_chunks_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_chunks_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+          "expr": "sum(increase(loki_bloom_gateway_filtered_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
           "instant": true,
           "legendFormat": "Chunks",
           "range": false,
@@ -243,40 +244,12 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(loki_bloom_gateway_filtered_series_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_series_sum{job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+          "expr": "sum(increase(loki_bloom_gateway_filtered_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
           "hide": false,
           "instant": true,
           "legendFormat": "Series",
           "range": false,
           "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(loki_bloom_gateway_filtered_chunks_sum{job=\"$namespace/bloom-gateway\"})\n/\nsum(loki_bloom_gateway_requested_chunks_sum{job=\"$namespace/bloom-gateway\"})",
-          "hide": true,
-          "instant": true,
-          "legendFormat": "Chunks avg",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(loki_bloom_gateway_filtered_series_sum{job=\"$namespace/bloom-gateway\"})\n/\nsum(loki_bloom_gateway_requested_series_sum{job=\"$namespace/bloom-gateway\"})",
-          "hide": true,
-          "instant": true,
-          "legendFormat": "Series avg",
-          "range": false,
-          "refId": "D"
         }
       ],
       "title": "Filter ratio",
@@ -300,6 +273,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
@@ -376,7 +350,7 @@
       "gridPos": {
         "h": 6,
         "w": 6,
-        "x": 12,
+        "x": 18,
         "y": 1
       },
       "id": 72,
@@ -393,6 +367,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0-77765",
       "targets": [
         {
           "datasource": {
@@ -413,10 +388,123 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_status_ready{container=\"bloom-gateway\", cluster=\"$cluster\", namespace=\"$namespace\"})",
-          "hide": true,
+          "expr": "kube_statefulset_replicas{cluster=\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
+          "hide": false,
           "instant": false,
-          "legendFormat": "Running",
+          "legendFormat": "Desired",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Readiness",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Percentage of chunks that are filtered by using bloom filters",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "scheme",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "yellow",
+                "value": 0.75
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "id": 93,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.4.0-77765",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(loki_bloom_gateway_querier_chunks_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "Chunks",
           "range": true,
           "refId": "A"
         },
@@ -426,12 +514,93 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kube_statefulset_replicas{cluster=\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
+          "exemplar": false,
+          "expr": "sum(rate(loki_bloom_gateway_querier_series_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Desired",
+          "legendFormat": "Series",
           "range": true,
           "refId": "B"
+        }
+      ],
+      "title": "Filter ratio - Index Gateway (client)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Percentage of chunks that are filtered by using bloom filters",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "yellow",
+                "value": 0.75
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 7
+      },
+      "id": 94,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "11.4.0-77765",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(increase(loki_bloom_gateway_querier_chunks_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "Chunks",
+          "range": false,
+          "refId": "A"
         },
         {
           "datasource": {
@@ -439,16 +608,17 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "kube_statefulset_status_replicas_available{cluster=\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
-          "hide": true,
-          "instant": false,
-          "legendFormat": "Available",
-          "range": true,
-          "refId": "C"
+          "exemplar": false,
+          "expr": "sum(increase(loki_bloom_gateway_querier_series_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "Series",
+          "range": false,
+          "refId": "B"
         }
       ],
-      "title": "Readiness",
-      "type": "timeseries"
+      "title": "Filter ratio",
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -468,6 +638,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 50,
             "gradientMode": "none",
@@ -518,7 +689,7 @@
         "h": 6,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 7
       },
       "id": 37,
       "options": {
@@ -534,6 +705,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0-77765",
       "targets": [
         {
           "datasource": {
@@ -555,62 +727,14 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${loki_datasource}"
+        "type": "prometheus",
+        "uid": "${datasource}"
       },
-      "gridPos": {
-        "h": 9,
-        "w": 15,
-        "x": 0,
-        "y": 7
-      },
-      "id": 48,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": false,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=error\" or \"panic:\" | logfmt",
-          "queryType": "range",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=warn\" | logfmt",
-          "hide": true,
-          "queryType": "range",
-          "refId": "B"
-        }
-      ],
-      "title": "Errors",
-      "type": "logs"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "${loki_datasource}"
-      },
+      "description": "Percentage of chunks that are filtered by using bloom filters",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "red",
-            "mode": "fixed"
+            "mode": "thresholds"
           },
           "custom": {
             "axisBorderShow": false,
@@ -619,9 +743,10 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "drawStyle": "bars",
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
             "fillOpacity": 0,
-            "gradientMode": "none",
+            "gradientMode": "scheme",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -629,11 +754,13 @@
             },
             "insertNulls": false,
             "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 2,
-              "type": "symlog"
+              "type": "linear"
             },
             "showPoints": "auto",
             "spanNulls": false,
@@ -642,79 +769,44 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "area"
             }
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "red",
-                "value": 1
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "yellow",
+                "value": 0.75
+              },
+              {
+                "color": "green",
+                "value": 0.9
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "warn"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "error"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "panic"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 9,
-        "w": 9,
-        "x": 15,
-        "y": 7
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 13
       },
-      "id": 52,
+      "id": 99,
       "options": {
         "legend": {
           "calcs": [],
@@ -728,32 +820,151 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.4.0-77765",
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (level) (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |~ \"level=(warn|error)\" | logfmt [$__auto]))",
-          "legendFormat": "{{ level }}",
-          "queryType": "range",
+          "expr": "(\n    sum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n    -\n    sum(rate(loki_index_gateway_postfilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n)\n/\nsum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)",
+          "instant": false,
+          "legendFormat": "chunks {{ route}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter ratio - Index Gateway by route",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "scheme",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 0.1
+              },
+              {
+                "color": "#EF843C",
+                "value": 0.25
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "id": 100,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.4.0-77765",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(rate(loki_bloom_gateway_querier_series_skipped_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "series",
+          "range": true,
           "refId": "A"
         },
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"panic:\" | logfmt [$__auto]))",
+          "exemplar": false,
+          "expr": "sum(rate(loki_bloom_gateway_querier_chunks_skipped_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
           "hide": false,
-          "legendFormat": "panic",
-          "queryType": "range",
+          "instant": false,
+          "legendFormat": "chunks",
+          "range": true,
           "refId": "B"
         }
       ],
-      "title": "Errors Rate",
+      "title": "Data skipped because they don't match any bocks",
       "type": "timeseries"
     },
     {
@@ -762,7 +973,656 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 19
+      },
+      "id": 96,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 50,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "percent"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 447
+          },
+          "id": 97,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "000000134"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "000000134"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+              "hide": true,
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Found/Skipped/Missing chunks",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 50,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "max": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 447
+          },
+          "id": 98,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "000000134"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Filtered chunks",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 50,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "percent"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 454
+          },
+          "id": 107,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "000000134"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Found/Skipped/Missing series",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 50,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "max": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 454
+          },
+          "id": 108,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "000000134"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Filtered series",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Bloom Recorder",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 95,
+      "panels": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 15,
+            "x": 0,
+            "y": 920
+          },
+          "id": 48,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": false,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "${loki_datasource}"
+              },
+              "editorMode": "code",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=error\" or \"panic:\" | logfmt",
+              "queryType": "range",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "${loki_datasource}"
+              },
+              "editorMode": "code",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=warn\" | logfmt",
+              "queryType": "range",
+              "refId": "B"
+            }
+          ],
+          "title": "Errors",
+          "type": "logs"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "red",
+                "mode": "fixed"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "bars",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "log": 2,
+                  "type": "symlog"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "warn"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "orange",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "error"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "red",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "panic"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "semi-dark-red",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 9,
+            "x": 15,
+            "y": 920
+          },
+          "id": 52,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "maxHeight": 600,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77765",
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "${loki_datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (level) (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |~ \"level=(warn|error)\" | logfmt [$__auto]))",
+              "queryType": "range",
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "${loki_datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"panic:\" | logfmt [$__auto]))",
+              "queryType": "range",
+              "refId": "B"
+            }
+          ],
+          "title": "Errors Rate",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Logs",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
       },
       "id": 56,
       "panels": [
@@ -783,6 +1643,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -813,8 +1674,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -829,7 +1689,7 @@
             "h": 14,
             "w": 12,
             "x": 0,
-            "y": 17
+            "y": 1764
           },
           "id": 10,
           "options": {
@@ -845,6 +1705,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -905,6 +1766,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -935,8 +1797,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -952,7 +1813,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 17
+            "y": 1764
           },
           "id": 11,
           "options": {
@@ -968,6 +1829,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1029,6 +1891,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -1059,8 +1922,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1076,7 +1938,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 24
+            "y": 2140
           },
           "id": 81,
           "options": {
@@ -1092,6 +1954,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1167,6 +2030,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -1200,8 +2064,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1216,7 +2079,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 31
+            "y": 2147
           },
           "id": 87,
           "options": {
@@ -1232,6 +2095,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1268,6 +2132,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -1301,8 +2166,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1318,7 +2182,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 31
+            "y": 2147
           },
           "id": 88,
           "options": {
@@ -1334,6 +2198,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1369,6 +2234,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -1402,8 +2268,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1419,7 +2284,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 31
+            "y": 2147
           },
           "id": 89,
           "options": {
@@ -1435,6 +2300,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1482,6 +2348,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -1512,8 +2379,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1529,7 +2395,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 38
+            "y": 2154
           },
           "id": 84,
           "options": {
@@ -1545,6 +2411,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1566,6 +2433,7 @@
         },
         {
           "datasource": {
+            "default": false,
             "type": "prometheus",
             "uid": "${datasource}"
           },
@@ -1582,6 +2450,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -1612,8 +2481,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -1629,7 +2497,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 38
+            "y": 2154
           },
           "id": 85,
           "options": {
@@ -1645,6 +2513,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1662,6 +2531,121 @@
           ],
           "title": "Disk writes",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "default": false,
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "binBps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 2161
+          },
+          "id": 102,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "maxHeight": 600,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77663",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(sum by (instance) (rate(node_disk_read_bytes_total[$__rate_interval]))\n+ on(instance) group_right() \n(count by (instance) (container_fs_reads_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\", device!~\".*sda.*\"}) * 0))",
+              "hide": false,
+              "instant": false,
+              "interval": "",
+              "legendFormat": "Reads",
+              "range": true,
+              "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(sum by(instance) (rate(node_disk_written_bytes_total[$__rate_interval]))\n+ on(instance) group_right() \n(count by(instance) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\", device!~\".*sda.*\"}) * 0)) * -1",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "Writes",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Disk reads/writes",
+          "type": "timeseries"
         }
       ],
       "title": "Resource usage",
@@ -1673,7 +2657,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 22
       },
       "id": 2,
       "panels": [
@@ -1694,6 +2678,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 100,
                 "gradientMode": "none",
@@ -1724,8 +2709,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               }
@@ -1781,7 +2765,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 18
+            "y": 1175
           },
           "id": 13,
           "options": {
@@ -1797,6 +2781,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1804,7 +2789,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (status_code) (\n    rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=~\"($namespace)/bloom-gateway\", route=\"/logproto.BloomGateway/FilterChunkRefs\"}[$__rate_interval])\n)",
+              "expr": "sum by (status_code) (\n    rate(loki_request_duration_seconds_count{cluster=\"$cluster\",job=\"$namespace/bloom-gateway\", route=\"/logproto.BloomGateway/FilterChunkRefs\"}[$__rate_interval])\n)",
               "hide": false,
               "instant": false,
               "legendFormat": "__auto",
@@ -1832,6 +2817,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 20,
                 "gradientMode": "none",
@@ -1862,8 +2848,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               }
@@ -1919,7 +2904,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 18
+            "y": 1175
           },
           "id": 86,
           "options": {
@@ -1935,6 +2920,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -1955,6 +2941,7 @@
         },
         {
           "datasource": {
+            "default": false,
             "type": "prometheus",
             "uid": "${datasource}"
           },
@@ -1971,6 +2958,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -2001,8 +2989,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -2014,7 +3001,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 25
+            "y": 1249
           },
           "id": 14,
           "options": {
@@ -2030,6 +3017,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2069,6 +3057,19 @@
               "legendFormat": "{{ route }} 99th percentile",
               "range": true,
               "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(1, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{cluster=~\"$cluster\", job=~\"($namespace)/bloom-gateway\", route=~\"/logproto.BloomGateway/FilterChunkRefs\"}))",
+              "hide": false,
+              "instant": false,
+              "legendFormat": "{{ route }} max",
+              "range": true,
+              "refId": "A"
             }
           ],
           "title": "Latency",
@@ -2091,6 +3092,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 10,
                 "gradientMode": "none",
@@ -2121,8 +3123,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   }
                 ]
               },
@@ -2134,7 +3135,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 25
+            "y": 1249
           },
           "id": 15,
           "options": {
@@ -2150,6 +3151,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2178,7 +3180,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 23
       },
       "id": 58,
       "panels": [
@@ -2200,6 +3202,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -2230,7 +3233,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -2242,7 +3246,7 @@
             "h": 7,
             "w": 8,
             "x": 0,
-            "y": 11
+            "y": 1176
           },
           "id": 16,
           "options": {
@@ -2258,33 +3262,8 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (pod) (loki_bloom_gateway_queue_duration_seconds_sum{cluster=\"$cluster\", namespace=\"$namespace\"})\n/\nsum by (pod) (loki_bloom_gateway_queue_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"})\n",
-              "hide": true,
-              "instant": false,
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "sum (loki_bloom_gateway_queue_length{cluster=\"$cluster\", namespace=\"$namespace\"})",
-              "hide": true,
-              "instant": false,
-              "legendFormat": "Total",
-              "range": true,
-              "refId": "D"
-            },
             {
               "datasource": {
                 "type": "prometheus",
@@ -2320,6 +3299,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -2350,7 +3330,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -2362,7 +3343,7 @@
             "h": 7,
             "w": 8,
             "x": 8,
-            "y": 11
+            "y": 1176
           },
           "id": 17,
           "options": {
@@ -2378,6 +3359,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2391,19 +3373,6 @@
               "legendFormat": "p99",
               "range": true,
               "refId": "E"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.90, sum by (le) (rate(loki_bloom_gateway_queue_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])))",
-              "hide": true,
-              "instant": false,
-              "legendFormat": "p90",
-              "range": true,
-              "refId": "A"
             },
             {
               "datasource": {
@@ -2453,6 +3422,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -2483,7 +3453,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -2495,7 +3466,7 @@
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 11
+            "y": 1176
           },
           "id": 22,
           "options": {
@@ -2511,6 +3482,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2539,7 +3511,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 24
       },
       "id": 68,
       "panels": [
@@ -2561,6 +3533,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -2607,7 +3580,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 12
+            "y": 1177
           },
           "id": 69,
           "options": {
@@ -2623,6 +3596,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2684,6 +3658,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -2730,7 +3705,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 12
+            "y": 1177
           },
           "id": 70,
           "options": {
@@ -2746,6 +3721,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2807,6 +3783,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -2852,7 +3829,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 12
+            "y": 1177
           },
           "id": 71,
           "options": {
@@ -2868,6 +3845,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -2897,6 +3875,105 @@
           ],
           "title": "Tasks dequeued/processed",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 1214
+          },
+          "id": 105,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "maxHeight": 600,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77663",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(loki_bloom_gateway_process_duration_seconds_count{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (status)",
+              "instant": false,
+              "legendFormat": "{{status}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Worker Iterations per second",
+          "type": "timeseries"
         }
       ],
       "title": "Processing",
@@ -2908,21 +3985,21 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 25
       },
       "id": 59,
       "panels": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
           "description": "",
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 13
+            "y": 1178
           },
           "id": 19,
           "options": {
@@ -2934,7 +4011,7 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-70005",
+          "pluginVersion": "11.4.0-77663",
           "title": "We cache bloom blocks in memory to prevent the gateway from hitting the object store too often",
           "transparent": true,
           "type": "text"
@@ -2957,6 +4034,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -3003,7 +4081,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 14
+            "y": 1179
           },
           "id": 20,
           "options": {
@@ -3019,6 +4097,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -3068,6 +4147,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -3160,7 +4240,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 14
+            "y": 1179
           },
           "id": 83,
           "options": {
@@ -3176,6 +4256,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -3251,6 +4332,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 100,
                 "gradientMode": "none",
@@ -3329,7 +4411,7 @@
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 21
+            "y": 1186
           },
           "id": 92,
           "options": {
@@ -3345,6 +4427,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -3352,7 +4435,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (status) (\n    rate(loki_bloom_blocks_cache_fetched_total{container=\"bloom-gateway\"}[$__rate_interval])\n)\n/ ignoring(status) group_left\nsum (\n    rate(loki_bloom_blocks_cache_fetched_total{container=\"bloom-gateway\"}[$__rate_interval])\n)",
+              "expr": "sum by (status) (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)\n/ ignoring(status) group_left\nsum (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)",
               "hide": false,
               "instant": false,
               "legendFormat": "__auto",
@@ -3381,6 +4464,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -3440,7 +4524,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 28
+            "y": 1193
           },
           "id": 76,
           "options": {
@@ -3456,6 +4540,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -3504,6 +4589,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -3563,7 +4649,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 28
+            "y": 1193
           },
           "id": 21,
           "options": {
@@ -3579,6 +4665,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77663",
           "targets": [
             {
               "datasource": {
@@ -3674,6 +4761,120 @@
           ],
           "title": "Bloom Store",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineStyle": {
+                  "fill": "solid"
+                },
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "fieldMinMax": false,
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/Size (.*)/"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 1200
+          },
+          "id": 101,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "maxHeight": 600,
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "11.4.0-77663",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (job)(rate(loki_bloom_store_download_queue_size_sum{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+              "hide": false,
+              "instant": false,
+              "interval": "",
+              "legendFormat": "Size",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Block download queue size",
+          "type": "timeseries"
         }
       ],
       "title": "Blocks Cache",
@@ -3685,21 +4886,21 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 26
       },
       "id": 60,
       "panels": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
           "description": "",
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 14
+            "y": 1013
           },
           "id": 61,
           "options": {
@@ -3711,22 +4912,22 @@
             "content": "",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-70005",
+          "pluginVersion": "11.4.0-77765",
           "title": "The gateway download bloom meta files and blocks from the object store.",
           "transparent": true,
           "type": "text"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
           "description": "",
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 7,
             "w": 2,
             "x": 0,
-            "y": 15
+            "y": 1014
           },
           "id": 24,
           "options": {
@@ -3738,7 +4939,8 @@
             "content": "---\n#### GCS\n",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-70005",
+          "pluginVersion": "11.4.0-77765",
+          "title": "",
           "transparent": true,
           "type": "text"
         },
@@ -3760,6 +4962,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -3790,7 +4993,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -3802,7 +5006,7 @@
             "h": 7,
             "w": 11,
             "x": 2,
-            "y": 15
+            "y": 1014
           },
           "id": 25,
           "options": {
@@ -3818,6 +5022,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -3825,7 +5030,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+              "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
               "instant": false,
               "legendFormat": "{{operation}} {{status_code}}",
               "range": true,
@@ -3853,6 +5058,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 0,
                 "gradientMode": "none",
@@ -3883,7 +5089,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -3895,7 +5102,7 @@
             "h": 7,
             "w": 11,
             "x": 13,
-            "y": 15
+            "y": 1014
           },
           "id": 29,
           "options": {
@@ -3911,6 +5118,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -3918,7 +5126,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "instant": false,
               "legendFormat": "{{operation}} p99",
               "range": true,
@@ -3930,7 +5138,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p90",
@@ -3943,7 +5151,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p50",
@@ -3955,16 +5163,16 @@
           "type": "timeseries"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
           "description": "",
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 7,
             "w": 2,
             "x": 0,
-            "y": 22
+            "y": 1021
           },
           "id": 62,
           "options": {
@@ -3976,7 +5184,8 @@
             "content": "---\n#### S3\n",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-70005",
+          "pluginVersion": "11.4.0-77765",
+          "title": "",
           "transparent": true,
           "type": "text"
         },
@@ -3998,6 +5207,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -4028,7 +5238,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -4040,7 +5251,7 @@
             "h": 7,
             "w": 11,
             "x": 2,
-            "y": 22
+            "y": 1021
           },
           "id": 63,
           "options": {
@@ -4056,6 +5267,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -4063,7 +5275,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+              "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
               "instant": false,
               "legendFormat": "{{operation}} {{status_code}}",
               "range": true,
@@ -4091,6 +5303,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -4121,7 +5334,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -4133,7 +5347,7 @@
             "h": 7,
             "w": 11,
             "x": 13,
-            "y": 22
+            "y": 1021
           },
           "id": 64,
           "options": {
@@ -4149,6 +5363,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -4156,7 +5371,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "instant": false,
               "legendFormat": "{{operation}} p99",
               "range": true,
@@ -4168,7 +5383,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p90",
@@ -4181,7 +5396,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p50",
@@ -4193,16 +5408,16 @@
           "type": "timeseries"
         },
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
           "description": "",
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 7,
             "w": 2,
             "x": 0,
-            "y": 29
+            "y": 1028
           },
           "id": 65,
           "options": {
@@ -4214,7 +5429,8 @@
             "content": "---\n#### Azure\nBlob Storage\n\n",
             "mode": "markdown"
           },
-          "pluginVersion": "11.1.0-70005",
+          "pluginVersion": "11.4.0-77765",
+          "title": "",
           "transparent": true,
           "type": "text"
         },
@@ -4236,6 +5452,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -4266,7 +5483,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -4278,7 +5496,7 @@
             "h": 7,
             "w": 11,
             "x": 2,
-            "y": 29
+            "y": 1028
           },
           "id": 66,
           "options": {
@@ -4294,6 +5512,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -4301,7 +5520,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+              "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
               "instant": false,
               "legendFormat": "{{operation}} {{status_code}}",
               "range": true,
@@ -4329,6 +5548,7 @@
                 "axisLabel": "",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
+                "barWidthFactor": 0.6,
                 "drawStyle": "line",
                 "fillOpacity": 25,
                 "gradientMode": "none",
@@ -4359,7 +5579,8 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green"
+                    "color": "green",
+                    "value": null
                   }
                 ]
               },
@@ -4371,7 +5592,7 @@
             "h": 7,
             "w": 11,
             "x": 13,
-            "y": 29
+            "y": 1028
           },
           "id": 67,
           "options": {
@@ -4387,6 +5608,7 @@
               "sort": "none"
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -4394,7 +5616,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "instant": false,
               "legendFormat": "{{operation}} p99",
               "range": true,
@@ -4406,7 +5628,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p90",
@@ -4419,7 +5641,7 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
               "hide": false,
               "instant": false,
               "legendFormat": "{{operation}} p50",
@@ -4440,68 +5662,26 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 27
       },
       "id": 77,
       "panels": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
-          "description": "",
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
               "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
                 "hideFrom": {
                   "legend": false,
                   "tooltip": false,
                   "viz": false
                 },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineStyle": {
-                  "fill": "solid"
-                },
-                "lineWidth": 1,
-                "pointSize": 5,
                 "scaleDistribution": {
                   "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
                 }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
               }
             },
             "overrides": []
@@ -4510,376 +5690,125 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 23
-          },
-          "id": 78,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "maxHeight": 600,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${loki_datasource}"
-              },
-              "editorMode": "code",
-              "expr": "topk(3, sum by (tasks) (count_over_time({namespace=\"loki-dev-006\", container=\"bloom-gateway\"} |= \"process tasks with bounds\" | logfmt [5s])))",
-              "legendFormat": "{{tasks}}",
-              "queryType": "range",
-              "refId": "A"
-            }
-          ],
-          "title": "Process tasks with bounds",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
-          },
-          "description": "",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineStyle": {
-                  "fill": "solid"
-                },
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
-              }
-            },
-            "overrides": [
-              {
-                "__systemRef": "hideSeriesFrom",
-                "matcher": {
-                  "id": "byNames",
-                  "options": {
-                    "mode": "exclude",
-                    "names": [
-                      "max",
-                      "avg"
-                    ],
-                    "prefix": "All except:",
-                    "readOnly": true
-                  }
-                },
-                "properties": [
-                  {
-                    "id": "custom.hideFrom",
-                    "value": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": true
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 23
-          },
-          "id": 79,
-          "options": {
-            "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "maxHeight": 600,
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${loki_datasource}"
-              },
-              "editorMode": "code",
-              "expr": "max(max_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"fetch blocks\" | logfmt | unwrap duration(duration) [$__auto]))",
-              "hide": false,
-              "legendFormat": "max",
-              "queryType": "range",
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${loki_datasource}"
-              },
-              "editorMode": "code",
-              "expr": "avg(avg_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"fetch blocks\" | logfmt | unwrap duration(duration) [$__auto]))",
-              "hide": false,
-              "legendFormat": "avg",
-              "queryType": "range",
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${loki_datasource}"
-              },
-              "editorMode": "code",
-              "expr": "avg(avg_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"request unavailable blocks in the background\" | logfmt | missing > 0 | unwrap missing [$__auto]))",
-              "hide": false,
-              "legendFormat": "avg missing",
-              "queryType": "range",
-              "refId": "C"
-            }
-          ],
-          "title": "Download enqueue duration",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "fixedColor": "green",
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "fillOpacity": 80,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "lineWidth": 1,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 100
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 31
+            "y": 1044
           },
           "id": 80,
           "options": {
-            "barRadius": 0,
-            "barWidth": 0.97,
-            "fullHighlight": false,
-            "groupWidth": 0.7,
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "RdYlGn",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-9
+            },
             "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
+              "show": true
             },
-            "orientation": "horizontal",
-            "showValue": "auto",
-            "stacking": "none",
+            "rowsFrame": {
+              "layout": "auto"
+            },
             "tooltip": {
-              "maxHeight": 600,
               "mode": "single",
-              "sort": "none"
+              "showColorScale": false,
+              "yHistogram": false
             },
-            "xTickLabelRotation": 0,
-            "xTickLabelSpacing": 0
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false
+            }
           },
-          "pluginVersion": "11.0.0-67814",
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
-                "type": "loki",
-                "uid": "${loki_datasource}"
+                "type": "prometheus",
+                "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "sort_desc(topk(10, sum by (tasks) (count_over_time({namespace=\"loki-dev-006\", container=\"bloom-gateway\"} |= \"process tasks with bounds\" | logfmt [$__auto]))))",
-              "legendFormat": "",
-              "queryType": "instant",
+              "exemplar": false,
+              "expr": "increase(loki_bloom_gateway_dequeue_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
+              "format": "heatmap",
+              "instant": false,
+              "legendFormat": "__auto",
+              "range": true,
               "refId": "A"
             }
           ],
-          "title": "Tasks multiplexed",
-          "type": "barchart"
+          "title": "Dequeue duration",
+          "type": "heatmap"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "description": "",
           "fieldConfig": {
             "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
               "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
                 "hideFrom": {
                   "legend": false,
                   "tooltip": false,
                   "viz": false
                 },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineStyle": {
-                  "fill": "solid"
-                },
-                "lineWidth": 1,
-                "pointSize": 5,
                 "scaleDistribution": {
                   "type": "linear"
-                },
-                "showPoints": "auto",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "none"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
                 }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
-                  }
-                ]
               }
             },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Enqueue latency"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "s"
-                  }
-                ]
-              }
-            ]
+            "overrides": []
           },
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 31
+            "y": 1044
           },
-          "id": 82,
+          "id": 106,
           "options": {
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "RdYlGn",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-9
+            },
             "legend": {
-              "calcs": [],
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
+              "show": true
+            },
+            "rowsFrame": {
+              "layout": "auto"
             },
             "tooltip": {
-              "maxHeight": 600,
               "mode": "single",
-              "sort": "none"
+              "showColorScale": false,
+              "yHistogram": false
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false
             }
           },
+          "pluginVersion": "11.4.0-77765",
           "targets": [
             {
               "datasource": {
@@ -4887,45 +5816,35 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_store_download_queue_enqueue_time_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
+              "expr": "increase(loki_bloom_gateway_tasks_dequeued_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
+              "format": "heatmap",
               "hide": false,
-              "legendFormat": "Enqueue latency",
-              "range": true,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_store_download_queue_size_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
-              "hide": false,
-              "legendFormat": "Size",
+              "instant": false,
+              "legendFormat": "__auto",
               "range": true,
               "refId": "B"
             }
           ],
-          "title": "Block download queue",
-          "type": "timeseries"
+          "title": "Dequeue count",
+          "type": "heatmap"
         }
       ],
       "title": "Misc",
       "type": "row"
     }
   ],
-  "refresh": "10s",
-  "schemaVersion": 39,
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 40,
   "tags": [],
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
-  "timeRangeUpdatedDuringEditOrView": false,
   "timepicker": {},
   "timezone": "utc",
-  "title": "Bloom-Gateway",
+  "title": "Bloom Gateway",
   "uid": "c495441a-1639-4ee2-9a32-42488dc5f81d",
-  "version": 208,
+  "version": 272,
   "weekStart": ""
 }

@@ -15,16 +15,16 @@ The compactor component exposes REST [endpoints](https://grafana.com/docs/loki/<
 Hitting the endpoint specifies the streams and the time window.
 The deletion of the log entries takes place after a configurable cancellation time period expires.
 
-Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor]({{< relref "./retention#compactor" >}}). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
+Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor](../retention/#compactor). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
 
 ## Configuration
 
 Enable log entry deletion by setting `retention_enabled` to true in the compactor's configuration and setting and `deletion_mode` to `filter-only` or `filter-and-delete` in the runtime config.
 `delete_request_store` also needs to be configured when retention is enabled to process delete requests, this determines the storage bucket that stores the delete requests.
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Be very careful when enabling retention. It is strongly recommended that you also enable versioning on your objects in object storage to allow you to recover from accidental misconfiguration of a retention setting. If you want to enable deletion but not not want to enforce retention, configure the `retention_period` setting with a value of `0s`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Because it is a runtime configuration, `deletion_mode` can be set per-tenant, if desired.
 

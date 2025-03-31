@@ -16,9 +16,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
+type ObjectAttributes struct {
+	Size int64
+}
+
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
 	ObjectExists(ctx context.Context, objectKey string) (bool, error)
+	GetAttributes(ctx context.Context, objectKey string) (ObjectAttributes, error)
 
 	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
@@ -177,6 +182,12 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 		return chunk.Chunk{}, errors.New("object client getChunk fail because object is nil")
 	}
 	defer readCloser.Close()
+
+	// reset if the size is unknown
+	// start with a buf of size bytes.MinRead since we cannot avoid allocations
+	if size < 0 {
+		size = 0
+	}
 
 	// adds bytes.MinRead to avoid allocations when the size is known.
 	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.

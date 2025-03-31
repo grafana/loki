@@ -35,11 +35,13 @@ type AppsService interface {
 	Delete(ctx context.Context, appID string) (*Response, error)
 	Propose(ctx context.Context, propose *AppProposeRequest) (*AppProposeResponse, *Response, error)
 
+	Restart(ctx context.Context, appID string, opts *AppRestartRequest) (*Deployment, *Response, error)
 	GetDeployment(ctx context.Context, appID, deploymentID string) (*Deployment, *Response, error)
 	ListDeployments(ctx context.Context, appID string, opts *ListOptions) ([]*Deployment, *Response, error)
 	CreateDeployment(ctx context.Context, appID string, create ...*DeploymentCreateRequest) (*Deployment, *Response, error)
 
 	GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool, tailLines int) (*AppLogs, *Response, error)
+	GetExec(ctx context.Context, appID, deploymentID, component string) (*AppExec, *Response, error)
 
 	ListRegions(ctx context.Context) ([]*AppRegion, *Response, error)
 
@@ -77,14 +79,26 @@ type AppLogs struct {
 	HistoricURLs []string `json:"historic_urls"`
 }
 
+// AppExec represents the websocket URL used for sending/receiving console input and output.
+type AppExec struct {
+	URL string `json:"url"`
+}
+
 // AppUpdateRequest represents a request to update an app.
 type AppUpdateRequest struct {
 	Spec *AppSpec `json:"spec"`
+	// Whether or not to update the source versions (for example fetching a new commit or image digest) of all components. By default (when this is false) only newly added sources will be updated to avoid changes like updating the scale of a component from also updating the respective code.
+	UpdateAllSourceVersions bool `json:"update_all_source_versions"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
 type DeploymentCreateRequest struct {
 	ForceBuild bool `json:"force_build"`
+}
+
+// AppRestartRequest represents a request to restart an app.
+type AppRestartRequest struct {
+	Components []string `json:"components"`
 }
 
 // AlertDestinationUpdateRequest represents a request to update alert destinations.
@@ -277,6 +291,22 @@ func (s *AppsServiceOp) Propose(ctx context.Context, propose *AppProposeRequest)
 	return res, resp, nil
 }
 
+// Restart restarts an app.
+func (s *AppsServiceOp) Restart(ctx context.Context, appID string, opts *AppRestartRequest) (*Deployment, *Response, error) {
+	path := fmt.Sprintf("%s/%s/restart", appsBasePath, appID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(deploymentRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Deployment, resp, nil
+}
+
 // GetDeployment gets an app deployment.
 func (s *AppsServiceOp) GetDeployment(ctx context.Context, appID, deploymentID string) (*Deployment, *Response, error) {
 	path := fmt.Sprintf("%s/%s/deployments/%s", appsBasePath, appID, deploymentID)
@@ -366,6 +396,27 @@ func (s *AppsServiceOp) GetLogs(ctx context.Context, appID, deploymentID, compon
 	return logs, resp, nil
 }
 
+// GetExec retrieves the websocket URL used for sending/receiving console input and output.
+func (s *AppsServiceOp) GetExec(ctx context.Context, appID, deploymentID, component string) (*AppExec, *Response, error) {
+	var url string
+	if deploymentID == "" {
+		url = fmt.Sprintf("%s/%s/components/%s/exec", appsBasePath, appID, component)
+	} else {
+		url = fmt.Sprintf("%s/%s/deployments/%s/components/%s/exec", appsBasePath, appID, deploymentID, component)
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	logs := new(AppExec)
+	resp, err := s.client.Do(ctx, req, logs)
+	if err != nil {
+		return nil, resp, err
+	}
+	return logs, resp, nil
+}
+
 // ListRegions lists all regions supported by App Platform.
 func (s *AppsServiceOp) ListRegions(ctx context.Context) ([]*AppRegion, *Response, error) {
 	path := fmt.Sprintf("%s/regions", appsBasePath)
@@ -382,6 +433,9 @@ func (s *AppsServiceOp) ListRegions(ctx context.Context) ([]*AppRegion, *Respons
 }
 
 // ListTiers lists available app tiers.
+//
+// Deprecated: The '/v2/apps/tiers' endpoint has been deprecated as app tiers
+// are no longer tied to instance sizes. The concept of tiers is being retired.
 func (s *AppsServiceOp) ListTiers(ctx context.Context) ([]*AppTier, *Response, error) {
 	path := fmt.Sprintf("%s/tiers", appsBasePath)
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
@@ -397,6 +451,9 @@ func (s *AppsServiceOp) ListTiers(ctx context.Context) ([]*AppTier, *Response, e
 }
 
 // GetTier retrieves information about a specific app tier.
+//
+// Deprecated: The '/v2/apps/tiers/{slug}' endpoints have been deprecated as app
+// tiers are no longer tied to instance sizes. The concept of tiers is being retired.
 func (s *AppsServiceOp) GetTier(ctx context.Context, slug string) (*AppTier, *Response, error) {
 	path := fmt.Sprintf("%s/tiers/%s", appsBasePath, slug)
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
@@ -632,6 +689,7 @@ type AppBuildableComponentSpec interface {
 	GetGit() *GitSourceSpec
 	GetGitHub() *GitHubSourceSpec
 	GetGitLab() *GitLabSourceSpec
+	GetBitbucket() *BitbucketSourceSpec
 
 	GetSourceDir() string
 
@@ -674,15 +732,21 @@ type AppRoutableComponentSpec interface {
 type AppSourceType string
 
 const (
-	AppSourceTypeGitHub AppSourceType = "github"
-	AppSourceTypeGitLab AppSourceType = "gitlab"
-	AppSourceTypeGit    AppSourceType = "git"
-	AppSourceTypeImage  AppSourceType = "image"
+	AppSourceTypeBitbucket AppSourceType = "bitbucket"
+	AppSourceTypeGitHub    AppSourceType = "github"
+	AppSourceTypeGitLab    AppSourceType = "gitlab"
+	AppSourceTypeGit       AppSourceType = "git"
+	AppSourceTypeImage     AppSourceType = "image"
 )
 
 // SourceSpec represents a source.
 type SourceSpec interface {
 	GetType() AppSourceType
+}
+
+// GetType returns the Bitbucket source type.
+func (s *BitbucketSourceSpec) GetType() AppSourceType {
+	return AppSourceTypeBitbucket
 }
 
 // GetType returns the GitHub source type.

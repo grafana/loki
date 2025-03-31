@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/resolver/delegatingresolver"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 )
@@ -66,7 +67,7 @@ func newCCResolverWrapper(cc *ClientConn) *ccResolverWrapper {
 // any newly created ccResolverWrapper, except that close may be called instead.
 func (ccr *ccResolverWrapper) start() error {
 	errCh := make(chan error)
-	ccr.serializer.Schedule(func(ctx context.Context) {
+	ccr.serializer.TrySchedule(func(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -76,16 +77,26 @@ func (ccr *ccResolverWrapper) start() error {
 			CredsBundle:          ccr.cc.dopts.copts.CredsBundle,
 			Dialer:               ccr.cc.dopts.copts.Dialer,
 			Authority:            ccr.cc.authority,
+			MetricsRecorder:      ccr.cc.metricsRecorderList,
 		}
 		var err error
-		ccr.resolver, err = ccr.cc.resolverBuilder.Build(ccr.cc.parsedTarget, ccr, opts)
+		// The delegating resolver is used unless:
+		//   - A custom dialer is provided via WithContextDialer dialoption or
+		//   - Proxy usage is disabled through WithNoProxy dialoption.
+		// In these cases, the resolver is built based on the scheme of target,
+		// using the appropriate resolver builder.
+		if ccr.cc.dopts.copts.Dialer != nil || !ccr.cc.dopts.useProxy {
+			ccr.resolver, err = ccr.cc.resolverBuilder.Build(ccr.cc.parsedTarget, ccr, opts)
+		} else {
+			ccr.resolver, err = delegatingresolver.New(ccr.cc.parsedTarget, ccr, opts, ccr.cc.resolverBuilder, ccr.cc.dopts.enableLocalDNSResolution)
+		}
 		errCh <- err
 	})
 	return <-errCh
 }
 
 func (ccr *ccResolverWrapper) resolveNow(o resolver.ResolveNowOptions) {
-	ccr.serializer.Schedule(func(ctx context.Context) {
+	ccr.serializer.TrySchedule(func(ctx context.Context) {
 		if ctx.Err() != nil || ccr.resolver == nil {
 			return
 		}
@@ -102,7 +113,7 @@ func (ccr *ccResolverWrapper) close() {
 	ccr.closed = true
 	ccr.mu.Unlock()
 
-	ccr.serializer.Schedule(func(context.Context) {
+	ccr.serializer.TrySchedule(func(context.Context) {
 		if ccr.resolver == nil {
 			return
 		}
@@ -177,6 +188,9 @@ func (ccr *ccResolverWrapper) ParseServiceConfig(scJSON string) *serviceconfig.P
 // addChannelzTraceEvent adds a channelz trace event containing the new
 // state received from resolver implementations.
 func (ccr *ccResolverWrapper) addChannelzTraceEvent(s resolver.State) {
+	if !logger.V(0) && !channelz.IsOn() {
+		return
+	}
 	var updates []string
 	var oldSC, newSC *ServiceConfig
 	var oldOK, newOK bool

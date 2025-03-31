@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -28,7 +29,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		Logger:             log.NewNopLogger(),
+		Logger:             util_log.SlogFromGoKit(log.NewNopLogger()),
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
 		ActiveQueryTracker: nil,
@@ -124,7 +125,13 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
-		// avg generally cant be parallelized
+		// avg can be paralleized since we split it into sum / count
+		{
+			`avg(bar1{baz="blip"})`,
+			`(sum(bar1{__cortex_shard__="0_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="1_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="2_of_3",baz="blip"})) /
+             (count(bar1{__cortex_shard__="0_of_3",baz="blip"}) + count(bar1{__cortex_shard__="1_of_3",baz="blip"}) + count(bar1{__cortex_shard__="2_of_3",baz="blip"}))`,
+			true,
+		},
 		{
 			`avg(bar1{baz="blip"})`,
 			`avg(
@@ -132,7 +139,7 @@ func Test_PromQL(t *testing.T) {
 				avg by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
 				avg by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
 			  )`,
-			false,
+			true,
 		},
 		// stddev can't be parallelized.
 		{
@@ -314,7 +321,6 @@ func Test_PromQL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
 			baseQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.normalQuery, start, end, step)
@@ -513,12 +519,6 @@ func Test_FunctionParallelism(t *testing.T) {
 			fn:    "round",
 			fArgs: []string{"20"},
 		},
-		{
-			fn:           "holt_winters",
-			isTestMatrix: true,
-			fArgs:        []string{"0.5", "0.7"},
-			approximate:  true,
-		},
 	} {
 
 		t.Run(tc.fn, func(t *testing.T) {
@@ -570,7 +570,7 @@ func Test_FunctionParallelism(t *testing.T) {
 
 }
 
-var shardAwareQueryable = storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+var shardAwareQueryable = storage.QueryableFunc(func(_, _ int64) (storage.Querier, error) {
 	return &testMatrix{
 		series: []*promql.StorageSeries{
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),

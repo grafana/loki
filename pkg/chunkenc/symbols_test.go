@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/compression"
 )
 
 func TestSymbolizer(t *testing.T) {
@@ -125,7 +127,7 @@ func TestSymbolizer(t *testing.T) {
 			expectedUncompressedSize: 22,
 		},
 	} {
-		for _, encoding := range testEncoding {
+		for _, encoding := range testEncodings {
 			t.Run(fmt.Sprintf("%s - %s", tc.name, encoding), func(t *testing.T) {
 				s := newSymbolizer()
 				for i, labels := range tc.labelsToAdd {
@@ -161,10 +163,10 @@ func TestSymbolizer(t *testing.T) {
 				}
 
 				buf.Reset()
-				_, _, err = s.SerializeTo(buf, GetWriterPool(encoding))
+				_, _, err = s.SerializeTo(buf, compression.GetWriterPool(encoding))
 				require.NoError(t, err)
 
-				loaded, err = symbolizerFromEnc(buf.Bytes(), GetReaderPool(encoding))
+				loaded, err = symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(encoding))
 				require.NoError(t, err)
 				for i, symbols := range tc.expectedSymbols {
 					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))

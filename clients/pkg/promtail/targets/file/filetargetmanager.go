@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -84,7 +85,7 @@ func NewFileTargetManager(
 		syncers:            map[string]*targetSyncer{},
 		manager: discovery.NewManager(
 			ctx,
-			log.With(logger, "component", "discovery"),
+			util_log.SlogFromGoKit(log.With(logger, "component", "discovery")),
 			noopRegistry,
 			noopSdMetrics,
 		),
@@ -264,13 +265,13 @@ func (tm *FileTargetManager) fulfillKubePodSelector(selectors []kubernetes.Selec
 		return []kubernetes.SelectorConfig{{Role: kubernetes.RolePod, Field: nodeSelector}}
 	}
 
-	for _, selector := range selectors {
-		if selector.Field == "" {
-			selector.Field = nodeSelector
-		} else if !strings.Contains(selector.Field, nodeSelector) {
-			selector.Field += "," + nodeSelector
+	for i := range selectors {
+		if selectors[i].Field == "" {
+			selectors[i].Field = nodeSelector
+		} else if !strings.Contains(selectors[i].Field, nodeSelector) {
+			selectors[i].Field += "," + nodeSelector
 		}
-		selector.Role = kubernetes.RolePod
+		selectors[i].Role = kubernetes.RolePod
 	}
 
 	return selectors

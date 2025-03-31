@@ -1,14 +1,14 @@
 ---
-title: Automatic stream sharding
+title: Manage large volume log streams with automatic stream sharding
 menuTitle: Automatic stream sharding
 description: Describes how to control issues around the per-stream rate limit using automatic stream sharding.
 weight: 
 ---
 
-# Automatic stream sharding
+# Manage large volume log streams with automatic stream sharding
 
-Automatic stream sharding will attempt to keep streams under a `desired_rate` by adding new labels and values to
-existing streams. When properly tuned, this should eliminate issues where log producers are rate limited due to the
+Automatic stream sharding can keep streams under a `desired_rate` by adding new labels and values to
+existing streams. When properly tuned, this can eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
 
 **To enable automatic stream sharding:**
@@ -30,9 +30,9 @@ per-stream rate limit.
    ```
 
 1. Optionally enable `logging_enabled` for debugging stream sharding.
-  {{% admonition type="note" %}}
+  {{< admonition type="note" >}}
   This may affect the ingestion performance of Loki.
-  {{% /admonition %}}
+  {{< /admonition >}}
 
    ```yaml
    limits_config:

@@ -134,7 +134,7 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		// This will never occur, valid configuration is emitted from the xDS
 		// Client. Validity is already checked in the xDS Client, however, this
 		// double validation is present because Unmarshalling and Validating are
-		// coupled into one json.Unmarshal operation). We will switch this in
+		// coupled into one json.Unmarshal operation. We will switch this in
 		// the future to two separate operations.
 		return nil, fmt.Errorf("error unmarshalling xDS LB Policy: %v", err)
 	}
@@ -184,7 +184,10 @@ func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
 		return
 	}
 
-	b.logger.Infof("Received new balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received new balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
+	}
+
 	cfg, _ := update.state.BalancerConfig.(*LBConfig)
 	if cfg == nil {
 		b.logger.Warningf("Ignoring unsupported balancer configuration of type: %T", update.state.BalancerConfig)
@@ -207,11 +210,6 @@ func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
 // handleResourceUpdate handles a resource update or error from the resource
 // resolver by propagating the same to the child LB policy.
 func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
-	if err := update.err; err != nil {
-		b.handleErrorFromUpdate(err, false)
-		return
-	}
-
 	b.watchUpdateReceived = true
 	b.priorities = update.priorities
 
@@ -219,6 +217,10 @@ func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
 	// for all configured discovery mechanisms ordered by priority. This is used
 	// to generate configuration for the priority LB policy.
 	b.updateChildConfig()
+
+	if update.onDone != nil {
+		update.onDone()
+	}
 }
 
 // updateChildConfig builds child policy configuration using endpoint addresses
@@ -232,7 +234,7 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 		b.child = newChildBalancer(b.priorityBuilder, b.cc, b.bOpts)
 	}
 
-	childCfgBytes, addrs, err := buildPriorityConfigJSON(b.priorities, &b.config.xdsLBPolicy)
+	childCfgBytes, endpoints, err := buildPriorityConfigJSON(b.priorities, &b.config.xdsLBPolicy)
 	if err != nil {
 		b.logger.Warningf("Failed to build child policy config: %v", err)
 		return
@@ -246,16 +248,33 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 		b.logger.Infof("Built child policy config: %s", pretty.ToJSON(childCfg))
 	}
 
-	endpoints := make([]resolver.Endpoint, len(addrs))
-	for i, a := range addrs {
-		endpoints[i].Attributes = a.BalancerAttributes
-		endpoints[i].Addresses = []resolver.Address{a}
-		endpoints[i].Addresses[0].BalancerAttributes = nil
+	flattenedAddrs := make([]resolver.Address, len(endpoints))
+	for i := range endpoints {
+		for j := range endpoints[i].Addresses {
+			addr := endpoints[i].Addresses[j]
+			addr.BalancerAttributes = endpoints[i].Attributes
+			// If the endpoint has multiple addresses, only the first is added
+			// to the flattened address list. This ensures that LB policies
+			// that don't support endpoints create only one subchannel to a
+			// backend.
+			if j == 0 {
+				flattenedAddrs[i] = addr
+			}
+			// BalancerAttributes need to be present in endpoint addresses. This
+			// temporary workaround is required to make load reporting work
+			// with the old pickfirst policy which creates SubConns with multiple
+			// addresses. Since the addresses can be from different localities,
+			// an Address.BalancerAttribute is used to identify the locality of the
+			// address used by the transport. This workaround can be removed once
+			// the old pickfirst is removed.
+			// See https://github.com/grpc/grpc-go/issues/7339
+			endpoints[i].Addresses[j] = addr
+		}
 	}
 	if err := b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
 			Endpoints:     endpoints,
-			Addresses:     addrs,
+			Addresses:     flattenedAddrs,
 			ServiceConfig: b.configRaw,
 			Attributes:    b.attrsWithClient,
 		},

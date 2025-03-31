@@ -39,7 +39,7 @@ type FileMinioClient struct {
 	Filename string
 
 	// MinIO Alias to extract credentials from the shared credentials file. If empty
-	// will default to environment variable "MINIO_ALIAS" or "default" if
+	// will default to environment variable "MINIO_ALIAS" or "s3" if
 	// environment variable is also not set.
 	Alias string
 
@@ -56,9 +56,7 @@ func NewFileMinioClient(filename, alias string) *Credentials {
 	})
 }
 
-// Retrieve reads and extracts the shared credentials from the current
-// users home directory.
-func (p *FileMinioClient) Retrieve() (Value, error) {
+func (p *FileMinioClient) retrieve() (Value, error) {
 	if p.Filename == "" {
 		if value, ok := os.LookupEnv("MINIO_SHARED_CREDENTIALS_FILE"); ok {
 			p.Filename = value
@@ -94,6 +92,17 @@ func (p *FileMinioClient) Retrieve() (Value, error) {
 		SecretAccessKey: hostCfg.SecretKey,
 		SignerType:      parseSignatureType(hostCfg.API),
 	}, nil
+}
+
+// Retrieve reads and extracts the shared credentials from the current
+// users home directory.
+func (p *FileMinioClient) Retrieve() (Value, error) {
+	return p.retrieve()
+}
+
+// RetrieveWithCredContext - is like Retrieve()
+func (p *FileMinioClient) RetrieveWithCredContext(_ *CredContext) (Value, error) {
+	return p.retrieve()
 }
 
 // IsExpired returns if the shared credentials have expired.

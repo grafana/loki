@@ -45,7 +45,9 @@ const (
 // passed in as "my_service", then configuration properties whose names begin with "MY_SERVICE_"
 // will be returned in the map.
 func GetServiceProperties(serviceName string) (serviceProps map[string]string, err error) {
-	return getServiceProperties(serviceName)
+	serviceProps, err = getServiceProperties(serviceName)
+	err = RepurposeSDKProblem(err, "get-props-error")
+	return
 }
 
 // getServiceProperties: This function will retrieve configuration properties for the specified service
@@ -57,8 +59,11 @@ func getServiceProperties(serviceName string) (serviceProps map[string]string, e
 
 	if serviceName == "" {
 		err = fmt.Errorf("serviceName was not specified")
+		err = SDKErrorf(err, "", "no-service-name", getComponentInfo())
 		return
 	}
+
+	GetLogger().Debug("Retrieving config properties for service '%s'\n", serviceName)
 
 	// First try to retrieve service properties from a credential file.
 	serviceProps = getServicePropertiesFromCredentialFile(serviceName)
@@ -72,6 +77,8 @@ func getServiceProperties(serviceName string) (serviceProps map[string]string, e
 	if serviceProps == nil {
 		serviceProps = getServicePropertiesFromVCAP(serviceName)
 	}
+
+	GetLogger().Debug("Retrieved %d properties\n", len(serviceProps))
 
 	return
 }

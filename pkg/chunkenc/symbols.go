@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -163,7 +164,7 @@ func (s *symbolizer) CheckpointSize() int {
 
 // SerializeTo serializes all the labels and writes to the writer in compressed format.
 // It returns back the number of bytes written and a checksum of the data written.
-func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, error) {
+func (s *symbolizer) SerializeTo(w io.Writer, pool compression.WriterPool) (int, []byte, error) {
 	crc32Hash := crc32HashPool.Get().(hash.Hash32)
 	defer crc32HashPool.Put(crc32Hash)
 
@@ -324,7 +325,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 }
 
 // symbolizerFromEnc builds symbolizer from the bytes generated during serialization.
-func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
+func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, error) {
 	db := decbuf{b: b}
 	numLabels := db.uvarint()
 

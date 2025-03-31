@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -23,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var testTime = parseDayTime("2024-12-31").ModelTime()
+var testTime = plannertest.ParseDayTime("2024-12-31").ModelTime()
 
 func TestRetention(t *testing.T) {
 	for _, tc := range []struct {
@@ -621,7 +622,7 @@ func putMetasForLastNDays(t *testing.T, schemaCfg storageconfig.SchemaConfig, bl
 	}
 }
 
-// getMetasForLastNDays returns groups of continuous metas for the last N days.
+// getGroupedMetasForLastNDays returns groups of continuous metas for the last N days.
 func getGroupedMetasForLastNDays(t *testing.T, bloomStore *bloomshipper.BloomStore, tenant string, start model.Time, days int) [][][]bloomshipper.Meta {
 	metasGrouped := make([][][]bloomshipper.Meta, 0)
 	currentGroup := make([][]bloomshipper.Meta, 0)

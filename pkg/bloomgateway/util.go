@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -34,23 +33,6 @@ func daysForRange(from, through model.Time) []model.Time {
 	return days
 }
 
-// getFromThrough assumes a list of ShortRefs sorted by From time
-func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
-	if len(refs) == 0 {
-		return model.Earliest, model.Latest
-	}
-
-	if len(refs) == 1 {
-		return refs[0].From, refs[0].Through
-	}
-
-	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
-		return int(a.Through) - int(b.Through)
-	})
-
-	return refs[0].From, maxItem.Through
-}
-
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
 func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	result := make(v1.ChunkRefs, 0, len(refs))
@@ -75,20 +57,20 @@ func partitionTasksByBlock(tasks []Task, blocks []bloomshipper.BlockRef) []block
 
 		for _, task := range tasks {
 			refs := task.series
-			min := sort.Search(len(refs), func(i int) bool {
+			minVal := sort.Search(len(refs), func(i int) bool {
 				return block.Cmp(refs[i].Fingerprint) > v1.Before
 			})
 
-			max := sort.Search(len(refs), func(i int) bool {
+			maxVal := sort.Search(len(refs), func(i int) bool {
 				return block.Cmp(refs[i].Fingerprint) == v1.After
 			})
 
 			// All fingerprints fall outside of the consumer's range
-			if min == len(refs) || max == 0 || min == max {
+			if minVal == len(refs) || maxVal == 0 || minVal == maxVal {
 				continue
 			}
 
-			bounded.tasks = append(bounded.tasks, task.Copy(refs[min:max]))
+			bounded.tasks = append(bounded.tasks, task.Copy(refs[minVal:maxVal]))
 		}
 
 		if len(bounded.tasks) > 0 {
@@ -128,6 +110,7 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,
+				Labels:      series.Labels,
 				Tenant:      series.Tenant,
 				Refs:        relevantChunks,
 			})

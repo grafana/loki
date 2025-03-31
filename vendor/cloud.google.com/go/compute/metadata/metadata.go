@@ -24,11 +24,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -61,7 +61,10 @@ var (
 	instID  = &cachedValue{k: "instance/id", trim: true}
 )
 
-var defaultClient = &Client{hc: newDefaultHTTPClient()}
+var defaultClient = &Client{
+	hc:     newDefaultHTTPClient(),
+	logger: slog.New(noOpHandler{}),
+}
 
 func newDefaultHTTPClient() *http.Client {
 	return &http.Client{
@@ -188,20 +191,6 @@ func testOnGCE() bool {
 	// metaClient's Transport.ResponseHeaderTimeout or
 	// Transport.Dial.Timeout fires (in two seconds).
 	return <-resc
-}
-
-// systemInfoSuggestsGCE reports whether the local system (without
-// doing network requests) suggests that we're running on GCE. If this
-// returns true, testOnGCE tries a bit harder to reach its metadata
-// server.
-func systemInfoSuggestsGCE() bool {
-	if runtime.GOOS != "linux" {
-		// We don't have any non-Linux clues available, at least yet.
-		return false
-	}
-	slurp, _ := os.ReadFile("/sys/class/dmi/id/product_name")
-	name := strings.TrimSpace(string(slurp))
-	return name == "Google" || name == "Google Compute Engine"
 }
 
 // Subscribe calls Client.SubscribeWithContext on the default client.
@@ -423,17 +412,42 @@ func strsContains(ss []string, s string) bool {
 
 // A Client provides metadata.
 type Client struct {
-	hc *http.Client
+	hc     *http.Client
+	logger *slog.Logger
+}
+
+// Options for configuring a [Client].
+type Options struct {
+	// Client is the HTTP client used to make requests. Optional.
+	Client *http.Client
+	// Logger is used to log information about HTTP request and responses.
+	// If not provided, nothing will be logged. Optional.
+	Logger *slog.Logger
 }
 
 // NewClient returns a Client that can be used to fetch metadata.
 // Returns the client that uses the specified http.Client for HTTP requests.
 // If nil is specified, returns the default client.
 func NewClient(c *http.Client) *Client {
-	if c == nil {
+	return NewWithOptions(&Options{
+		Client: c,
+	})
+}
+
+// NewWithOptions returns a Client that is configured with the provided Options.
+func NewWithOptions(opts *Options) *Client {
+	if opts == nil {
 		return defaultClient
 	}
-	return &Client{hc: c}
+	client := opts.Client
+	if client == nil {
+		client = newDefaultHTTPClient()
+	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.New(noOpHandler{})
+	}
+	return &Client{hc: client, logger: logger}
 }
 
 // getETag returns a value from the metadata service as well as the associated ETag.
@@ -463,14 +477,26 @@ func (c *Client) getETag(ctx context.Context, suffix string) (value, etag string
 	req.Header.Set("User-Agent", userAgent)
 	var res *http.Response
 	var reqErr error
+	var body []byte
 	retryer := newRetryer()
 	for {
+		c.logger.DebugContext(ctx, "metadata request", "request", httpRequest(req, nil))
 		res, reqErr = c.hc.Do(req)
 		var code int
 		if res != nil {
 			code = res.StatusCode
+			body, err = io.ReadAll(res.Body)
+			if err != nil {
+				res.Body.Close()
+				return "", "", err
+			}
+			c.logger.DebugContext(ctx, "metadata response", "response", httpResponse(res, body))
+			res.Body.Close()
 		}
 		if delay, shouldRetry := retryer.Retry(code, reqErr); shouldRetry {
+			if res != nil && res.Body != nil {
+				res.Body.Close()
+			}
 			if err := sleep(ctx, delay); err != nil {
 				return "", "", err
 			}
@@ -481,18 +507,13 @@ func (c *Client) getETag(ctx context.Context, suffix string) (value, etag string
 	if reqErr != nil {
 		return "", "", reqErr
 	}
-	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
 		return "", "", NotDefinedError(suffix)
 	}
-	all, err := io.ReadAll(res.Body)
-	if err != nil {
-		return "", "", err
-	}
 	if res.StatusCode != 200 {
-		return "", "", &Error{Code: res.StatusCode, Message: string(all)}
+		return "", "", &Error{Code: res.StatusCode, Message: string(body)}
 	}
-	return string(all), res.Header.Get("Etag"), nil
+	return string(body), res.Header.Get("Etag"), nil
 }
 
 // Get returns a value from the metadata service.

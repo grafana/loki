@@ -55,6 +55,11 @@ func (l LocalityID) Equal(o any) bool {
 	return l.Region == ol.Region && l.Zone == ol.Zone && l.SubZone == ol.SubZone
 }
 
+// Empty returns whether or not the locality ID is empty.
+func (l LocalityID) Empty() bool {
+	return l.Region == "" && l.Zone == "" && l.SubZone == ""
+}
+
 // LocalityIDFromString converts a json representation of locality, into a
 // LocalityID struct.
 func LocalityIDFromString(s string) (ret LocalityID, _ error) {
@@ -79,6 +84,12 @@ func GetLocalityID(addr resolver.Address) LocalityID {
 func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(localityKey, l)
 	return addr
+}
+
+// SetLocalityIDInEndpoint sets locality ID in endpoint to l.
+func SetLocalityIDInEndpoint(endpoint resolver.Endpoint, l LocalityID) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(localityKey, l)
+	return endpoint
 }
 
 // ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.

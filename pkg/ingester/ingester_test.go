@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -32,7 +34,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
@@ -63,7 +65,7 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 
 	mockRing := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockRing)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockRing, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -88,7 +90,7 @@ func TestPrepareShutdown(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -151,7 +153,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -184,7 +186,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -210,7 +212,7 @@ func TestIngester(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -397,7 +399,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -697,7 +699,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -708,7 +710,7 @@ func TestValidate(t *testing.T) {
 				MaxChunkAge:    time.Minute,
 			},
 			expected: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -717,12 +719,12 @@ func TestValidate(t *testing.T) {
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
 				MaxChunkAge:    time.Minute,
-				parsedEncoding: chunkenc.EncGZIP,
+				parsedEncoding: compression.GZIP,
 			},
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncSnappy.String(),
+				ChunkEncoding: compression.Snappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -732,7 +734,7 @@ func TestValidate(t *testing.T) {
 				IndexShards:    index.DefaultIndexShards,
 			},
 			expected: Config{
-				ChunkEncoding: chunkenc.EncSnappy.String(),
+				ChunkEncoding: compression.Snappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -740,7 +742,7 @@ func TestValidate(t *testing.T) {
 				},
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
-				parsedEncoding: chunkenc.EncSnappy,
+				parsedEncoding: compression.Snappy,
 			},
 		},
 		{
@@ -758,7 +760,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -771,7 +773,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -784,7 +786,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -819,7 +821,7 @@ func Test_InMemoryLabels(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -874,7 +876,7 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -938,7 +940,7 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -1306,7 +1308,7 @@ func TestStats(t *testing.T) {
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1334,7 +1336,7 @@ func TestVolume(t *testing.T) {
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1414,7 +1416,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -1434,7 +1436,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	}()
 
 	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 		return listener.Dial()
 	}))
 	require.NoError(t, err)
@@ -1498,7 +1500,7 @@ func jsonLine(ts int64, i int) string {
 
 type readRingMock struct {
 	replicationSet          ring.ReplicationSet
-	getAllHealthyCallsCount int
+	getAllHealthyCallsCount atomic.Int32
 	tokenRangesByIngester   map[string]ring.TokenRanges
 }
 
@@ -1525,6 +1527,10 @@ func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ 
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
@@ -1538,7 +1544,7 @@ func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.Replicatio
 }
 
 func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
-	r.getAllHealthyCallsCount++
+	r.getAllHealthyCallsCount.Add(1)
 	return r.replicationSet, nil
 }
 
@@ -1609,6 +1615,16 @@ func (r *readRingMock) GetTokenRangesForInstance(instance string) (ring.TokenRan
 	return tr, nil
 }
 
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -1621,7 +1637,7 @@ func TestUpdateOwnedStreams(t *testing.T) {
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)

@@ -38,8 +38,6 @@ func TestLazyChunkIterator(t *testing.T) {
 	}
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
-
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -208,7 +206,7 @@ func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterato
 	return nil
 }
 
-func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

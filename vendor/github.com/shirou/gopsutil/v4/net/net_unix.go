@@ -14,28 +14,12 @@ import (
 	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
-// Return a list of network connections opened.
-func Connections(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithContext(context.Background(), kind)
-}
-
 func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsPidWithContext(ctx, kind, 0)
 }
 
-// Return a list of network connections opened returning at most `max`
-// connections for each running process.
-func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsMaxWithContext(context.Background(), kind, max)
-}
-
-func ConnectionsMaxWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
+func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
-}
-
-// Return a list of network connections opened by a process.
-func ConnectionsPid(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithContext(context.Background(), kind, pid)
 }
 
 func ConnectionsPidWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
@@ -109,11 +93,11 @@ func parseNetLine(line string) (ConnectionStat, error) {
 		f[7] = "unix"
 	}
 
-	pid, err := strconv.Atoi(f[1])
+	pid, err := strconv.ParseInt(f[1], 10, 32)
 	if err != nil {
 		return ConnectionStat{}, err
 	}
-	fd, err := strconv.Atoi(strings.Trim(f[3], "u"))
+	fd, err := strconv.ParseInt(strings.Trim(f[3], "u"), 10, 32)
 	if err != nil {
 		return ConnectionStat{}, fmt.Errorf("unknown fd, %s", f[3])
 	}
@@ -157,7 +141,7 @@ func parseNetAddr(line string) (laddr Addr, raddr Addr, err error) {
 		if err != nil {
 			return Addr{}, fmt.Errorf("wrong addr, %s", l)
 		}
-		lport, err := strconv.Atoi(port)
+		lport, err := strconv.ParseInt(port, 10, 32)
 		if err != nil {
 			return Addr{}, err
 		}
@@ -179,46 +163,26 @@ func parseNetAddr(line string) (laddr Addr, raddr Addr, err error) {
 	return laddr, raddr, err
 }
 
-// Return up to `max` network connections opened by a process.
-func ConnectionsPidMax(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithContext(context.Background(), kind, pid, max)
-}
-
-func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
+func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
-}
-
-// Return a list of network connections opened, omitting `Uids`.
-// WithoutUids functions are reliant on implementation details. They may be altered to be an alias for Connections or be
-// removed from the API in the future.
-func ConnectionsWithoutUids(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithoutUidsWithContext(context.Background(), kind)
 }
 
 func ConnectionsWithoutUidsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsMaxWithoutUidsWithContext(ctx, kind, 0)
 }
 
-func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, max)
-}
-
-func ConnectionsPidWithoutUids(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithoutUidsWithContext(context.Background(), kind, pid)
+func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, maxConn)
 }
 
 func ConnectionsPidWithoutUidsWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
 	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, 0)
 }
 
-func ConnectionsPidMaxWithoutUids(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn)
 }
 
-func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max)
-}
-
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
 }

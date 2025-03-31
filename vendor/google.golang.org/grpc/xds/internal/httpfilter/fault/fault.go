@@ -24,7 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	rand "math/rand/v2"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -81,12 +81,12 @@ func parseConfig(cfg proto.Message) (httpfilter.FilterConfig, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("fault: nil configuration message provided")
 	}
-	any, ok := cfg.(*anypb.Any)
+	m, ok := cfg.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("fault: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(fpb.HTTPFault)
-	if err := any.UnmarshalTo(msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("fault: error parsing config %v: %v", cfg, err)
 	}
 	return config{config: msg}, nil
@@ -139,7 +139,7 @@ type interceptor struct {
 
 var activeFaults uint32 // global active faults; accessed atomically
 
-func (i *interceptor) NewStream(ctx context.Context, ri iresolver.RPCInfo, done func(), newStream func(ctx context.Context, done func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
+func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, done func(), newStream func(ctx context.Context, done func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
 	if maxAF := i.config.GetMaxActiveFaults(); maxAF != nil {
 		defer atomic.AddUint32(&activeFaults, ^uint32(0)) // decrement counter
 		if af := atomic.AddUint32(&activeFaults, 1); af > maxAF.GetValue() {
@@ -162,7 +162,7 @@ func (i *interceptor) NewStream(ctx context.Context, ri iresolver.RPCInfo, done 
 }
 
 // For overriding in tests
-var randIntn = rand.Intn
+var randIntn = rand.IntN
 var newTimer = time.NewTimer
 
 func injectDelay(ctx context.Context, delayCfg *cpb.FaultDelay) error {
@@ -296,5 +296,5 @@ func (*okStream) Header() (metadata.MD, error) { return nil, nil }
 func (*okStream) Trailer() metadata.MD         { return nil }
 func (*okStream) CloseSend() error             { return nil }
 func (o *okStream) Context() context.Context   { return o.ctx }
-func (*okStream) SendMsg(m any) error          { return io.EOF }
-func (*okStream) RecvMsg(m any) error          { return io.EOF }
+func (*okStream) SendMsg(any) error            { return io.EOF }
+func (*okStream) RecvMsg(any) error            { return io.EOF }

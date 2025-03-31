@@ -16,10 +16,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, async bool, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
 		id:          id,
 		concurrency: concurrency,
+		async:       async,
 		store:       store,
 		logger:      logger,
 		metrics:     metrics,
@@ -28,7 +29,8 @@ func newProcessor(id string, concurrency int, store bloomshipper.Store, logger l
 
 type processor struct {
 	id          string
-	concurrency int // concurrency at which bloom blocks are processed
+	concurrency int  // concurrency at which bloom blocks are processed
+	async       bool // whether blocks should be downloaded asynchronously
 	store       bloomshipper.Store
 	logger      log.Logger
 	metrics     *workerMetrics
@@ -71,7 +73,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
-		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithFetchAsync(p.async),
 		bloomshipper.WithIgnoreNotFound(true),
 		// NB(owen-d): we relinquish bloom pages to a pool
 		// after iteration for performance (alloc reduction).
@@ -83,6 +85,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddProcessedBlocksTotal(len(tasksByBlock))
 	}
 
 	if err != nil {
@@ -113,26 +116,28 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 	}()
 
 	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
-		bq := bqs[i]
-		if bq == nil {
+		blockQuerier := bqs[i]
+		blockWithTasks := data[i]
+
+		// block has not been downloaded or is otherwise not available (yet)
+		// therefore no querier for this block available
+		if blockQuerier == nil {
+			for _, task := range blockWithTasks.tasks {
+				stats := FromContext(task.ctx)
+				stats.IncSkippedBlocks()
+			}
+
 			p.metrics.blocksNotAvailable.WithLabelValues(p.id).Inc()
 			return nil
 		}
 
-		block := data[i]
-
-		if !block.ref.Bounds.Equal(bq.Bounds) {
-			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
+		if !blockWithTasks.ref.Bounds.Equal(blockQuerier.Bounds) {
+			return errors.Errorf("block and querier bounds differ: %s vs %s", blockWithTasks.ref.Bounds, blockQuerier.Bounds)
 		}
 
 		var errs multierror.MultiError
-		errs.Add(
-			errors.Wrap(
-				p.processBlock(ctx, bq, block.tasks),
-				"processing block",
-			),
-		)
-		errs.Add(bq.Close())
+		errs.Add(errors.Wrap(p.processBlock(ctx, blockQuerier, blockWithTasks.tasks), "processing block"))
+		errs.Add(blockQuerier.Close())
 		hasClosed[i] = true
 		return errs.Err()
 	})
@@ -145,7 +150,11 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
+	// We require V3+ schema
+	if schema.Version() < v1.V3 {
+		return v1.ErrUnsupportedSchemaVersion
+	}
+
 	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
@@ -159,11 +168,11 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		// 	sp.LogKV("process block", blockID, "series", len(task.series))
 		// }
 
-		it := iter.NewPeekIter(task.RequestIter(tokenizer))
+		it := iter.NewPeekIter(task.RequestIter())
 		iters = append(iters, it)
 	}
 
-	logger := log.With(p.logger, "block", bq.BlockRef.String())
+	logger := log.With(p.logger, "block", bq.String())
 	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()

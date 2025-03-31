@@ -80,6 +80,10 @@ var tokens = map[string]int{
 
 	// keep labels
 	OpKeep: KEEP,
+
+	// variants
+	OpVariants: VARIANTS,
+	VariantsOf: OF,
 }
 
 var parserFlags = map[string]struct{}{
@@ -121,6 +125,8 @@ var functionTokens = map[string]int{
 	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
+	OpTypeApproxTopK: APPROX_TOPK,
+
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
@@ -136,7 +142,7 @@ type lexer struct {
 	builder strings.Builder
 }
 
-func (l *lexer) Lex(lval *exprSymType) int {
+func (l *lexer) Lex(lval *syntaxSymType) int {
 	r := l.Scan()
 
 	switch r {
@@ -156,7 +162,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 		duration, ok := tryScanDuration(numberText, &l.Scanner)
 		if ok {
-			lval.duration = duration
+			lval.dur = duration
 			return DURATION
 		}
 
@@ -172,13 +178,13 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		if l.Peek() == '-' {
 			if flag, ok := tryScanFlag(&l.Scanner); ok {
 				lval.str = flag
-				return PARSER_FLAG
+				return FUNCTION_FLAG
 			}
 		}
 
 		tokenText := l.TokenText()
 		if duration, ok := tryScanDuration(tokenText, &l.Scanner); ok {
-			lval.duration = duration
+			lval.dur = duration
 			return DURATION
 		}
 
@@ -207,7 +213,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 					l.Error(err.Error())
 					return 0
 				}
-				lval.duration = time.Duration(i)
+				lval.dur = time.Duration(i)
 				return RANGE
 			}
 			_, _ = l.builder.WriteRune(r)

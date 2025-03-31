@@ -18,15 +18,15 @@ common:
     kvstore:
       store: inmemory
 
-ingester_rf1:
-  enabled: false
-
 query_range:
   results_cache:
     cache:
       embedded_cache:
         enabled: true
         max_size_mb: 100
+
+limits_config:
+  metric_aggregation_enabled: true
 
 schema_config:
   configs:
@@ -41,14 +41,18 @@ schema_config:
 pattern_ingester:
   enabled: true
   metric_aggregation:
-    enabled: true
-    log_push_observations: true
+    loki_address: localhost:3100
 
 ruler:
   alertmanager_url: http://localhost:9093
 
 frontend:
   encoding: protobuf
+
+querier:
+  engine:
+    enable_multi_variant_queries: true
+
 
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
 # analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/

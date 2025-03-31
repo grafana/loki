@@ -51,7 +51,7 @@ For more information:
 
 ### ⚠️ Supported chunks stores, not typically recommended for production use
 
-- [Filesystem]({{< relref "./filesystem" >}}) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - S3 API compatible storage, such as [MinIO](https://min.io/)
 
 ### ❌ Deprecated chunks stores
@@ -77,9 +77,9 @@ See the [AWS deployment section](https://grafana.com/docs/loki/<LOKI_VERSION>/co
 
 ### DynamoDB
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 DynamoDB support is deprecated and will be removed in a future release.
-{{% /admonition %}}
+{{< /admonition >}}
 
 When using DynamoDB for the index, the following permissions are needed:
 
@@ -135,29 +135,56 @@ See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_V
 ## Chunk Format
 
 ```
-  -------------------------------------------------------------------
-  |                               |                                 |
-  |        MagicNumber(4b)        |           version(1b)           |
-  |                               |                                 |
-  -------------------------------------------------------------------
-  |         block-1 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-2 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-n bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |                        #blocks (uvarint)                        |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  |                      checksum(from #blocks)                     |
-  -------------------------------------------------------------------
-  |           metasOffset - offset to the point with #blocks        |
-  -------------------------------------------------------------------
+// Header
++-----------------------------------+
+| Magic Number (uint32, 4 bytes)    |
++-----------------------------------+
+| Version (1 byte)                  |
++-----------------------------------+
+| Encoding (1 byte)                 |
++-----------------------------------+
+
+// Blocks
++--------------------+----------------------------+
+| block 1 (n bytes)  | checksum (uint32, 4 bytes) |
++--------------------+----------------------------+
+| block 1 (n bytes)  | checksum (uint32, 4 bytes) |
++--------------------+----------------------------+
+| ...                                             |
++--------------------+----------------------------+
+| block N (n bytes)  | checksum (uint32, 4 bytes) |
++--------------------+----------------------------+
+
+// Metas
++------------------------------------------------------------------------------------------------------------------------+
+| #blocks (uvarint)                                                                                                      |
++--------------------+-----------------+-----------------+------------------+---------------+----------------------------+
+| #entries (uvarint) | minTs (uvarint) | maxTs (uvarint) | offset (uvarint) | len (uvarint) | uncompressedSize (uvarint) |
++--------------------+-----------------+-----------------+------------------+---------------+----------------------------+
+| #entries (uvarint) | minTs (uvarint) | maxTs (uvarint) | offset (uvarint) | len (uvarint) | uncompressedSize (uvarint) |
++--------------------+-----------------+-----------------+------------------+---------------+----------------------------+
+| ...                                                                                                                    |
++--------------------+-----------------+-----------------+------------------+---------------+----------------------------+
+| #entries (uvarint) | minTs (uvarint) | maxTs (uvarint) | offset (uvarint) | len (uvarint) | uncompressedSize (uvarint) |
++--------------------+-----------------+-----------------+------------------+---------------+----------------------------+
+| checksum (uint32, 4 bytes)                                                                                             | 
++------------------------------------------------------------------------------------------------------------------------+
+
+// Structured Metadata
++---------------------------------+
+| #labels (uvarint)               |
++---------------+-----------------+
+| len (uvarint) | value (n bytes) |
++---------------+-----------------+
+| ...                             |
++---------------+-----------------+
+| checksum (uint32, 4 bytes)      |
++---------------------------------+
+
+// Footer
++-----------------------+--------------------------+
+| len (uint64, 8 bytes) | offset (uint64, 8 bytes) |   // offset to Structured Metadata
++-----------------------+--------------------------+
+| len (uint64, 8 bytes) | offset (uint64, 8 bytes) |   // offset to Metas
++-----------------------+--------------------------+
 ```

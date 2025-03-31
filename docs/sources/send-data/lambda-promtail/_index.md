@@ -1,15 +1,15 @@
 ---
-title: Lambda Promtail client 
+title: Lambda Promtail client
 menuTitle:  Lambda Promtail
 description: Configuring the Lambda Promtail client to send logs to Loki.
-aliases: 
+aliases:
 - ../clients/lambda-promtail/
 weight:  700
 ---
 
-# Lambda Promtail client 
+# Lambda Promtail client
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../../send-data/promtail/configuration#loki_push_api" >}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
 
 ## Deployment
 
@@ -91,7 +91,7 @@ If using CloudFormation to write your infrastructure code, you should consider t
 
 ### Ephemeral Jobs
 
-This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients]({{< relref ".." >}}).
+This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
 Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
 
@@ -99,9 +99,9 @@ Ephemeral jobs can quite easily run afoul of cardinality best practices. During 
 
 For those using Cloudwatch and wishing to test out Loki in a low-risk way, this workflow allows piping Cloudwatch logs to Loki regardless of the event source (EC2, Kubernetes, Lambda, ECS, etc) without setting up a set of Promtail daemons across their infrastructure. However, running Promtail as a daemon on your infrastructure is the best-practice deployment strategy in the long term for flexibility, reliability, performance, and cost.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### VPC Flow logs
 
@@ -151,7 +151,7 @@ aws cloudformation create-stack \
 
 ## Propagated Labels
 
-Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../send-data/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../send-data/promtail/pipelines" >}}):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_configs) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
@@ -161,13 +161,120 @@ Incoming logs can have seven special labels assigned to them which can be used i
 - `__aws_s3_log_lb`: The name of the loadbalancer.
 - `__aws_s3_log_lb_owner`: The Account ID of the loadbalancer owner.
 
+## Relabeling Configuration
+
+Lambda-promtail supports Prometheus-style relabeling through the `RELABEL_CONFIGS` environment variable. This allows you to modify, keep, or drop labels before sending logs to Loki. The configuration is provided as a JSON array of relabel configurations. The relabeling functionality follows the same principles as Prometheus relabeling - for a detailed explanation of how relabeling works, see [How relabeling in Prometheus works](https://grafana.com/blog/2022/03/21/how-relabeling-in-prometheus-works/).
+
+Example configurations:
+
+1. Rename a label and capture regex groups:
+```json
+{
+  "RELABEL_CONFIGS": [
+    {
+      "source_labels": ["__aws_log_type"],
+      "target_label": "log_type",
+      "action": "replace",
+      "regex": "(.*)",
+      "replacement": "${1}"
+    }
+  ]
+}
+```
+
+2. Keep only specific log types (useful for filtering):
+```json
+{
+  "RELABEL_CONFIGS": [
+    {
+      "source_labels": ["__aws_log_type"],
+      "regex": "s3_.*",
+      "action": "keep"
+    }
+  ]
+}
+```
+
+3. Drop internal AWS labels (cleanup):
+```json
+{
+  "RELABEL_CONFIGS": [
+    {
+      "regex": "__aws_.*",
+      "action": "labeldrop"
+    }
+  ]
+}
+```
+
+4. Multiple relabeling rules (combining different actions):
+```json
+{
+  "RELABEL_CONFIGS": [
+    {
+      "source_labels": ["__aws_log_type"],
+      "target_label": "log_type",
+      "action": "replace",
+      "regex": "(.*)",
+      "replacement": "${1}"
+    },
+    {
+      "source_labels": ["__aws_s3_log_lb"],
+      "target_label": "loadbalancer",
+      "action": "replace"
+    },
+    {
+      "regex": "__aws_.*",
+      "action": "labeldrop"
+    }
+  ]
+}
+```
+
+### Supported Actions
+
+The following actions are supported, matching Prometheus relabeling capabilities:
+
+- `replace`: Replace a label value with a new value using regex capture groups
+- `keep`: Keep entries where labels match the regex (useful for filtering)
+- `drop`: Drop entries where labels match the regex (useful for excluding)
+- `hashmod`: Set a label to the modulus of a hash of labels (useful for sharding)
+- `labelmap`: Copy labels to other labels based on regex matching
+- `labeldrop`: Remove labels matching the regex pattern
+- `labelkeep`: Keep only labels matching the regex pattern
+- `lowercase`: Convert label values to lowercase
+- `uppercase`: Convert label values to uppercase
+
+### Configuration Fields
+
+Each relabel configuration supports these fields (all fields are optional except for `action`):
+
+- `source_labels`: List of label names to use as input for the action
+- `separator`: String to join source label values (default: ";")
+- `target_label`: Label to modify (required for replace and hashmod actions)
+- `regex`: Regular expression to match against (defaults to "(.+)" for most actions)
+- `replacement`: Replacement pattern for matched regex, supports ${1}, ${2}, etc. for capture groups
+- `modulus`: Modulus for hashmod action
+- `action`: One of the supported actions listed above
+
+### Important Notes
+
+1. Relabeling is applied after merging extra labels and dropping labels specified by `DROP_LABELS`.
+2. If all labels are removed after relabeling, the log entry will be dropped entirely.
+3. The relabeling configuration follows the same format as Prometheus's relabel_configs, making it familiar for users of Prometheus.
+4. Relabeling rules are processed in order, and each rule can affect the input of subsequent rules.
+5. Regular expressions in the `regex` field support full RE2 syntax.
+6. For the `replace` action, if the `regex` doesn't match, the target label remains unchanged.
+
+For more details about how relabeling works and advanced use cases, refer to the [Prometheus relabeling blog post](https://grafana.com/blog/2022/03/21/how-relabeling-in-prometheus-works/).
+
 ## Limitations
 
 ### Promtail labels
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
-{{% /admonition %}}
+{{< /admonition >}}
 
 As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs.
 
@@ -195,9 +302,9 @@ The provided Terraform and CloudFormation files are meant to cover the default u
 
 ## Example Promtail Config
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 This should be run in conjunction with a Promtail-specific label attached, ideally via a flag argument like `--client.external-labels=promtail=${HOSTNAME}`. It will receive writes via the push-api on ports `3500` (http) and `3600` (grpc).
-{{% /admonition %}}
+{{< /admonition >}}
 
 ```yaml
 server:

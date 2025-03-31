@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	ingesterclient "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -31,14 +34,37 @@ import (
 )
 
 type mockChunkClient struct {
-	mtx           sync.Mutex
-	deletedChunks map[string]struct{}
+	mtx              sync.Mutex
+	deletedChunks    map[string]struct{}
+	unstableDeletion bool
+	perObjectCounter map[string]uint32
+}
+
+// newMockChunkClient creates a client that fails every first call to DeleteChunk if `unstableDeletion` is true.
+func newMockChunkClient(unstableDeletion bool) *mockChunkClient {
+	return &mockChunkClient{
+		deletedChunks:    map[string]struct{}{},
+		unstableDeletion: unstableDeletion,
+		perObjectCounter: map[string]uint32{},
+	}
+}
+
+// shouldFail returns true for every first call
+func (m *mockChunkClient) shouldFail(objectKey string) bool {
+	if !m.unstableDeletion {
+		return false
+	}
+	shouldFail := m.perObjectCounter[objectKey]%2 == 0
+	m.perObjectCounter[objectKey]++
+	return shouldFail
 }
 
 func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
+	if m.shouldFail(chunkID) {
+		return fmt.Errorf("chunk deletion for chunkID:%s is failed by mockChunkClient", chunkID)
+	}
 	m.deletedChunks[string([]byte(chunkID))] = struct{}{} // forces a copy, because this string is only valid within the delete fn.
 	return nil
 }
@@ -47,7 +73,7 @@ func (m *mockChunkClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
-func (m *mockChunkClient) getDeletedChunkIds() []string {
+func (m *mockChunkClient) getDeletedChunkIDs() []string {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -128,7 +154,6 @@ func Test_Retention(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
@@ -143,8 +168,9 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			chunkClient := &mockChunkClient{deletedChunks: map[string]struct{}{}}
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, nil)
+			// must not fail the process because deletion must be retried
+			chunkClient := newMockChunkClient(true)
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
@@ -166,13 +192,45 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
-					actual := chunkClient.getDeletedChunkIds()
+					actual := chunkClient.getDeletedChunkIDs()
 					sort.Strings(actual)
 					return assert.ObjectsAreEqual(expectDeleted, actual)
 				}, 10*time.Second, 1*time.Second)
 			}
 		})
 	}
+}
+
+func Test_Sweeper_deleteChunk(t *testing.T) {
+	chunkID := "1/3fff2c2d7595e046:1916fa8c4bd:1916fdfb33d:bd55fc5"
+	tests := map[string]struct {
+		maxRetries    int
+		expectedError error
+	}{
+		"expected error if chunk is not deleted and retry is disabled": {
+			maxRetries:    1,
+			expectedError: fmt.Errorf("chunk deletion for chunkID:%s is failed by mockChunkClient", chunkID),
+		},
+		"expected  no error if chunk is not deleted at the first attempt but retried": {
+			maxRetries: 2,
+		},
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			workDir := filepath.Join(t.TempDir(), "retention")
+			chunkClient := newMockChunkClient(true)
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
+			require.NoError(t, err)
+
+			err = sweep.deleteChunk(context.Background(), []byte(chunkID))
+			if data.expectedError != nil {
+				require.Equal(t, data.expectedError, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
 }
 
 type noopWriter struct {
@@ -201,10 +259,18 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
+
+	// disabled retention should not do anything to the table
+	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	require.NoError(t, err)
+	require.False(t, empty)
+	require.False(t, modified)
+
 	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
-	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
+	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
+	require.True(t, modified)
 
 	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
@@ -220,7 +286,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		dup, err := chunkEnc.Append(&logproto.Entry{
@@ -301,7 +367,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
-			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -311,7 +377,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites with chunk spanning multiple tables",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -507,7 +573,6 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			store := newTestStore(t)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
@@ -518,7 +583,11 @@ func TestChunkRewriter(t *testing.T) {
 			for _, indexTable := range indexTables {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
-				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
+				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
+					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					From:    tt.chunk.From,
+					Through: tt.chunk.Through,
+				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustDeleteLines, linesDeleted)
 				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustRewriteChunk, wroteChunks)
@@ -600,30 +669,35 @@ type chunkExpiry struct {
 
 type mockExpirationChecker struct {
 	ExpirationChecker
-	chunksExpiry map[string]chunkExpiry
-	delay        time.Duration
-	calls        int
-	timedOut     bool
+	chunksExpiry    map[string]chunkExpiry
+	skipSeries      map[string]bool
+	delay           time.Duration
+	numExpiryChecks int
+	timedOut        bool
 }
 
-func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirationChecker {
-	return &mockExpirationChecker{chunksExpiry: chunksExpiry}
+func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry, skipSeries map[string]bool) *mockExpirationChecker {
+	return &mockExpirationChecker{chunksExpiry: chunksExpiry, skipSeries: skipSeries}
 }
 
-func (m *mockExpirationChecker) Expired(ref ChunkEntry, _ model.Time) (bool, filter.Func) {
+func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ []byte, _ string, _ model.Time) (bool, filter.Func) {
 	time.Sleep(m.delay)
-	m.calls++
+	m.numExpiryChecks++
 
-	ce := m.chunksExpiry[string(ref.ChunkID)]
+	ce := m.chunksExpiry[string(chk.ChunkID)]
 	return ce.isExpired, ce.filterFunc
 }
 
-func (m *mockExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
+func (m *mockExpirationChecker) DropFromIndex(_ []byte, _ Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
 }
 
 func (m *mockExpirationChecker) MarkPhaseTimedOut() {
 	m.timedOut = true
+}
+
+func (m *mockExpirationChecker) CanSkipSeries(_ []byte, lbls labels.Labels, _ []byte, _ model.Time, _ string, _ model.Time) bool {
+	return m.skipSeries[lbls.String()]
 }
 
 func TestMarkForDelete_SeriesCleanup(t *testing.T) {
@@ -633,13 +707,15 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 
 	for _, tc := range []struct {
-		name                  string
-		chunks                []chunk.Chunk
-		expiry                []chunkExpiry
-		expectedDeletedSeries []map[uint64]struct{}
-		expectedEmpty         []bool
-		expectedModified      []bool
-		numChunksDeleted      []int64
+		name                    string
+		chunks                  []chunk.Chunk
+		expiry                  []chunkExpiry
+		skipSeries              map[string]bool
+		expectedDeletedSeries   []map[uint64]struct{}
+		expectedEmpty           []bool
+		expectedModified        []bool
+		numChunksDeleted        []int64
+		numExpectedExpiryChecks int
 	}{
 		{
 			name: "no chunk and series deleted",
@@ -663,6 +739,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				0,
 			},
+			numExpectedExpiryChecks: 1,
 		},
 		{
 			name: "chunk deleted with filter but no lines matching",
@@ -672,7 +749,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 						return false
 					},
 				},
@@ -689,6 +766,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				0,
 			},
+			numExpectedExpiryChecks: 1,
 		},
 		{
 			name: "only one chunk in store which gets deleted",
@@ -712,6 +790,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1,
 			},
+			numExpectedExpiryChecks: 1,
 		},
 		{
 			name: "only one chunk in store which gets partially deleted",
@@ -743,6 +822,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1,
 			},
+			numExpectedExpiryChecks: 1,
 		},
 		{
 			name: "one of two chunks deleted",
@@ -770,6 +850,65 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1,
 			},
+			numExpectedExpiryChecks: 2,
+		},
+		{
+			name: "one of two series skipped",
+			chunks: []chunk.Chunk{
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+			},
+			skipSeries: map[string]bool{`{foo="1"}`: true},
+			expiry: []chunkExpiry{
+				{
+					isExpired: false,
+				},
+				{
+					isExpired: true,
+				},
+			},
+			expectedDeletedSeries: []map[uint64]struct{}{
+				{labels.Labels{labels.Label{Name: "foo", Value: "2"}}.Hash(): struct{}{}},
+			},
+			expectedEmpty: []bool{
+				false,
+			},
+			expectedModified: []bool{
+				true,
+			},
+			numChunksDeleted: []int64{
+				1,
+			},
+			numExpectedExpiryChecks: 1,
+		},
+		{
+			name: "all series skipped",
+			chunks: []chunk.Chunk{
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+			},
+			skipSeries: map[string]bool{`{foo="1"}`: true, `{foo="2"}`: true},
+			expiry: []chunkExpiry{
+				{
+					isExpired: false,
+				},
+				{
+					isExpired: false,
+				},
+			},
+			expectedDeletedSeries: []map[uint64]struct{}{
+				nil,
+			},
+			expectedEmpty: []bool{
+				false,
+			},
+			expectedModified: []bool{
+				false,
+			},
+			numChunksDeleted: []int64{
+				0,
+			},
+			numExpectedExpiryChecks: 0,
 		},
 		{
 			name: "one of two chunks partially deleted",
@@ -805,6 +944,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1,
 			},
+			numExpectedExpiryChecks: 2,
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table without rewrite",
@@ -814,7 +954,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
 					},
 				},
@@ -831,6 +971,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1, 0,
 			},
+			numExpectedExpiryChecks: 2,
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table with rewrite",
@@ -840,7 +981,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
 					},
 				},
@@ -857,6 +998,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			numChunksDeleted: []int64{
 				1, 0,
 			},
+			numExpectedExpiryChecks: 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -868,7 +1010,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				chunksExpiry[getChunkID(chunk.ChunkRef)] = tc.expiry[i]
 			}
 
-			expirationChecker := newMockExpirationChecker(chunksExpiry)
+			expirationChecker := newMockExpirationChecker(chunksExpiry, tc.skipSeries)
 
 			store.Stop()
 
@@ -888,6 +1030,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 				require.EqualValues(t, tc.expectedDeletedSeries[i], seriesCleanRecorder.deletedSeries[userID])
 			}
+
+			require.Equal(t, tc.numExpectedExpiryChecks, expirationChecker.numExpiryChecks)
 		})
 	}
 }
@@ -910,7 +1054,7 @@ func TestDeleteTimeout(t *testing.T) {
 		require.NoError(t, store.Put(context.TODO(), chunks))
 		store.Stop()
 
-		expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{})
+		expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{}, nil)
 		expirationChecker.delay = 10 * time.Millisecond
 
 		table := store.indexTables()[0]
@@ -928,7 +1072,7 @@ func TestDeleteTimeout(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, empty)
 		require.False(t, isModified)
-		require.Equal(t, tc.calls, expirationChecker.calls)
+		require.Equal(t, tc.calls, expirationChecker.numExpiryChecks)
 		require.Equal(t, tc.timedOut, expirationChecker.timedOut)
 	}
 }

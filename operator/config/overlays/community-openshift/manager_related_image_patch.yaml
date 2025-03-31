@@ -9,8 +9,17 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            value: docker.io/grafana/loki:3.1.0
+            value: docker.io/grafana/loki:3.4.2
           - name: RELATED_IMAGE_GATEWAY
             value: quay.io/observatorium/api:latest
           - name: RELATED_IMAGE_OPA
             value: quay.io/observatorium/opa-openshift:latest
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+        - name: kube-rbac-proxy
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi

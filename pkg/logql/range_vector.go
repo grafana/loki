@@ -75,18 +75,21 @@ func newRangeVectorIterator(
 	if err != nil {
 		return nil, err
 	}
-	return NewBatchRangeVectorIterator(
-		it,
-		selRange,
-		step,
-		start,
-		end,
-		offset,
-		vectorAggregator,
-	), nil
+	return &batchRangeVectorIterator{
+		iter:     it,
+		step:     step,
+		end:      end,
+		selRange: selRange,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      vectorAggregator,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+	}, nil
 }
 
-// batch
+//batch
+
 type batchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
@@ -94,24 +97,6 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
-}
-
-func NewBatchRangeVectorIterator(
-	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64,
-	agg BatchRangeVectorAggregator,
-) RangeVectorIterator {
-	return &batchRangeVectorIterator{
-		iter:     it,
-		selRange: selRange,
-		step:     step,
-		end:      end,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      agg,
-	}
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
@@ -193,7 +178,6 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			series.Metric = metric
 			r.window[lbs] = series
 		}
-		// TODO(twhitney): Everywhere else, an FPoint.T is in milliseconds, but here it's in nanoseconds.
 		p := promql.FPoint{
 			T: sample.Timestamp,
 			F: sample.Value,
@@ -419,23 +403,23 @@ func avgOverTime(samples []promql.FPoint) float64 {
 }
 
 func maxOverTime(samples []promql.FPoint) float64 {
-	max := samples[0].F
+	maxVal := samples[0].F
 	for _, v := range samples {
-		if v.F > max || math.IsNaN(max) {
-			max = v.F
+		if v.F > maxVal || math.IsNaN(maxVal) {
+			maxVal = v.F
 		}
 	}
-	return max
+	return maxVal
 }
 
 func minOverTime(samples []promql.FPoint) float64 {
-	min := samples[0].F
+	minVal := samples[0].F
 	for _, v := range samples {
-		if v.F < min || math.IsNaN(min) {
-			min = v.F
+		if v.F < minVal || math.IsNaN(minVal) {
+			minVal = v.F
 		}
 	}
-	return min
+	return minVal
 }
 
 // stdvarOverTime calculates the variance using Welford's online algorithm.

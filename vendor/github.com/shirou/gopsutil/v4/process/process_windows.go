@@ -12,16 +12,16 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"syscall"
 	"time"
 	"unicode/utf16"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/internal/common"
 	"github.com/shirou/gopsutil/v4/net"
-	"golang.org/x/sys/windows"
 )
 
 type Signal = syscall.Signal
@@ -43,6 +43,7 @@ var (
 	procGetPriorityClass           = common.Modkernel32.NewProc("GetPriorityClass")
 	procGetProcessIoCounters       = common.Modkernel32.NewProc("GetProcessIoCounters")
 	procGetNativeSystemInfo        = common.Modkernel32.NewProc("GetNativeSystemInfo")
+	procGetProcessHandleCount      = common.Modkernel32.NewProc("GetProcessHandleCount")
 
 	processorArchitecture uint
 )
@@ -244,7 +245,7 @@ func pidsWithContext(ctx context.Context) ([]int32, error) {
 	// inspired by https://gist.github.com/henkman/3083408
 	// and https://github.com/giampaolo/psutil/blob/1c3a15f637521ba5c0031283da39c733fda53e4c/psutil/arch/windows/process_info.c#L315-L329
 	var ret []int32
-	var read uint32 = 0
+	var read uint32
 	var psSize uint32 = 1024
 	const dwordSize uint32 = 4
 
@@ -287,10 +288,10 @@ func PidExistsWithContext(ctx context.Context, pid int32) (bool, error) {
 		return false, err
 	}
 	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
-	if err == windows.ERROR_ACCESS_DENIED {
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		return true, nil
 	}
-	if err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return false, nil
 	}
 	if err != nil {
@@ -329,7 +330,7 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 
 	exe, err := p.ExeWithContext(ctx)
 	if err != nil {
-		return "", fmt.Errorf("could not get Name: %s", err)
+		return "", fmt.Errorf("could not get Name: %w", err)
 	}
 
 	return filepath.Base(exe), nil
@@ -369,7 +370,7 @@ func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
 func (p *Process) CmdlineWithContext(_ context.Context) (string, error) {
 	cmdline, err := getProcessCommandLine(p.Pid)
 	if err != nil {
-		return "", fmt.Errorf("could not get CommandLine: %s", err)
+		return "", fmt.Errorf("could not get CommandLine: %w", err)
 	}
 	return cmdline, nil
 }
@@ -379,13 +380,33 @@ func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	return strings.Split(cmdline, " "), nil
+	return parseCmdline(cmdline)
+}
+
+func parseCmdline(cmdline string) ([]string, error) {
+	cmdlineptr, err := windows.UTF16PtrFromString(cmdline)
+	if err != nil {
+		return nil, err
+	}
+
+	var argc int32
+	argvptr, err := windows.CommandLineToArgv(cmdlineptr, &argc)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.LocalFree(windows.Handle(uintptr(unsafe.Pointer(argvptr))))
+
+	argv := make([]string, argc)
+	for i, v := range (*argvptr)[:argc] {
+		argv[i] = windows.UTF16ToString((*v)[:])
+	}
+	return argv, nil
 }
 
 func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 	ru, err := getRusage(p.Pid)
 	if err != nil {
-		return 0, fmt.Errorf("could not get CreationDate: %s", err)
+		return 0, fmt.Errorf("could not get CreationDate: %w", err)
 	}
 
 	return ru.CreationTime.Nanoseconds() / 1000000, nil
@@ -393,7 +414,7 @@ func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 
 func (p *Process) CwdWithContext(_ context.Context) (string, error) {
 	h, err := windows.OpenProcess(processQueryInformation|windows.PROCESS_VM_READ, false, uint32(p.Pid))
-	if err == windows.ERROR_ACCESS_DENIED || err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return "", nil
 	}
 	if err != nil {
@@ -548,8 +569,21 @@ func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitche
 	return nil, common.ErrNotImplementedError
 }
 
+// NumFDsWithContext returns the number of handles for a process on Windows,
+// not the number of file descriptors (FDs).
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
-	return 0, common.ErrNotImplementedError
+	handle, err := windows.OpenProcess(processQueryInformation, false, uint32(p.Pid))
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(handle)
+
+	var handleCount uint32
+	ret, _, err := procGetProcessHandleCount.Call(uintptr(handle), uintptr(unsafe.Pointer(&handleCount)))
+	if ret == 0 {
+		return 0, err
+	}
+	return int32(handleCount), nil
 }
 
 func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
@@ -744,7 +778,7 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -803,13 +837,14 @@ func (p *Process) KillWithContext(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer process.Release()
 	return process.Kill()
 }
 
 func (p *Process) EnvironWithContext(ctx context.Context) ([]string, error) {
-	envVars, err := getProcessEnvironmentVariables(p.Pid, ctx)
+	envVars, err := getProcessEnvironmentVariables(ctx, p.Pid)
 	if err != nil {
-		return nil, fmt.Errorf("could not get environment variables: %s", err)
+		return nil, fmt.Errorf("could not get environment variables: %w", err)
 	}
 	return envVars, nil
 }
@@ -829,7 +864,7 @@ func (p *Process) setPpid(ppid int32) {
 	p.parent = ppid
 }
 
-func getFromSnapProcess(pid int32) (int32, int32, string, error) {
+func getFromSnapProcess(pid int32) (int32, int32, string, error) { //nolint:unparam //FIXME
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, uint32(pid))
 	if err != nil {
 		return 0, 0, "", err
@@ -857,7 +892,7 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 
 	pids, err := PidsWithContext(ctx)
 	if err != nil {
-		return out, fmt.Errorf("could not get Processes %s", err)
+		return out, fmt.Errorf("could not get Processes %w", err)
 	}
 
 	for _, pid := range pids {
@@ -948,13 +983,13 @@ func getUserProcessParams32(handle windows.Handle) (rtlUserProcessParameters32, 
 
 	buf := readProcessMemory(syscall.Handle(handle), true, pebAddress, uint(unsafe.Sizeof(processEnvironmentBlock32{})))
 	if len(buf) != int(unsafe.Sizeof(processEnvironmentBlock32{})) {
-		return rtlUserProcessParameters32{}, fmt.Errorf("cannot read process PEB")
+		return rtlUserProcessParameters32{}, errors.New("cannot read process PEB")
 	}
 	peb := (*processEnvironmentBlock32)(unsafe.Pointer(&buf[0]))
 	userProcessAddress := uint64(peb.ProcessParameters)
 	buf = readProcessMemory(syscall.Handle(handle), true, userProcessAddress, uint(unsafe.Sizeof(rtlUserProcessParameters32{})))
 	if len(buf) != int(unsafe.Sizeof(rtlUserProcessParameters32{})) {
-		return rtlUserProcessParameters32{}, fmt.Errorf("cannot read user process parameters")
+		return rtlUserProcessParameters32{}, errors.New("cannot read user process parameters")
 	}
 	return *(*rtlUserProcessParameters32)(unsafe.Pointer(&buf[0])), nil
 }
@@ -967,13 +1002,13 @@ func getUserProcessParams64(handle windows.Handle) (rtlUserProcessParameters64, 
 
 	buf := readProcessMemory(syscall.Handle(handle), false, pebAddress, uint(unsafe.Sizeof(processEnvironmentBlock64{})))
 	if len(buf) != int(unsafe.Sizeof(processEnvironmentBlock64{})) {
-		return rtlUserProcessParameters64{}, fmt.Errorf("cannot read process PEB")
+		return rtlUserProcessParameters64{}, errors.New("cannot read process PEB")
 	}
 	peb := (*processEnvironmentBlock64)(unsafe.Pointer(&buf[0]))
 	userProcessAddress := peb.ProcessParameters
 	buf = readProcessMemory(syscall.Handle(handle), false, userProcessAddress, uint(unsafe.Sizeof(rtlUserProcessParameters64{})))
 	if len(buf) != int(unsafe.Sizeof(rtlUserProcessParameters64{})) {
-		return rtlUserProcessParameters64{}, fmt.Errorf("cannot read user process parameters")
+		return rtlUserProcessParameters64{}, errors.New("cannot read user process parameters")
 	}
 	return *(*rtlUserProcessParameters64)(unsafe.Pointer(&buf[0])), nil
 }
@@ -1023,9 +1058,9 @@ func is32BitProcess(h windows.Handle) bool {
 	return procIs32Bits
 }
 
-func getProcessEnvironmentVariables(pid int32, ctx context.Context) ([]string, error) {
+func getProcessEnvironmentVariables(ctx context.Context, pid int32) ([]string, error) {
 	h, err := windows.OpenProcess(processQueryInformation|windows.PROCESS_VM_READ, false, uint32(pid))
-	if err == windows.ERROR_ACCESS_DENIED || err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1109,7 +1144,7 @@ func (p *processReader) Read(buf []byte) (int, error) {
 
 func getProcessCommandLine(pid int32) (string, error) {
 	h, err := windows.OpenProcess(processQueryInformation|windows.PROCESS_VM_READ, false, uint32(pid))
-	if err == windows.ERROR_ACCESS_DENIED || err == windows.ERROR_INVALID_PARAMETER {
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return "", nil
 	}
 	if err != nil {

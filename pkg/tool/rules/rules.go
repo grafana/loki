@@ -148,7 +148,7 @@ func (r RuleNamespace) AggregateBy(label string, applyTo func(group rwrulefmt.Ru
 // exprNodeInspectorFunc returns a PromQL inspector.
 // It modifies most PromQL expressions to include a given label.
 func exprNodeInspectorFunc(rule rulefmt.RuleNode, label string) func(node parser.Node, path []parser.Node) error {
-	return func(node parser.Node, path []parser.Node) error {
+	return func(node parser.Node, _ []parser.Node) error {
 		var err error
 		switch n := node.(type) {
 		case *parser.AggregateExpr:

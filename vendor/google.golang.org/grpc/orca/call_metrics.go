@@ -156,7 +156,7 @@ func unaryInt(smp ServerMetricsProvider) func(ctx context.Context, req any, _ *g
 }
 
 func streamInt(smp ServerMetricsProvider) func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		// We don't allocate the metric recorder here. It will be allocated the
 		// first time the user calls CallMetricsRecorderFromContext().
 		rw := &recorderWrapper{smp: smp}

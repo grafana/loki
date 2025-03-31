@@ -51,7 +51,11 @@ func (ls Labels) String() string {
 			b.WriteByte(',')
 			b.WriteByte(' ')
 		}
-		b.WriteString(l.Name)
+		if !model.LabelName(l.Name).IsValidLegacy() {
+			b.Write(strconv.AppendQuote(b.AvailableBuffer(), l.Name))
+		} else {
+			b.WriteString(l.Name)
+		}
 		b.WriteByte('=')
 		b.Write(strconv.AppendQuote(b.AvailableBuffer(), l.Value))
 		i++
@@ -95,12 +99,23 @@ func (ls *Labels) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // IsValid checks if the metric name or label names are valid.
-func (ls Labels) IsValid() bool {
+func (ls Labels) IsValid(validationScheme model.ValidationScheme) bool {
 	err := ls.Validate(func(l Label) error {
-		if l.Name == model.MetricNameLabel && !model.IsValidMetricName(model.LabelValue(l.Value)) {
-			return strconv.ErrSyntax
+		if l.Name == model.MetricNameLabel {
+			// If the default validation scheme has been overridden with legacy mode,
+			// we need to call the special legacy validation checker.
+			if validationScheme == model.LegacyValidation && model.NameValidationScheme == model.UTF8Validation && !model.IsValidLegacyMetricName(string(model.LabelValue(l.Value))) {
+				return strconv.ErrSyntax
+			}
+			if !model.IsValidMetricName(model.LabelValue(l.Value)) {
+				return strconv.ErrSyntax
+			}
 		}
-		if !model.LabelName(l.Name).IsValid() || !model.LabelValue(l.Value).IsValid() {
+		if validationScheme == model.LegacyValidation && model.NameValidationScheme == model.UTF8Validation {
+			if !model.LabelName(l.Name).IsValidLegacy() || !model.LabelValue(l.Value).IsValid() {
+				return strconv.ErrSyntax
+			}
+		} else if !model.LabelName(l.Name).IsValid() || !model.LabelValue(l.Value).IsValid() {
 			return strconv.ErrSyntax
 		}
 		return nil
@@ -219,5 +234,5 @@ func contains(s []Label, n string) bool {
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }

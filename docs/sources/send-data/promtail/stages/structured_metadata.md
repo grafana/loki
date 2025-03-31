@@ -5,14 +5,16 @@ description: The 'structured_metadata' Promtail pipeline stage
 
 # structured_metadata
 
-The `structured_metadata` stage is an action stage that takes data from the extracted map and
-modifies the [structured metadata]({{< relref "../../../get-started/labels/structured-metadata" >}}) that is sent to Loki with the log entry.
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
-{{% admonition type="warning" %}}
+The `structured_metadata` stage is an action stage that takes data from the extracted map and
+modifies the [structured metadata](../../../../get-started/labels/structured-metadata/) that is sent to Loki with the log entry.
+
+{{< admonition type="warning" >}}
 Structured metadata will be rejected by Loki unless you enable the `allow_structured_metadata` per tenant configuration (in the `limits_config`).
 
 Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to **13**. (See Schema Config for more details about schema versions. )
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Schema
 

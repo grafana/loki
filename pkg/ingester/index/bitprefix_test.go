@@ -38,7 +38,6 @@ func Test_BitPrefixGetShards(t *testing.T) {
 		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 4, Of: 16}).Ptr(), []uint32{2}},
 		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{7}},
 	} {
-		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
 			ii, err := NewBitPrefixWithShards(tt.total)
 			require.Nil(t, err)

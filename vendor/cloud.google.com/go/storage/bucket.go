@@ -26,7 +26,6 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/internal/optional"
-	"cloud.google.com/go/internal/trace"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iamcredentials/v1"
@@ -82,8 +81,8 @@ func (c *Client) Bucket(name string) *BucketHandle {
 // Create creates the Bucket in the project.
 // If attrs is nil the API defaults will be used.
 func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *BucketAttrs) (err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Create")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Create")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
 
@@ -95,8 +94,8 @@ func (b *BucketHandle) Create(ctx context.Context, projectID string, attrs *Buck
 
 // Delete deletes the Bucket.
 func (b *BucketHandle) Delete(ctx context.Context) (err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Delete")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Delete")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
 	return b.c.tc.DeleteBucket(ctx, b.name, b.conds, o...)
@@ -114,6 +113,11 @@ func (b *BucketHandle) ACL() *ACLHandle {
 // This call does not perform any network operations.
 func (b *BucketHandle) DefaultObjectACL() *ACLHandle {
 	return &b.defaultObjectACL
+}
+
+// BucketName returns the name of the bucket.
+func (b *BucketHandle) BucketName() string {
+	return b.name
 }
 
 // Object returns an ObjectHandle, which provides operations on the named object.
@@ -145,8 +149,8 @@ func (b *BucketHandle) Object(name string) *ObjectHandle {
 
 // Attrs returns the metadata for the bucket.
 func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Attrs")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Attrs")
+	defer func() { endSpan(ctx, err) }()
 
 	o := makeStorageOpts(true, b.retry, b.userProject)
 	return b.c.tc.GetBucket(ctx, b.name, b.conds, o...)
@@ -154,8 +158,8 @@ func (b *BucketHandle) Attrs(ctx context.Context) (attrs *BucketAttrs, err error
 
 // Update updates a bucket's attributes.
 func (b *BucketHandle) Update(ctx context.Context, uattrs BucketAttrsToUpdate) (attrs *BucketAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Update")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Update")
+	defer func() { endSpan(ctx, err) }()
 
 	isIdempotent := b.conds != nil && b.conds.MetagenerationMatch != 0
 	o := makeStorageOpts(isIdempotent, b.retry, b.userProject)
@@ -315,17 +319,30 @@ func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, 
 	return func(in []byte) ([]byte, error) {
 		ctx := context.Background()
 
+		opts := []option.ClientOption{option.WithHTTPClient(b.c.hc)}
+
+		if b.c.creds != nil {
+			universeDomain, err := b.c.creds.GetUniverseDomain()
+			if err != nil {
+				return nil, err
+			}
+			opts = append(opts, option.WithUniverseDomain(universeDomain))
+		}
+
 		// It's ok to recreate this service per call since we pass in the http client,
 		// circumventing the cost of recreating the auth/transport layer
-		svc, err := iamcredentials.NewService(ctx, option.WithHTTPClient(b.c.hc))
+		svc, err := iamcredentials.NewService(ctx, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create iamcredentials client: %w", err)
 		}
-
-		resp, err := svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
-			Payload: base64.StdEncoding.EncodeToString(in),
-		}).Do()
-		if err != nil {
+		// Do the SignBlob call with a retry for transient errors.
+		var resp *iamcredentials.SignBlobResponse
+		if err := run(ctx, func(ctx context.Context) error {
+			resp, err = svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
+				Payload: base64.StdEncoding.EncodeToString(in),
+			}).Do()
+			return err
+		}, b.retry, true); err != nil {
 			return nil, fmt.Errorf("unable to sign bytes: %w", err)
 		}
 		out, err := base64.StdEncoding.DecodeString(resp.SignedBlob)
@@ -411,6 +428,10 @@ type BucketAttrs struct {
 	// This field is read-only.
 	Created time.Time
 
+	// Updated is the time at which the bucket was last modified.
+	// This field is read-only.
+	Updated time.Time
+
 	// VersioningEnabled reports whether this bucket has versioning enabled.
 	VersioningEnabled bool
 
@@ -486,6 +507,13 @@ type BucketAttrs struct {
 	// 7 day retention duration. In order to fully disable soft delete, you need
 	// to set a policy with a RetentionDuration of 0.
 	SoftDeletePolicy *SoftDeletePolicy
+
+	// HierarchicalNamespace contains the bucket's hierarchical namespace
+	// configuration. Hierarchical namespace enabled buckets can contain
+	// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+	// It cannot be modified after bucket creation time.
+	// UniformBucketLevelAccess must also also be enabled on the bucket.
+	HierarchicalNamespace *HierarchicalNamespace
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -767,6 +795,7 @@ type Autoclass struct {
 	// TerminalStorageClass: The storage class that objects in the bucket
 	// eventually transition to if they are not read for a certain length of
 	// time. Valid values are NEARLINE and ARCHIVE.
+	// To modify TerminalStorageClass, Enabled must be set to true.
 	TerminalStorageClass string
 	// TerminalStorageClassUpdateTime represents the time of the most recent
 	// update to "TerminalStorageClass".
@@ -786,6 +815,15 @@ type SoftDeletePolicy struct {
 	RetentionDuration time.Duration
 }
 
+// HierarchicalNamespace contains the bucket's hierarchical namespace
+// configuration. Hierarchical namespace enabled buckets can contain
+// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+type HierarchicalNamespace struct {
+	// Enabled indicates whether hierarchical namespace features are enabled on
+	// the bucket. This can only be set at bucket creation time currently.
+	Enabled bool
+}
+
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 	if b == nil {
 		return nil, nil
@@ -802,6 +840,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		DefaultEventBasedHold:    b.DefaultEventBasedHold,
 		StorageClass:             b.StorageClass,
 		Created:                  convertTime(b.TimeCreated),
+		Updated:                  convertTime(b.Updated),
 		VersioningEnabled:        b.Versioning != nil && b.Versioning.Enabled,
 		ACL:                      toBucketACLRules(b.Acl),
 		DefaultObjectACL:         toObjectACLRules(b.DefaultObjectAcl),
@@ -824,6 +863,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		CustomPlacementConfig:    customPlacementFromRaw(b.CustomPlacementConfig),
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
 		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
 	}, nil
 }
 
@@ -838,6 +878,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		DefaultEventBasedHold:    b.GetDefaultEventBasedHold(),
 		StorageClass:             b.GetStorageClass(),
 		Created:                  b.GetCreateTime().AsTime(),
+		Updated:                  b.GetUpdateTime().AsTime(),
 		VersioningEnabled:        b.GetVersioning().GetEnabled(),
 		ACL:                      toBucketACLRulesFromProto(b.GetAcl()),
 		DefaultObjectACL:         toObjectACLRulesFromProto(b.GetDefaultObjectAcl()),
@@ -858,6 +899,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		ProjectNumber:            parseProjectNumber(b.GetProject()), // this can return 0 the project resource name is ID based
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
 		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
 	}
 }
 
@@ -914,6 +956,7 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		CustomPlacementConfig: b.CustomPlacementConfig.toRawCustomPlacement(),
 		Autoclass:             b.Autoclass.toRawAutoclass(),
 		SoftDeletePolicy:      b.SoftDeletePolicy.toRawSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toRawHierarchicalNamespace(),
 	}
 }
 
@@ -975,6 +1018,7 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 		CustomPlacementConfig: b.CustomPlacementConfig.toProtoCustomPlacement(),
 		Autoclass:             b.Autoclass.toProtoAutoclass(),
 		SoftDeletePolicy:      b.SoftDeletePolicy.toProtoSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toProtoHierarchicalNamespace(),
 	}
 }
 
@@ -1174,6 +1218,9 @@ type BucketAttrsToUpdate struct {
 	RPO RPO
 
 	// If set, updates the autoclass configuration of the bucket.
+	// To disable autoclass on the bucket, set to an empty &Autoclass{}.
+	// To update the configuration for Autoclass.TerminalStorageClass,
+	// Autoclass.Enabled must also be set to true.
 	// See https://cloud.google.com/storage/docs/using-autoclass for more information.
 	Autoclass *Autoclass
 
@@ -1303,8 +1350,10 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 	}
 	if ua.SoftDeletePolicy != nil {
 		if ua.SoftDeletePolicy.RetentionDuration == 0 {
-			rb.NullFields = append(rb.NullFields, "SoftDeletePolicy")
-			rb.SoftDeletePolicy = nil
+			rb.SoftDeletePolicy = &raw.BucketSoftDeletePolicy{
+				RetentionDurationSeconds: 0,
+				ForceSendFields:          []string{"RetentionDurationSeconds"},
+			}
 		} else {
 			rb.SoftDeletePolicy = ua.SoftDeletePolicy.toRawSoftDeletePolicy()
 		}
@@ -2094,8 +2143,11 @@ func (p *SoftDeletePolicy) toRawSoftDeletePolicy() *raw.BucketSoftDeletePolicy {
 		return nil
 	}
 	// Excluding read only field EffectiveTime.
+	// ForceSendFields must be set to send a zero value for RetentionDuration and disable
+	// soft delete.
 	return &raw.BucketSoftDeletePolicy{
 		RetentionDurationSeconds: int64(p.RetentionDuration.Seconds()),
+		ForceSendFields:          []string{"RetentionDurationSeconds"},
 	}
 }
 
@@ -2133,6 +2185,42 @@ func toSoftDeletePolicyFromProto(p *storagepb.Bucket_SoftDeletePolicy) *SoftDele
 	return &SoftDeletePolicy{
 		EffectiveTime:     p.GetEffectiveTime().AsTime(),
 		RetentionDuration: p.GetRetentionDuration().AsDuration(),
+	}
+}
+
+func (hns *HierarchicalNamespace) toProtoHierarchicalNamespace() *storagepb.Bucket_HierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &storagepb.Bucket_HierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func (hns *HierarchicalNamespace) toRawHierarchicalNamespace() *raw.BucketHierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &raw.BucketHierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromProto(p *storagepb.Bucket_HierarchicalNamespace) *HierarchicalNamespace {
+	if p == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: p.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *HierarchicalNamespace {
+	if r == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: r.Enabled,
 	}
 }
 

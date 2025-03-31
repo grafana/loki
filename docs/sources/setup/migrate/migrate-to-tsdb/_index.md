@@ -10,8 +10,8 @@ keywords:
 
 # Migrate to TSDB
 
-[TSDB]({{< relref "../../../operations/storage/tsdb" >}}) is the recommended index type for Loki and is where the current development lies.
-If you are running Loki with [boltb-shipper]({{< relref "../../../operations/storage/boltdb-shipper" >}}) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
+[TSDB](../../../operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
+If you are running Loki with [boltb-shipper](../../../operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
 we strongly recommend migrating to TSDB.
 
 
@@ -20,9 +20,9 @@ we strongly recommend migrating to TSDB.
 To begin the migration, add a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config).
 You can read more about schema config [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 You must roll out the new `period_config` change to all Loki components in order for it to take effect.
-{{% /admonition %}}
+{{< /admonition >}}
 
 This example adds a new `period_config` which configures Loki to start using the TSDB index for the data ingested starting from `2023-10-20`.
 
@@ -51,7 +51,7 @@ schema_config:
 
 1. This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-1.  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommend version.
+1.  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommended version.
 
 ### Configure TSDB shipper
 
@@ -68,7 +68,7 @@ storage_config:
 
 ### Run compactor
 
-We strongly recommended running the [compactor]({{< relref "../../../operations/storage/retention#compactor" >}}) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
+We strongly recommended running the [compactor](../../../operations/storage/retention/#compactor) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
 Not running index compaction will result in sub-optimal query performance.
 
-Please refer to the [compactor section]({{< relref "../../../operations/storage/retention#compactor" >}}) for more information and configuration examples.
+Please refer to the [compactor section](../../../operations/storage/retention/#compactor) for more information and configuration examples.

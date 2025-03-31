@@ -207,7 +207,7 @@ func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, er
 }
 
 func (f *FileClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
@@ -239,6 +239,10 @@ func (l *limiter) BlockedQueries(_ context.Context, _ string) []*validation.Bloc
 
 func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
+}
+
+func (l *limiter) EnableMultiVariantQueries(_ string) bool {
+	return false // Multi-variant queries disabled by default for file client
 }
 
 type querier struct {

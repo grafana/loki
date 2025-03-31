@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -73,6 +73,7 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
+	compression.Codec
 }
 
 func (r BlockRef) String() string {
@@ -208,29 +209,34 @@ func (c ClosableReadSeekerAdapter) Close() error {
 	return nil
 }
 
-func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
-	return BlockRef{
-		Ref: Ref{
-			TenantID:       tenant,
-			TableName:      table,
-			Bounds:         md.Series.Bounds,
-			StartTimestamp: md.Series.FromTs,
-			EndTimestamp:   md.Series.ThroughTs,
-			Checksum:       md.Checksum,
-		},
+func newRefFrom(tenant, table string, md v1.BlockMetadata) Ref {
+	return Ref{
+		TenantID:       tenant,
+		TableName:      table,
+		Bounds:         md.Series.Bounds,
+		StartTimestamp: md.Series.FromTs,
+		EndTimestamp:   md.Series.ThroughTs,
+		Checksum:       md.Checksum,
 	}
 }
 
-func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
-	md, _ := blk.Metadata()
-	ref := BlockRefFrom(tenant, table, md)
+func newBlockRefWithEncoding(ref Ref, enc compression.Codec) BlockRef {
+	return BlockRef{Ref: ref, Codec: enc}
+}
+
+func BlockFrom(enc compression.Codec, tenant, table string, blk *v1.Block) (Block, error) {
+	md, err := blk.Metadata()
+	if err != nil {
+		return Block{}, errors.Wrap(err, "decoding index")
+	}
+
+	ref := newBlockRefWithEncoding(newRefFrom(tenant, table, md), enc)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
-	err := v1.TarGz(buf, blk.Reader())
-
+	err = v1.TarCompress(ref.Codec, buf, blk.Reader())
 	if err != nil {
-		return Block{}, errors.Wrap(err, "archiving+compressing block")
+		return Block{}, err
 	}
 
 	reader := bytes.NewReader(buf.Bytes())
@@ -320,15 +326,14 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 	}
 	defer rc.Close()
 
-	path := b.fsResolver.Block(ref).LocalPath()
-	// the block directory should not contain the .tar.gz extension
-	path = strings.TrimSuffix(path, ".tar.gz")
+	// the block directory must not contain the .tar(.compression) extension
+	path := localFilePathWithoutExtension(ref, b.fsResolver)
 	err = util.EnsureDirectory(path)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
-	err = v1.UnTarGz(path, rc)
+	err = v1.UnTarCompress(ref.Codec, path, rc)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}

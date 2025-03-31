@@ -4,30 +4,27 @@ import (
 	"context"
 	"flag"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 )
 
@@ -70,10 +67,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// Cache configures the cache used to store the results of the Bloom Gateway server.
-	Cache        CacheConfig `yaml:"results_cache,omitempty"`
-	CacheResults bool        `yaml:"cache_results"`
-
 	// Client sharding using DNS disvovery and jumphash
 	Addresses string `yaml:"addresses,omitempty"`
 }
@@ -86,9 +79,7 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway client configuration with a common prefix.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
-	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	i.PoolConfig.RegisterFlagsWithPrefix(prefix+"pool.", f)
-	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
 	f.StringVar(&i.Addresses, prefix+"addresses", "", "Comma separated addresses list in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
 }
 
@@ -101,12 +92,6 @@ func (i *ClientConfig) Validate() error {
 		return errors.Wrap(err, "pool config")
 	}
 
-	if i.CacheResults {
-		if err := i.Cache.Validate(); err != nil {
-			return errors.Wrap(err, "cache config")
-		}
-	}
-
 	if i.Addresses == "" {
 		return errors.New("addresses requires a list of comma separated strings in DNS service discovery format with at least one item")
 	}
@@ -116,6 +101,7 @@ func (i *ClientConfig) Validate() error {
 
 type Client interface {
 	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
+	PrefetchBloomBlocks(ctx context.Context, blocks []bloomshipper.BlockRef) error
 }
 
 // clientPool is a minimal interface that is satisfied by the JumpHashClientPool.
@@ -135,49 +121,19 @@ type GatewayClient struct {
 	dnsProvider *discovery.DNS
 }
 
-func NewClient(
-	cfg ClientConfig,
-	limits Limits,
-	registerer prometheus.Registerer,
-	logger log.Logger,
-	cacheGen resultscache.CacheGenNumberLoader,
-	retentionEnabled bool,
-) (*GatewayClient, error) {
+func NewClient(cfg ClientConfig, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	metrics := newClientMetrics(registerer)
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
+	unaryInterceptors, streamInterceptors := grpcclient.Instrument(metrics.requestLatency)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
 
-	var c cache.Cache
-	if cfg.CacheResults {
-		c, err = cache.New(cfg.Cache.CacheConfig, registerer, logger, stats.BloomFilterCache, constants.Loki)
-		if err != nil {
-			return nil, errors.Wrap(err, "new bloom gateway cache")
-		}
-		if cfg.Cache.Compression == "snappy" {
-			c = cache.NewSnappy(c, logger)
-		}
-	}
-
-	poolFactory := func(addr string) (ringclient.PoolClient, error) {
+	clientFactory := func(addr string) (ringclient.PoolClient, error) {
 		pool, err := NewBloomGatewayGRPCPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new bloom gateway grpc pool")
 		}
-
-		if cfg.CacheResults {
-			pool.BloomGatewayClient = NewBloomGatewayClientCacheMiddleware(
-				logger,
-				pool.BloomGatewayClient,
-				c,
-				limits,
-				cacheGen,
-				retentionEnabled,
-			)
-		}
-
 		return pool, nil
 	}
 
@@ -185,17 +141,10 @@ func NewClient(
 	// Make an attempt to do one DNS lookup so we can start with addresses
 	dnsProvider.RunOnce()
 
-	clientPool := ringclient.NewPool(
-		"bloom-gateway",
-		ringclient.PoolConfig(cfg.PoolConfig),
-		func() ([]string, error) { return dnsProvider.Addresses(), nil },
-		ringclient.PoolAddrFunc(poolFactory),
-		metrics.clients,
-		logger,
-	)
-
-	pool := NewJumpHashClientPool(clientPool, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
-	pool.Start()
+	pool, err := NewJumpHashClientPool(clientFactory, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
+	if err != nil {
+		return nil, err
+	}
 
 	return &GatewayClient{
 		cfg:         cfg,
@@ -211,7 +160,48 @@ func (c *GatewayClient) Close() {
 	c.dnsProvider.Stop()
 }
 
-// FilterChunkRefs implements Client
+func (c *GatewayClient) PrefetchBloomBlocks(ctx context.Context, blocks []bloomshipper.BlockRef) error {
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	pos := make(map[string]int)
+	servers := make([]addrWithBlocks, 0, len(blocks))
+	for _, block := range blocks {
+		addr, err := c.pool.Addr(block.String())
+		if err != nil {
+			level.Error(c.logger).Log("msg", "failed to resolve server address for block", "block", block, "err", err)
+			continue
+		}
+
+		if idx, found := pos[addr]; found {
+			servers[idx].blocks = append(servers[idx].blocks, block.String())
+		} else {
+			pos[addr] = len(servers)
+			servers = append(servers, addrWithBlocks{
+				addr:   addr,
+				blocks: []string{block.String()},
+			})
+		}
+	}
+
+	return concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
+		rs := servers[i]
+		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
+			req := &logproto.PrefetchBloomBlocksRequest{Blocks: rs.blocks}
+			_, err := client.PrefetchBloomBlocks(ctx, req)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "block prefetch failed for instance, skipping", "addr", rs.addr, "blocks", len(rs.blocks), "err", err)
+				c.metrics.clientRequests.WithLabelValues(routePrefectBlocks, typeError).Inc()
+			} else {
+				c.metrics.clientRequests.WithLabelValues(routePrefectBlocks, typeSuccess).Inc()
+			}
+			return err
+		})
+	})
+}
+
+// FilterChunks implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {
@@ -275,10 +265,10 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 					"err", err,
 				)
 				// filter none of the results on failed request
-				c.metrics.clientRequests.WithLabelValues(typeError).Inc()
+				c.metrics.clientRequests.WithLabelValues(routeFilterChunks, typeError).Inc()
 				results[i] = rs.groups
 			} else {
-				c.metrics.clientRequests.WithLabelValues(typeSuccess).Inc()
+				c.metrics.clientRequests.WithLabelValues(routeFilterChunks, typeSuccess).Inc()
 				results[i] = resp.ChunkRefs
 			}
 
@@ -308,12 +298,12 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
-	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
+	heapIter := v1.NewHeapIterator(
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint < b.Fingerprint },
 		iters...,
 	)
 
-	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter(
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from
@@ -329,6 +319,7 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
+				Labels:      a.Labels,
 				Tenant:      a.Tenant,
 				Refs:        mergeChunkSets(a.Refs, b.Refs),
 			}
@@ -394,6 +385,11 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 		return nil
 	}
 	return err
+}
+
+type addrWithBlocks struct {
+	addr   string
+	blocks []string
 }
 
 type addrWithGroups struct {

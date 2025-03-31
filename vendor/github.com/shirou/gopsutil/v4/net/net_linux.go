@@ -39,22 +39,9 @@ const ( // Conntrack Column numbers
 	ctSEARCH_RESTART
 )
 
-// NetIOCounters returns network I/O statistics for every network
-// interface installed on the system.  If pernic argument is false,
-// return only sum of all information (which name is 'all'). If true,
-// every network interface installed on the system is returned
-// separately.
-func IOCounters(pernic bool) ([]IOCountersStat, error) {
-	return IOCountersWithContext(context.Background(), pernic)
-}
-
 func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, error) {
 	filename := common.HostProcWithContext(ctx, "net/dev")
 	return IOCountersByFileWithContext(ctx, pernic, filename)
-}
-
-func IOCountersByFile(pernic bool, filename string) ([]IOCountersStat, error) {
-	return IOCountersByFileWithContext(context.Background(), pernic, filename)
 }
 
 func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename string) ([]IOCountersStat, error) {
@@ -141,7 +128,7 @@ func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename stri
 	}
 
 	if !pernic {
-		return getIOCountersAll(ret)
+		return getIOCountersAll(ret), nil
 	}
 
 	return ret, nil
@@ -154,15 +141,6 @@ var netProtocols = []string{
 	"tcp",
 	"udp",
 	"udplite",
-}
-
-// ProtoCounters returns network statistics for the entire system
-// If protocols is empty then all protocols are returned, otherwise
-// just the protocols in the list are returned.
-// Available protocols:
-// [ip,icmp,icmpmsg,tcp,udp,udplite]
-func ProtoCounters(protocols []string) ([]ProtoCountersStat, error) {
-	return ProtoCountersWithContext(context.Background(), protocols)
 }
 
 func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
@@ -221,13 +199,6 @@ func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoC
 	return stats, nil
 }
 
-// NetFilterCounters returns iptables conntrack statistics
-// the currently in use conntrack count and the max.
-// If the file does not exist or is invalid it will return nil.
-func FilterCounters() ([]FilterStat, error) {
-	return FilterCountersWithContext(context.Background())
-}
-
 func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
 	countfile := common.HostProcWithContext(ctx, "sys/net/netfilter/nf_conntrack_count")
 	maxfile := common.HostProcWithContext(ctx, "sys/net/netfilter/nf_conntrack_max")
@@ -238,23 +209,18 @@ func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
 	}
 	stats := make([]FilterStat, 0, 1)
 
-	max, err := common.ReadInts(maxfile)
+	maxConn, err := common.ReadInts(maxfile)
 	if err != nil {
 		return nil, err
 	}
 
 	payload := FilterStat{
 		ConnTrackCount: count[0],
-		ConnTrackMax:   max[0],
+		ConnTrackMax:   maxConn[0],
 	}
 
 	stats = append(stats, payload)
 	return stats, nil
-}
-
-// ConntrackStats returns more detailed info about the conntrack table
-func ConntrackStats(percpu bool) ([]ConntrackStat, error) {
-	return ConntrackStatsWithContext(context.Background(), percpu)
 }
 
 // ConntrackStatsWithContext returns more detailed info about the conntrack table
@@ -385,47 +351,20 @@ type connTmp struct {
 	path     string
 }
 
-// Return a list of network connections opened.
-func Connections(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithContext(context.Background(), kind)
-}
-
 func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsPidWithContext(ctx, kind, 0)
 }
 
-// Return a list of network connections opened returning at most `max`
-// connections for each running process.
-func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsMaxWithContext(context.Background(), kind, max)
-}
-
-func ConnectionsMaxWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithContext(ctx, kind, 0, max)
-}
-
-// Return a list of network connections opened, omitting `Uids`.
-// WithoutUids functions are reliant on implementation details. They may be altered to be an alias for Connections or be
-// removed from the API in the future.
-func ConnectionsWithoutUids(kind string) ([]ConnectionStat, error) {
-	return ConnectionsWithoutUidsWithContext(context.Background(), kind)
+func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithContext(ctx, kind, 0, maxConn)
 }
 
 func ConnectionsWithoutUidsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
 	return ConnectionsMaxWithoutUidsWithContext(ctx, kind, 0)
 }
 
-func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, max)
-}
-
-// Return a list of network connections opened by a process.
-func ConnectionsPid(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithContext(context.Background(), kind, pid)
-}
-
-func ConnectionsPidWithoutUids(kind string, pid int32) ([]ConnectionStat, error) {
-	return ConnectionsPidWithoutUidsWithContext(context.Background(), kind, pid)
+func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, maxConn)
 }
 
 func ConnectionsPidWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
@@ -436,24 +375,15 @@ func ConnectionsPidWithoutUidsWithContext(ctx context.Context, kind string, pid 
 	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, 0)
 }
 
-// Return up to `max` network connections opened by a process.
-func ConnectionsPidMax(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, false)
 }
 
-func ConnectionsPidMaxWithoutUids(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, true)
 }
 
-func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max, false)
-}
-
-func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max, true)
-}
-
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int, skipUids bool) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int, skipUids bool) ([]ConnectionStat, error) {
 	tmap, ok := netConnectionKindMap[kind]
 	if !ok {
 		return nil, fmt.Errorf("invalid kind, %s", kind)
@@ -462,22 +392,18 @@ func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, p
 	var err error
 	var inodes map[string][]inodeMap
 	if pid == 0 {
-		inodes, err = getProcInodesAllWithContext(ctx, root, max)
+		inodes, err = getProcInodesAllWithContext(ctx, root, maxConn)
 	} else {
-		inodes, err = getProcInodes(root, pid, max)
+		inodes, err = getProcInodes(root, pid, maxConn)
 		if len(inodes) == 0 {
 			// no connection for the pid
 			return []ConnectionStat{}, nil
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("cound not get pid(s), %d: %w", pid, err)
+		return nil, fmt.Errorf("could not get pid(s), %d: %w", pid, err)
 	}
 	return statsFromInodesWithContext(ctx, root, pid, tmap, inodes, skipUids)
-}
-
-func statsFromInodes(root string, pid int32, tmap []netConnectionKindType, inodes map[string][]inodeMap, skipUids bool) ([]ConnectionStat, error) {
-	return statsFromInodesWithContext(context.Background(), root, pid, tmap, inodes, skipUids)
 }
 
 func statsFromInodesWithContext(ctx context.Context, root string, pid int32, tmap []netConnectionKindType, inodes map[string][]inodeMap, skipUids bool) ([]ConnectionStat, error) {
@@ -496,7 +422,7 @@ func statsFromInodesWithContext(ctx context.Context, root string, pid int32, tma
 		}
 		switch t.family {
 		case syscall.AF_INET, syscall.AF_INET6:
-			ls, err = processInetWithContext(ctx, path, t, inodes, pid)
+			ls, err = processInet(path, t, inodes, pid)
 		case syscall.AF_UNIX:
 			ls, err = processUnix(path, t, inodes, pid)
 		}
@@ -543,7 +469,7 @@ func statsFromInodesWithContext(ctx context.Context, root string, pid int32, tma
 }
 
 // getProcInodes returns fd of the pid.
-func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, error) {
+func getProcInodes(root string, pid int32, maxConn int) (map[string][]inodeMap, error) {
 	ret := make(map[string][]inodeMap)
 
 	dir := fmt.Sprintf("%s/%d/fd", root, pid)
@@ -552,7 +478,7 @@ func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, erro
 		return ret, err
 	}
 	defer f.Close()
-	dirEntries, err := f.ReadDir(max)
+	dirEntries, err := f.ReadDir(maxConn)
 	if err != nil {
 		return ret, err
 	}
@@ -573,7 +499,7 @@ func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, erro
 		if !ok {
 			ret[inode] = make([]inodeMap, 0)
 		}
-		fd, err := strconv.Atoi(dirEntry.Name())
+		fd, err := strconv.ParseInt(dirEntry.Name(), 10, 32)
 		if err != nil {
 			continue
 		}
@@ -585,14 +511,6 @@ func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, erro
 		ret[inode] = append(ret[inode], i)
 	}
 	return ret, nil
-}
-
-// Pids retunres all pids.
-// Note: this is a copy of process_linux.Pids()
-// FIXME: Import process occures import cycle.
-// move to common made other platform breaking. Need consider.
-func Pids() ([]int32, error) {
-	return PidsWithContext(context.Background())
 }
 
 func PidsWithContext(ctx context.Context) ([]int32, error) {
@@ -668,11 +586,7 @@ func (p *process) fillFromStatus(ctx context.Context) error {
 	return nil
 }
 
-func getProcInodesAll(root string, max int) (map[string][]inodeMap, error) {
-	return getProcInodesAllWithContext(context.Background(), root, max)
-}
-
-func getProcInodesAllWithContext(ctx context.Context, root string, max int) (map[string][]inodeMap, error) {
+func getProcInodesAllWithContext(ctx context.Context, root string, maxConn int) (map[string][]inodeMap, error) {
 	pids, err := PidsWithContext(ctx)
 	if err != nil {
 		return nil, err
@@ -680,7 +594,7 @@ func getProcInodesAllWithContext(ctx context.Context, root string, max int) (map
 	ret := make(map[string][]inodeMap)
 
 	for _, pid := range pids {
-		t, err := getProcInodes(root, pid, max)
+		t, err := getProcInodes(root, pid, maxConn)
 		if err != nil {
 			// skip if permission error or no longer exists
 			if os.IsPermission(err) || os.IsNotExist(err) || errors.Is(err, io.EOF) {
@@ -702,10 +616,6 @@ func getProcInodesAllWithContext(ctx context.Context, root string, max int) (map
 // "0500000A:0016" -> "10.0.0.5", 22
 // "0085002452100113070057A13F025401:0035" -> "2400:8500:1301:1052:a157:7:154:23f", 53
 func decodeAddress(family uint32, src string) (Addr, error) {
-	return decodeAddressWithContext(context.Background(), family, src)
-}
-
-func decodeAddressWithContext(ctx context.Context, family uint32, src string) (Addr, error) {
 	t := strings.Split(src, ":")
 	if len(t) != 2 {
 		return Addr{}, fmt.Errorf("does not contain port, %s", src)
@@ -723,12 +633,12 @@ func decodeAddressWithContext(ctx context.Context, family uint32, src string) (A
 
 	if family == syscall.AF_INET {
 		if common.IsLittleEndian() {
-			ip = net.IP(ReverseWithContext(ctx, decoded))
+			ip = net.IP(Reverse(decoded))
 		} else {
 			ip = net.IP(decoded)
 		}
 	} else { // IPv6
-		ip, err = parseIPv6HexStringWithContext(ctx, decoded)
+		ip, err = parseIPv6HexString(decoded)
 		if err != nil {
 			return Addr{}, err
 		}
@@ -739,12 +649,7 @@ func decodeAddressWithContext(ctx context.Context, family uint32, src string) (A
 	}, nil
 }
 
-// Reverse reverses array of bytes.
 func Reverse(s []byte) []byte {
-	return ReverseWithContext(context.Background(), s)
-}
-
-func ReverseWithContext(ctx context.Context, s []byte) []byte {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
 		s[i], s[j] = s[j], s[i]
 	}
@@ -753,27 +658,19 @@ func ReverseWithContext(ctx context.Context, s []byte) []byte {
 
 // parseIPv6HexString parse array of bytes to IPv6 string
 func parseIPv6HexString(src []byte) (net.IP, error) {
-	return parseIPv6HexStringWithContext(context.Background(), src)
-}
-
-func parseIPv6HexStringWithContext(ctx context.Context, src []byte) (net.IP, error) {
 	if len(src) != 16 {
-		return nil, fmt.Errorf("invalid IPv6 string")
+		return nil, errors.New("invalid IPv6 string")
 	}
 
 	buf := make([]byte, 0, 16)
 	for i := 0; i < len(src); i += 4 {
-		r := ReverseWithContext(ctx, src[i:i+4])
+		r := Reverse(src[i : i+4])
 		buf = append(buf, r...)
 	}
 	return net.IP(buf), nil
 }
 
 func processInet(file string, kind netConnectionKindType, inodes map[string][]inodeMap, filterPid int32) ([]connTmp, error) {
-	return processInetWithContext(context.Background(), file, kind, inodes, filterPid)
-}
-
-func processInetWithContext(ctx context.Context, file string, kind netConnectionKindType, inodes map[string][]inodeMap, filterPid int32) ([]connTmp, error) {
 	if strings.HasSuffix(file, "6") && !common.PathExists(file) {
 		// IPv6 not supported, return empty.
 		return []connTmp{}, nil
@@ -816,11 +713,11 @@ func processInetWithContext(ctx context.Context, file string, kind netConnection
 		} else {
 			status = "NONE"
 		}
-		la, err := decodeAddressWithContext(ctx, kind.family, laddr)
+		la, err := decodeAddress(kind.family, laddr)
 		if err != nil {
 			continue
 		}
-		ra, err := decodeAddressWithContext(ctx, kind.family, raddr)
+		ra, err := decodeAddress(kind.family, raddr)
 		if err != nil {
 			continue
 		}
@@ -858,7 +755,7 @@ func processUnix(file string, kind netConnectionKindType, inodes map[string][]in
 		if len(tokens) < 6 {
 			continue
 		}
-		st, err := strconv.Atoi(tokens[4])
+		st, err := strconv.ParseInt(tokens[4], 10, 32)
 		if err != nil {
 			return nil, err
 		}

@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -450,7 +451,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 }
 
 func TestUnorderedChunkIterators(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for i := 0; i < 100; i++ {
 		// push in reverse order
 		dup, err := c.Append(&logproto.Entry{
@@ -496,11 +497,11 @@ func TestUnorderedChunkIterators(t *testing.T) {
 }
 
 func BenchmarkUnorderedRead(b *testing.B) {
-	legacy := NewMemChunk(ChunkFormatV3, EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	legacy := NewMemChunk(ChunkFormatV3, compression.Snappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(legacy, false)
-	ordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	ordered := NewMemChunk(ChunkFormatV3, compression.Snappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(ordered, false)
-	unordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	unordered := NewMemChunk(ChunkFormatV3, compression.Snappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(unordered, false)
 
 	tcs := []struct {
@@ -544,7 +545,12 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					iterator := tc.c.SampleIterator(
+						context.Background(),
+						time.Unix(0, 0),
+						time.Unix(0, math.MaxInt64),
+						countExtractor,
+					)
 					for iterator.Next() {
 						_ = iterator.At()
 					}
@@ -558,7 +564,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 }
 
 func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(c, false)
 
 	ct := 0
@@ -580,7 +586,12 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
-	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	smpl := c.SampleIterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(0, math.MaxInt64),
+		countExtractor,
+	)
 	for smpl.Next() {
 		next := smpl.At().Timestamp
 		require.GreaterOrEqual(t, next, i)
@@ -595,7 +606,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 }
 
 func chunkFrom(xs []logproto.Entry) ([]byte, error) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, x := range xs {
 		if _, err := c.Append(&x); err != nil {
 			return nil, err
@@ -655,7 +666,7 @@ func TestReorder(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			for _, x := range tc.input {
 				dup, err := c.Append(&x)
 				require.False(t, dup)
@@ -674,7 +685,7 @@ func TestReorder(t *testing.T) {
 }
 
 func TestReorderAcrossBlocks(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, batch := range [][]int{
 		// ensure our blocks have overlapping bounds and must be reordered
 		// before closing.
@@ -721,17 +732,17 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
-	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-	if err != nil {
-		panic(err)
-	}
+	countEx, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+	bytesEx, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
+	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
 		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
 		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
 		"ordered":                            &headBlock{},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s SampleIterator", name), func(t *testing.T) {
 			dup, err := b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}})
 			require.False(t, dup)
 			require.NoError(t, err)
@@ -741,7 +752,35 @@ func Test_HeadIteratorHash(t *testing.T) {
 				require.Equal(t, lbs.Hash(), eit.StreamHash())
 			}
 
-			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs))
+			sit := b.SampleIterator(context.TODO(), 0, 2, countEx.ForStream(lbs))
+			for sit.Next() {
+				require.Equal(t, lbs.Hash(), sit.StreamHash())
+			}
+		})
+
+		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
+			dup, err := b.Append(1, "bar", labels.Labels{{Name: "bar", Value: "foo"}})
+			require.False(t, dup)
+			require.NoError(t, err)
+			eit := b.Iterator(
+				context.Background(),
+				logproto.BACKWARD,
+				0,
+				2,
+				log.NewNoopPipeline().ForStream(lbs),
+			)
+
+			for eit.Next() {
+				require.Equal(t, lbs.Hash(), eit.StreamHash())
+			}
+
+			sit := b.SampleIterator(
+				context.TODO(),
+				0,
+				2,
+				countEx.ForStream(lbs),
+				bytesEx.ForStream(lbs),
+			)
 			for sit.Next() {
 				require.Equal(t, lbs.Hash(), sit.StreamHash())
 			}

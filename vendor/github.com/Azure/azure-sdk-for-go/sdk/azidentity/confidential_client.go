@@ -29,8 +29,8 @@ type confidentialClientOptions struct {
 	AdditionallyAllowedTenants []string
 	// Assertion for on-behalf-of authentication
 	Assertion                         string
+	Cache                             Cache
 	DisableInstanceDiscovery, SendX5C bool
-	tokenCachePersistenceOptions      *tokenCachePersistenceOptions
 }
 
 // confidentialClient wraps the MSAL confidential client
@@ -107,15 +107,15 @@ func (c *confidentialClient) GetToken(ctx context.Context, tro policy.TokenReque
 		}
 	}
 	if err != nil {
-		// We could get a credentialUnavailableError from managed identity authentication because in that case the error comes from our code.
-		// We return it directly because it affects the behavior of credential chains. Otherwise, we return AuthenticationFailedError.
-		var unavailableErr credentialUnavailable
-		if !errors.As(err, &unavailableErr) {
-			res := getResponseFromError(err)
-			err = newAuthenticationFailedError(c.name, err.Error(), res, err)
+		var (
+			authFailedErr  *AuthenticationFailedError
+			unavailableErr credentialUnavailable
+		)
+		if !(errors.As(err, &unavailableErr) || errors.As(err, &authFailedErr)) {
+			err = newAuthenticationFailedErrorFromMSAL(c.name, err)
 		}
 	} else {
-		msg := fmt.Sprintf("%s.GetToken() acquired a token for scope %q", c.name, strings.Join(ar.GrantedScopes, ", "))
+		msg := fmt.Sprintf(scopeLogFmt, c.name, strings.Join(ar.GrantedScopes, ", "))
 		log.Write(EventAuthentication, msg)
 	}
 	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
@@ -145,7 +145,7 @@ func (c *confidentialClient) client(tro policy.TokenRequestOptions) (msalConfide
 }
 
 func (c *confidentialClient) newMSALClient(enableCAE bool) (msalConfidentialClient, error) {
-	cache, err := internal.NewCache(c.opts.tokenCachePersistenceOptions, enableCAE)
+	cache, err := internal.ExportReplace(c.opts.Cache, enableCAE)
 	if err != nil {
 		return nil, err
 	}

@@ -6,14 +6,14 @@ type Tee interface {
 }
 
 // WrapTee wraps a new Tee around an existing Tee.
-func WrapTee(existing, new Tee) Tee {
+func WrapTee(existing, newTee Tee) Tee {
 	if existing == nil {
-		return new
+		return newTee
 	}
 	if multi, ok := existing.(*multiTee); ok {
-		return &multiTee{append(multi.tees, new)}
+		return &multiTee{append(multi.tees, newTee)}
 	}
-	return &multiTee{tees: []Tee{existing, new}}
+	return &multiTee{tees: []Tee{existing, newTee}}
 }
 
 type multiTee struct {

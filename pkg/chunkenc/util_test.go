@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -23,7 +24,7 @@ func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetada
 	}
 }
 
-func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
+func generateData(enc compression.Codec, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
 	size := uint64(0)
@@ -47,7 +48,7 @@ func fillChunk(c Chunk) int64 {
 	return fillChunkClose(c, true)
 }
 
-func fillChunkClose(c Chunk, close bool) int64 {
+func fillChunkClose(c Chunk, doClose bool) int64 {
 	i := int64(0)
 	inserted := int64(0)
 	entry := &logproto.Entry{
@@ -72,13 +73,13 @@ func fillChunkClose(c Chunk, close bool) int64 {
 		entry.Line = testdata.LogString(i)
 
 	}
-	if close {
+	if doClose {
 		_ = c.Close()
 	}
 	return inserted
 }
 
-func fillChunkRandomOrder(c Chunk, close bool) {
+func fillChunkRandomOrder(c Chunk, doClose bool) {
 	ub := int64(1 << 30)
 	i := int64(0)
 	random := rand.New(rand.NewSource(42))
@@ -97,7 +98,7 @@ func fillChunkRandomOrder(c Chunk, close bool) {
 		entry.Line = testdata.LogString(i)
 
 	}
-	if close {
+	if doClose {
 		_ = c.Close()
 	}
 }

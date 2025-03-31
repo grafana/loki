@@ -280,7 +280,6 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run("", func(t *testing.T) {
 			b, err := jsoniter.Marshal(tt)
 			require.Nil(t, err)

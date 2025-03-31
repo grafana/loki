@@ -201,7 +201,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
 	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
 
-	var bytesPerShard = combined.Bytes
+	bytesPerShard := combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
@@ -225,7 +225,10 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 ) {
 	log := spanlogger.FromContext(r.ctx)
 
-	adjustedFrom := r.from
+	var (
+		adjustedFrom    = r.from
+		adjustedThrough model.Time
+	)
 
 	// NB(owen-d): there should only ever be 1 matcher group passed
 	// to this call as we call it separately for different legs
@@ -236,18 +239,30 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	}
 
 	for _, grp := range grps {
-		diff := grp.Interval + grp.Offset
+		diff := grp.Interval
 
 		// For instant queries, when start == end,
 		// we have a default lookback which we add here
-		if grp.Interval == 0 {
-			diff = diff + r.defaultLookback
+		if diff == 0 {
+			diff = r.defaultLookback
 		}
+
+		diff += grp.Offset
 
 		// use the oldest adjustedFrom
 		if r.from.Add(-diff).Before(adjustedFrom) {
 			adjustedFrom = r.from.Add(-diff)
 		}
+
+		// use the latest adjustedThrough
+		if r.through.Add(-grp.Offset).After(adjustedThrough) {
+			adjustedThrough = r.through.Add(-grp.Offset)
+		}
+	}
+
+	// handle the case where there are no matchers
+	if adjustedThrough == 0 {
+		adjustedThrough = r.through
 	}
 
 	exprStr := expr.String()
@@ -256,11 +271,10 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	// use the retry handler here to retry transient errors
 	resp, err := r.retryNextHandler.Do(r.ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
-		Through:             r.through,
+		Through:             adjustedThrough,
 		Query:               expr.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
-
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 	}

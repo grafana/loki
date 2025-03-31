@@ -22,14 +22,26 @@ import (
 	"fmt"
 	"sync"
 
+	"google.golang.org/grpc/xds/internal/xdsclient/transport/ads"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
+// wrappingWatcher is a wrapper around an xdsresource.ResourceWatcher that adds
+// the node ID to the error messages reported to the watcher.
+type wrappingWatcher struct {
+	xdsresource.ResourceWatcher
+	nodeID string
+}
+
+func (w *wrappingWatcher) OnError(err error, done xdsresource.OnDoneFunc) {
+	w.ResourceWatcher.OnError(fmt.Errorf("[xDS node id: %v]: %v", w.nodeID, err), done)
+}
+
 // WatchResource uses xDS to discover the resource associated with the provided
-// resource name. The resource type implementation determines how xDS requests
-// are sent out and how responses are deserialized and validated. Upon receipt
-// of a response from the management server, an appropriate callback on the
-// watcher is invoked.
+// resource name. The resource type implementation determines how xDS responses
+// are are deserialized and validated, as received from the xDS management
+// server. Upon receipt of a response from the management server, an
+// appropriate callback on the watcher is invoked.
 func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func()) {
 	// Return early if the client is already closed.
 	//
@@ -42,26 +54,50 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 		return func() {}
 	}
 
+	watcher = &wrappingWatcher{
+		ResourceWatcher: watcher,
+		nodeID:          c.config.Node().GetId(),
+	}
+
 	if err := c.resourceTypes.maybeRegister(rType); err != nil {
 		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeName(), resourceName)
-		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, func() {}) })
 		return func() {}
 	}
 
-	// TODO: Make ParseName return an error if parsing fails, and
-	// schedule the OnError callback in that case.
 	n := xdsresource.ParseName(resourceName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
+	a := c.getAuthorityForResource(n)
+	if a == nil {
 		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName(), resourceName, n.Authority)
-		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+		watcher.OnError(fmt.Errorf("authority %q not found in bootstrap config for resource %q", n.Authority, resourceName), func() {})
 		return func() {}
 	}
-	cancelF := a.watchResource(rType, n.String(), watcher)
-	return func() {
-		cancelF()
-		unref()
+	// The watchResource method on the authority is invoked with n.String()
+	// instead of resourceName because n.String() canonicalizes the given name.
+	// So, two resource names which don't differ in the query string, but only
+	// differ in the order of context params will result in the same resource
+	// being watched by the authority.
+	return a.watchResource(rType, n.String(), watcher)
+}
+
+// Gets the authority for the given resource name.
+//
+// See examples in this section of the gRFC:
+// https://github.com/grpc/proposal/blob/master/A47-xds-federation.md#bootstrap-config-changes
+func (c *clientImpl) getAuthorityForResource(name *xdsresource.Name) *authority {
+	// For new-style resource names, always lookup the authorities map. If the
+	// name does not specify an authority, we will end up looking for an entry
+	// in the map with the empty string as the key.
+	if name.Scheme == xdsresource.FederationScheme {
+		return c.authorities[name.Authority]
 	}
+
+	// For old-style resource names, we use the top-level authority if the name
+	// does not specify an authority.
+	if name.Authority == "" {
+		return c.topLevelAuthority
+	}
+	return c.authorities[name.Authority]
 }
 
 // A registry of xdsresource.Type implementations indexed by their corresponding
@@ -96,16 +132,29 @@ func (r *resourceTypeRegistry) maybeRegister(rType xdsresource.Type) error {
 }
 
 func (c *clientImpl) triggerResourceNotFoundForTesting(rType xdsresource.Type, resourceName string) error {
-	if c == nil || c.done.HasFired() {
-		return fmt.Errorf("attempt to trigger resource-not-found-error for resource %q of type %q, but client is closed", rType.TypeName(), resourceName)
+	c.channelsMu.Lock()
+	defer c.channelsMu.Unlock()
+
+	if c.logger.V(2) {
+		c.logger.Infof("Triggering resource not found for type: %s, resource name: %s", rType.TypeName(), resourceName)
 	}
 
-	n := xdsresource.ParseName(resourceName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
-		return fmt.Errorf("attempt to trigger resource-not-found-error for resource %q of type %q, but authority %q is not found", rType.TypeName(), resourceName, n.Authority)
+	for _, state := range c.xdsActiveChannels {
+		if err := state.channel.triggerResourceNotFoundForTesting(rType, resourceName); err != nil {
+			return err
+		}
 	}
-	defer unref()
-	a.triggerResourceNotFoundForTesting(rType, n.String())
 	return nil
+}
+
+func (c *clientImpl) resourceWatchStateForTesting(rType xdsresource.Type, resourceName string) (ads.ResourceWatchState, error) {
+	c.channelsMu.Lock()
+	defer c.channelsMu.Unlock()
+
+	for _, state := range c.xdsActiveChannels {
+		if st, err := state.channel.ads.ResourceWatchStateForTesting(rType, resourceName); err == nil {
+			return st, nil
+		}
+	}
+	return ads.ResourceWatchState{}, fmt.Errorf("unable to find watch state for resource type %q and name %q", rType.TypeName(), resourceName)
 }

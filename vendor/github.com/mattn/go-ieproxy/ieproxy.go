@@ -36,6 +36,11 @@ func GetConf() ProxyConf {
 	return getConf()
 }
 
+// ReloadConf reloads the proxy configuration
+func ReloadConf() ProxyConf {
+	return reloadConf()
+}
+
 // OverrideEnvWithStaticProxy writes new values to the
 // `http_proxy`, `https_proxy` and `no_proxy` environment variables.
 // The values are taken from the Windows Regedit (should be called in `init()` function - see example)

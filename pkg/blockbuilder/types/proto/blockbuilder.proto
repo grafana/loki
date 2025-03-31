@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package blockbuilder.types;
+
+option go_package = "github.com/grafana/loki/pkg/blockbuilder/types/proto";
+
+// SchedulerService defines the gRPC service for calls originating from the blockbuilder (to the scheduler)
+service SchedulerService {
+  // GetJob requests a new job from the scheduler
+  rpc GetJob(GetJobRequest) returns (GetJobResponse) {}
+  // CompleteJob notifies the scheduler that a job has been completed
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse) {}
+  // SyncJob syncs job state with the scheduler
+  rpc SyncJob(SyncJobRequest) returns (SyncJobResponse) {}
+}
+
+// GetJobRequest represents a request for a new job
+message GetJobRequest {
+  string builder_id = 1;
+}
+
+// GetJobResponse contains the response for a job request
+message GetJobResponse {
+  Job job = 1;
+  bool ok = 2;
+}
+
+// CompleteJobRequest represents a job completion notification
+message CompleteJobRequest {
+  string builder_id = 1;
+  Job job = 2;
+  bool success = 3;
+}
+
+// CompleteJobResponse is an empty response for job completion
+message CompleteJobResponse {}
+
+// SyncJobRequest represents a job sync request
+message SyncJobRequest {
+  string builder_id = 1;
+  Job job = 2;
+}
+
+// SyncJobResponse is an empty response for job sync
+message SyncJobResponse {}
+
+// Offsets represents the start and end offsets for a job
+message Offsets {
+  int64 min = 1;
+  int64 max = 2;
+}
+
+// Job represents a block building job
+message Job {
+  string id = 1;
+  int32 partition = 2;
+  Offsets offsets = 3;
+}

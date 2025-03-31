@@ -4,7 +4,7 @@ menuTItle:
 description: Provides an overview of how metric queries are constructed and parsed. Metric queries extend log queries by applying a function to log query results.
 aliases: 
 - ../logql/metric_queries/
-weight: 20  
+weight: 400  
 ---
 
 # Metric queries
@@ -68,7 +68,7 @@ count_over_time({job="mysql"}[5m]) offset 5m // INVALID
 
 ### Unwrapped range aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{< relref ".#pipeline-errors" >}}).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors](./#pipeline-errors).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -104,7 +104,7 @@ Which can be used to aggregate over distinct labels dimensions by including a `w
 
 `without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
 
-See [Unwrap examples]({{< relref "./query_examples#unwrap-examples" >}}) for query examples that use the unwrap expression.
+See [Unwrap examples](../query_examples/#unwrap-examples) for query examples that use the unwrap expression.
 
 ## Built-in aggregation operators
 
@@ -135,7 +135,7 @@ The aggregation operators can either be used to aggregate over all label values 
 The `without` clause removes the listed labels from the resulting vector, keeping all others.
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
-See [vector aggregation examples]({{< relref "./query_examples#vector-aggregation-examples" >}}) for query examples that use vector aggregation expressions.
+See [vector aggregation examples](../query_examples/#vector-aggregation-examples) for query examples that use vector aggregation expressions.
 
 ## Functions
 
@@ -153,3 +153,30 @@ Examples:
       or
     vector(0) # will return 0
     ```
+
+## Probabilistic aggregation
+
+LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
+
+The function is of the form: 
+
+```logql
+approx_topk(k, <vector expression>)
+```
+
+`approx_topk` is only supported for instant queries. Grouping is also not supported and should be handled by an inner `sum by` or `sum without` even though this might not be the same behavior as `topk by`.
+
+Under the hood, `approx_topk` is implemented using sharding. The [count-min sketch](https://en.wikipedia.org/wiki/Count%E2%80%93min_sketch) algorithm and a heap are used to approximate the counts for each shard. The accuracy of the approximation depends on the size of the heap, which is defined by Loki's`max_count_min_sketch_heap_size` parameter. Accuracy decreases as `k` approaches the size of the heap (which has a default size of `10,000`). 
+
+The expression `approx_topk(k,inner)` becomes
+
+```
+topk(
+  k,
+  eval_cms(
+    __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
+  )
+)
+```
+
+`__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.

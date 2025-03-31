@@ -90,19 +90,20 @@ type ExternalAccountAuthorizedUserFile struct {
 
 // CredentialSource stores the information necessary to retrieve the credentials for the STS exchange.
 //
-// One field amongst File, URL, and Executable should be filled, depending on the kind of credential in question.
+// One field amongst File, URL, Certificate, and Executable should be filled, depending on the kind of credential in question.
 // The EnvironmentID should start with AWS if being used for an AWS credential.
 type CredentialSource struct {
-	File                        string            `json:"file"`
-	URL                         string            `json:"url"`
-	Headers                     map[string]string `json:"headers"`
-	Executable                  *ExecutableConfig `json:"executable,omitempty"`
-	EnvironmentID               string            `json:"environment_id"`
-	RegionURL                   string            `json:"region_url"`
-	RegionalCredVerificationURL string            `json:"regional_cred_verification_url"`
-	CredVerificationURL         string            `json:"cred_verification_url"`
-	IMDSv2SessionTokenURL       string            `json:"imdsv2_session_token_url"`
-	Format                      *Format           `json:"format,omitempty"`
+	File                        string             `json:"file"`
+	URL                         string             `json:"url"`
+	Headers                     map[string]string  `json:"headers"`
+	Executable                  *ExecutableConfig  `json:"executable,omitempty"`
+	Certificate                 *CertificateConfig `json:"certificate"`
+	EnvironmentID               string             `json:"environment_id"` // TODO: Make type for this
+	RegionURL                   string             `json:"region_url"`
+	RegionalCredVerificationURL string             `json:"regional_cred_verification_url"`
+	CredVerificationURL         string             `json:"cred_verification_url"`
+	IMDSv2SessionTokenURL       string             `json:"imdsv2_session_token_url"`
+	Format                      *Format            `json:"format,omitempty"`
 }
 
 // Format describes the format of a [CredentialSource].
@@ -119,6 +120,13 @@ type ExecutableConfig struct {
 	Command       string `json:"command"`
 	TimeoutMillis int    `json:"timeout_millis"`
 	OutputFile    string `json:"output_file"`
+}
+
+// CertificateConfig represents the options used to set up X509 based workload
+// [CredentialSource]
+type CertificateConfig struct {
+	UseDefaultCertificateConfig bool   `json:"use_default_certificate_config"`
+	CertificateConfigLocation   string `json:"certificate_config_location"`
 }
 
 // ServiceAccountImpersonationInfo has impersonation configuration.

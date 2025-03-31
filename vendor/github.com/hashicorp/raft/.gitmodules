@@ -1,3 +1,0 @@
-[submodule "raft-compat/raft-latest"]
-	path = raft-compat/raft-previous-version
-	url = https://github.com/hashicorp/raft.git

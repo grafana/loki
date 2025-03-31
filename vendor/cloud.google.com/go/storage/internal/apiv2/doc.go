@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,19 +17,15 @@
 // Package storage is an auto-generated package for the
 // Cloud Storage API.
 //
-// Stop. This folder is likely not what you are looking for. This folder
-// contains protocol buffer definitions for an API only accessible to select
-// customers. Customers not participating should not depend on this file.
-// Please contact Google Cloud sales if you are interested. Unless told
-// otherwise by a Google Cloud representative, do not use or otherwise rely
-// on any of the contents of this folder. If you would like to use Cloud
-// Storage, please consult our official documentation (at
+// This folder contains protocol buffer definitions for an API only
+// accessible to select customers. Customers not participating should not
+// depend on this file. Please contact Google Cloud sales if you are
+// interested. Unless told otherwise by a Google Cloud representative, do not
+// use or otherwise rely on any of the contents of this folder. If you would
+// like to use Cloud Storage, please consult our official documentation (at
 // https://cloud.google.com/storage/docs/apis) for details on our XML and
 // JSON APIs, or else consider one of our client libraries (at
-// https://cloud.google.com/storage/docs/reference/libraries). This API
-// defined in this folder is unreleased and may shut off, break, or fail at
-// any time for any users who are not registered as a part of a private
-// preview program.
+// https://cloud.google.com/storage/docs/reference/libraries).
 //
 // # General documentation
 //
@@ -47,6 +43,7 @@
 //
 // To get started with this package, create a client.
 //
+//	// go get cloud.google.com/go/storage/internal/apiv2@latest
 //	ctx := context.Background()
 //	// This snippet has been automatically generated and should be regarded as a code template only.
 //	// It will require modifications to work:
@@ -65,25 +62,14 @@
 //
 // # Using the Client
 //
-// The following is an example of making an API call with the newly created client.
+// The following is an example of making an API call with the newly created client, mentioned above.
 //
-//	ctx := context.Background()
-//	// This snippet has been automatically generated and should be regarded as a code template only.
-//	// It will require modifications to work:
-//	// - It may require correct/in-range values for request initialization.
-//	// - It may require specifying regional endpoints when creating the service client as shown in:
-//	//   https://pkg.go.dev/cloud.google.com/go#hdr-Client_Options
-//	c, err := storage.NewClient(ctx)
-//	if err != nil {
-//		// TODO: Handle error.
-//	}
-//	defer c.Close()
-//	stream, err := c.BidiWriteObject(ctx)
+//	stream, err := c.BidiReadObject(ctx)
 //	if err != nil {
 //		// TODO: Handle error.
 //	}
 //	go func() {
-//		reqs := []*storagepb.BidiWriteObjectRequest{
+//		reqs := []*storagepb.BidiReadObjectRequest{
 //			// TODO: Create requests.
 //		}
 //		for _, req := range reqs {
@@ -119,34 +105,3 @@
 // [Debugging Client Libraries]: https://pkg.go.dev/cloud.google.com/go#hdr-Debugging
 // [Inspecting errors]: https://pkg.go.dev/cloud.google.com/go#hdr-Inspecting_errors
 package storage // import "cloud.google.com/go/storage/internal/apiv2"
-
-import (
-	"context"
-
-	"google.golang.org/api/option"
-)
-
-// For more information on implementing a client constructor hook, see
-// https://github.com/googleapis/google-cloud-go/wiki/Customizing-constructors.
-type clientHookParams struct{}
-type clientHook func(context.Context, clientHookParams) ([]option.ClientOption, error)
-
-var versionClient string
-
-func getVersionClient() string {
-	if versionClient == "" {
-		return "UNKNOWN"
-	}
-	return versionClient
-}
-
-// DefaultAuthScopes reports the default set of authentication scopes to use with this package.
-func DefaultAuthScopes() []string {
-	return []string{
-		"https://www.googleapis.com/auth/cloud-platform",
-		"https://www.googleapis.com/auth/cloud-platform.read-only",
-		"https://www.googleapis.com/auth/devstorage.full_control",
-		"https://www.googleapis.com/auth/devstorage.read_only",
-		"https://www.googleapis.com/auth/devstorage.read_write",
-	}
-}

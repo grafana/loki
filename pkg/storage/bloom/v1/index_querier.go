@@ -5,14 +5,7 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
-
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
-
-type SeriesIterator interface {
-	iter.Iterator[*SeriesWithOffset]
-	Reset()
-}
 
 type LazySeriesIter struct {
 	b *Block
@@ -138,7 +131,7 @@ func (it *LazySeriesIter) next() bool {
 	return false
 }
 
-func (it *LazySeriesIter) At() *SeriesWithOffsets {
+func (it *LazySeriesIter) At() *SeriesWithMeta {
 	return it.curPage.At()
 }
 

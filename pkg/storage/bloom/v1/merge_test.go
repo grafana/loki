@@ -21,7 +21,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 		for j := 0; j < numSeries/numQueriers; j++ {
 			ptrs = append(ptrs, &data[i*numSeries/numQueriers+j])
 		}
-		queriers = append(queriers, v2.NewPeekIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](ptrs)))
+		queriers = append(queriers, v2.NewPeekIter(v2.NewSliceIter(ptrs)))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
@@ -46,11 +46,7 @@ func TestMergeBlockQuerier_Duplicate(t *testing.T) {
 	for i := 0; i < numQueriers; i++ {
 		queriers = append(
 			queriers,
-			v2.NewPeekIter[*SeriesWithBlooms](
-				v2.NewSliceIter[*SeriesWithBlooms](
-					PointerSlice[SeriesWithBlooms](data),
-				),
-			),
+			v2.NewPeekIter(v2.NewSliceIter(PointerSlice(data))),
 		)
 	}
 
@@ -79,7 +75,7 @@ func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 		slices[i%numQueriers] = append(slices[i%numQueriers], &data[i])
 	}
 	for i := 0; i < numQueriers; i++ {
-		queriers = append(queriers, v2.NewPeekIter[*SeriesWithBlooms](v2.NewSliceIter[*SeriesWithBlooms](slices[i])))
+		queriers = append(queriers, v2.NewPeekIter(v2.NewSliceIter(slices[i])))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)

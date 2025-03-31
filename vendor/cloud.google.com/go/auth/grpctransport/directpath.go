@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/auth"
-	"cloud.google.com/go/compute/metadata"
+	"cloud.google.com/go/auth/internal/compute"
 	"google.golang.org/grpc"
 	grpcgoogle "google.golang.org/grpc/credentials/google"
 )
@@ -55,7 +55,7 @@ func checkDirectPathEndPoint(endpoint string) bool {
 	return true
 }
 
-func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, _ *Options) bool {
+func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, o *Options) bool {
 	if tp == nil {
 		return false
 	}
@@ -66,10 +66,13 @@ func isTokenProviderDirectPathCompatible(tp auth.TokenProvider, _ *Options) bool
 	if tok == nil {
 		return false
 	}
-	if source, _ := tok.Metadata["auth.google.tokenSource"].(string); source != "compute-metadata" {
+	if tok.MetadataString("auth.google.tokenSource") != "compute-metadata" {
 		return false
 	}
-	if acct, _ := tok.Metadata["auth.google.serviceAccount"].(string); acct != "default" {
+	if o.InternalOptions != nil && o.InternalOptions.EnableNonDefaultSAForDirectPath {
+		return true
+	}
+	if tok.MetadataString("auth.google.serviceAccount") != "default" {
 		return false
 	}
 	return true
@@ -91,7 +94,7 @@ func isDirectPathXdsUsed(o *Options) bool {
 // configuration allows the use of direct path. If it does not the provided
 // grpcOpts and endpoint are returned.
 func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint string, creds *auth.Credentials) ([]grpc.DialOption, string) {
-	if isDirectPathEnabled(endpoint, opts) && metadata.OnGCE() && isTokenProviderDirectPathCompatible(creds, opts) {
+	if isDirectPathEnabled(endpoint, opts) && compute.OnComputeEngine() && isTokenProviderDirectPathCompatible(creds, opts) {
 		// Overwrite all of the previously specific DialOptions, DirectPath uses its own set of credentials and certificates.
 		grpcOpts = []grpc.DialOption{
 			grpc.WithCredentialsBundle(grpcgoogle.NewDefaultCredentialsWithOptions(grpcgoogle.DefaultCredentialsOptions{PerRPCCreds: &grpcCredentialsProvider{creds: creds}}))}

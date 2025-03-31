@@ -34,7 +34,7 @@ func PopulateResourceTemplate(template, target string) string {
 	if strings.HasPrefix(template, "xdstp:") {
 		target = percentEncode(target)
 	}
-	return strings.Replace(template, "%s", target, -1)
+	return strings.ReplaceAll(template, "%s", target)
 }
 
 // percentEncode percent encode t, except for "/". See the tests for examples.

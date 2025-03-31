@@ -5,7 +5,7 @@ local _validationJob = common.validationJob;
 
 local setupValidationDeps = function(job) job {
   steps: [
-    common.checkout,
+    common.fetchReleaseRepo,
     common.fetchReleaseLib,
     common.fixDubiousOwnership,
     step.new('install tar')
@@ -33,7 +33,8 @@ local validationJob = _validationJob(false);
   local validationMakeStep = function(name, target)
     step.new(name)
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.withRun(common.makeTarget(target)),
+    + step.withRun(common.makeTarget(target))
+    + step.withWorkingDirectory('release'),
 
   // Test jobs
   collectPackages: job.new()
@@ -57,7 +58,7 @@ local validationJob = _validationJob(false);
 
   integration: validationJob
                + job.withSteps([
-                 common.checkout,
+                 common.fetchReleaseRepo,
                  common.fixDubiousOwnership,
                  validationMakeStep('integration', 'test-integration'),
                ]),
@@ -70,38 +71,41 @@ local validationJob = _validationJob(false);
                   },
                 })
                 + job.withSteps([
-                  common.checkout,
+                  common.fetchReleaseRepo,
                   common.fixDubiousOwnership,
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
                     gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${{ matrix.package }}/...
-                  |||),
+                  |||)
+                  + step.withWorkingDirectory('release'),
                 ]),
 
 
   testLambdaPromtail: validationJob
                       + job.withSteps([
-                        common.checkout,
+                        common.fetchReleaseRepo,
                         common.fixDubiousOwnership,
                         step.new('test push package')
                         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                         + step.withWorkingDirectory('tools/lambda-promtail')
                         + step.withRun(|||
                           gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
-                        |||),
+                        |||)
+                        + step.withWorkingDirectory('release'),
                       ]),
 
   testPushPackage: validationJob
                    + job.withSteps([
-                     common.checkout,
+                     common.fetchReleaseRepo,
                      common.fixDubiousOwnership,
                      step.new('test push package')
                      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                      + step.withWorkingDirectory('pkg/push')
                      + step.withRun(|||
                        gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
-                     |||),
+                     |||)
+                     + step.withWorkingDirectory('release'),
                    ]),
 
   // Check / lint jobs
@@ -115,11 +119,11 @@ local validationJob = _validationJob(false);
       validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
       validationMakeStep('check example config docs', 'check-example-config-doc'),
       validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
-      validationMakeStep('check drone drift', 'check-drone-drift'),
     ]) + {
       steps+: [
         step.new('build docs website')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+        + step.withWorkingDirectory('release')
         + step.withRun(|||
           cat <<EOF | docker run \
             --interactive \
@@ -142,25 +146,27 @@ local validationJob = _validationJob(false);
   faillint:
     validationJob
     + job.withSteps([
-      common.checkout,
+      common.fetchReleaseRepo,
       common.fixDubiousOwnership,
       step.new('faillint')
       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
       + step.withRun(|||
         faillint -paths "sync/atomic=go.uber.org/atomic" ./...
-
-      |||),
+      |||)
+      + step.withWorkingDirectory('release'),
     ]),
 
   golangciLint: setupValidationDeps(
     validationJob
     + job.withSteps(
       [
+        common.checkout,
         step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': true,
+          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
         }),
       ],
     )
@@ -176,7 +182,8 @@ local validationJob = _validationJob(false);
         + step.withRun(|||
           git fetch origin
           make check-format
-        |||),
+        |||)
+        + step.withWorkingDirectory('release'),
       ]
     )
   ),
@@ -197,7 +204,6 @@ local validationJob = _validationJob(false);
              })
              + job.withIf("${{ !fromJSON(inputs.skip_validation) && (cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure')) }}")
              + job.withSteps([
-               common.checkout,
                step.new('verify checks passed')
                + step.withRun(|||
                  echo "Some checks have failed!"
@@ -220,7 +226,6 @@ local validationJob = _validationJob(false);
            SKIP_VALIDATION: '${{ inputs.skip_validation }}',
          })
          + job.withSteps([
-           common.checkout,
            step.new('checks passed')
            + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
            + step.withRun(|||

@@ -84,7 +84,7 @@ func TestOrdering(t *testing.T) {
 				return o.Unwrap()
 			})
 
-			EqualIterators[int](t, func(a, b int) {}, NewSliceIter(tc.expected), unmap)
+			EqualIterators[int](t, func(_, _ int) {}, NewSliceIter(tc.expected), unmap)
 		})
 	}
 }

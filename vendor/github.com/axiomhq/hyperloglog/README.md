@@ -1,42 +1,42 @@
-HyperLogLog - an algorithm for approximating the number of distinct elements
----
+# HyperLogLog - an algorithm for approximating the number of distinct elements
 
 [![GoDoc](https://godoc.org/github.com/axiomhq/hyperloglog?status.svg)](https://godoc.org/github.com/axiomhq/hyperloglog) [![Go Report Card](https://goreportcard.com/badge/github.com/axiomhq/hyperloglog)](https://goreportcard.com/report/github.com/axiomhq/hyperloglog) [![CircleCI](https://circleci.com/gh/axiomhq/hyperloglog/tree/master.svg?style=svg)](https://circleci.com/gh/axiomhq/hyperloglog/tree/master)
 
-An improved version of [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) for the count-distinct problem, approximating the number of distinct elements in a multiset **using 33-50% less space** than other usual HyperLogLog implementations.
+An improved version of [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) for the count-distinct problem, approximating the number of distinct elements in a multiset. This implementation offers enhanced performance, flexibility, and simplicity while maintaining accuracy.
 
-This work is based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](http://cse.seu.edu.cn/PersonalPage/csqjxiao/csqjxiao_files/papers/INFOCOM17.pdf).
+## Note on Implementation History
 
-## Implementation
+The initial version of this work (tagged as v0.1.0) was based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](http://cse.seu.edu.cn/PersonalPage/csqjxiao/csqjxiao_files/papers/INFOCOM17.pdf). However, the current implementation has evolved significantly from this original basis, notably moving away from the tailcut method.
 
-The core differences between this and other implementations are:
-* **use metro hash** instead of xxhash
-* **sparse representation** for lower cardinalities (like HyperLogLog++)
-* **loglog-beta** for dynamic bias correction medium and high cardinalities.
-* **4-bit register** instead of 5 (HLL) and 6 (HLL++), but most implementations use 1-byte registers out of convenience
+## Current Implementation
 
-In general it borrows a lot from [InfluxData's fork](https://github.com/influxdata/influxdb/tree/master/pkg/estimator/hll) of [Clark Duvall's HyperLogLog++ implementation](https://github.com/clarkduvall/hyperloglog), but uses **50% less space**.
+The current implementation is based on the LogLog-Beta algorithm, as described in:
 
-## Results
-A direct comparison with the [HyperLogLog++ implementation used by InfluxDB](https://github.com/influxdata/influxdb/tree/master/pkg/estimator/hll) yielded the following results:
+["LogLog-Beta and More: A New Algorithm for Cardinality Estimation Based on LogLog Counting"](https://arxiv.org/pdf/1612.02284) by Jason Qin, Denys Kim, and Yumei Tung (2016).
 
-| Exact | Axiom (8.2 KB) | Influx (16.39 KB) |
-| --- | --- | --- |
-| 10 | 10 (0.0% off) | 10 (0.0% off) |
-| 50 |  50 (0.0% off) | 50 (0.0% off) |
-| 250 | 250 (0.0% off) | 250 (0.0% off) |
-| 1250 | 1249 (0.08% off) | 1249 (0.08% off) |
-| 6250 | 6250 (0.0% off) | 6250 (0.0% off) |
-| 31250 | **31008 (0.7744% off)** | 31565 (1.0080% off) |
-| 156250 | **156013 (0.1517% off)** | 156652 (0.2573% off) |
-| 781250 | **782364 (0.1426% off)** | 775988 (0.6735% off) |
-| 3906250 | 3869332 (0.9451% off) | **3889909 (0.4183% off)** |
-| 10000000 | **9952682 (0.4732% off)** |9889556 (1.1044% off) |
+Key features of the current implementation:
+* **Metro hash** used instead of xxhash
+* **Sparse representation** for lower cardinalities (like HyperLogLog++)
+* **LogLog-Beta** for dynamic bias correction across all cardinalities
+* **8-bit registers** for convenience and simplified implementation
+* **Order-independent insertions and merging** for consistent results regardless of data input order
+* **Removal of tailcut method** for a more straightforward approach
+* **Flexible precision** allowing for 2^4 to 2^18 registers
 
+This implementation is now more straightforward, efficient, and flexible, while remaining backwards compatible with previous versions. It provides a balance between precision, memory usage, speed, and ease of use.
+
+## Precision and Memory Usage
+
+This implementation allows for creating HyperLogLog sketches with arbitrary precision between 2^4 and 2^18 registers. The memory usage scales with the number of registers:
+
+* Minimum (2^4 registers): 16 bytes
+* Default (2^14 registers): 16 KB
+* Maximum (2^18 registers): 256 KB
+
+Users can choose the precision that best fits their use case, balancing memory usage against estimation accuracy.
 
 ## Note
 A big thank you to Prof. Shigang Chen and his team at the University of Florida who are actively conducting research around "Big Network Data".
-
 
 ## Contributing
 

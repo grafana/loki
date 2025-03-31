@@ -14,7 +14,7 @@ metadata:
     {{- with .Values.enterprise.provisioner.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    "helm.sh/hook": post-install
+    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | default "post-install" | quote }}
     "helm.sh/hook-weight": "15"
 spec:
   backoffLimit: 6
@@ -123,6 +123,18 @@ spec:
             {{- end }}
             - name: bootstrap
               mountPath: /bootstrap
+      {{- with .Values.enterprise.provisioner.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       restartPolicy: OnFailure
       serviceAccount: {{ include "enterprise-logs.provisionerFullname" . }}
       serviceAccountName: {{ include "enterprise-logs.provisionerFullname" . }}

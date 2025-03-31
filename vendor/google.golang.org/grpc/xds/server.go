@@ -27,9 +27,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	estats "google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/internal"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	istats "google.golang.org/grpc/internal/stats"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/metadata"
@@ -42,10 +45,8 @@ import (
 const serverPrefix = "[xds-server %p] "
 
 var (
-	// These new functions will be overridden in unit tests.
-	newXDSClient = func() (xdsclient.XDSClient, func(), error) {
-		return xdsclient.New()
-	}
+	// These will be overridden in unit tests.
+	xdsClientPool = xdsclient.DefaultPool
 	newGRPCServer = func(opts ...grpc.ServerOption) grpcServer {
 		return grpc.NewServer(opts...)
 	}
@@ -89,17 +90,20 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 	}
 	s.handleServerOptions(opts)
 
+	var mrl estats.MetricsRecorder
+	mrl = istats.NewMetricsRecorderList(nil)
+	if srv, ok := s.gs.(*grpc.Server); ok { // Will hit in prod but not for testing.
+		mrl = internal.MetricsRecorderForServer.(func(*grpc.Server) estats.MetricsRecorder)(srv)
+	}
+
 	// Initializing the xDS client upfront (instead of at serving time)
 	// simplifies the code by eliminating the need for a mutex to protect the
 	// xdsC and xdsClientClose fields.
-	newXDSClient := newXDSClient
-	if s.opts.bootstrapContentsForTesting != nil {
-		// Bootstrap file contents may be specified as a server option for tests.
-		newXDSClient = func() (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Contents: s.opts.bootstrapContentsForTesting})
-		}
+	pool := xdsClientPool
+	if s.opts.clientPoolForTesting != nil {
+		pool = s.opts.clientPoolForTesting
 	}
-	xdsClient, xdsClientClose, err := newXDSClient()
+	xdsClient, xdsClientClose, err := pool.NewClient(xdsclient.NameForServer, mrl)
 	if err != nil {
 		return nil, fmt.Errorf("xDS client creation failed: %v", err)
 	}
@@ -108,7 +112,7 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 
 	// Listener resource name template is mandatory on the server side.
 	cfg := xdsClient.BootstrapConfig()
-	if cfg.ServerListenerResourceNameTemplate == "" {
+	if cfg.ServerListenerResourceNameTemplate() == "" {
 		xdsClientClose()
 		return nil, errors.New("missing server_listener_resource_name_template in the bootstrap configuration")
 	}
@@ -191,7 +195,7 @@ func (s *GRPCServer) Serve(lis net.Listener) error {
 	// string, it will be replaced with the server's listening "IP:port" (e.g.,
 	// "0.0.0.0:8080", "[::]:8080").
 	cfg := s.xdsC.BootstrapConfig()
-	name := bootstrap.PopulateResourceTemplate(cfg.ServerListenerResourceNameTemplate, lis.Addr().String())
+	name := bootstrap.PopulateResourceTemplate(cfg.ServerListenerResourceNameTemplate(), lis.Addr().String())
 
 	// Create a listenerWrapper which handles all functionality required by
 	// this particular instance of Serve().

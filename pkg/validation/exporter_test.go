@@ -35,8 +35,8 @@ func TestOverridesExporter_noConfig(t *testing.T) {
 func TestOverridesExporter_withConfig(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
-			MaxQueriersPerTenant:  5,
-			BloomCompactorEnabled: true,
+			MaxQueriersPerTenant: 5,
+			BloomCreationEnabled: true,
 		},
 	}
 	overrides, _ := NewOverrides(Limits{}, newMockTenantLimits(tenantLimits))

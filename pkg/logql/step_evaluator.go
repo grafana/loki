@@ -7,6 +7,7 @@ import (
 type StepResult interface {
 	SampleVector() promql.Vector
 	QuantileSketchVec() ProbabilisticQuantileVector
+	CountMinSketchVec() CountMinSketchVector
 }
 
 type SampleVector promql.Vector
@@ -19,6 +20,10 @@ func (p SampleVector) SampleVector() promql.Vector {
 
 func (p SampleVector) QuantileSketchVec() ProbabilisticQuantileVector {
 	return ProbabilisticQuantileVector{}
+}
+
+func (SampleVector) CountMinSketchVec() CountMinSketchVector {
+	return CountMinSketchVector{}
 }
 
 // StepEvaluator evaluate a single step of a query.

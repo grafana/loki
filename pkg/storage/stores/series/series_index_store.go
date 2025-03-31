@@ -374,7 +374,7 @@ func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 	return result.Strings(), nil
 }
 
-// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+// labelValuesForMetricNameWithMatchers retrieves all label values for a single label name and metric name.
 func (c *IndexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
@@ -501,12 +501,12 @@ func (c *IndexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context
 }
 
 func (c *IndexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
+	return c.lookupIDsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *IndexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
+func (c *IndexReaderWriter) lookupIDsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
 	var err error
 	var queries []series_index.Query
 	var labelName string

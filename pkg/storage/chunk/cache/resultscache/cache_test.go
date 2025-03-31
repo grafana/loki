@@ -2,6 +2,7 @@ package resultscache
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -491,7 +491,7 @@ func TestHandleHit(t *testing.T) {
 				minCacheExtent:    10,
 				limits:            mockLimits{},
 				merger:            MockMerger{},
-				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
+				parallelismForReq: func(_ context.Context, _ []string, _ Request) int { return 1 },
 				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 					return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
 				}),
@@ -514,7 +514,7 @@ func TestHandleHit_queryLengthServed(t *testing.T) {
 		extractor:         MockExtractor{},
 		limits:            mockLimits{},
 		merger:            MockMerger{},
-		parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
+		parallelismForReq: func(_ context.Context, _ []string, _ Request) int { return 1 },
 		next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 			return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
 		}),
@@ -602,7 +602,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				MockExtractor{},
 				nil,
 				nil,
-				func(_ context.Context, tenantIDs []string, r Request) int {
+				func(_ context.Context, _ []string, _ Request) int {
 					return 10
 				},
 				nil,
@@ -646,7 +646,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		MockExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return 10
 		},
 		nil,
@@ -700,7 +700,7 @@ func Test_shouldCacheReq(t *testing.T) {
 		MockExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return 10
 		},
 		nil,

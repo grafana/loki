@@ -319,7 +319,6 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tc := tc // just to make the linter happy
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
 			tableManager.cfg.Limits = &tc.queryReadinessLimits

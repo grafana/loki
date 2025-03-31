@@ -1,11 +1,11 @@
 ---
-title: Monitor Loki
+title: Collect metrics and logs of your Loki cluster
+menuTitle: Monitor Loki
 description: Describes the various options for monitoring your Loki environment, and the metrics available.
 aliases: 
  - ../operations/observability
 ---
-
-# Monitor Loki
+# Collect metrics and logs of your Loki cluster
 
 As part of your Loki implementation, you will also want to monitor your Loki cluster.
 
@@ -24,7 +24,7 @@ The Loki [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin
 
 - To install meta-monitoring using the Loki Helm Chart and a local Loki stack, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/with-local-monitoring/).
 
-- To install the Loki mixin, follow [these directions]({{< relref "./mixins" >}}).
+- To install the Loki mixin, follow [these directions](mixins/).
 
 You should also plan separately for infrastructure-level monitoring, to monitor the capacity or throughput of your storage provider, for example, or your networking layer.
 
