@@ -68,8 +68,12 @@ func TestPlanner_Convert(t *testing.T) {
 		},
 	}
 	planner := NewPlanner(catalog)
+
 	physicalPlan, err := planner.Build(logicalPlan)
 	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
 
-	t.Logf("\n%s\n", PrintAsTree(physicalPlan))
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 }

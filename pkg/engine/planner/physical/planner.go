@@ -165,3 +165,19 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 	}
 	return []Node{node}, nil
 }
+
+// Optimize tries to optimize the plan by pushing down filter predicates and limits
+// to the scan nodes.
+func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+	for i, root := range plan.Roots() {
+		optimizer := optimizer{plan: plan}
+		err := plan.DFSWalk(root, &optimizer, PreOrderWalk)
+		if err != nil {
+			return nil, fmt.Errorf("failed to optimize physical plan: %w", err)
+		}
+		if i == 1 {
+			return nil, errors.New("physcial plan must only have exactly one root node")
+		}
+	}
+	return plan, nil
+}
