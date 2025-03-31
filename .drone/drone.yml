@@ -2015,3 +2015,8 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
+---
+kind: signature
+hmac: 535b87ed0fac265b48ae6fdb09b3f5abf1cec497eeca4aa9d96d14accc9a074f
+
+...
