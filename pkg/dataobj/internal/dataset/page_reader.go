@@ -158,12 +158,9 @@ func reuseValuesBuffer(dst []Value, src []Value) []Value {
 	dst = slicegrow.Grow(dst, len(src))
 	dst = dst[:0]
 
-	for _, val := range src {
-		if val.IsNil() {
-			continue
-		}
-		dst = append(dst, val)
-	}
+	// We must maintain ordering against the caller slice here.
+	// Otherwise we can move pointers around which can get reused within a read call.
+	dst = append(dst, src...)
 
 	filledLength := len(dst)
 
