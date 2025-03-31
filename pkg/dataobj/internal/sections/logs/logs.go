@@ -21,11 +21,11 @@ import (
 
 // A Record is an individual log record within the logs section.
 type Record struct {
-	StreamID  int64
-	Timestamp time.Time
-	Metadata  labels.Labels
-	Line      []byte
-	caps      []int
+	StreamID    int64
+	Timestamp   time.Time
+	Metadata    labels.Labels
+	Line        []byte
+	MdValueCaps []int
 }
 
 // Options configures the behavior of the logs section.

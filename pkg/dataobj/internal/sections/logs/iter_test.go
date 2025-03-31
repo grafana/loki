@@ -39,10 +39,11 @@ func TestDecode(t *testing.T) {
 				},
 			},
 			expected: Record{
-				StreamID:  123,
-				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:  labels.FromStrings("app", "test-app", "env", "prod"),
-				Line:      []byte("test message"),
+				StreamID:    123,
+				Timestamp:   time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
+				Metadata:    labels.FromStrings("app", "test-app", "env", "prod"),
+				Line:        []byte("test message"),
+				MdValueCaps: []int{8, 8},
 			},
 		},
 		{
@@ -62,10 +63,11 @@ func TestDecode(t *testing.T) {
 				},
 			},
 			expected: Record{
-				StreamID:  123,
-				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:  labels.FromStrings(),
-				Line:      []byte("test message"),
+				StreamID:    123,
+				Timestamp:   time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
+				Metadata:    labels.FromStrings(),
+				Line:        []byte("test message"),
+				MdValueCaps: []int{0},
 			},
 		},
 		{
@@ -120,7 +122,8 @@ func TestDecode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			record, err := Decode(tt.columns, tt.row)
+			record := Record{}
+			err := Decode(tt.columns, tt.row, &record)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

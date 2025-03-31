@@ -111,10 +111,12 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	r.buf = slicegrow.Grow(r.buf, len(s))
+	r.buf = r.buf[:len(s)]
 
 	// Fill the row buffer with empty values so they can re-use the memory we pass in.
 	for i := range r.buf {
 		r.buf[i].Values = slicegrow.Grow(r.buf[i].Values, len(r.columns))
+		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
 		for j := range r.buf[i].Values {
 			if r.buf[i].Values[j].IsNil() {
 				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 0, 64))
@@ -138,6 +140,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 
 	for i := range s {
 		s[i].Metadata = slicegrow.Grow(s[i].Metadata, metadataColumns)
+		s[i].Metadata = s[i].Metadata[:metadataColumns]
 	}
 
 	for i := range r.buf[:n] {
@@ -148,7 +151,11 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 
 		s[i].StreamID = r.record.StreamID
 		s[i].Timestamp = r.record.Timestamp
+		s[i].Metadata = slicegrow.Grow(s[i].Metadata, len(r.record.Metadata))
+		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
 		copy(s[i].Metadata, r.record.Metadata)
+		s[i].Line = slicegrow.Grow(s[i].Line, len(r.record.Line))
+		s[i].Line = s[i].Line[:len(r.record.Line)]
 		copy(s[i].Line, r.record.Line)
 	}
 

@@ -138,12 +138,13 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 	}
 
 	pr.buf = slicegrow.Grow(pr.buf, len(s))
-
+	pr.buf = pr.buf[:len(s)]
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
 	for i := range s {
 		s[i].Values = slicegrow.Grow(s[i].Values, len(pr.columns))
+		s[i].Values = s[i].Values[:len(pr.columns)]
 	}
 
 	for n < len(s) {

@@ -93,7 +93,7 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	r.buf = slicegrow.Grow(r.buf, len(s))
-
+	r.buf = r.buf[:len(s)]
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)

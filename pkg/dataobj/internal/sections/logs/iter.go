@@ -81,9 +81,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-			record := Record{
-				Metadata: make(labels.Labels, 0, metadataColumns(streamsColumns)),
-			}
+			record := Record{}
 			for _, row := range rows[:n] {
 				err := Decode(streamsColumns, row, &record)
 				if err != nil || !yield(record) {
@@ -98,9 +96,15 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 // determine the column type. The list of columns must match the columns used
 // to create the row.
 func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
+	if record.Line == nil {
+		record.Line = make([]byte, 0)
+	}
+
 	metadataColumns := metadataColumns(columns)
 	record.Metadata = slicegrow.Grow(record.Metadata, metadataColumns)
-	record.caps = slicegrow.Grow(record.caps, metadataColumns)
+	record.Metadata = record.Metadata[:metadataColumns]
+	record.MdValueCaps = slicegrow.Grow(record.MdValueCaps, metadataColumns)
+	record.MdValueCaps = record.MdValueCaps[:metadataColumns]
 	nextMetadataIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
@@ -126,17 +130,16 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			str := columnValue.String()
-			byts := unsafe.Slice(unsafe.StringData(columnValue.String()), len(str))
 
-			var target []byte
-			target = unsafe.Slice(unsafe.StringData(record.Metadata[nextMetadataIdx].Value), record.caps[nextMetadataIdx])
-			target = slicegrow.Grow(target, len(byts))
-			record.caps[nextMetadataIdx] = cap(target)
-			copy(target, byts)
+			lv := columnValue.String()
+
+			// Convert the target pointer to a byte slice and grow it if necessary.
+			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value)
+			target = copyStringInto(target, lv)
+			record.MdValueCaps[nextMetadataIdx] = cap(target)
 
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
-			record.Metadata[nextMetadataIdx].Value = unsafe.String(unsafe.SliceData(target), len(target))
+			record.Metadata[nextMetadataIdx].Value = unsafeString(target)
 			nextMetadataIdx++
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
@@ -144,10 +147,12 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			line := columnValue.ByteArray()
-			record.Line = slicegrow.Grow(record.Line, len(line))
-			copy(record.Line, line)
+			record.Line = copyInto(record.Line, line)
 		}
 	}
+
+	// Truncate the metadata slice to the number of metadata columns we found.
+	record.Metadata = record.Metadata[:nextMetadataIdx]
 
 	// Metadata is originally sorted in received order; we sort it by key
 	// per-record since it might not be obvious why keys appear in a certain
@@ -170,4 +175,26 @@ func metadataColumns(columns []*logsmd.ColumnDesc) int {
 		}
 	}
 	return count
+}
+
+func unsafeSlice(data string) []byte {
+	return unsafe.Slice(unsafe.StringData(data), len(data))
+}
+
+func unsafeString(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
+}
+
+func copyInto[Slice ~[]E, E any](dst Slice, src Slice) Slice {
+	dst = slices.Grow(dst, len(src))
+	dst = dst[:len(src)]
+	copy(dst, src)
+	return dst
+}
+
+func copyStringInto[Slice ~[]byte](dst Slice, src string) Slice {
+	dst = slices.Grow(dst, len(src))
+	dst = dst[:len(src)]
+	copy(dst, src)
+	return dst
 }

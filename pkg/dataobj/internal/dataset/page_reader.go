@@ -80,6 +80,7 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.presenceBuf = slicegrow.Grow(pr.presenceBuf, len(v))
+	pr.presenceBuf = pr.presenceBuf[:len(v)]
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
 	// the caller to retain ownership over that memory; to do this safely, we
