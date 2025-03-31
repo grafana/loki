@@ -72,13 +72,15 @@ The response body is JSON encoded
 ```json
 { 
   "resultType": "matrix" | "streams" | "vector",
-  “links”: [
-  {
-    “rel”: “???”,
-    “href”: “/loki/api/v1/query_range?start=10&end=200&limit=20&direction=forward?query=...”},
-  {
-    “rel”: “???”,
-    “href”: “/loki/api/v1/query_range?start=30&end=200&limit=20&direction=forward?query=...”}
+  "links": [
+    {
+      "rel": "???",
+      "href": "/loki/api/v1/query_range?start=10&end=200&limit=20&direction=forward?query=..."
+    },
+    {
+      "rel": "???",
+      "href": "/loki/api/v1/query_range?start=30&end=200&limit=20&direction=forward?query=..."
+    }
   ]
 }
 ```
