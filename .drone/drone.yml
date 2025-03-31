@@ -1577,11 +1577,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:1.22.5-windowsservercore-1809
+  image: golang:1.23.2-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:1.22.5-windowsservercore-1809
+  image: golang:1.23.2-windowsservercore-1809
   name: test
 trigger:
   ref:
