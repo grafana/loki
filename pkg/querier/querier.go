@@ -57,6 +57,7 @@ type Config struct {
 	IngesterQueryStoreMaxLookback time.Duration    `yaml:"-"`
 	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
 	MaxConcurrent                 int              `yaml:"max_concurrent"`
+	LabelCardinalityThreshold 	  int 			   `yaml:"label_cardinality_threshold"`
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
@@ -71,6 +72,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
+	f.IntVar(&cfg.LabelCardinalityThreshold, "logql.label-cardinality-threshold", 10, "Threshold for numeric label cardinality to filter high-cardinality labels.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
@@ -812,16 +814,16 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 	}
 
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels, staticLabels),
+		DetectedLabels: countLabelsAndCardinality(storeLabelsMap, ingesterLabels, staticLabels, q.cfg.LabelCardinalityThreshold),
 	}, nil
 }
 
-func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse, staticLabels map[string]struct{}) []*logproto.DetectedLabel {
+func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabels *logproto.LabelToValuesResponse, staticLabels map[string]struct{}, threshold int) []*logproto.DetectedLabel	{
 	dlMap := make(map[string]*parsedFields)
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values, threshold) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -836,7 +838,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values, threshold) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -878,15 +880,22 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 }
 
 // containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
-func containsAllIDTypes(values []string) bool {
+func containsAllIDTypes(values []string, threshold int) bool {
+	uniqueNumbers := make(map[string]struct{})
+
 	for _, v := range values {
-		_, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			_, err = uuid.Parse(v)
-			if err != nil {
-				return false
-			}
+		if _, err := strconv.ParseFloat(v, 64); err == nil {
+			uniqueNumbers[v] = struct{}{}
+			continue
 		}
+		if _, err := uuid.Parse(v); err == nil {
+			continue
+		}
+		return false
+	}
+
+	if len(uniqueNumbers) > 0 && len(uniqueNumbers) < threshold {
+		return false
 	}
 
 	return true
