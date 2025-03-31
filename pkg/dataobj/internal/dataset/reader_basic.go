@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"slices"
+
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.
@@ -136,15 +137,13 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	pr.buf = slices.Grow(pr.buf, max(0, len(s)-cap(pr.buf)))
-	pr.buf = pr.buf[:len(s)]
+	pr.buf = slicegrow.Grow(pr.buf, len(s))
 
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
 	for i := range s {
-		s[i].Values = slices.Grow(s[i].Values, max(0, len(pr.columns)-cap(s[i].Values)))
-		s[i].Values = s[i].Values[:len(pr.columns)]
+		s[i].Values = slicegrow.Grow(s[i].Values, len(pr.columns))
 	}
 
 	for n < len(s) {
@@ -240,7 +239,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 //
 // The resulting slice is len(src).
 func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
-	dst = slices.Grow(dst, len(src))
+	dst = slicegrow.Grow(dst, len(src))
 	dst = dst[:0]
 
 	for _, row := range src {

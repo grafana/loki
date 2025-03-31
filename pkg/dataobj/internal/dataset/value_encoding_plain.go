@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 func init() {
@@ -83,15 +83,14 @@ func (enc *plainStringEncoder) Reset(w streamio.Writer) {
 
 // plainStringDecoder decodes strings from an [streamio.Reader].
 type plainStringDecoder struct {
-	r      streamio.Reader
-	reader *io.LimitedReader
+	r streamio.Reader
 }
 
 var _ valueDecoder = (*plainStringDecoder)(nil)
 
 // newPlainStringDecoder creates a plainDecoder that reads encoded strings from r.
 func newPlainStringDecoder(r streamio.Reader) *plainStringDecoder {
-	return &plainStringDecoder{r: r, reader: &io.LimitedReader{}}
+	return &plainStringDecoder{r: r}
 }
 
 // ValueType returns [datasetmd.VALUE_TYPE_BYTE_ARRAY].
@@ -289,8 +288,7 @@ func getDestinationBuffer(v *Value, sz int) []byte {
 
 	// Grow the buffer attached to this Value if necessary.
 	if v.cap < uint64(sz) {
-		dst = slices.Grow(dst, max(0, int(sz)-len(dst)))
-		dst = dst[:int(sz)]
+		dst = slicegrow.Grow(dst, int(sz))
 		v.any = (bytearray)(unsafe.SliceData(dst))
 		v.cap = uint64(cap(dst))
 	}

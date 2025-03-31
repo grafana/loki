@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 	"sort"
+
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // rowRanges tracks a set of row ranges that are "valid."
@@ -234,7 +236,7 @@ func unionRanges(dst rowRanges, a, b rowRanges) rowRanges {
 
 	// We do our union by adding everything from a and b together, sorting
 	// the merged range, and then fixing any overlapping ranges.
-	dst = slices.Grow(dst, len(a)+len(b))
+	dst = slicegrow.Grow(dst, len(a)+len(b))
 	dst = append(dst, a...)
 	dst = append(dst, b...)
 

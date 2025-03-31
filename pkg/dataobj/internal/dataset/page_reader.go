@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 type pageReader struct {
@@ -79,8 +79,7 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
-	pr.presenceBuf = slices.Grow(pr.presenceBuf, len(v))
-	pr.presenceBuf = pr.presenceBuf[:len(v)]
+	pr.presenceBuf = slicegrow.Grow(pr.presenceBuf, len(v))
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
 	// the caller to retain ownership over that memory; to do this safely, we
@@ -156,7 +155,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 //
 // The resulting slice is len(src).
 func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slices.Grow(dst, len(src))
+	dst = slicegrow.Grow(dst, len(src))
 	dst = dst[:0]
 
 	for _, val := range src {

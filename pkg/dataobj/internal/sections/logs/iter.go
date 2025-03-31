@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // Iter iterates over records in the provided decoder. All logs sections are
@@ -98,10 +99,8 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 // to create the row.
 func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
 	metadataColumns := metadataColumns(columns)
-	record.Metadata = slices.Grow(record.Metadata, max(0, metadataColumns-cap(record.Metadata)))
-	record.Metadata = record.Metadata[:metadataColumns]
-	record.caps = slices.Grow(record.caps, max(0, metadataColumns-cap(record.caps)))
-	record.caps = record.caps[:metadataColumns]
+	record.Metadata = slicegrow.Grow(record.Metadata, metadataColumns)
+	record.caps = slicegrow.Grow(record.caps, metadataColumns)
 	nextMetadataIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
@@ -132,7 +131,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 
 			var target []byte
 			target = unsafe.Slice(unsafe.StringData(record.Metadata[nextMetadataIdx].Value), record.caps[nextMetadataIdx])
-			target = slices.Grow(target, max(0, len(byts)-cap(target)))
+			target = slicegrow.Grow(target, len(byts))
 			record.caps[nextMetadataIdx] = cap(target)
 			copy(target, byts)
 
@@ -145,8 +144,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			line := columnValue.ByteArray()
-			record.Line = slices.Grow(record.Line, max(0, len(line)-cap(record.Line)))
-			record.Line = record.Line[:len(line)]
+			record.Line = slicegrow.Grow(record.Line, len(line))
 			copy(record.Line, line)
 		}
 	}

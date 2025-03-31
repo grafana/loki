@@ -7,7 +7,6 @@ import (
 	"io"
 	"iter"
 	"maps"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // A Record is an individual log record in a data object.
@@ -110,13 +110,11 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, max(0, len(s)-cap(r.buf)))
-	r.buf = r.buf[:len(s)]
+	r.buf = slicegrow.Grow(r.buf, len(s))
 
 	// Fill the row buffer with empty values so they can re-use the memory we pass in.
 	for i := range r.buf {
-		r.buf[i].Values = slices.Grow(r.buf[i].Values, len(r.columns)-cap(r.buf[i].Values))
-		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
+		r.buf[i].Values = slicegrow.Grow(r.buf[i].Values, len(r.columns))
 		for j := range r.buf[i].Values {
 			if r.buf[i].Values[j].IsNil() {
 				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 0, 64))
@@ -139,7 +137,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range s {
-		s[i].Metadata = slices.Grow(s[i].Metadata, max(0, metadataColumns-cap(s[i].Metadata)))
+		s[i].Metadata = slicegrow.Grow(s[i].Metadata, metadataColumns)
 	}
 
 	for i := range r.buf[:n] {

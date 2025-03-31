@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // A Stream is an individual stream in a data object.
@@ -92,8 +92,7 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
-	r.buf = r.buf[:len(s)]
+	r.buf = slicegrow.Grow(r.buf, len(s))
 
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
