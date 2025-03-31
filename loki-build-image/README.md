@@ -2,7 +2,7 @@
 
 ## Versions
 
-### 0.34.0-loki.2.9.x
+### 0.34.0-loki-2.9.x
 
 - Update Go version to 1.23.x
 
