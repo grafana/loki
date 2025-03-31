@@ -128,8 +128,8 @@ func getCanonicalHeaders(req http.Request, ignoredHeaders map[string]bool) strin
 	for _, k := range headers {
 		buf.WriteString(k)
 		buf.WriteByte(':')
-		switch {
-		case k == "host":
+		switch k {
+		case "host":
 			buf.WriteString(getHostAddr(&req))
 			buf.WriteByte('\n')
 		default:
