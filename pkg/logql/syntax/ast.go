@@ -389,9 +389,7 @@ func (e *PipelineExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *PipelineExpr) Walk(f WalkFn) {
-	cont := f(e)
-
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.Left != nil {
@@ -546,8 +544,7 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
-	cont := f(e)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.Left != nil {
@@ -1167,8 +1164,7 @@ func (r LogRangeExpr) String() string {
 func (r *LogRangeExpr) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
 func (r *LogRangeExpr) Walk(f WalkFn) {
-	cont := f(r)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if r.Left != nil {
@@ -1482,8 +1478,7 @@ func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
-	cont := f(e)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.Left != nil {
@@ -1695,8 +1690,7 @@ func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {
-	cont := f(e)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.Left != nil {
@@ -1818,8 +1812,7 @@ func (e *BinOpExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
-	cont := f(e)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.SampleExpr != nil {
@@ -2250,8 +2243,7 @@ func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 }
 
 func (e *LabelReplaceExpr) Walk(f WalkFn) {
-	cont := f(e)
-	if !cont {
+	if !f(e) {
 		return
 	}
 	if e.Left != nil {
@@ -2532,8 +2524,7 @@ func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
 }
 
 func (m *MultiVariantExpr) Walk(f WalkFn) {
-	cont := f(m)
-	if !cont {
+	if !f(m) {
 		return
 	}
 
