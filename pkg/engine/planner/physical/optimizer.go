@@ -23,6 +23,9 @@ func (o *optimizer) optimize(node Node) error {
 				i--
 			}
 		}
+		if len(node.Predicates) == 0 {
+			o.plan.removeNode(node)
+		}
 	case *Limit:
 		_ = o.applyLimitPushdown(node, node.Limit)
 	}
