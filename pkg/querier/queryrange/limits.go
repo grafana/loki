@@ -428,8 +428,8 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	sl.rw.Lock()
 
 	var hash uint64
-	newResult := make([]queryrangebase.SampleStream, 0, len(promResponse.Response.Data.Result))
-	for _, s := range promResponse.Response.Data.Result {
+	for i := 0; i < len(promResponse.Response.Data.Result); i++ {
+		s := promResponse.Response.Data.Result[i]
 		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
 
 		// Extract the variant label, if present
@@ -446,6 +446,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		// If there's a variant label, track it in the variant map
 		if variant != "" {
 			if _, ok := sl.skipVariants[variant]; ok {
+				// Remove this variant from the result slice
+				promResponse.Response.Data.Result = append(promResponse.Response.Data.Result[:i], promResponse.Response.Data.Result[i+1:]...)
+				i-- // Adjust the index since we removed an item
 				continue
 			}
 
@@ -461,11 +464,12 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 			// Check if adding this series would exceed the limit for this variant
 			if len(variantMap) > sl.maxSeries {
 				sl.skipVariants[variant] = struct{}{}
+				// Remove this variant from the result slice
+				promResponse.Response.Data.Result = append(promResponse.Response.Data.Result[:i], promResponse.Response.Data.Result[i+1:]...)
+				i-- // Adjust the index since we removed an item
 				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
 				continue
 			}
-
-			newResult = append(newResult, s)
 		} else {
 			// For non-variant series, track them in the global hashes map
 			sl.hashes[hash] = struct{}{}
@@ -475,12 +479,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 				sl.rw.Unlock()
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 			}
-
-			newResult = append(newResult, s)
 		}
 	}
 
-	promResponse.Response.Data.Result = newResult
 	sl.rw.Unlock()
 	return res, nil
 }
