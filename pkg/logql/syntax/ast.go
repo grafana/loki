@@ -1164,7 +1164,7 @@ func (r LogRangeExpr) String() string {
 func (r *LogRangeExpr) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
 func (r *LogRangeExpr) Walk(f WalkFn) {
-	if !f(e) {
+	if !f(r) {
 		return
 	}
 	if r.Left != nil {
