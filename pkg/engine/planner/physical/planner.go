@@ -162,9 +162,8 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-		optimizer := optimizer{plan: plan}
-		err := plan.DFSWalk(root, &optimizer, PreOrderWalk)
-		if err != nil {
+		optimizer := newOptimizer(plan)
+		if err := optimizer.optimize(root); err != nil {
 			return nil, fmt.Errorf("failed to optimize physical plan: %w", err)
 		}
 		if i == 1 {

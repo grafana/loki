@@ -1,43 +1,36 @@
 package physical
 
-import "github.com/grafana/loki/v3/pkg/engine/internal/types"
+import (
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+)
 
 type optimizer struct {
 	plan *Plan
 }
 
-var _ Visitor = (*optimizer)(nil)
-
-// VisitDataObjScan implements Visitor.
-func (o *optimizer) VisitDataObjScan(*DataObjScan) error {
-	return nil
+func newOptimizer(plan *Plan) *optimizer {
+	return &optimizer{plan: plan}
 }
 
-// VisitFilter implements Visitor.
-func (o *optimizer) VisitFilter(node *Filter) error {
-	for i := 0; i < len(node.Predicates); i++ {
-		if ok := o.applyPredicatePushdown(node, node.Predicates[i]); ok {
-			// remove predicates that have been pushed down
-			node.Predicates = append(node.Predicates[:i], node.Predicates[i+1:]...)
-			i--
+func (o *optimizer) optimize(node Node) error {
+	children := o.plan.Children(node)
+	switch node := node.(type) {
+	case *Filter:
+		for i := 0; i < len(node.Predicates); i++ {
+			if ok := o.applyPredicatePushdown(node, node.Predicates[i]); ok {
+				// remove predicates that have been pushed down
+				node.Predicates = append(node.Predicates[:i], node.Predicates[i+1:]...)
+				i--
+			}
+		}
+	case *Limit:
+		_ = o.applyLimitPushdown(node, node.Limit)
+	}
+	for _, child := range children {
+		if err := o.optimize(child); err != nil {
+			return err
 		}
 	}
-	return nil
-}
-
-// VisitLimit implements Visitor.
-func (o *optimizer) VisitLimit(node *Limit) error {
-	o.applyLimitPushdown(node, node.Limit)
-	return nil
-}
-
-// VisitProjection implements Visitor.
-func (o *optimizer) VisitProjection(*Projection) error {
-	return nil
-}
-
-// VisitSortMerge implements Visitor.
-func (o *optimizer) VisitSortMerge(*SortMerge) error {
 	return nil
 }
 
