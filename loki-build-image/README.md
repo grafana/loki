@@ -2,7 +2,11 @@
 
 ## Versions
 
-### 0.34.0-loki-2.9.x
+### 0.34.1-loki-2.9.x
+
+- Update faillint to v1.15.0
+
+### 0.34.1-loki-2.9.x
 
 - Update Go version to 1.23.x
 
