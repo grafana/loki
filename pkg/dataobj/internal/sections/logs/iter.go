@@ -23,6 +23,7 @@ import (
 
 // Iter iterates over records in the provided decoder. All logs sections are
 // iterated over in order.
+// Results objects returned to yield may be reused and must be deep copied for further use, including the record.Metadata keys and values.
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		sections, err := dec.Sections(ctx)
@@ -74,6 +75,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 		defer r.Close()
 
 		var rows [1]dataset.Row
+		var record Record
 		for {
 			n, err := r.Read(ctx, rows[:])
 			if err != nil && !errors.Is(err, io.EOF) {
@@ -81,7 +83,6 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-			record := Record{}
 			for _, row := range rows[:n] {
 				err := Decode(streamsColumns, row, &record)
 				if err != nil || !yield(record) {
@@ -175,11 +176,11 @@ func metadataColumns(columns []*logsmd.ColumnDesc) int {
 	return count
 }
 
-func unsafeSlice(data string, cap int) []byte {
-	if cap <= 0 {
-		cap = len(data)
+func unsafeSlice(data string, capacity int) []byte {
+	if capacity <= 0 {
+		capacity = len(data)
 	}
-	return unsafe.Slice(unsafe.StringData(data), cap)
+	return unsafe.Slice(unsafe.StringData(data), capacity)
 }
 
 func unsafeString(data []byte) string {

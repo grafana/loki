@@ -269,7 +269,7 @@ func (dec *plainBytesDecoder) Reset(r streamio.Reader) {
 
 func getDestinationBuffer(v *Value, sz int) []byte {
 	if v.cap == 0 {
-		dst := make([]byte, int(sz))
+		dst := make([]byte, sz)
 		v.any = (bytearray)(unsafe.SliceData(dst))
 		v.cap = uint64(cap(dst))
 		return dst
@@ -288,7 +288,7 @@ func getDestinationBuffer(v *Value, sz int) []byte {
 
 	// Grow the buffer attached to this Value if necessary.
 	if v.cap < uint64(sz) {
-		dst = slicegrow.GrowToCap(dst, int(sz))
+		dst = slicegrow.GrowToCap(dst, sz)
 		v.any = (bytearray)(unsafe.SliceData(dst))
 		v.cap = uint64(cap(dst))
 	}

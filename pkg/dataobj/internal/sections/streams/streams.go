@@ -33,6 +33,8 @@ type Stream struct {
 	MaxTimestamp     time.Time     // Maximum timestamp in the stream.
 	UncompressedSize int64         // Uncompressed size of the log lines and structured metadata values in the stream.
 	Rows             int           // Number of rows in the stream.
+
+	LbValueCaps []int // Capacities for each label value's byte array
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.

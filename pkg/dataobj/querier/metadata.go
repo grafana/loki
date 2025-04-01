@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,6 +179,7 @@ func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, object
 }
 
 // ProcessParallel processes series from multiple readers in parallel
+// dataobj.Stream objects returned to onNewStream may be reused and must be deep copied for further use, including the stream.Labels keys and values.
 func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func(uint64, dataobj.Stream)) error {
 	readers, err := shardStreamReaders(ctx, sp.objects, sp.shard)
 	if err != nil {
@@ -271,8 +273,8 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 	series := make([]logproto.SeriesIdentifier_LabelsEntry, len(labels))
 	for i, label := range labels {
 		series[i] = logproto.SeriesIdentifier_LabelsEntry{
-			Key:   label.Name,
-			Value: label.Value,
+			Key:   strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
 		}
 	}
 	return logproto.SeriesIdentifier{

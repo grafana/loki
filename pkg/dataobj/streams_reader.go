@@ -33,6 +33,9 @@ type Stream struct {
 
 	// Labels of the stream.
 	Labels labels.Labels
+
+	// LbNameCaps and LbValueCaps are the capacity of the backing arrays for the equivalent labels structs in the Labels slice.
+	LbNameCaps, LbValueCaps []int
 }
 
 // StreamsReader reads the set of streams from an [Object].
@@ -43,7 +46,8 @@ type StreamsReader struct {
 
 	predicate StreamsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	stream streams.Stream
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -101,18 +105,33 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		return 0, io.EOF
 	}
 
+	// Pre-allocate memory for metadata
+	for i := range s {
+		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.columns))
+		s[i].Labels = s[i].Labels[:len(r.columns)]
+		s[i].LbValueCaps = slicegrow.GrowToCap(s[i].LbValueCaps, len(r.columns))
+		s[i].LbValueCaps = s[i].LbValueCaps[:len(r.columns)]
+		s[i].LbNameCaps = slicegrow.GrowToCap(s[i].LbNameCaps, len(r.columns))
+		s[i].LbNameCaps = s[i].LbNameCaps[:len(r.columns)]
+	}
+
 	for i := range r.buf[:n] {
-		readStream, err := streams.Decode(r.columnDesc, r.buf[i])
+		streams.Decode(r.columnDesc, r.buf[i], &r.stream)
 		if err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
-		s[i] = Stream{
-			ID:               readStream.ID,
-			MinTime:          readStream.MinTimestamp,
-			MaxTime:          readStream.MaxTimestamp,
-			UncompressedSize: readStream.UncompressedSize,
-			Labels:           readStream.Labels,
+		// Copy record data into pre-allocated output buffer
+		s[i].ID = r.stream.ID
+		s[i].MinTime = r.stream.MinTimestamp
+		s[i].MaxTime = r.stream.MaxTimestamp
+		s[i].UncompressedSize = r.stream.UncompressedSize
+		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
+		for j := range r.stream.Labels {
+			s[i].Labels[j].Name = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Name, s[i].LbNameCaps[j]), r.stream.Labels[j].Name))
+			s[i].Labels[j].Value = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Value, s[i].LbValueCaps[j]), r.stream.Labels[j].Value))
+			s[i].LbNameCaps[j] = max(s[i].LbNameCaps[j], len(s[i].Labels[j].Name))
+			s[i].LbValueCaps[j] = max(s[i].LbValueCaps[j], len(s[i].Labels[j].Value))
 		}
 	}
 

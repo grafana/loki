@@ -173,11 +173,11 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	return n, nil
 }
 
-func unsafeSlice(data string, cap int) []byte {
-	if cap <= 0 {
-		cap = len(data)
+func unsafeSlice(data string, capacity int) []byte {
+	if capacity <= 0 {
+		capacity = len(data)
 	}
-	return unsafe.Slice(unsafe.StringData(data), cap)
+	return unsafe.Slice(unsafe.StringData(data), capacity)
 }
 
 func unsafeString(data []byte) string {
