@@ -7,17 +7,17 @@ import (
 // A rule is a tranformation that can be applied on a Node.
 type rule interface {
 	// apply tries to apply the transformation on the node.
-	// It returns the node and a boolean indicating whether the transformation has been applied.
-	apply(Node) (Node, bool)
+	// It returns a boolean indicating whether the transformation has been applied.
+	apply(Node) bool
 }
 
-// removeNoopPredicate is a rule that removes Filter nodes without predicates.
-type removeNoopPredicate struct {
+// removeNoopFilter is a rule that removes Filter nodes without predicates.
+type removeNoopFilter struct {
 	plan *Plan
 }
 
 // apply implements rule.
-func (r *removeNoopPredicate) apply(node Node) (Node, bool) {
+func (r *removeNoopFilter) apply(node Node) bool {
 	changed := false
 	switch node := node.(type) {
 	case *Filter:
@@ -26,10 +26,10 @@ func (r *removeNoopPredicate) apply(node Node) (Node, bool) {
 			changed = true
 		}
 	}
-	return node, changed
+	return changed
 }
 
-var _ rule = (*removeNoopPredicate)(nil)
+var _ rule = (*removeNoopFilter)(nil)
 
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
@@ -37,7 +37,7 @@ type predicatePushdown struct {
 }
 
 // apply implements rule.
-func (r *predicatePushdown) apply(node Node) (Node, bool) {
+func (r *predicatePushdown) apply(node Node) bool {
 	changed := false
 	switch node := node.(type) {
 	case *Filter:
@@ -50,7 +50,7 @@ func (r *predicatePushdown) apply(node Node) (Node, bool) {
 			}
 		}
 	}
-	return node, changed
+	return changed
 }
 
 func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expression) bool {
@@ -91,13 +91,12 @@ type limitPushdown struct {
 }
 
 // apply implements rule.
-func (r *limitPushdown) apply(node Node) (Node, bool) {
+func (r *limitPushdown) apply(node Node) bool {
 	switch node := node.(type) {
 	case *Limit:
-		ok := r.applyLimitPushdown(node, node.Limit)
-		return node, ok
+		return r.applyLimitPushdown(node, node.Limit)
 	}
-	return node, false
+	return false
 }
 
 func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
@@ -135,39 +134,36 @@ func (o *optimization) withRules(rules ...rule) *optimization {
 	return o
 }
 
-func (o *optimization) optimize(node Node) Node {
+func (o *optimization) optimize(node Node) {
 	changed := true // initialize with true, so it can be used as condition in the for-loop
 	iterations := 0
 	maxIterations := 3 // TODO(chaudum): Do we really need multiple optimization passes?
 
 	for changed && iterations < maxIterations {
-		changed = false //nolint:ineffassign
 		iterations++
 
-		node, changed = o.applyRules(node)
+		changed = o.applyRules(node) //nolint:ineffassign
 	}
-
-	return node
 }
 
-func (o *optimization) applyRules(node Node) (Node, bool) {
+func (o *optimization) applyRules(node Node) bool {
 	anyChanged := false
 
 	for _, child := range o.plan.Children(node) {
-		_, changed := o.applyRules(child)
+		changed := o.applyRules(child)
 		if changed {
 			anyChanged = true
 		}
 	}
 
 	for _, rule := range o.rules {
-		_, changed := rule.apply(node)
+		changed := rule.apply(node)
 		if changed {
 			anyChanged = true
 		}
 	}
 
-	return node, anyChanged
+	return anyChanged
 }
 
 // The optimizer can optimize physical plans using the provided optimization passes.
@@ -180,9 +176,8 @@ func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
 	return &optimizer{plan: plan, passes: passes}
 }
 
-func (o *optimizer) optimize(node Node) Node {
+func (o *optimizer) optimize(node Node) {
 	for _, pass := range o.passes {
-		node = pass.optimize(node)
+		pass.optimize(node)
 	}
-	return node
 }

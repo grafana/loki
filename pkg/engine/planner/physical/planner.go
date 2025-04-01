@@ -166,14 +166,14 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
-				&removeNoopPredicate{plan: plan},
+				&removeNoopFilter{plan: plan},
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
-		_ = optimizer.optimize(root)
+		optimizer.optimize(root)
 		if i == 1 {
 			return nil, errors.New("physcial plan must only have exactly one root node")
 		}
