@@ -101,9 +101,9 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 	}
 
 	metadataColumns := metadataColumns(columns)
-	record.Metadata = slicegrow.Grow(record.Metadata, metadataColumns)
+	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
 	record.Metadata = record.Metadata[:metadataColumns]
-	record.MdValueCaps = slicegrow.Grow(record.MdValueCaps, metadataColumns)
+	record.MdValueCaps = slicegrow.GrowToCap(record.MdValueCaps, metadataColumns)
 	record.MdValueCaps = record.MdValueCaps[:metadataColumns]
 	nextMetadataIdx := 0
 
@@ -131,12 +131,10 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			lv := columnValue.String()
-
 			// Convert the target pointer to a byte slice and grow it if necessary.
-			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value)
-			target = copyStringInto(target, lv)
-			record.MdValueCaps[nextMetadataIdx] = cap(target)
+			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value, record.MdValueCaps[nextMetadataIdx])
+			target = slicegrow.CopyStringInto(target, columnValue.String())
+			record.MdValueCaps[nextMetadataIdx] = max(record.MdValueCaps[nextMetadataIdx], len(target))
 
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
 			record.Metadata[nextMetadataIdx].Value = unsafeString(target)
@@ -147,7 +145,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			line := columnValue.ByteArray()
-			record.Line = copyInto(record.Line, line)
+			record.Line = slicegrow.CopyInto(record.Line, line)
 		}
 	}
 
@@ -177,24 +175,13 @@ func metadataColumns(columns []*logsmd.ColumnDesc) int {
 	return count
 }
 
-func unsafeSlice(data string) []byte {
-	return unsafe.Slice(unsafe.StringData(data), len(data))
+func unsafeSlice(data string, cap int) []byte {
+	if cap <= 0 {
+		cap = len(data)
+	}
+	return unsafe.Slice(unsafe.StringData(data), cap)
 }
 
 func unsafeString(data []byte) string {
 	return unsafe.String(unsafe.SliceData(data), len(data))
-}
-
-func copyInto[Slice ~[]E, E any](dst Slice, src Slice) Slice {
-	dst = slices.Grow(dst, len(src))
-	dst = dst[:len(src)]
-	copy(dst, src)
-	return dst
-}
-
-func copyStringInto[Slice ~[]byte](dst Slice, src string) Slice {
-	dst = slices.Grow(dst, len(src))
-	dst = dst[:len(src)]
-	copy(dst, src)
-	return dst
 }

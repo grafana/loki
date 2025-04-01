@@ -60,22 +60,19 @@ func Test(t *testing.T) {
 				"app", "foo",
 				"cluster", "test",
 			),
-			Line:        []byte("foo bar"),
-			MdValueCaps: []int{8, 8},
+			Line: []byte("foo bar"),
 		},
 		{
-			StreamID:    1,
-			Timestamp:   time.Unix(10, 0).UTC(),
-			Metadata:    labels.FromStrings(),
-			MdValueCaps: []int{0, 0},
-			Line:        []byte("hello world"),
+			StreamID:  1,
+			Timestamp: time.Unix(10, 0).UTC(),
+			Metadata:  labels.FromStrings(),
+			Line:      []byte("hello world"),
 		},
 		{
-			StreamID:    2,
-			Timestamp:   time.Unix(100, 0).UTC(),
-			Metadata:    labels.FromStrings("app", "bar", "cluster", "test"),
-			MdValueCaps: []int{8, 8},
-			Line:        []byte("goodbye world"),
+			StreamID:  2,
+			Timestamp: time.Unix(100, 0).UTC(),
+			Metadata:  labels.FromStrings("app", "bar", "cluster", "test"),
+			Line:      []byte("goodbye world"),
 		},
 	}
 
@@ -85,6 +82,7 @@ func Test(t *testing.T) {
 	for result := range logs.Iter(context.Background(), dec) {
 		record, err := result.Value()
 		require.NoError(t, err)
+		record.MdValueCaps = nil
 		actual = append(actual, record)
 	}
 

@@ -39,11 +39,10 @@ func TestDecode(t *testing.T) {
 				},
 			},
 			expected: Record{
-				StreamID:    123,
-				Timestamp:   time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:    labels.FromStrings("app", "test-app", "env", "prod"),
-				Line:        []byte("test message"),
-				MdValueCaps: []int{8, 8},
+				StreamID:  123,
+				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
+				Metadata:  labels.FromStrings("app", "test-app", "env", "prod"),
+				Line:      []byte("test message"),
 			},
 		},
 		{
@@ -63,11 +62,10 @@ func TestDecode(t *testing.T) {
 				},
 			},
 			expected: Record{
-				StreamID:    123,
-				Timestamp:   time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:    labels.FromStrings(),
-				Line:        []byte("test message"),
-				MdValueCaps: []int{0},
+				StreamID:  123,
+				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
+				Metadata:  labels.FromStrings(),
+				Line:      []byte("test message"),
 			},
 		},
 		{
@@ -129,6 +127,7 @@ func TestDecode(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			record.MdValueCaps = nil
 			require.Equal(t, tt.expected, record)
 		})
 	}

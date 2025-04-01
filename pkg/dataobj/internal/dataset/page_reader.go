@@ -79,7 +79,7 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
-	pr.presenceBuf = slicegrow.Grow(pr.presenceBuf, len(v))
+	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
 	pr.presenceBuf = pr.presenceBuf[:len(v)]
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
@@ -156,7 +156,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 //
 // The resulting slice is len(src).
 func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slicegrow.Grow(dst, len(src))
+	dst = slicegrow.GrowToCap(dst, len(src))
 	dst = dst[:0]
 
 	// We must maintain ordering against the caller slice here.

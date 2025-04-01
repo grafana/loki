@@ -42,14 +42,21 @@ func metadata(kvps ...string) push.LabelsAdapter {
 	return m
 }
 
+func ignoreCaps(recs []dataobj.Record) {
+	for i := range recs {
+		recs[i].MdNameCaps = nil
+		recs[i].MdValueCaps = nil
+	}
+}
+
 func TestLogsReader(t *testing.T) {
 	expect := []dataobj.Record{
-		{1, unixTime(10), labels.FromStrings(), []byte("hello")},
-		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world")},
-		{2, unixTime(5), labels.FromStrings(), []byte("hello again")},
-		{2, unixTime(20), labels.FromStrings("user", "12"), []byte("world again")},
-		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time")},
-		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time")},
+		{1, unixTime(10), labels.FromStrings(), []byte("hello"), nil, nil},
+		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world"), nil, nil},
+		{2, unixTime(5), labels.FromStrings(), []byte("hello again"), nil, nil},
+		{2, unixTime(20), labels.FromStrings("user", "12"), []byte("world again"), nil, nil},
+		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time"), nil, nil},
+		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time"), nil, nil},
 	}
 
 	// Build with many pages but one section.
@@ -66,15 +73,16 @@ func TestLogsReader(t *testing.T) {
 	r := dataobj.NewLogsReader(obj, 0)
 	actual, err := readAllRecords(context.Background(), r)
 	require.NoError(t, err)
+	ignoreCaps(actual)
 	require.Equal(t, expect, actual)
 }
 
 func TestLogsReader_MatchStreams(t *testing.T) {
 	expect := []dataobj.Record{
-		{1, unixTime(10), labels.FromStrings(), []byte("hello")},
-		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world")},
-		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time")},
-		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time")},
+		{1, unixTime(10), labels.FromStrings(), []byte("hello"), nil, nil},
+		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world"), nil, nil},
+		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time"), nil, nil},
+		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time"), nil, nil},
 	}
 
 	// Build with many pages but one section.
@@ -93,13 +101,14 @@ func TestLogsReader_MatchStreams(t *testing.T) {
 
 	actual, err := readAllRecords(context.Background(), r)
 	require.NoError(t, err)
+	ignoreCaps(actual)
 	require.Equal(t, expect, actual)
 }
 
 func TestLogsReader_AddMetadataMatcher(t *testing.T) {
 	expect := []dataobj.Record{
-		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world")},
-		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time")},
+		{1, unixTime(15), labels.FromStrings("trace_id", "123"), []byte("world"), nil, nil},
+		{3, unixTime(30), labels.FromStrings("trace_id", "123"), []byte("world one more time"), nil, nil},
 	}
 
 	// Build with many pages but one section.
@@ -118,13 +127,14 @@ func TestLogsReader_AddMetadataMatcher(t *testing.T) {
 
 	actual, err := readAllRecords(context.Background(), r)
 	require.NoError(t, err)
+	ignoreCaps(actual)
 	require.Equal(t, expect, actual)
 }
 
 func TestLogsReader_AddMetadataFilter(t *testing.T) {
 	expect := []dataobj.Record{
-		{2, unixTime(20), labels.FromStrings("user", "12"), []byte("world again")},
-		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time")},
+		{2, unixTime(20), labels.FromStrings("user", "12"), []byte("world again"), nil, nil},
+		{3, unixTime(25), labels.FromStrings("user", "14"), []byte("hello one more time"), nil, nil},
 	}
 
 	// Build with many pages but one section.
@@ -150,6 +160,7 @@ func TestLogsReader_AddMetadataFilter(t *testing.T) {
 
 	actual, err := readAllRecords(context.Background(), r)
 	require.NoError(t, err)
+	ignoreCaps(actual)
 	require.Equal(t, expect, actual)
 }
 
@@ -233,12 +244,7 @@ func BenchmarkLogsReader(b *testing.B) {
 	require.NoError(b, err)
 	require.Equal(b, 1, md.LogsSections)
 
-	//pred := dataobj.MetadataMatcherPredicate{
-	//	Key:   "trace_id",
-	//	Value: "3",
-	//}
 	r := dataobj.NewLogsReader(obj, 0)
-	//require.NoError(b, r.SetPredicate(pred))
 	var (
 		recs = make([]dataobj.Record, 128)
 		ctx  = context.Background()
@@ -257,7 +263,6 @@ func BenchmarkLogsReader(b *testing.B) {
 			cnt += n
 		}
 		r.Reset(obj, 0)
-		//r.SetPredicate(pred)
 		require.Equal(b, 10000, cnt)
 		cnt = 0
 	}

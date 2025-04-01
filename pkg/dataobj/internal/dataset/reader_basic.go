@@ -137,13 +137,13 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	pr.buf = slicegrow.Grow(pr.buf, len(s))
+	pr.buf = slicegrow.GrowToCap(pr.buf, len(s))
 	pr.buf = pr.buf[:len(s)]
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
 	for i := range s {
-		s[i].Values = slicegrow.Grow(s[i].Values, len(pr.columns))
+		s[i].Values = slicegrow.GrowToCap(s[i].Values, len(pr.columns))
 		s[i].Values = s[i].Values[:len(pr.columns)]
 	}
 
@@ -240,7 +240,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 //
 // The resulting slice is len(src).
 func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
-	dst = slicegrow.Grow(dst, len(src))
+	dst = slicegrow.GrowToCap(dst, len(src))
 	dst = dst[:0]
 
 	for _, row := range src {

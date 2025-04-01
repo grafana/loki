@@ -288,7 +288,7 @@ func getDestinationBuffer(v *Value, sz int) []byte {
 
 	// Grow the buffer attached to this Value if necessary.
 	if v.cap < uint64(sz) {
-		dst = slicegrow.Grow(dst, int(sz))
+		dst = slicegrow.GrowToCap(dst, int(sz))
 		v.any = (bytearray)(unsafe.SliceData(dst))
 		v.cap = uint64(cap(dst))
 	}

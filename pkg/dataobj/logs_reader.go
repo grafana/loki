@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -27,10 +28,12 @@ import (
 
 // A Record is an individual log record in a data object.
 type Record struct {
-	StreamID  int64         // StreamID associated with the log record.
-	Timestamp time.Time     // Timestamp of the log record.
-	Metadata  labels.Labels // Set of metadata associated with the log record.
-	Line      []byte        // Line of the log record.
+	StreamID    int64         // StreamID associated with the log record.
+	Timestamp   time.Time     // Timestamp of the log record.
+	Metadata    labels.Labels // Set of metadata associated with the log record.
+	Line        []byte        // Line of the log record.
+	MdValueCaps []int         // Caps for the value of the metadata
+	MdNameCaps  []int         // Caps for the name of the metadata
 }
 
 // LogsReader reads the set of logs from an [Object].
@@ -110,12 +113,12 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
-	r.buf = slicegrow.Grow(r.buf, len(s))
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
 
 	// Fill the row buffer with empty values so they can re-use the memory we pass in.
 	for i := range r.buf {
-		r.buf[i].Values = slicegrow.Grow(r.buf[i].Values, len(r.columns))
+		r.buf[i].Values = slicegrow.GrowToCap(r.buf[i].Values, len(r.columns))
 		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
 		for j := range r.buf[i].Values {
 			if r.buf[i].Values[j].IsNil() {
@@ -138,9 +141,14 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
+	// Pre-allocate memory for metadata
 	for i := range s {
-		s[i].Metadata = slicegrow.Grow(s[i].Metadata, metadataColumns)
+		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, metadataColumns)
 		s[i].Metadata = s[i].Metadata[:metadataColumns]
+		s[i].MdNameCaps = slicegrow.GrowToCap(s[i].MdNameCaps, metadataColumns)
+		s[i].MdNameCaps = s[i].MdNameCaps[:metadataColumns]
+		s[i].MdValueCaps = slicegrow.GrowToCap(s[i].MdValueCaps, metadataColumns)
+		s[i].MdValueCaps = s[i].MdValueCaps[:metadataColumns]
 	}
 
 	for i := range r.buf[:n] {
@@ -149,17 +157,31 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
 
+		// Copy record data into pre-allocated output buffer
 		s[i].StreamID = r.record.StreamID
 		s[i].Timestamp = r.record.Timestamp
-		s[i].Metadata = slicegrow.Grow(s[i].Metadata, len(r.record.Metadata))
 		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
-		copy(s[i].Metadata, r.record.Metadata)
-		s[i].Line = slicegrow.Grow(s[i].Line, len(r.record.Line))
-		s[i].Line = s[i].Line[:len(r.record.Line)]
-		copy(s[i].Line, r.record.Line)
+		for j := range r.record.Metadata {
+			s[i].Metadata[j].Name = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name))
+			s[i].Metadata[j].Value = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value))
+			s[i].MdNameCaps[j] = max(s[i].MdNameCaps[j], len(s[i].Metadata[j].Name))
+			s[i].MdValueCaps[j] = max(s[i].MdValueCaps[j], len(s[i].Metadata[j].Value))
+		}
+		s[i].Line = slicegrow.CopyInto(s[i].Line, r.record.Line)
 	}
 
 	return n, nil
+}
+
+func unsafeSlice(data string, cap int) []byte {
+	if cap <= 0 {
+		cap = len(data)
+	}
+	return unsafe.Slice(unsafe.StringData(data), cap)
+}
+
+func unsafeString(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
