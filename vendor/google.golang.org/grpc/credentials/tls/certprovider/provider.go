@@ -66,7 +66,7 @@ func getBuilder(name string) Builder {
 type Builder interface {
 	// ParseConfig parses the given config, which is in a format specific to individual
 	// implementations, and returns a BuildableConfig on success.
-	ParseConfig(interface{}) (*BuildableConfig, error)
+	ParseConfig(any) (*BuildableConfig, error)
 
 	// Name returns the name of providers built by this builder.
 	Name() string

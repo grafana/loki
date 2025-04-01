@@ -26,7 +26,7 @@ import (
 
 // BalancerConfig is the Go Native JSON representation of a balancer
 // configuration.
-type BalancerConfig []map[string]interface{}
+type BalancerConfig []map[string]any
 
 // ClusterSpecifier defines the parsing functionality of a Cluster Specifier.
 type ClusterSpecifier interface {
