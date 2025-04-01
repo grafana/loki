@@ -1414,6 +1414,36 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		assert.Len(t, detectedLabels, 0)
 	})
 
+	t.Run("allows boolean values, even if numeric", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"boolean-ints":  {Values: []string{"0", "1"}},
+			"boolean-bools": {Values: []string{"true", "false"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 2)
+	})
+
 	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
 		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
 			"cluster":   {Values: []string{"val1"}},
