@@ -22,12 +22,15 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	var err error
 
 	expr := query.GetExpression()
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 		case *syntax.LineFilterExpr:
 			predicates = append(predicates, convertLineFilterExpr(e))
+			// We do not want to traverse the AST further down, because line filter expressions can be nested,
+			// which would lead to multiple predicates of the same expression.
+			return false
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
@@ -35,6 +38,7 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 				predicates = append(predicates, val)
 			}
 		}
+		return true
 	})
 
 	if err != nil {
@@ -72,28 +76,6 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	return plan, err
 }
 
-func timestampColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}
-}
-
-func logColumnRef() *ColumnRef {
-	return &ColumnRef{Column: types.ColumnNameBuiltinLog, Type: types.ColumnTypeBuiltin}
-}
-
-func convertMatcherType(t labels.MatchType) types.BinaryOp {
-	switch t {
-	case labels.MatchEqual:
-		return types.BinaryOpEq
-	case labels.MatchNotEqual:
-		return types.BinaryOpNeq
-	case labels.MatchRegexp:
-		return types.BinaryOpMatchRe
-	case labels.MatchNotRegexp:
-		return types.BinaryOpNotMatchRe
-	}
-	return types.BinaryOpInvalid
-}
-
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
 	var value *BinOp
 
@@ -117,18 +99,40 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 	return value
 }
 
-func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
-	switch op {
+func convertMatcherType(t labels.MatchType) types.BinaryOp {
+	switch t {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
 		return types.BinaryOpNotMatchRe
-	default:
-		panic("invalid match type")
+	}
+	return types.BinaryOpInvalid
+}
+
+func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
+	if expr.Left != nil {
+		op := types.BinaryOpAnd
+		if expr.IsOrChild {
+			op = types.BinaryOpOr
+		}
+		return &BinOp{
+			Left:  convertLineFilterExpr(expr.Left),
+			Right: convertLineFilter(expr.LineFilter),
+			Op:    op,
+		}
+	}
+	return convertLineFilter(expr.LineFilter)
+}
+
+func convertLineFilter(filter syntax.LineFilter) Value {
+	return &BinOp{
+		Left:  logColumnRef(),
+		Right: LiteralString(filter.Match),
+		Op:    convertLineMatchType(filter.Ty),
 	}
 }
 
@@ -151,27 +155,27 @@ func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	}
 }
 
-func convertLineFilter(filter syntax.LineFilter) Value {
-	return &BinOp{
-		Left:  logColumnRef(),
-		Right: LiteralString(filter.Match),
-		Op:    convertLineMatchType(filter.Ty),
-	}
+func timestampColumnRef() *ColumnRef {
+	return &ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}
 }
 
-func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
-	if expr.Left != nil {
-		op := types.BinaryOpAnd
-		if expr.IsOrChild {
-			op = types.BinaryOpOr
-		}
-		return &BinOp{
-			Left:  convertLineFilterExpr(expr.Left),
-			Right: convertLineFilter(expr.LineFilter),
-			Op:    op,
-		}
+func logColumnRef() *ColumnRef {
+	return &ColumnRef{Column: types.ColumnNameBuiltinLog, Type: types.ColumnTypeBuiltin}
+}
+
+func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
+	switch op {
+	case labels.MatchEqual:
+		return types.BinaryOpMatchStr
+	case labels.MatchNotEqual:
+		return types.BinaryOpNotMatchStr
+	case labels.MatchRegexp:
+		return types.BinaryOpMatchRe
+	case labels.MatchNotRegexp:
+		return types.BinaryOpNotMatchRe
+	default:
+		panic("invalid match type")
 	}
-	return convertLineFilter(expr.LineFilter)
 }
 
 func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
