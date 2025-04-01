@@ -244,13 +244,13 @@ func Sortable(q Params) (bool, error) {
 		return false, nil
 	case syntax.SampleExpr:
 		var sortable bool
-		expr.Walk(func(e syntax.Expr) {
+		expr.Walk(func(e syntax.Expr) bool {
 			if rangeExpr, ok := e.(*syntax.VectorAggregationExpr); ok {
 				if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
 					sortable = true
-					return
 				}
 			}
+			return true
 		})
 		return sortable, nil
 	default:

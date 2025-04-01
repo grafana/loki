@@ -30,9 +30,13 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("location", false, node.Location),
 			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
-			tree.NewProperty("predicates", true, toAnySlice(node.Predicates)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
+		}
+		for i := range node.Predicates {
+			treeNode.AddComment("Predicate", "", []tree.Property{
+				tree.NewProperty("expr", false, node.Predicates[i].String()),
+			})
 		}
 	case *SortMerge:
 		treeNode.Properties = []tree.Property{
@@ -44,8 +48,10 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
 		}
 	case *Filter:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("predicates", true, toAnySlice(node.Predicates)...),
+		for i := range node.Predicates {
+			treeNode.AddComment("Predicate", "", []tree.Property{
+				tree.NewProperty("expr", false, node.Predicates[i].String()),
+			})
 		}
 	case *Limit:
 		treeNode.Properties = []tree.Property{

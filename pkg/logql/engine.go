@@ -645,13 +645,14 @@ func enforceMultiVariantLimit(ctx context.Context, seriesIndex map[string]map[ui
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.LogRangeExpr:
 			if e.Interval > limit {
 				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
 		}
+		return true
 	})
 	return err
 }
