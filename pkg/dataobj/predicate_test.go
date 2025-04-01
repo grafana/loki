@@ -489,3 +489,111 @@ func evaluateRecordPredicate(p dataset.Predicate, ts time.Time) bool {
 		panic("unexpected predicate")
 	}
 }
+
+func TestPredicateString(t *testing.T) {
+	// Test time values
+	startTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2023, 1, 2, 0, 0, 0, 0, time.UTC)
+	testCases := []struct {
+		name     string
+		pred     Predicate
+		expected string
+	}{
+		{
+			name:     "LabelMatcherPredicate",
+			pred:     LabelMatcherPredicate{Name: "app", Value: "frontend"},
+			expected: "Label(app=frontend)",
+		},
+		{
+			name:     "LabelFilterPredicate",
+			pred:     LabelFilterPredicate{Name: "env", Desc: `env=~"(prod|dev)"`},
+			expected: `LabelFilter(env, description="env=~\"(prod|dev)\"")`,
+		},
+		{
+			name:     "MetadataMatcherPredicate",
+			pred:     MetadataMatcherPredicate{Key: "trace_id", Value: "abc123"},
+			expected: "Metadata(trace_id=abc123)",
+		},
+		{
+			name:     "MetadataFilterPredicate",
+			pred:     MetadataFilterPredicate{Key: "span_id", Desc: `span_id=~"123"`},
+			expected: `MetadataFilter(span_id, description="span_id=~\"123\"")`,
+		},
+		{
+			name:     "LogMessageFilterPredicate",
+			pred:     LogMessageFilterPredicate{Desc: `line=~"error"`},
+			expected: `LogMessageFilter(description="line=~\"error\"")`,
+		},
+		{
+			name: "TimeRangePredicate - inclusive start, exclusive end",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: true,
+				IncludeEnd:   false,
+			},
+			expected: "TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)",
+		},
+		{
+			name: "TimeRangePredicate - exclusive start, inclusive end",
+			pred: TimeRangePredicate[StreamsPredicate]{
+				StartTime:    startTime,
+				EndTime:      endTime,
+				IncludeStart: false,
+				IncludeEnd:   true,
+			},
+			expected: "TimeRange(2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z]",
+		},
+		{
+			name: "NotPredicate",
+			pred: NotPredicate[StreamsPredicate]{
+				Inner: LabelMatcherPredicate{Name: "app", Value: "frontend"},
+			},
+			expected: "NOT(Label(app=frontend))",
+		},
+		{
+			name: "AndPredicate",
+			pred: AndPredicate[StreamsPredicate]{
+				Left:  LabelMatcherPredicate{Name: "app", Value: "frontend"},
+				Right: LabelMatcherPredicate{Name: "env", Value: "prod"},
+			},
+			expected: "(Label(app=frontend) AND Label(env=prod))",
+		},
+		{
+			name: "OrPredicate",
+			pred: OrPredicate[StreamsPredicate]{
+				Left:  LabelMatcherPredicate{Name: "app", Value: "frontend"},
+				Right: LabelMatcherPredicate{Name: "app", Value: "backend"},
+			},
+			expected: "(Label(app=frontend) OR Label(app=backend))",
+		},
+		{
+			name: "Complex nested predicate",
+			pred: OrPredicate[StreamsPredicate]{
+				Left: AndPredicate[StreamsPredicate]{
+					Left:  LabelMatcherPredicate{Name: "app", Value: "service"},
+					Right: LabelMatcherPredicate{Name: "env", Value: "prod"},
+				},
+				Right: AndPredicate[StreamsPredicate]{
+					Left: LabelFilterPredicate{Name: "region", Desc: `region=~"us-west"`},
+					Right: TimeRangePredicate[StreamsPredicate]{
+						StartTime:    startTime,
+						EndTime:      endTime,
+						IncludeStart: true,
+						IncludeEnd:   false,
+					},
+				},
+			},
+			expected: `((Label(app=service) AND Label(env=prod)) OR (LabelFilter(region, description="region=~\"us-west\"") AND TimeRange[2023-01-01T00:00:00Z, 2023-01-02T00:00:00Z)))`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.pred.String()
+			if result != tc.expected {
+				t.Errorf("Expected: %s, Got: %s", tc.expected, result)
+			}
+		})
+	}
+}

@@ -44,9 +44,11 @@ type LogsReader struct {
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*logsmd.ColumnDesc
+	reader  *dataset.Reader
+	columns []dataset.Column
+
+	sectionInfo *filemd.SectionInfo
+	columnDesc  []*logsmd.ColumnDesc
 }
 
 // NewLogsReader creates a new LogsReader that reads from the logs section of
@@ -136,19 +138,52 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	return n, nil
 }
 
+// Columns returns the column descriptions for the logs section.
+func (r *LogsReader) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
+	if r.columnDesc != nil {
+		return r.columnDesc, nil
+	}
+
+	si, err := r.findSection(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("finding section: %w", err)
+	}
+
+	columnDesc, err := r.obj.dec.LogsDecoder().Columns(ctx, si)
+	if err != nil {
+		return nil, fmt.Errorf("reading columns: %w", err)
+	}
+
+	r.sectionInfo = si
+	r.columnDesc = columnDesc
+
+	return r.columnDesc, nil
+}
+
 func (r *LogsReader) initReader(ctx context.Context) error {
 	dec := r.obj.dec.LogsDecoder()
-	sec, err := r.findSection(ctx)
-	if err != nil {
-		return fmt.Errorf("finding section: %w", err)
+
+	// sectionInfo and columnDesc could be populated by a previous call to Columns method.
+	// avoid re-reading them.
+	if r.sectionInfo == nil {
+		si, err := r.findSection(ctx)
+		if err != nil {
+			return fmt.Errorf("finding section: %w", err)
+		}
+
+		r.sectionInfo = si
 	}
 
-	columnDescs, err := dec.Columns(ctx, sec)
-	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+	if r.columnDesc == nil {
+		columnDescs, err := dec.Columns(ctx, r.sectionInfo)
+		if err != nil {
+			return fmt.Errorf("reading columns: %w", err)
+		}
+
+		r.columnDesc = columnDescs
 	}
 
-	dset := encoding.LogsDataset(dec, sec)
+	dset := encoding.LogsDataset(dec, r.sectionInfo)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -156,11 +191,11 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
-	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
+	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, r.columnDesc)
 	if r.predicate != nil {
 		predicate = dataset.AndPredicate{
 			Left:  predicate,
-			Right: translateLogsPredicate(r.predicate, columns, columnDescs),
+			Right: translateLogsPredicate(r.predicate, columns, r.columnDesc),
 		}
 	}
 
@@ -178,7 +213,6 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		r.reader.Reset(readerOpts)
 	}
 
-	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -230,6 +264,7 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 
 	r.columns = nil
 	r.columnDesc = nil
+	r.sectionInfo = nil
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.
@@ -316,7 +351,9 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+				if value.IsNil() {
+					return p.Keep(nil)
+				} else if value.Type() == datasetmd.VALUE_TYPE_STRING {
 					// To handle older dataobjs that still use string type for message column. This can be removed in future.
 					return p.Keep([]byte(value.String()))
 				}
@@ -347,6 +384,9 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		return dataset.FuncPredicate{
 			Column: metadataColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
+				if value.IsNil() {
+					return p.Keep(p.Key, "")
+				}
 				return p.Keep(p.Key, valueToString(value))
 			},
 		}
