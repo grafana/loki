@@ -12,6 +12,66 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+// BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
+// It may return an error as second argument in case the traversal of the AST of the query fails.
+func BuildPlan(query logql.Params) (*Plan, error) {
+	var selector Value
+	var predicates []Value
+
+	// TODO(chaudum): Implement a Walk function that can return an error
+	var err error
+
+	expr := query.GetExpression()
+	expr.Walk(func(e syntax.Expr) {
+		switch e := e.(type) {
+		case *syntax.MatchersExpr:
+			selector = convertLabelMatchers(e.Matchers())
+		case *syntax.LineFilterExpr:
+			predicates = append(predicates, convertLineFilterExpr(e))
+		case *syntax.LabelFilterExpr:
+			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
+				err = innerErr
+			} else {
+				predicates = append(predicates, val)
+			}
+		}
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
+	}
+
+	// MAKETABLE -> DataObjScan
+	builder := NewBuilder(
+		&MakeTable{
+			Selector: selector,
+		},
+	)
+
+	// SORT -> SortMerge
+	direction := query.Direction()
+	ascending := direction == logproto.FORWARD
+	builder = builder.Sort(*timestampColumnRef(), ascending, false)
+
+	// SELECT -> Filter
+	start := query.Start().UnixNano()
+	end := query.End().UnixNano()
+	for _, value := range convertQueryRangeToPredicates(start, end) {
+		builder = builder.Select(value)
+	}
+
+	for _, value := range predicates {
+		builder = builder.Select(value)
+	}
+
+	// LIMIT -> Limit
+	limit := query.Limit()
+	builder = builder.Limit(0, limit)
+
+	plan, err := builder.ToPlan()
+	return plan, err
+}
+
 func timestampColumnRef() *ColumnRef {
 	return &ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}
 }
@@ -169,63 +229,4 @@ func convertQueryRangeToPredicates(start, end int64) []*BinOp {
 			Op:    types.BinaryOpLt,
 		},
 	}
-}
-
-func ConvertToLogicalPlan(params logql.Params) (*Plan, error) {
-	expr := params.GetExpression()
-
-	var selector Value
-	var predicates []Value
-
-	// TODO(chaudum): Implement a Walk function that can return an error
-	var err error
-
-	expr.Walk(func(e syntax.Expr) {
-		switch e := e.(type) {
-		case *syntax.MatchersExpr:
-			selector = convertLabelMatchers(e.Matchers())
-		case *syntax.LineFilterExpr:
-			predicates = append(predicates, convertLineFilterExpr(e))
-		case *syntax.LabelFilterExpr:
-			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
-				err = innerErr
-			} else {
-				predicates = append(predicates, val)
-			}
-		}
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
-	}
-
-	// MAKETABLE -> DataObjScan
-	builder := NewBuilder(
-		&MakeTable{
-			Selector: selector,
-		},
-	)
-
-	// SORT -> SortMerge
-	direction := params.Direction()
-	ascending := direction == logproto.FORWARD
-	builder = builder.Sort(*timestampColumnRef(), ascending, false)
-
-	// SELECT -> Filter
-	start := params.Start().UnixNano()
-	end := params.End().UnixNano()
-	for _, value := range convertQueryRangeToPredicates(start, end) {
-		builder = builder.Select(value)
-	}
-
-	for _, value := range predicates {
-		builder = builder.Select(value)
-	}
-
-	// LIMIT -> Limit
-	limit := params.Limit()
-	builder = builder.Limit(0, limit)
-
-	plan, err := builder.ToPlan()
-	return plan, err
 }

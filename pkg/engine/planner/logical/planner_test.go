@@ -85,7 +85,7 @@ func TestConvertAST_Success(t *testing.T) {
 		direction: logproto.FORWARD,
 		limit:     1000,
 	}
-	logicalPlan, err := ConvertToLogicalPlan(q)
+	logicalPlan, err := BuildPlan(q)
 	require.NoError(t, err)
 	t.Logf("\n%s\n", logicalPlan.String())
 
@@ -128,7 +128,7 @@ func TestConvertAST_UnsupportedFeature(t *testing.T) {
 		direction: logproto.FORWARD,
 		limit:     1000,
 	}
-	logicalPlan, err := ConvertToLogicalPlan(q)
+	logicalPlan, err := BuildPlan(q)
 	require.Nil(t, logicalPlan)
 	require.ErrorContains(t, err, "failed to convert AST into logical plan: not implemented: *log.NumericLabelFilter")
 }
