@@ -228,7 +228,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				logger:             log.NewNopLogger(),
 				metrics:            newMetrics(prometheus.NewRegistry()),
 				metadata:           tt.setupMetadata,
-				assingedPartitions: tt.assignedPartitions,
+				assignedPartitions: tt.assignedPartitions,
 			}
 
 			// Create request
@@ -517,7 +517,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &IngestLimits{
-				assingedPartitions: tt.assignedPartitions,
+				assignedPartitions: tt.assignedPartitions,
 				metadata:           tt.existingData,
 				metrics:            newMetrics(prometheus.NewRegistry()),
 			}
