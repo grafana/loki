@@ -156,6 +156,8 @@ Examples:
 
 ## Probabilistic aggregation
 
+{{< docs/experimental product="approx_topk" featureFlag="shard_aggregations:-approx_topk" >}}
+
 LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
 
 The function is of the form: 
