@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -44,6 +45,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+)
+
+// Define default sizes for generated streams
+const (
+	normalLogSize    = 100 // 100 bytes for normal log lines
+	entriesPerStream = 5   // 5 entries per stream
 )
 
 const (
@@ -88,6 +95,9 @@ type config struct {
 	StreamLabels              []string `yaml:"stream_labels"`
 	MaxGlobalStreamsPerTenant int      `yaml:"max_global_streams_per_tenant"`
 
+	// Stream size control parameter
+	DesiredRate int `yaml:"desired_rate"`
+
 	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
 	HTTPListenPort int             `yaml:"http_listen_port,omitempty"`
 
@@ -126,6 +136,9 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
+
+	// Add ingestion rate control parameter
+	f.IntVar(&c.DesiredRate, "tenants.streams.desired-rate", 1048576, "Desired ingestion rate in bytes per second (default: 1MB/s)")
 
 	// Set default stream labels
 	defaultLabels := []string{"cluster", "namespace", "job", "instance"}
@@ -276,8 +289,41 @@ func (s *generator) getFrontendClient() (*frontend_client.Client, error) {
 	return client.(*frontend_client.Client), nil
 }
 
+// calculateOptimalQPS calculates the optimal QPS to achieve the desired ingestion rate
+func calculateOptimalQPS(desiredRate, batchSize int, logger log.Logger) int {
+	// Calculate bytes per stream for normal streams
+	normalStreamRate := normalLogSize * entriesPerStream
+
+	// First, calculate QPS assuming all normal streams
+	var optimalQPS int
+	if batchSize > 0 {
+		// Calculate QPS needed if all streams are normal size
+		optimalQPS = int(math.Ceil(float64(desiredRate) / (float64(batchSize) * float64(normalStreamRate))))
+
+		// Check if this QPS would exceed the desired rate
+		normalRate := optimalQPS * batchSize * normalStreamRate
+
+		for normalRate > desiredRate && optimalQPS > 1 {
+			optimalQPS--
+			normalRate = optimalQPS * batchSize * normalStreamRate
+		}
+	}
+
+	// Calculate the expected rate with this QPS
+	expectedRate := optimalQPS * batchSize * normalStreamRate
+
+	level.Info(logger).Log("msg", "Calculated optimal QPS", "optimalQPS", optimalQPS, "desiredRate", desiredRate, "expectedRate", expectedRate)
+
+	return optimalQPS
+}
+
 func (s *generator) starting(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Calculate optimal QPS to match the desired rate
+	s.cfg.QPSPerTenant = calculateOptimalQPS(s.cfg.DesiredRate, s.cfg.BatchSize, s.logger)
+	level.Info(s.logger).Log("msg", fmt.Sprintf("Adjusted QPS per tenant to %d to match desired rate of %d bytes/s",
+		s.cfg.QPSPerTenant, s.cfg.DesiredRate))
 
 	// Generate streams for each tenant
 	s.streams = make(map[string][]distributor.KeyedStream)
@@ -354,26 +400,37 @@ func (s *generator) running(ctx context.Context) error {
 					}
 
 					// Check if the stream exceeds limits
-					if client != nil {
-						resp, err := client.ExceedsLimits(userCtx, req)
-						if err != nil {
-							level.Error(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "error", err)
-							continue
+					if client == nil {
+						level.Error(s.logger).Log("msg", "No ingest limits frontend client", "tenant", tenantID, "stream", streamIdx)
+						continue
+					}
+
+					resp, err := client.ExceedsLimits(userCtx, req)
+					if err != nil {
+						level.Error(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "error", err)
+						continue
+					}
+
+					switch {
+					case len(resp.RejectedStreams) > 0:
+						var rejectedStreamsMsg string
+						reasonCounts := make(map[string]int)
+						for _, rejectedStream := range resp.RejectedStreams {
+							reasonCounts[rejectedStream.Reason]++
+						}
+						for reason, count := range reasonCounts {
+							rejectedStreamsMsg += fmt.Sprintf("%s: %d, ", reason, count)
 						}
 
-						if len(resp.RejectedStreams) > 0 {
-							var rejectedStreamsMsg string
-							for _, rejectedStream := range resp.RejectedStreams {
-								rejectedStreamsMsg += fmt.Sprintf("%d (%s), ", rejectedStream.StreamHash, rejectedStream.Reason)
-							}
-
-							level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "rejected", rejectedStreamsMsg)
-						}
+						level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "batch_size", batchSize, "stream_idx", streamIdx, "time", t.Format(time.RFC3339), "rejected", rejectedStreamsMsg)
+						continue
+					case len(resp.RejectedStreams) == 0:
+						level.Debug(s.logger).Log("msg", "Stream accepted", "tenant", tenantID, "batch_size", batchSize, "stream_idx", streamIdx, "time", t.Format(time.RFC3339))
 					}
 
 					// Send single stream to Kafka
 					s.sendStreamsToKafka(ctx, streamsBatch, tenantID, errCh)
-					level.Info(s.logger).Log("msg", "Sent streams to Kafka", "tenant", tenantID, "batch_size", batchSize, "stream_idx", streamIdx, "time", t.Format(time.RFC3339))
+					level.Debug(s.logger).Log("msg", "Sent streams to Kafka", "tenant", tenantID, "batch_size", batchSize, "stream_idx", streamIdx, "time", t.Format(time.RFC3339))
 
 					// Only increment during the first pass
 					if !firstPassComplete {
@@ -420,14 +477,14 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			startTime := time.Now()
 
-			var logSize, structuredMetadataSize uint64
+			// Calculate log size from actual entries
+			var logSize uint64
 			for _, entry := range stream.Stream.Entries {
 				logSize += uint64(len(entry.Line))
-				structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
 			}
 
 			// Add metadata record
-			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard, logSize, structuredMetadataSize)
+			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard, logSize, 0)
 
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
@@ -489,7 +546,7 @@ func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Register
 func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabels []string) []distributor.KeyedStream {
 	streams := make([]distributor.KeyedStream, streamsPerTenant)
 
-	for i := 0; i < streamsPerTenant; i++ {
+	for i := range streamsPerTenant {
 		// Generate static label values for this stream
 		labelValues := make([]string, len(streamLabels))
 		for j, label := range streamLabels {
@@ -506,16 +563,23 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		}
 		sort.Sort(lbs)
 
-		// Create the stream
+		// Create the stream with multiple entries
 		stream := logproto.Stream{
-			Labels: labelsStr,
-			Hash:   lbs.Hash(),
-			Entries: []logproto.Entry{
-				{
-					Timestamp: time.Now(),
-					Line:      fmt.Sprintf("line %d", i),
-				},
-			},
+			Labels:  labelsStr,
+			Hash:    lbs.Hash(),
+			Entries: make([]logproto.Entry, 0, entriesPerStream),
+		}
+
+		// Generate entries for this stream
+		for j := range entriesPerStream {
+			// Generate log line with the specified size
+			logLine := generateLogLine(i, j, normalLogSize)
+
+			// Add entry to stream
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      logLine,
+			})
 		}
 
 		// Create the keyed stream
@@ -527,6 +591,18 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 	}
 
 	return streams
+}
+
+// generateLogLine creates a log line of approximately the specified size
+func generateLogLine(streamIdx, entryIdx, size int) string {
+	base := fmt.Sprintf("stream-%d entry-%d ", streamIdx, entryIdx)
+	if len(base) >= size {
+		return base[:size]
+	}
+
+	// Pad with repeating characters to reach desired size
+	padding := strings.Repeat("x", size-len(base))
+	return base + padding
 }
 
 func main() {
