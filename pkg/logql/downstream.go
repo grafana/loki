@@ -140,7 +140,10 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 }
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
-	f(d)
+	cont := f(d)
+	if !cont {
+		return
+	}
 	if d.SampleExpr != nil {
 		d.SampleExpr.Walk(f)
 	}
@@ -177,7 +180,10 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
+	cont := f(c)
+	if !cont {
+		return
+	}
 	if c.SampleExpr != nil {
 		c.SampleExpr.Walk(f)
 	}
@@ -280,7 +286,10 @@ func (e QuantileSketchEvalExpr) String() string {
 }
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	cont := f(e)
+	if !cont {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -311,7 +320,10 @@ func (e QuantileSketchMergeExpr) String() string {
 }
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	cont := f(e)
+	if !cont {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -343,7 +355,10 @@ func (e MergeFirstOverTimeExpr) String() string {
 }
 
 func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	cont := f(e)
+	if !cont {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -375,7 +390,10 @@ func (e MergeLastOverTimeExpr) String() string {
 }
 
 func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	cont := f(e)
+	if !cont {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -406,7 +424,10 @@ func (e CountMinSketchEvalExpr) String() string {
 }
 
 func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	cont := f(e)
+	if !cont {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
