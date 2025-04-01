@@ -4,10 +4,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
+// A rule is a tranformation that can be applied on a Node.
 type rule interface {
+	// apply tries to apply the transformation on the node.
+	// It returns the node and a boolean indicating whether the transformation has been applied.
 	apply(Node) (Node, bool)
 }
 
+// removeNoopPredicate is a rule that removes Filter nodes without predicates.
 type removeNoopPredicate struct {
 	plan *Plan
 }
@@ -27,6 +31,7 @@ func (r *removeNoopPredicate) apply(node Node) (Node, bool) {
 
 var _ rule = (*removeNoopPredicate)(nil)
 
+// predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
 	plan *Plan
 }
@@ -80,6 +85,7 @@ func canApplyPredicate(predicate Expression) bool {
 
 var _ rule = (*predicatePushdown)(nil)
 
+// limitPushdown is a rule that moves down the limit to the scan nodes.
 type limitPushdown struct {
 	plan *Plan
 }
@@ -110,6 +116,7 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 
 var _ rule = (*limitPushdown)(nil)
 
+// optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
 	plan  *Plan
 	name  string
@@ -163,6 +170,7 @@ func (o *optimization) applyRules(node Node) (Node, bool) {
 	return node, anyChanged
 }
 
+// The optimizer can optimize physical plans using the provided optimization passes.
 type optimizer struct {
 	plan   *Plan
 	passes []*optimization
