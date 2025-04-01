@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func TestOptimizer_canApplyPredicate(t *testing.T) {
+func TestCanApplyPredicate(t *testing.T) {
 	tests := []struct {
 		predicate Expression
 		want      bool
@@ -56,8 +56,7 @@ func TestOptimizer_canApplyPredicate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.predicate.String(), func(t *testing.T) {
-			var o optimizer
-			got := o.canApplyPredicate(tt.predicate)
+			got := canApplyPredicate(tt.predicate)
 			require.Equal(t, tt.want, got)
 		})
 	}

@@ -162,10 +162,18 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-		optimizer := newOptimizer(plan)
-		if err := optimizer.optimize(root); err != nil {
-			return nil, fmt.Errorf("failed to optimize physical plan: %w", err)
+
+		optimizations := []*optimization{
+			newOptimization("PredicatePushdown", plan).withRules(
+				&predicatePushdown{plan: plan},
+				&removeNoopPredicate{plan: plan},
+			),
+			newOptimization("LimitPushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
 		}
+		optimizer := newOptimizer(plan, optimizations)
+		_ = optimizer.optimize(root)
 		if i == 1 {
 			return nil, errors.New("physcial plan must only have exactly one root node")
 		}
