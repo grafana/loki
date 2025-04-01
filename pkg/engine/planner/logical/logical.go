@@ -92,3 +92,14 @@ func (p Plan) String() string {
 
 	return sb.String()
 }
+
+// Value returns the value of the RETURN instruction.
+func (p Plan) Value() Value {
+	for _, inst := range p.Instructions {
+		switch inst := inst.(type) {
+		case *Return:
+			return inst.Value
+		}
+	}
+	return nil
+}

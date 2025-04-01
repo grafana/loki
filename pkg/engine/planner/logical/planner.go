@@ -156,21 +156,18 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	return nil, fmt.Errorf("invalid label filter %T", expr)
 }
 
-func convertQueryRangeToPredicate(start, end int64) Value {
-	left := &BinOp{
-		Left:  timestampColumnRef(),
-		Right: LiteralUint64(uint64(start)),
-		Op:    types.BinaryOpGte,
-	}
-	right := &BinOp{
-		Left:  timestampColumnRef(),
-		Right: LiteralUint64(uint64(end)),
-		Op:    types.BinaryOpLt,
-	}
-	return &BinOp{
-		Left:  left,
-		Right: right,
-		Op:    types.BinaryOpAnd,
+func convertQueryRangeToPredicates(start, end int64) []*BinOp {
+	return []*BinOp{
+		{
+			Left:  timestampColumnRef(),
+			Right: LiteralUint64(uint64(start)),
+			Op:    types.BinaryOpGte,
+		},
+		{
+			Left:  timestampColumnRef(),
+			Right: LiteralUint64(uint64(end)),
+			Op:    types.BinaryOpLt,
+		},
 	}
 }
 
@@ -202,24 +199,30 @@ func ConvertToLogicalPlan(params logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
+	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
 			Selector: selector,
 		},
 	)
 
-	for i := range predicates {
-		builder = builder.Select(predicates[i])
-	}
-
-	start := params.Start().UnixNano()
-	end := params.End().UnixNano()
-	builder = builder.Select(convertQueryRangeToPredicate(start, end))
-
+	// SORT -> SortMerge
 	direction := params.Direction()
 	ascending := direction == logproto.FORWARD
 	builder = builder.Sort(*timestampColumnRef(), ascending, false)
 
+	// SELECT -> Filter
+	start := params.Start().UnixNano()
+	end := params.End().UnixNano()
+	for _, value := range convertQueryRangeToPredicates(start, end) {
+		builder = builder.Select(value)
+	}
+
+	for _, value := range predicates {
+		builder = builder.Select(value)
+	}
+
+	// LIMIT -> Limit
 	limit := params.Limit()
 	builder = builder.Limit(0, limit)
 

@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -92,26 +93,31 @@ func TestConvertAST_Success(t *testing.T) {
 %2 = MATCH_RE label.namespace, "loki-.*"
 %3 = AND %1, %2
 %4 = MAKE_TABLE [selector=%3]
-%5 = MATCH_STR ambiguous.foo, "bar"
-%6 = MATCH_STR ambiguous.bar, "baz"
-%7 = OR %5, %6
-%8 = SELECT %4 [predicate=%7]
-%9 = MATCH_STR builtin.log, "metric.go"
-%10 = MATCH_STR builtin.log, "foo"
-%11 = AND %9, %10
-%12 = NOT_MATCH_RE builtin.log, "(a|b|c)"
-%13 = AND %11, %12
-%14 = SELECT %8 [predicate=%13]
-%15 = GTE builtin.timestamp, 1000
-%16 = LT builtin.timestamp, 2000
-%17 = AND %15, %16
-%18 = SELECT %14 [predicate=%17]
-%19 = SORT %18 [column=builtin.timestamp, asc=true, nulls_first=false]
+%5 = SORT %4 [column=builtin.timestamp, asc=true, nulls_first=false]
+%6 = GTE builtin.timestamp, 1000
+%7 = SELECT %5 [predicate=%6]
+%8 = LT builtin.timestamp, 2000
+%9 = SELECT %7 [predicate=%8]
+%10 = MATCH_STR ambiguous.foo, "bar"
+%11 = MATCH_STR ambiguous.bar, "baz"
+%12 = OR %10, %11
+%13 = SELECT %9 [predicate=%12]
+%14 = MATCH_STR builtin.log, "metric.go"
+%15 = MATCH_STR builtin.log, "foo"
+%16 = AND %14, %15
+%17 = NOT_MATCH_RE builtin.log, "(a|b|c)"
+%18 = AND %16, %17
+%19 = SELECT %13 [predicate=%18]
 %20 = limit %19 [skip=0, fetch=1000]
 RETURN %20
 `
 
 	require.Equal(t, expected, logicalPlan.String())
+
+	var sb strings.Builder
+	PrintTree(&sb, logicalPlan.Value())
+
+	t.Logf("\n%s\n", sb.String())
 }
 
 func TestConvertAST_UnsupportedFeature(t *testing.T) {
