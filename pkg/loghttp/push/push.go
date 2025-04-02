@@ -194,14 +194,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	}
 	linesReceivedStats.Inc(totalNumLines)
 
-	forwardedHeader := r.Header.Get("X-Forwarded-For")
-	agentIp := forwardedHeader
-	if strings.Contains(forwardedHeader, ",") {
-		agentIp = forwardedHeader[0:strings.Index(forwardedHeader, ",")]
-	}
-
 	mostRecentLag := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
-	pushAgentLag.WithLabelValues(userID, strings.TrimSpace(agentIp), r.URL.Path).Add(float64(mostRecentLag))
 
 	logValues := []interface{}{
 		"msg", "push request parsed",
@@ -224,6 +217,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	if agentIP != "" {
 		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
 	}
+	pushAgentLag.WithLabelValues(userID, strings.TrimSpace(agentIP), r.URL.Path).Add(float64(mostRecentLag))
 
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
