@@ -55,8 +55,8 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Limit:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("offset", false, node.Offset),
-			tree.NewProperty("limit", false, node.Limit),
+			tree.NewProperty("offset", false, node.Skip),
+			tree.NewProperty("limit", false, node.Fetch),
 		}
 	}
 	return treeNode

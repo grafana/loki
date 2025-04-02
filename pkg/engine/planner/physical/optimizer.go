@@ -96,7 +96,7 @@ type limitPushdown struct {
 func (r *limitPushdown) apply(node Node) bool {
 	switch node := node.(type) {
 	case *Limit:
-		return r.applyLimitPushdown(node, node.Limit)
+		return r.applyLimitPushdown(node, node.Fetch)
 	}
 	return false
 }

@@ -142,8 +142,8 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 	node := &Limit{
-		Offset: lp.Skip,
-		Limit:  lp.Fetch,
+		Skip:  lp.Skip,
+		Fetch: lp.Fetch,
 	}
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
