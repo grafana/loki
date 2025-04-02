@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -183,6 +184,12 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	}
 	linesReceivedStats.Inc(totalNumLines)
 
+	forwardedHeader := r.Header.Get("X-Forwarded-For")
+	agentIp := forwardedHeader
+	if strings.Contains(forwardedHeader, ",") {
+		agentIp = forwardedHeader[0:strings.Index(forwardedHeader, ",")]
+	}
+
 	logValues := []interface{}{
 		"msg", "push request parsed",
 		"path", r.URL.Path,
@@ -195,6 +202,8 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
+		"agentIpAddress", strings.TrimSpace(agentIp),
+		"xForwardedForHeader", strings.TrimSpace(forwardedHeader),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
 	logValues = append(logValues, pushStats.Extra...)
