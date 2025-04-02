@@ -32,14 +32,14 @@ func (l *Limit) Name() string {
 	if l.id != "" {
 		return l.id
 	}
-	return fmt.Sprintf("<%p>", l)
+	return fmt.Sprintf("%p", l)
 }
 
 // String returns the disassembled SSA form of the Limit instruction.
 func (l *Limit) String() string {
 	// TODO(rfratto): change the type of l.Input to [Value] so we can use
 	// s.Value.Name here.
-	return fmt.Sprintf("limit %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
+	return fmt.Sprintf("LIMIT %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
 }
 
 // Schema returns the schema of the limit operation.

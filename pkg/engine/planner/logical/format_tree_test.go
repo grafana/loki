@@ -37,20 +37,23 @@ func TestFormatSimpleQuery(t *testing.T) {
 		},
 	)
 
+	// Convert to plan so that node IDs get populated
+	plan, _ := b.ToPlan()
+
 	var sb strings.Builder
-	PrintTree(&sb, b.Value())
+	PrintTree(&sb, plan.Value())
 
 	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Select
-│   └── BinOp op=GT
-│       ├── ColumnRef #metadata.age
+SELECT <%4> table=%2 predicate=%3
+│   └── BinOp <%3> op=GT left=metadata.age right=21
+│       ├── ColumnRef column=age type=metadata
 │       └── Literal value=21 kind=int
-└── MakeTable
-        └── BinOp op=EQ
-            ├── ColumnRef #label.app
+└── MAKETABLE <%2> selector=EQ label.app "users"
+        └── BinOp <%1> op=EQ left=label.app right="users"
+            ├── ColumnRef column=app type=label
             └── Literal value="users" kind=string
 `
 
@@ -77,22 +80,25 @@ func TestFormatSortQuery(t *testing.T) {
 		},
 	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
 
+	// Convert to plan so that node IDs get populated
+	plan, _ := b.ToPlan()
+
 	var sb strings.Builder
-	PrintTree(&sb, b.Value())
+	PrintTree(&sb, plan.Value())
 
 	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Sort direction=asc nulls=last
-│   └── ColumnRef #metadata.age
-└── Select
-    │   └── BinOp op=GT
-    │       ├── ColumnRef #metadata.age
+SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
+│   └── ColumnRef column=age type=metadata
+└── SELECT <%4> table=%2 predicate=%3
+    │   └── BinOp <%3> op=GT left=metadata.age right=21
+    │       ├── ColumnRef column=age type=metadata
     │       └── Literal value=21 kind=int
-    └── MakeTable
-            └── BinOp op=EQ
-                ├── ColumnRef #label.app
+    └── MAKETABLE <%2> selector=EQ label.app "users"
+            └── BinOp <%1> op=EQ left=label.app right="users"
+                ├── ColumnRef column=app type=label
                 └── Literal value="users" kind=string
 `
 	require.Equal(t, expected, actual)
