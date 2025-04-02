@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"slices"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -45,7 +47,7 @@ func (r *predicatePushdown) apply(node Node) bool {
 			if ok := r.applyPredicatePushdown(node, node.Predicates[i]); ok {
 				changed = true
 				// remove predicates that have been pushed down
-				node.Predicates = append(node.Predicates[:i], node.Predicates[i+1:]...)
+				node.Predicates = slices.Delete(node.Predicates, i, i+1)
 				i--
 			}
 		}
