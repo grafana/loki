@@ -58,7 +58,7 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 }
 
 func Test_Memberlist(t *testing.T) {
-  t.Skip("Skipping flaky test")
+	t.Skip("Skipping flaky test")
 	stabilityCheckInterval = time.Second
 
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{
