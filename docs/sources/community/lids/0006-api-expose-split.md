@@ -85,7 +85,7 @@ The response body is JSON encoded:
 
 *Pros*
 - Clients can split queries independent on the implemation language and platform.
-- Split logic is controlled by Loki and not the client. This means it can be improved e.g. by introducing sharding
+- Split logic is controlled by Loki and not the client. This means it can be improved, for example, by introducing sharding
   labels.
 
 *Cons*
