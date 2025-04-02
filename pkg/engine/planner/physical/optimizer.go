@@ -22,7 +22,7 @@ func (r *removeNoopFilter) apply(node Node) bool {
 	switch node := node.(type) {
 	case *Filter:
 		if len(node.Predicates) == 0 {
-			r.plan.removeNode(node)
+			r.plan.eliminateNode(node)
 			changed = true
 		}
 	}
