@@ -245,8 +245,6 @@ func (r *LogsReader) Close() error {
 }
 
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
-	var res dataset.Predicate
-
 	streamIDColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
 		return desc.Type == logsmd.COLUMN_TYPE_STREAM_ID
 	})
@@ -254,23 +252,19 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
+	var values []dataset.Value
 	for id := range ids {
-		p := dataset.EqualPredicate{
-			Column: streamIDColumn,
-			Value:  dataset.Int64Value(id),
-		}
-
-		if res == nil {
-			res = p
-		} else {
-			res = dataset.OrPredicate{
-				Left:  res,
-				Right: p,
-			}
-		}
+		values = append(values, dataset.Int64Value(id))
 	}
 
-	return res
+	if len(values) == 0 {
+		return nil
+	}
+
+	return dataset.InPredicate{
+		Column: streamIDColumn,
+		Values: values,
+	}
 }
 
 func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
