@@ -15,7 +15,7 @@ import (
 )
 
 func TestDeleteDashboards(t *testing.T) {
-	opts := openshift.NewOptionsClusterScope("operator-ns", nil, nil, nil)
+	opts := openshift.NewOptionsClusterScope("operator-ns", nil, nil)
 	objs := openshift.BuildRBAC(opts)
 	objs = append(objs, openshift.BuildDashboards(opts)...)
 

@@ -12,14 +12,14 @@ const (
 )
 
 func BuildRBAC(opts OptionsClusterScope) []client.Object {
-	objs := make([]client.Object, 0, 4)
+	objs := make([]client.Object, 0, 2)
 	objs = append(objs, BuildRulerClusterRole(opts))
 	objs = append(objs, BuildRulerClusterRoleBinding(opts))
 	return objs
 }
 
 func LegacyRBAC(gatewayName, rulerName string) []client.Object {
-	opts := NewOptionsClusterScope("", map[string]string{}, []rbacv1.Subject{}, []rbacv1.Subject{})
+	opts := NewOptionsClusterScope("", map[string]string{}, []rbacv1.Subject{})
 	objs := make([]client.Object, 0, 4)
 
 	cr := BuildGatewayClusterRole(opts)
@@ -102,7 +102,6 @@ func BuildGatewayClusterRoleBinding(opts OptionsClusterScope) *rbacv1.ClusterRol
 			Kind:     "ClusterRole",
 			Name:     authorizerRbacName(gatewayName),
 		},
-		Subjects: opts.BuildOpts.GatewaySubjects,
 	}
 }
 
@@ -170,6 +169,6 @@ func BuildRulerClusterRoleBinding(opts OptionsClusterScope) *rbacv1.ClusterRoleB
 			Kind:     "ClusterRole",
 			Name:     authorizerRbacName(rulerName),
 		},
-		Subjects: opts.BuildOpts.GatewaySubjects,
+		Subjects: opts.BuildOpts.RulerSubjects,
 	}
 }

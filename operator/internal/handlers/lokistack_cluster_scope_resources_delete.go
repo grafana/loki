@@ -17,7 +17,7 @@ import (
 // DeleteClusterScopedResources removes all cluster-scoped resources.
 func DeleteClusterScopedResources(ctx context.Context, k k8s.Client, operatorNs string, stacks lokiv1.LokiStackList) error {
 	// Since we are deleting we don't need to worry about the subjects.
-	opts := openshift.NewOptionsClusterScope(operatorNs, manifests.ClusterScopeLabels(), []rbacv1.Subject{}, []rbacv1.Subject{})
+	opts := openshift.NewOptionsClusterScope(operatorNs, manifests.ClusterScopeLabels(), []rbacv1.Subject{})
 
 	objs := openshift.BuildRBAC(opts)
 	objs = append(objs, openshift.BuildDashboards(opts)...)

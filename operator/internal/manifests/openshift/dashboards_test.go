@@ -9,7 +9,7 @@ import (
 )
 
 func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
-	opts := NewOptionsClusterScope("test", nil, nil, nil)
+	opts := NewOptionsClusterScope("test", nil, nil)
 	objs := BuildDashboards(opts)
 
 	for _, d := range objs {
@@ -22,7 +22,7 @@ func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
 }
 
 func TestBuildDashboards_ReturnsPrometheusRules(t *testing.T) {
-	opts := NewOptionsClusterScope("test", nil, nil, nil)
+	opts := NewOptionsClusterScope("test", nil, nil)
 	objs := BuildDashboards(opts)
 
 	rules := objs[len(objs)-1].(*monitoringv1.PrometheusRule)
