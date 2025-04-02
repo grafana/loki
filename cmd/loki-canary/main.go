@@ -74,7 +74,7 @@ func main() {
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
 	queryAppend := flag.String("query-append", "", "LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'")
-	queryLabels := flag.String("query-labels", "", "Comma-separated string of labels for the query e.g. 'service=loki,app=canary' Overwrites labelname and streamname")
+	labels := flag.String("labels", "", "Comma-separated string of labels for the query e.g. 'service=loki,app=canary' Overwrites labelname and streamname")
 
 	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
 	metricTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query."+
@@ -189,7 +189,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *queryLabels)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
