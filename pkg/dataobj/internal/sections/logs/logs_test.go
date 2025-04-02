@@ -82,8 +82,9 @@ func Test(t *testing.T) {
 	for result := range logs.Iter(context.Background(), dec) {
 		record, err := result.Value()
 		require.NoError(t, err)
-		record.MdValueCaps = nil
-		actual = append(actual, record.DeepCopy())
+		next := record.DeepCopy()
+		next.MdValueCaps = nil
+		actual = append(actual, next)
 	}
 
 	require.Equal(t, expect, actual)

@@ -30,16 +30,16 @@ type Record struct {
 }
 
 func (r *Record) DeepCopy() Record {
-	new := Record{
+	newRecord := Record{
 		StreamID:    r.StreamID,
 		Timestamp:   r.Timestamp,
 		Metadata:    copyLabels(r.Metadata),
 		Line:        make([]byte, len(r.Line)),
 		MdValueCaps: make([]int, len(r.MdValueCaps)),
 	}
-	copy(new.Line, r.Line)
-	copy(new.MdValueCaps, r.MdValueCaps)
-	return new
+	copy(newRecord.Line, r.Line)
+	copy(newRecord.MdValueCaps, r.MdValueCaps)
+	return newRecord
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

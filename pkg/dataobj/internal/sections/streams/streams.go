@@ -39,7 +39,7 @@ type Stream struct {
 }
 
 func (s *Stream) DeepCopy() Stream {
-	new := Stream{
+	newStream := Stream{
 		ID:               s.ID,
 		Labels:           copyLabels(s.Labels),
 		MinTimestamp:     s.MinTimestamp,
@@ -48,8 +48,8 @@ func (s *Stream) DeepCopy() Stream {
 		Rows:             s.Rows,
 		LbValueCaps:      make([]int, len(s.LbValueCaps)),
 	}
-	copy(new.LbValueCaps, s.LbValueCaps)
-	return new
+	copy(newStream.LbValueCaps, s.LbValueCaps)
+	return newStream
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

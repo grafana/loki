@@ -40,7 +40,7 @@ type Stream struct {
 }
 
 func (s *Stream) DeepCopy() Stream {
-	new := Stream{
+	newStream := Stream{
 		ID:               s.ID,
 		MinTime:          s.MinTime,
 		MaxTime:          s.MaxTime,
@@ -49,9 +49,9 @@ func (s *Stream) DeepCopy() Stream {
 		LbNameCaps:       make([]int, len(s.LbNameCaps)),
 		LbValueCaps:      make([]int, len(s.LbValueCaps)),
 	}
-	copy(new.LbNameCaps, s.LbNameCaps)
-	copy(new.LbValueCaps, s.LbValueCaps)
-	return new
+	copy(newStream.LbNameCaps, s.LbNameCaps)
+	copy(newStream.LbValueCaps, s.LbValueCaps)
+	return newStream
 }
 
 func copyLabels(in labels.Labels) labels.Labels {
@@ -143,8 +143,7 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		streams.Decode(r.columnDesc, r.buf[i], &r.stream)
-		if err != nil {
+		if err := streams.Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
