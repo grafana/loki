@@ -70,14 +70,18 @@ The response body is JSON encoded:
 ```json
 { 
   "resultType": "matrix" | "streams" | "vector",
-  "links": [
+  "subqueries": [
     {
-      "rel": "???",
-      "href": "/loki/api/v1/query_range?start=10&end=200&limit=20&direction=forward?query=..."
+      start: <timestamp nanoseconds>,
+      end: <timestamp nanoseconds>,
+      limit: <number>,
+      query: <query string> 
     },
     {
-      "rel": "???",
-      "href": "/loki/api/v1/query_range?start=30&end=200&limit=20&direction=forward?query=..."
+      start: <timestamp nanoseconds>,
+      end: <timestamp nanoseconds>,
+      limit: <number>,
+      query: <query string> 
     }
   ]
 }
@@ -103,4 +107,3 @@ exchange large data sets in shards between services.
 - Loki would have to support Apache Arrow which make the implementation more complicated.
 - Arrow Flight RPC assumes the data is being queried on the first request. Which means all shards are available at the
   same time. However, the intend of this document is that shards can be queried independently.
-  shard
