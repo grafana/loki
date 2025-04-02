@@ -23,7 +23,7 @@ import (
 
 // Iter iterates over records in the provided decoder. All logs sections are
 // iterated over in order.
-// Results objects returned to yield may be reused and must be deep copied for further use, including the record.Metadata keys and values.
+// Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		sections, err := dec.Sections(ctx)

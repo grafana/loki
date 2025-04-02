@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -36,6 +37,32 @@ type Stream struct {
 
 	// LbNameCaps and LbValueCaps are the capacity of the backing arrays for the equivalent labels structs in the Labels slice.
 	LbNameCaps, LbValueCaps []int
+}
+
+func (s *Stream) DeepCopy() Stream {
+	new := Stream{
+		ID:               s.ID,
+		MinTime:          s.MinTime,
+		MaxTime:          s.MaxTime,
+		UncompressedSize: s.UncompressedSize,
+		Labels:           copyLabels(s.Labels),
+		LbNameCaps:       make([]int, len(s.LbNameCaps)),
+		LbValueCaps:      make([]int, len(s.LbValueCaps)),
+	}
+	copy(new.LbNameCaps, s.LbNameCaps)
+	copy(new.LbValueCaps, s.LbValueCaps)
+	return new
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 // StreamsReader reads the set of streams from an [Object].

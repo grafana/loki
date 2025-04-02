@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +61,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
+		stream = stream.DeepCopy()
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
 	})
 	if err != nil {
@@ -273,8 +273,8 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 	series := make([]logproto.SeriesIdentifier_LabelsEntry, len(labels))
 	for i, label := range labels {
 		series[i] = logproto.SeriesIdentifier_LabelsEntry{
-			Key:   strings.Clone(label.Name),
-			Value: strings.Clone(label.Value),
+			Key:   label.Name,
+			Value: label.Value,
 		}
 	}
 	return logproto.SeriesIdentifier{

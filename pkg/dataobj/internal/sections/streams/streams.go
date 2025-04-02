@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,31 @@ type Stream struct {
 	Rows             int           // Number of rows in the stream.
 
 	LbValueCaps []int // Capacities for each label value's byte array
+}
+
+func (s *Stream) DeepCopy() Stream {
+	new := Stream{
+		ID:               s.ID,
+		Labels:           copyLabels(s.Labels),
+		MinTimestamp:     s.MinTimestamp,
+		MaxTimestamp:     s.MaxTimestamp,
+		UncompressedSize: s.UncompressedSize,
+		Rows:             s.Rows,
+		LbValueCaps:      make([]int, len(s.LbValueCaps)),
+	}
+	copy(new.LbValueCaps, s.LbValueCaps)
+	return new
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.

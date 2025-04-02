@@ -77,7 +77,7 @@ func copyLabels(in labels.Labels) labels.Labels {
 			Value: strings.Clone(label.Value),
 		}
 	}
-	pkg/dataobj/internal/sections/streams/streams.go	return lb
+	return lb
 }
 
 func buildObject(st *streams.Streams) ([]byte, error) {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -26,6 +27,30 @@ type Record struct {
 	Metadata    labels.Labels
 	Line        []byte
 	MdValueCaps []int
+}
+
+func (r *Record) DeepCopy() Record {
+	new := Record{
+		StreamID:    r.StreamID,
+		Timestamp:   r.Timestamp,
+		Metadata:    copyLabels(r.Metadata),
+		Line:        make([]byte, len(r.Line)),
+		MdValueCaps: make([]int, len(r.MdValueCaps)),
+	}
+	copy(new.Line, r.Line)
+	copy(new.MdValueCaps, r.MdValueCaps)
+	return new
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 // Options configures the behavior of the logs section.
