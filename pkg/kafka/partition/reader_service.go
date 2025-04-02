@@ -332,7 +332,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 }
 
 func (s *ReaderService) startFetchLoop(ctx context.Context) chan []Record {
-	records := make(chan []Record)
+	records := make(chan []Record, 10)
 	go func() {
 		defer close(records)
 		for {
