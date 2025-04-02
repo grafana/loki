@@ -367,3 +367,14 @@ func (pr *basicReader) Close() error {
 	}
 	return nil
 }
+
+func (pr *basicReader) PagesAccessed() uint64 {
+	total := uint64(0)
+	for _, r := range pr.readers {
+		if r != nil {
+			total += r.PagesAccessed()
+		}
+	}
+
+	return total
+}

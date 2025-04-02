@@ -37,6 +37,9 @@ message ColumnInfo {
 
   // Total number of non-NULL values in the entire column.
   uint64 values_count = 10;
+
+  // Total number of pages in the column.
+  uint64 pages_count = 11;
 }
 
 // ValueType represents the valid types that values within a column can have.

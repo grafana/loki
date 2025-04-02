@@ -8,11 +8,12 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/log"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
@@ -52,6 +53,7 @@ func newEntryIterator(ctx context.Context,
 	streams map[int64]dataobj.Stream,
 	reader *dataobj.LogsReader,
 	req logql.SelectLogParams,
+	logger log.Logger,
 ) (iter.EntryIterator, error) {
 	bufPtr := recordsPool.Get().(*[]dataobj.Record)
 	defer recordsPool.Put(bufPtr)
@@ -68,7 +70,7 @@ func newEntryIterator(ctx context.Context,
 
 	var (
 		prevStreamID    int64 = -1
-		streamExtractor log.StreamPipeline
+		streamExtractor logqllog.StreamPipeline
 		streamHash      uint64
 		top             = newTopK(int(req.Limit), req.Direction)
 	)
@@ -117,6 +119,11 @@ func newEntryIterator(ctx context.Context,
 			})
 		}
 	}
+
+	if stats := reader.Stats(); stats != nil {
+		stats.LogSummary(logger)
+	}
+
 	return top.Iterator(), nil
 }
 
@@ -286,6 +293,7 @@ func newSampleIterator(ctx context.Context,
 	streams map[int64]dataobj.Stream,
 	extractors []syntax.SampleExtractor,
 	reader *dataobj.LogsReader,
+	logger log.Logger,
 ) (iter.SampleIterator, error) {
 	bufPtr := recordsPool.Get().(*[]dataobj.Record)
 	defer recordsPool.Put(bufPtr)
@@ -294,7 +302,7 @@ func newSampleIterator(ctx context.Context,
 	var (
 		iterators       []iter.SampleIterator
 		prevStreamID    int64 = -1
-		streamExtractor log.StreamSampleExtractor
+		streamExtractor logqllog.StreamSampleExtractor
 		series          = map[string]*logproto.Series{}
 		streamHash      uint64
 	)
@@ -361,6 +369,10 @@ func newSampleIterator(ctx context.Context,
 				})
 			}
 		}
+	}
+
+	if stats := reader.Stats(); stats != nil {
+		stats.LogSummary(logger)
 	}
 
 	if len(iterators) == 0 {

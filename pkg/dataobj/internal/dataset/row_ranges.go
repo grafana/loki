@@ -158,6 +158,13 @@ func (rr *rowRanges) Next(row uint64) (uint64, bool) {
 	return nextRow, true
 }
 
+func (rr *rowRanges) TotalRowCount() (count uint64) {
+	for _, r := range *rr {
+		count += r.End - r.Start + 1
+	}
+	return
+}
+
 // intersectRanges appends the intersection of two sets of ranges into dst,
 // returning the result.
 //

@@ -110,6 +110,7 @@ func (col *streamsDatasetColumn) ColumnInfo() *dataset.ColumnInfo {
 		Type:        col.desc.Info.ValueType,
 		Compression: col.desc.Info.Compression,
 
+		PagesCount:       int(col.desc.Info.PagesCount),
 		RowsCount:        int(col.desc.Info.RowsCount),
 		ValuesCount:      int(col.desc.Info.ValuesCount),
 		CompressedSize:   int(col.desc.Info.CompressedSize),

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
@@ -22,6 +23,8 @@ type columnReader struct {
 	reader *pageReader
 
 	nextRow int64
+
+	pageAccessed []bool // Tracks which pages have been accessed
 }
 
 // newColumnReader creates a new column reader for the given column.
@@ -52,6 +55,8 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			if err != nil {
 				return n, err
 			}
+
+			cr.pageAccessed[pageIndex] = true
 
 			switch cr.reader {
 			case nil:
@@ -128,6 +133,9 @@ func (cr *columnReader) init(ctx context.Context) error {
 		startRow = endRow + 1
 	}
 
+	cr.pageAccessed = slices.Grow(cr.pageAccessed, len(cr.pages))
+	cr.pageAccessed = cr.pageAccessed[:len(cr.pages)]
+
 	cr.initialized = true
 	return nil
 }
@@ -186,6 +194,7 @@ func (cr *columnReader) Reset(column Column) {
 	cr.pageIndex = -1
 
 	cr.ranges = sliceclear.Clear(cr.ranges)
+	cr.pageAccessed = sliceclear.Clear(cr.pageAccessed)
 
 	if cr.reader != nil {
 		// Resetting takes the place of calling Close here.
@@ -202,4 +211,16 @@ func (cr *columnReader) Close() error {
 		return cr.reader.Close()
 	}
 	return nil
+}
+
+func (cr *columnReader) PagesAccessed() uint64 {
+	var count uint64
+	for _, accessed := range cr.pageAccessed {
+		if accessed {
+			count++
+		}
+
+	}
+
+	return count
 }

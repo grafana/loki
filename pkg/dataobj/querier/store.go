@@ -254,7 +254,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req, logger)
 			if err != nil {
 				return err
 			}
@@ -313,7 +313,7 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr, logger)
 			if err != nil {
 				return err
 			}
@@ -456,7 +456,7 @@ func (s *shardedObject) reset() {
 	clear(s.streams)
 }
 
-func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
 	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 				sp.LogKV("msg", "starting selectLogs in section", "index", i)
 				defer sp.LogKV("msg", "selectLogs section done", "index", i)
 			}
-			iter, err := newEntryIterator(ctx, s.streams, reader, req)
+			iter, err := newEntryIterator(ctx, s.streams, reader, req, logger)
 			if err != nil {
 				return err
 			}
@@ -488,7 +488,7 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr, logger log.Logger) (iter.SampleIterator, error) {
 	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
 		return nil, err
 	}
@@ -511,7 +511,7 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 			if err != nil {
 				return err
 			}
-			iter, err := newSampleIterator(ctx, s.streams, extractors, reader)
+			iter, err := newSampleIterator(ctx, s.streams, extractors, reader, logger)
 			if err != nil {
 				return err
 			}
