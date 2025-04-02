@@ -190,7 +190,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	linesReceivedStats.Inc(totalNumLines)
 
 	forwardedHeader := r.Header.Get("X-Forwarded-For")
-	agentIP = strings.Split(forwardedHeader, ",")[0]
+	agentIP := strings.Split(forwardedHeader, ",")[0]
 
 	logValues := []interface{}{
 		"msg", "push request parsed",
