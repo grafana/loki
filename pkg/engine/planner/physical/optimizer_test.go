@@ -14,41 +14,29 @@ func TestCanApplyPredicate(t *testing.T) {
 		want      bool
 	}{
 		{
-			predicate: IntLiteral(123),
+			predicate: NewLiteral(123),
 			want:      true,
 		},
 		{
-			predicate: &ColumnExpr{
-				Name:       "timestamp",
-				ColumnType: types.ColumnTypeBuiltin,
-			},
-			want: true,
+			predicate: newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+			want:      true,
 		},
 		{
-			predicate: &ColumnExpr{
-				Name:       "foo",
-				ColumnType: types.ColumnTypeLabel,
-			},
-			want: false,
+			predicate: newColumnExpr("foo", types.ColumnTypeLabel),
+			want:      false,
 		},
 		{
 			predicate: &BinaryExpr{
-				Left: &ColumnExpr{
-					Name:       "timestamp",
-					ColumnType: types.ColumnTypeBuiltin,
-				},
-				Right: TimestampLiteral(1743424636000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(1743424636000000000)),
 				Op:    types.BinaryOpGt,
 			},
 			want: true,
 		},
 		{
 			predicate: &BinaryExpr{
-				Left: &ColumnExpr{
-					Name:       "foo",
-					ColumnType: types.ColumnTypeLabel,
-				},
-				Right: StringLiteral("bar"),
+				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
+				Right: NewLiteral("bar"),
 				Op:    types.BinaryOpEq,
 			},
 			want: false,
@@ -69,15 +57,15 @@ func dummyPlan() *Plan {
 	merge := plan.addNode(&SortMerge{id: "merge"})
 	filter1 := plan.addNode(&Filter{id: "filter1", Predicates: []Expression{
 		&BinaryExpr{
-			Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-			Right: TimestampLiteral(1000000000),
+			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+			Right: NewLiteral(uint64(1000000000)),
 			Op:    types.BinaryOpGt,
 		},
 	}})
 	filter2 := plan.addNode(&Filter{id: "filter2", Predicates: []Expression{
 		&BinaryExpr{
-			Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-			Right: TimestampLiteral(2000000000),
+			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+			Right: NewLiteral(uint64(2000000000)),
 			Op:    types.BinaryOpLte,
 		},
 	}})
@@ -122,25 +110,25 @@ func TestOptimizer(t *testing.T) {
 		optimized := &Plan{}
 		scan1 := optimized.addNode(&DataObjScan{id: "scan1", Predicates: []Expression{
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(1000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(2000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})
 		scan2 := optimized.addNode(&DataObjScan{id: "scan2", Predicates: []Expression{
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(1000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(2000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})
@@ -177,15 +165,15 @@ func TestOptimizer(t *testing.T) {
 		merge := optimized.addNode(&SortMerge{id: "merge"})
 		filter1 := optimized.addNode(&Filter{id: "filter1", Predicates: []Expression{
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(1000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 		}})
 		filter2 := optimized.addNode(&Filter{id: "filter2", Predicates: []Expression{
 			&BinaryExpr{
-				Left:  &ColumnExpr{ColumnType: types.ColumnTypeBuiltin, Name: "timestamp"},
-				Right: TimestampLiteral(2000000000),
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(uint64(2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})

@@ -77,7 +77,7 @@ func canApplyPredicate(predicate Expression) bool {
 	case *BinaryExpr:
 		return canApplyPredicate(pred.Left) && canApplyPredicate(pred.Right)
 	case *ColumnExpr:
-		return pred.ColumnType == types.ColumnTypeBuiltin || pred.ColumnType == types.ColumnTypeMetadata
+		return pred.ref.Type == types.ColumnTypeBuiltin || pred.ref.Type == types.ColumnTypeMetadata
 	case *LiteralExpr:
 		return true
 	default:

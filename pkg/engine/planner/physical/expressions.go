@@ -142,6 +142,15 @@ type ColumnExpr struct {
 	ref types.ColumnRef
 }
 
+func newColumnExpr(column string, ty types.ColumnType) *ColumnExpr {
+	return &ColumnExpr{
+		ref: types.ColumnRef{
+			Column: column,
+			Type:   ty,
+		},
+	}
+}
+
 func (e *ColumnExpr) isExpr()       {}
 func (e *ColumnExpr) isColumnExpr() {}
 
