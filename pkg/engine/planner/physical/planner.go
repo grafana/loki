@@ -142,8 +142,8 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 	node := &Limit{
-		Offset: lp.Skip,
-		Limit:  lp.Fetch,
+		Skip:  lp.Skip,
+		Fetch: lp.Fetch,
 	}
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
@@ -156,4 +156,27 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 		}
 	}
 	return []Node{node}, nil
+}
+
+// Optimize tries to optimize the plan by pushing down filter predicates and limits
+// to the scan nodes.
+func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+	for i, root := range plan.Roots() {
+
+		optimizations := []*optimization{
+			newOptimization("PredicatePushdown", plan).withRules(
+				&predicatePushdown{plan: plan},
+				&removeNoopFilter{plan: plan},
+			),
+			newOptimization("LimitPushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
+		}
+		optimizer := newOptimizer(plan, optimizations)
+		optimizer.optimize(root)
+		if i == 1 {
+			return nil, errors.New("physcial plan must only have exactly one root node")
+		}
+	}
+	return plan, nil
 }
