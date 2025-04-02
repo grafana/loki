@@ -65,7 +65,7 @@ A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits
 
 The `splits` parameter defines the number of desired splits. The API is allowed to return fewer splits than requested.
 
-The response body is JSON encoded
+The response body is JSON encoded:
 
 ```json
 { 
