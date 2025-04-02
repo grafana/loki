@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -75,6 +76,8 @@ const (
 	defaultRingHashMinSize = 1024
 	defaultRingHashMaxSize = 8 * 1024 * 1024 // 8M
 	ringHashSizeUpperBound = 8 * 1024 * 1024 // 8M
+
+	defaultLeastRequestChoiceCount = 2
 )
 
 func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
@@ -103,6 +106,26 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
+	case v3clusterpb.Cluster_LEAST_REQUEST:
+		if !envconfig.LeastRequestLB {
+			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
+		}
+
+		// "The configuration for the Least Request LB policy is the
+		// least_request_lb_config field. The field is optional; if not present,
+		// defaults will be assumed for all of its values." - A48
+		lr := cluster.GetLeastRequestLbConfig()
+		var choiceCount uint32 = defaultLeastRequestChoiceCount
+		if cc := lr.GetChoiceCount(); cc != nil {
+			choiceCount = cc.GetValue()
+		}
+		// "If choice_count < 2, the config will be rejected." - A48
+		if choiceCount < 2 {
+			return ClusterUpdate{}, fmt.Errorf("Cluster_LeastRequestLbConfig.ChoiceCount must be >= 2, got: %v", choiceCount)
+		}
+
+		lrLBCfg := []byte(fmt.Sprintf("{\"choiceCount\": %d}", choiceCount))
+		lbPolicy = []byte(fmt.Sprintf(`[{"least_request_experimental": %s}]`, lrLBCfg))
 	default:
 		return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
 	}
@@ -173,6 +196,9 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		}
 		ret.ClusterType = ClusterTypeEDS
 		ret.EDSServiceName = cluster.GetEdsClusterConfig().GetServiceName()
+		if strings.HasPrefix(ret.ClusterName, "xdstp:") && ret.EDSServiceName == "" {
+			return ClusterUpdate{}, fmt.Errorf("CDS's EDS service name is not set with a new-style cluster name: %+v", cluster)
+		}
 		return ret, nil
 	case cluster.GetType() == v3clusterpb.Cluster_LOGICAL_DNS:
 		if !envconfig.XDSAggregateAndDNS {
