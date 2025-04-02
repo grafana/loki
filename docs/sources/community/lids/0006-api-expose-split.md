@@ -1,8 +1,6 @@
 ---
 title: "0006: Expose Split Logic in API"
 description: "0006: Expose Split Logic in API"
-aliases: 
-- ../../lids/0006-api-expose-split/
 ---
 
 # 0006: Expose Split Logic in API
