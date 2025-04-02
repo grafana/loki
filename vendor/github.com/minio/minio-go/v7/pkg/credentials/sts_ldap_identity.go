@@ -73,6 +73,9 @@ type LDAPIdentity struct {
 	// RequestedExpiry is the configured expiry duration for credentials
 	// requested from LDAP.
 	RequestedExpiry time.Duration
+
+	// Optional, used for token revokation
+	TokenRevokeType string
 }
 
 // NewLDAPIdentity returns new credentials object that uses LDAP
@@ -151,6 +154,9 @@ func (k *LDAPIdentity) RetrieveWithCredContext(cc *CredContext) (value Value, er
 	}
 	if k.RequestedExpiry != 0 {
 		v.Set("DurationSeconds", fmt.Sprintf("%d", int(k.RequestedExpiry.Seconds())))
+	}
+	if k.TokenRevokeType != "" {
+		v.Set("TokenRevokeType", k.TokenRevokeType)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))

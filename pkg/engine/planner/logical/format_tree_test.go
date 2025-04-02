@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -23,33 +24,36 @@ func TestFormatSimpleQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
-				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
-			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: NewLiteral[int64](21),
+			Op:    types.BinaryOpGt,
 		},
 	)
 
+	// Convert to plan so that node IDs get populated
+	plan, _ := b.ToPlan()
+
 	var sb strings.Builder
-	PrintTree(&sb, b.Value())
+	PrintTree(&sb, plan.Value())
 
 	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Select
-│   └── BinOp op=GT
-│       ├── ColumnRef #metadata.age
-│       └── Literal value=21 kind=int64
-└── MakeTable
-        └── BinOp op=EQ
-            ├── ColumnRef #label.app
+SELECT <%4> table=%2 predicate=%3
+│   └── BinOp <%3> op=GT left=metadata.age right=21
+│       ├── ColumnRef column=age type=metadata
+│       └── Literal value=21 kind=int
+└── MAKETABLE <%2> selector=EQ label.app "users"
+        └── BinOp <%1> op=EQ left=label.app right="users"
+            ├── ColumnRef column=app type=label
             └── Literal value="users" kind=string
 `
 
@@ -63,35 +67,38 @@ func TestFormatSortQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
-				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
-			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: NewLiteral[int64](21),
+			Op:    types.BinaryOpGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
+	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
+
+	// Convert to plan so that node IDs get populated
+	plan, _ := b.ToPlan()
 
 	var sb strings.Builder
-	PrintTree(&sb, b.Value())
+	PrintTree(&sb, plan.Value())
 
 	actual := "\n" + sb.String()
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-Sort direction=asc nulls=last
-│   └── ColumnRef #metadata.age
-└── Select
-    │   └── BinOp op=GT
-    │       ├── ColumnRef #metadata.age
-    │       └── Literal value=21 kind=int64
-    └── MakeTable
-            └── BinOp op=EQ
-                ├── ColumnRef #label.app
+SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
+│   └── ColumnRef column=age type=metadata
+└── SELECT <%4> table=%2 predicate=%3
+    │   └── BinOp <%3> op=GT left=metadata.age right=21
+    │       ├── ColumnRef column=age type=metadata
+    │       └── Literal value=21 kind=int
+    └── MAKETABLE <%2> selector=EQ label.app "users"
+            └── BinOp <%1> op=EQ left=label.app right="users"
+                ├── ColumnRef column=app type=label
                 └── Literal value="users" kind=string
 `
 	require.Equal(t, expected, actual)

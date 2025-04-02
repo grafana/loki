@@ -3,40 +3,16 @@ package logical
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
-
-// UnaryOpKind denotes the kind of [UnaryOp] operation to perform.
-type UnaryOpKind int
-
-// Recognized values of [UnaryOpKind].
-const (
-	// UnaryOpKindInvalid indicates an invalid unary operation.
-	UnaryOpKindInvalid UnaryOpKind = iota
-
-	UnaryOpKindNot // Logical NOT operation (!).
-)
-
-var unaryOpKindStrings = map[UnaryOpKind]string{
-	UnaryOpKindInvalid: "invalid",
-
-	UnaryOpKindNot: "NOT",
-}
-
-// String returns the string representation of the UnaryOpKind.
-func (k UnaryOpKind) String() string {
-	if s, ok := unaryOpKindStrings[k]; ok {
-		return s
-	}
-	return fmt.Sprintf("UnaryOpKind(%d)", k)
-}
 
 // The UnaryOp instruction yields the result of unary operation Op Value.
 // UnaryOp implements both [Instruction] and [Value].
 type UnaryOp struct {
 	id string
 
-	Op    UnaryOpKind
+	Op    types.UnaryOp
 	Value Value
 }
 
@@ -50,7 +26,7 @@ func (u *UnaryOp) Name() string {
 	if u.id != "" {
 		return u.id
 	}
-	return fmt.Sprintf("<%p>", u)
+	return fmt.Sprintf("%p", u)
 }
 
 // String returns the disassembled SSA form of the UnaryOp instruction.

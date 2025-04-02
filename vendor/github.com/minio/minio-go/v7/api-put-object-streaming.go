@@ -350,7 +350,6 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 	// Part number always starts with '1'.
 	var partNumber int
 	for partNumber = 1; partNumber <= totalPartsCount; partNumber++ {
-
 		// Proceed to upload the part.
 		if partNumber == totalPartsCount {
 			partSize = lastPartSize
