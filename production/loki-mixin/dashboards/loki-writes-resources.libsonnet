@@ -1,6 +1,6 @@
 (import 'dashboard-utils.libsonnet') {
   local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester|partition-ingester", pod=~"(ingester.*|partition-ingester.*|loki-single-binary)"'
+  then 'container=~"loki|ingester|partition-ingester", ' + $._config.per_instance_label + '=~"(ingester.*|partition-ingester.*|loki-single-binary)"'
   else 'container=~"ingester|partition-ingester"',
   local ingester_job_matcher = if $._config.meta_monitoring.enabled
   then '(ingester.*|partition-ingester.*|loki-single-binary)'
