@@ -33,24 +33,19 @@ const (
 )
 
 type metrics struct {
-	tenantExceedsLimits   *prometheus.CounterVec
-	tenantActiveStreams   *prometheus.GaugeVec
-	tenantRejectedStreams *prometheus.CounterVec
+	activeStreams   *prometheus.GaugeVec
+	rejectedStreams *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
-		tenantExceedsLimits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_ingest_limits_frontend_exceeds_limits_total",
-			Help: "The total number of requests that exceeded limits per tenant.",
-		}, []string{"tenant"}),
-		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		activeStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_ingest_limits_frontend_streams_active",
 			Help: "The current number of active streams (seen within the window) per tenant.",
 		}, []string{"tenant"}),
-		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		rejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_ingest_limits_frontend_streams_rejected_total",
-			Help: "The total number of rejected streams per tenant when the global limit is exceeded.",
+			Help: "The total number of rejected streams per tenant.",
 		}, []string{"tenant", "reason"}),
 	}
 }
@@ -181,7 +176,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 		activeStreamsTotal += resp.Response.ActiveStreams
 		rateTotal += float64(resp.Response.Rate)
 	}
-	f.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
+	f.metrics.activeStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
 
 	// A slice containing the rejected streams returned to the caller.
 	// If len(rejectedStreams) == 0 then the request does not exceed limits.
@@ -212,7 +207,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 			}
 		}
 	}
-	f.metrics.tenantRejectedStreams.WithLabelValues(
+	f.metrics.rejectedStreams.WithLabelValues(
 		req.Tenant,
 		ReasonExceedsMaxStreams,
 	).Add(float64(len(rejectedStreams)))
@@ -227,14 +222,10 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 				Reason:     ReasonExceedsRateLimit,
 			})
 		}
-		f.metrics.tenantRejectedStreams.WithLabelValues(
+		f.metrics.rejectedStreams.WithLabelValues(
 			req.Tenant,
 			ReasonExceedsRateLimit,
 		).Add(float64(len(streamHashes)))
-	}
-
-	if len(rejectedStreams) > 0 {
-		f.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
 	}
 
 	return &logproto.ExceedsLimitsResponse{
