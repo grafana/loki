@@ -132,7 +132,7 @@ func BenchmarkLogQL(b *testing.B) {
 		cases := config.GenerateTestCases()
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("%s/%s", storeType, c.Name()), func(b *testing.B) {
+			b.Run(fmt.Sprintf("query=%s/store=%s", c.Name(), storeType), func(b *testing.B) {
 				params, err := logql.NewLiteralParams(
 					c.Query,
 					c.Start,
