@@ -56,7 +56,7 @@ Without an API each client will have to use a LogQL parser.
 - There is no maintanence overhead for an API.
 
 *Cons*
-- Currenlty, the LogQL grammar is specific to Go. It is not easy to port it and the parser to other languages.
+- Currently, the LogQL grammar is specific to Go. It is not easy to port it and the parser to other languages.
 - Any changes to the splitting logic must be implemented for each client/platform.
 
 ### Proposal 1: Expose Splitting in an API
