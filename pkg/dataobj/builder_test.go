@@ -21,6 +21,8 @@ var testBuilderConfig = BuilderConfig{
 	TargetSectionSize: 4096,
 
 	BufferSize: 2048 * 8,
+
+	SectionStripeMergeLimit: 2,
 }
 
 func TestBuilder(t *testing.T) {

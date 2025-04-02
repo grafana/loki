@@ -524,7 +524,6 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 				}
 				return
 			}
-
 		}
 	}(resultCh)
 	return resultCh

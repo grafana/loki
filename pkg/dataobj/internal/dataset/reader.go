@@ -211,6 +211,22 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 		return CompareValues(row.Values[columnIndex], p.Value) == 0
 
+	case InPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+
+		found := false
+		for _, v := range p.Values {
+			if CompareValues(row.Values[columnIndex], v) == 0 {
+				found = true
+				break
+			}
+		}
+
+		return found
+
 	case GreaterThanPredicate:
 		columnIndex, ok := lookup[p.Column]
 		if !ok {
@@ -292,7 +308,9 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 
 	// There's not much work Reset can do without a context, since it needs to
-	// retrieve page info. We'll defer this work to an init function.
+	// retrieve page info. We'll defer this work to an init function. This also
+	// unfortunately means that we might not reset page readers until the first
+	// call to Read.
 	if r.origColumnLookup == nil {
 		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
 	}
@@ -351,6 +369,8 @@ func (r *Reader) validatePredicate() error {
 
 		switch p := p.(type) {
 		case EqualPredicate:
+			err = process(p.Column)
+		case InPredicate:
 			err = process(p.Column)
 		case GreaterThanPredicate:
 			err = process(p.Column)
@@ -424,6 +444,8 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 		switch p := p.(type) {
 		case EqualPredicate:
 			process(p.Column)
+		case InPredicate:
+			process(p.Column)
 		case GreaterThanPredicate:
 			process(p.Column)
 		case LessThanPredicate:
@@ -491,6 +513,9 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		return nil, nil // No valid ranges.
 
 	case EqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
+	case InPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
 	case GreaterThanPredicate:
@@ -569,6 +594,10 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 			Right: GreaterThanPredicate(inner),
 		}, nil
 
+	case InPredicate:
+		// TODO: can be supported when we introduce NotInPredicate.
+		return nil, fmt.Errorf("can't simplify InPredicate")
+
 	case FuncPredicate:
 		return nil, fmt.Errorf("can't simplify FuncPredicate")
 
@@ -578,7 +607,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 }
 
 // buildColumnPredicateRanges returns a set of rowRanges that are valid based
-// on whether EqualPredicate, GreaterThanPredicate, or LessThanPredicate may be
+// on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
 // true for each page in a column.
 func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rowRanges, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
@@ -628,6 +657,14 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 			include = CompareValues(maxValue, p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
 			include = CompareValues(minValue, p.Value) < 0
+		case InPredicate:
+			// Check if any value falls within the page's range
+			for _, v := range p.Values {
+				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+					include = true
+					break
+				}
+			}
 		default:
 			panic(fmt.Sprintf("unsupported predicate type %T", p))
 		}

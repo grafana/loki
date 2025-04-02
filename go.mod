@@ -29,7 +29,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cristalhq/hedgedhttp v0.9.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-	github.com/docker/docker v28.0.2+incompatible
+	github.com/docker/docker v28.0.4+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20240701071450-45e2431495c8
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.1
@@ -59,7 +59,7 @@ require (
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.1
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-	github.com/hashicorp/consul/api v1.31.2
+	github.com/hashicorp/consul/api v1.32.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/influxdata/telegraf v1.34.1
 	github.com/jmespath/go-jmespath v0.4.0
@@ -69,7 +69,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/leodido/go-syslog/v4 v4.2.0
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.88
+	github.com/minio/minio-go/v7 v7.0.89
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.2
@@ -100,11 +100,11 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.36.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sync v0.12.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/time v0.11.0
-	google.golang.org/api v0.227.0
+	google.golang.org/api v0.228.0
 	google.golang.org/grpc v1.71.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -164,7 +164,7 @@ require (
 require (
 	cel.dev/expr v0.19.2 // indirect
 	cloud.google.com/go/auth v0.15.0 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.7 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.25.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.51.0 // indirect
@@ -353,7 +353,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b // indirect

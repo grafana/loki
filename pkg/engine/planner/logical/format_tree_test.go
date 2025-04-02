@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -23,16 +24,16 @@ func TestFormatSimpleQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
-				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
-			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: NewLiteral[int64](21),
+			Op:    types.BinaryOpGt,
 		},
 	)
 
@@ -46,7 +47,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 Select
 │   └── BinOp op=GT
 │       ├── ColumnRef #metadata.age
-│       └── Literal value=21 kind=int64
+│       └── Literal value=21 kind=int
 └── MakeTable
         └── BinOp op=EQ
             ├── ColumnRef #label.app
@@ -63,18 +64,18 @@ func TestFormatSortQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
-				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
-			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: NewLiteral[int64](21),
+			Op:    types.BinaryOpGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
+	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
 
 	var sb strings.Builder
 	PrintTree(&sb, b.Value())
@@ -88,7 +89,7 @@ Sort direction=asc nulls=last
 └── Select
     │   └── BinOp op=GT
     │       ├── ColumnRef #metadata.age
-    │       └── Literal value=21 kind=int64
+    │       └── Literal value=21 kind=int
     └── MakeTable
             └── BinOp op=EQ
                 ├── ColumnRef #label.app

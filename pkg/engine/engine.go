@@ -9,7 +9,7 @@ func canExecuteWithNewEngine(expr syntax.Expr) bool {
 		return false
 	case syntax.LogSelectorExpr:
 		ret := true
-		expr.Walk(func(e syntax.Expr) {
+		expr.Walk(func(e syntax.Expr) bool {
 			switch e.(type) {
 			case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
 				ret = false
@@ -18,6 +18,7 @@ func canExecuteWithNewEngine(expr syntax.Expr) bool {
 			case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 				ret = false
 			}
+			return true
 		})
 		return ret
 	}

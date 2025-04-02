@@ -389,8 +389,9 @@ func (e *PipelineExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *PipelineExpr) Walk(f WalkFn) {
-	f(e)
-
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -543,7 +544,9 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -752,7 +755,7 @@ func (e *LineParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
 func (e *LineParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
-		return log.NewJSONParser(), nil
+		return log.NewJSONParser(false), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -1161,7 +1164,9 @@ func (r LogRangeExpr) String() string {
 func (r *LogRangeExpr) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
 func (r *LogRangeExpr) Walk(f WalkFn) {
-	f(r)
+	if !f(r) {
+		return
+	}
 	if r.Left != nil {
 		r.Left.Walk(f)
 	}
@@ -1473,7 +1478,9 @@ func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -1683,7 +1690,9 @@ func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -1803,7 +1812,9 @@ func (e *BinOpExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -2232,7 +2243,9 @@ func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 }
 
 func (e *LabelReplaceExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -2377,7 +2390,7 @@ func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err
 func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
-	e.Walk(func(e Expr) {
+	e.Walk(func(e Expr) bool {
 		switch expr := e.(type) {
 		case *RangeAggregationExpr:
 			if groupingReducesLabels(expr.Grouping) {
@@ -2406,9 +2419,8 @@ func ReducesLabels(e Expr) (conflict bool) {
 					break
 				}
 			}
-		default:
-			return
 		}
+		return true
 	})
 	return
 }
@@ -2512,7 +2524,9 @@ func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
 }
 
 func (m *MultiVariantExpr) Walk(f WalkFn) {
-	f(m)
+	if !f(m) {
+		return
+	}
 
 	if m.logRange != nil {
 		m.logRange.Walk(f)

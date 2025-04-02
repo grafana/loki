@@ -456,6 +456,9 @@ type PushTargetConfig struct {
 
 	// If promtail should maintain the incoming log timestamp or replace it with the current time.
 	KeepTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// MaxSendMsgSize is the maximum size of the sent message.
+	MaxSendMsgSize int `yaml:"max_send_msg_size"`
 }
 
 // DefaultScrapeConfig is the default Config.
