@@ -189,9 +189,6 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	}
 	linesReceivedStats.Inc(totalNumLines)
 
-	forwardedHeader := r.Header.Get("X-Forwarded-For")
-	agentIP := strings.Split(forwardedHeader, ",")[0]
-
 	logValues := []interface{}{
 		"msg", "push request parsed",
 		"path", r.URL.Path,
@@ -204,9 +201,16 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"presumedAgentIp", strings.TrimSpace(agentIP),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
+
+	// X-Forwarded-For header may have 2 (comma-separated) addresses: the 2nd appears to be infrastructure-related.
+	// Therefore, if the header is included, only log the first address
+	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	if agentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
