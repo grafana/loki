@@ -202,7 +202,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"agentIpAddress", strings.TrimSpace(agentIp),
+		"presumedAgentIp", strings.TrimSpace(agentIp),
 		"xForwardedForHeader", strings.TrimSpace(forwardedHeader),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
