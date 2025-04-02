@@ -185,9 +185,9 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	linesReceivedStats.Inc(totalNumLines)
 
 	forwardedHeader := r.Header.Get("X-Forwarded-For")
-	agentIp := forwardedHeader
+	agentIP := forwardedHeader
 	if strings.Contains(forwardedHeader, ",") {
-		agentIp = forwardedHeader[0:strings.Index(forwardedHeader, ",")]
+		agentIP = strings.Split(forwardedHeader, ",")[0]
 	}
 
 	logValues := []interface{}{
@@ -202,7 +202,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"presumedAgentIp", strings.TrimSpace(agentIp),
+		"presumedAgentIp", strings.TrimSpace(agentIP),
 		"xForwardedForHeader", strings.TrimSpace(forwardedHeader),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
