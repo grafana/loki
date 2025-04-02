@@ -135,14 +135,15 @@ func (o *optimization) withRules(rules ...rule) *optimization {
 }
 
 func (o *optimization) optimize(node Node) {
-	changed := true // initialize with true, so it can be used as condition in the for-loop
-	iterations := 0
-	maxIterations := 3 // TODO(chaudum): Do we really need multiple optimization passes?
+	iterations, maxIterations := 0, 3
 
-	for changed && iterations < maxIterations {
+	for iterations < maxIterations {
 		iterations++
 
-		changed = o.applyRules(node) //nolint:ineffassign
+		if !o.applyRules(node) {
+			// Stop immediately if an optimization pass produced no changes.
+			break
+		}
 	}
 }
 
