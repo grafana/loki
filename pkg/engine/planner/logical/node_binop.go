@@ -26,12 +26,12 @@ func (b *BinOp) Name() string {
 	if b.id != "" {
 		return b.id
 	}
-	return fmt.Sprintf("<%p>", b)
+	return fmt.Sprintf("%p", b)
 }
 
 // String returns the disassembled SSA form of the BinOp instruction.
 func (b *BinOp) String() string {
-	return fmt.Sprintf("%s %s, %s", b.Op, b.Left.Name(), b.Right.Name())
+	return fmt.Sprintf("%s %s %s", b.Op, b.Left.Name(), b.Right.Name())
 }
 
 // Schema returns the schema of the BinOp operation.
