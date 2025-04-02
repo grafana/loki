@@ -128,6 +128,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -390,6 +391,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -820,6 +822,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1182,6 +1185,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1545,6 +1549,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1947,6 +1952,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2281,6 +2287,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2724,6 +2731,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3052,6 +3060,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3554,6 +3563,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3819,6 +3829,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4084,6 +4095,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4351,6 +4363,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4654,6 +4667,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4951,6 +4965,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5452,6 +5467,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5631,6 +5647,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5807,6 +5824,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -6221,6 +6239,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
