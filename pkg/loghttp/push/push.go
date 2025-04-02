@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"math"
 	"mime"
 	"net/http"
 	"strconv"
@@ -70,7 +69,10 @@ const (
 	AggregatedMetricLabel = "__aggregated_metric__"
 )
 
-var ErrAllLogsFiltered = errors.New("all logs lines filtered during parsing")
+var (
+	ErrAllLogsFiltered     = errors.New("all logs lines filtered during parsing")
+	ErrRequestBodyTooLarge = errors.New("request body too large")
+)
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -104,7 +106,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -138,9 +140,12 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
+		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
+			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
+		}
 		return nil, err
 	}
 
@@ -212,7 +217,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -272,7 +277,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker Usa
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
-		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy); err != nil {
 			return nil, nil, err
 		}
 	}
