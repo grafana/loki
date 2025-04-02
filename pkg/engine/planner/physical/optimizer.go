@@ -104,6 +104,7 @@ func (r *limitPushdown) apply(node Node) bool {
 func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 	switch node := node.(type) {
 	case *DataObjScan:
+		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		node.Limit = max(node.Limit, limit)
 		return true
 	}
