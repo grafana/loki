@@ -54,16 +54,16 @@ func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]in
 		return nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	res, err := c.metastore.DataObjects(c.ctx, c.from, c.through, matchers...)
+	paths, streamIDs, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
 
-	locations := make([]DataObjLocation, 0, len(res))
-	for _, loc := range res {
+	locations := make([]DataObjLocation, 0, len(paths))
+	for _, loc := range paths {
 		locations = append(locations, DataObjLocation(loc))
 	}
-	return locations, nil, err
+	return locations, streamIDs, err
 }
 
 func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {

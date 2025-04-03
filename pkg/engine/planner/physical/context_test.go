@@ -3,9 +3,10 @@ package physical
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestContext_ConvertLiteral(t *testing.T) {
