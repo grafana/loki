@@ -62,7 +62,14 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 		return nil, err
 	}
 
-	requests := make(map[string]*logproto.GetStreamUsageRequest)
+	type consumerReq struct {
+		addr     string
+		protoReq *logproto.GetStreamUsageRequest
+	}
+
+	requests := make([]consumerReq, 0, len(rs.Instances))
+
+outer:
 	for _, hash := range r.StreamHashes {
 		partitionID := int32(hash % uint64(g.numPartitions))
 		addr, ok := partitionConsumers[partitionID]
@@ -70,36 +77,41 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 			continue
 		}
 
-		req, ok := requests[addr]
-		if !ok {
-			req = &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: []uint64{hash},
+		for _, req := range requests {
+			if req.addr == addr {
+				req.protoReq.StreamHashes = append(req.protoReq.StreamHashes, hash)
+				continue outer
 			}
-		} else {
-			req.StreamHashes = append(req.StreamHashes, hash)
 		}
 
-		requests[addr] = req
+		c := consumerReq{
+			addr: addr,
+			protoReq: &logproto.GetStreamUsageRequest{
+				Tenant:       r.Tenant,
+				StreamHashes: []uint64{hash},
+			},
+		}
+
+		requests = append(requests, c)
 	}
 
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make(map[string]*logproto.GetStreamUsageResponse)
+	responses := make([]GetStreamUsageResponse, len(requests))
 
 	// Query each instance for stream usage
-	for addr, req := range requests {
+	for i, req := range requests {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(addr)
+			client, err := g.pool.GetClientFor(req.addr)
 			if err != nil {
 				return err
 			}
 
-			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, req)
+			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, req.protoReq)
 			if err != nil {
 				return err
 			}
 
-			responses[addr] = resp
+			responses[i] = GetStreamUsageResponse{Addr: req.addr, Response: resp}
 			return nil
 		})
 	}
@@ -108,15 +120,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 		return nil, err
 	}
 
-	results := make([]GetStreamUsageResponse, 0, len(responses))
-	for addr, resp := range responses {
-		results = append(results, GetStreamUsageResponse{
-			Addr:     addr,
-			Response: resp,
-		})
-	}
-
-	return results, nil
+	return responses, nil
 }
 
 type getAssignedPartitionsResponse struct {
