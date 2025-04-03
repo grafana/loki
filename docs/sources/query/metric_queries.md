@@ -156,6 +156,10 @@ Examples:
 
 ## Probabilistic aggregation
 
+{{< admonition type="note" >}}
+Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use this feature, set `limits_config.shard_aggregations:approx_topk` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). To enable this feature in Grafana Cloud, contact Grafana Support.
+{{< /admonition >}}
+
 LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
 
 The function is of the form: 
