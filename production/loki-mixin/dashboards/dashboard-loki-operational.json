@@ -1926,7 +1926,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"distributor\"}[$__rate_interval]))",
+               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"distributor\"}[$__rate_interval]))",
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
                "refId": "A"
@@ -2021,7 +2021,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"distributor\"}",
+               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"distributor\"}",
                "instant": false,
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
@@ -2610,7 +2610,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"ingester\"}[$__rate_interval]))",
+               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester\"}[$__rate_interval]))",
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
                "refId": "A"
@@ -2705,7 +2705,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"ingester\"}",
+               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"ingester\"}",
                "instant": false,
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
@@ -3541,7 +3541,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\"}[$__rate_interval]))",
+               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"}[$__rate_interval]))",
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
                "refId": "A"
@@ -3636,7 +3636,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"querier\"}",
+               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"querier\"}",
                "instant": false,
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
@@ -3946,7 +3946,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\"}[$__rate_interval]))",
+               "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"}[$__rate_interval]))",
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",
                "refId": "A"
