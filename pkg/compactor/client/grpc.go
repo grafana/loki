@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
 	deletion_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
@@ -74,18 +73,7 @@ func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, u
 		return nil, err
 	}
 
-	deleteRequests := make([]deletion.DeleteRequest, len(grpcResp.DeleteRequests))
-	for i, dr := range grpcResp.DeleteRequests {
-		deleteRequests[i] = deletion.DeleteRequest{
-			RequestID: dr.RequestID,
-			StartTime: model.Time(dr.StartTime),
-			EndTime:   model.Time(dr.EndTime),
-			Query:     dr.Query,
-			Status:    deletion.DeleteRequestStatus(dr.Status),
-			CreatedAt: model.Time(dr.CreatedAt),
-		}
-	}
-
+	deleteRequests := deletion_grpc.DeleteRequestsFromProto(grpcResp.DeleteRequests)
 	return deleteRequests, nil
 }
 

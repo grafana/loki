@@ -2156,6 +2156,13 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 		}
 	}
 
+	if t.Cfg.CompactorConfig.DeletesCache.CacheResults {
+		compactorClient, err = compactorclient.NewCacheMiddleware(compactorClient, t.Cfg.CompactorConfig.DeletesCache, t.cacheGenerationLoader, reg, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	client, err := deletion.NewDeleteRequestsClient(compactorClient, t.deleteClientMetrics, clientType)
 	if err != nil {
 		return nil, err

@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	compactor_client "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -73,27 +74,28 @@ var (
 )
 
 type Config struct {
-	WorkingDirectory               string              `yaml:"working_directory"`
-	CompactionInterval             time.Duration       `yaml:"compaction_interval"`
-	ApplyRetentionInterval         time.Duration       `yaml:"apply_retention_interval"`
-	RetentionEnabled               bool                `yaml:"retention_enabled"`
-	RetentionDeleteDelay           time.Duration       `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount       int                 `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout          time.Duration       `yaml:"retention_table_timeout"`
-	RetentionBackoffConfig         backoff.Config      `yaml:"retention_backoff_config"`
-	DeleteRequestStore             string              `yaml:"delete_request_store"`
-	DeleteRequestStoreKeyPrefix    string              `yaml:"delete_request_store_key_prefix"`
-	DeleteRequestStoreDBType       string              `yaml:"delete_request_store_db_type"`
-	BackupDeleteRequestStoreDBType string              `yaml:"backup_delete_request_store_db_type"`
-	DeleteBatchSize                int                 `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod      time.Duration       `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval              time.Duration       `yaml:"delete_max_interval"`
-	MaxCompactionParallelism       int                 `yaml:"max_compaction_parallelism"`
-	UploadParallelism              int                 `yaml:"upload_parallelism"`
-	CompactorRing                  lokiring.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                        bool                `yaml:"_" doc:"hidden"`
-	TablesToCompact                int                 `yaml:"tables_to_compact"`
-	SkipLatestNTables              int                 `yaml:"skip_latest_n_tables"`
+	WorkingDirectory               string                       `yaml:"working_directory"`
+	CompactionInterval             time.Duration                `yaml:"compaction_interval"`
+	ApplyRetentionInterval         time.Duration                `yaml:"apply_retention_interval"`
+	RetentionEnabled               bool                         `yaml:"retention_enabled"`
+	RetentionDeleteDelay           time.Duration                `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount       int                          `yaml:"retention_delete_worker_count"`
+	RetentionTableTimeout          time.Duration                `yaml:"retention_table_timeout"`
+	RetentionBackoffConfig         backoff.Config               `yaml:"retention_backoff_config"`
+	DeleteRequestStore             string                       `yaml:"delete_request_store"`
+	DeleteRequestStoreKeyPrefix    string                       `yaml:"delete_request_store_key_prefix"`
+	DeleteRequestStoreDBType       string                       `yaml:"delete_request_store_db_type"`
+	BackupDeleteRequestStoreDBType string                       `yaml:"backup_delete_request_store_db_type"`
+	DeleteBatchSize                int                          `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod      time.Duration                `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval              time.Duration                `yaml:"delete_max_interval"`
+	MaxCompactionParallelism       int                          `yaml:"max_compaction_parallelism"`
+	UploadParallelism              int                          `yaml:"upload_parallelism"`
+	CompactorRing                  lokiring.RingConfig          `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
+	RunOnce                        bool                         `yaml:"_" doc:"hidden"`
+	TablesToCompact                int                          `yaml:"tables_to_compact"`
+	SkipLatestNTables              int                          `yaml:"skip_latest_n_tables"`
+	DeletesCache                   compactor_client.CacheConfig `yaml:"deletes_cache"`
 }
 
 // RegisterFlags registers flags.

@@ -29,3 +29,10 @@ message GetCacheGenNumbersRequest {}
 message GetCacheGenNumbersResponse {
   string resultsCacheGen = 1;
 }
+
+message CachedDeletes {
+  string key = 1;
+  int64 addedAtTS = 2;
+  string cacheGen = 3;
+  repeated DeleteRequest deleteRequests = 4;
+}
