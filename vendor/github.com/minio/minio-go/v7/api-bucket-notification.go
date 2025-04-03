@@ -251,7 +251,6 @@ func (c *Client) ListenBucketNotification(ctx context.Context, bucketName, prefi
 
 			// Close current connection before looping further.
 			closeResponse(resp)
-
 		}
 	}(notificationInfoCh)
 

@@ -30,7 +30,7 @@ type Record struct {
 	StreamID  int64         // StreamID associated with the log record.
 	Timestamp time.Time     // Timestamp of the log record.
 	Metadata  labels.Labels // Set of metadata associated with the log record.
-	Line      string        // Line of the log record.
+	Line      []byte        // Line of the log record.
 }
 
 // LogsReader reads the set of logs from an [Object].
@@ -128,7 +128,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		s[i] = Record{
 			StreamID:  readRecord.StreamID,
 			Timestamp: readRecord.Timestamp,
-			Metadata:  convertMetadata(readRecord.Metadata),
+			Metadata:  readRecord.Metadata,
 			Line:      readRecord.Line,
 		}
 	}
@@ -235,9 +235,16 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	// call to Read.
 }
 
-func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
-	var res dataset.Predicate
+// Close closes the LogsReader and releases any resources it holds. Closed
+// LogsReaders can be reused by calling [LogsReader.Reset].
+func (r *LogsReader) Close() error {
+	if r.reader != nil {
+		return r.reader.Close()
+	}
+	return nil
+}
 
+func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
 	streamIDColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
 		return desc.Type == logsmd.COLUMN_TYPE_STREAM_ID
 	})
@@ -245,23 +252,19 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
+	var values []dataset.Value
 	for id := range ids {
-		p := dataset.EqualPredicate{
-			Column: streamIDColumn,
-			Value:  dataset.Int64Value(id),
-		}
-
-		if res == nil {
-			res = p
-		} else {
-			res = dataset.OrPredicate{
-				Left:  res,
-				Right: p,
-			}
-		}
+		values = append(values, dataset.Int64Value(id))
 	}
 
-	return res
+	if len(values) == 0 {
+		return nil
+	}
+
+	return dataset.InPredicate{
+		Column: streamIDColumn,
+		Values: values,
+	}
 }
 
 func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
@@ -295,6 +298,26 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 			return dataset.FalsePredicate{}
 		}
 		return convertLogsTimePredicate(p, timeColumn)
+
+	case LogMessageFilterPredicate:
+		messageColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
+			return desc.Type == logsmd.COLUMN_TYPE_MESSAGE
+		})
+		if messageColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+
+		return dataset.FuncPredicate{
+			Column: messageColumn,
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
+				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+					// To handle older dataobjs that still use string type for message column. This can be removed in future.
+					return p.Keep([]byte(value.String()))
+				}
+
+				return p.Keep(value.ByteArray())
+			},
+		}
 
 	case MetadataMatcherPredicate:
 		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {

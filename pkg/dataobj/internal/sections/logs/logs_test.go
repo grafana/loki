@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
@@ -20,32 +19,27 @@ func Test(t *testing.T) {
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  nil,
-			Line:      "hello world",
+			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0).UTC(),
-			Metadata: push.LabelsAdapter{
-				{Name: "cluster", Value: "test"},
-				{Name: "app", Value: "bar"},
-			},
-			Line: "goodbye world",
+			Metadata:  labels.FromStrings("cluster", "test", "app", "bar"),
+			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(5, 0).UTC(),
-			Metadata: push.LabelsAdapter{
-				{Name: "cluster", Value: "test"},
-				{Name: "app", Value: "foo"},
-			},
-			Line: "foo bar",
+			Metadata:  labels.FromStrings("cluster", "test", "app", "foo"),
+			Line:      []byte("foo bar"),
 		},
 	}
 
 	opts := logs.Options{
-		PageSizeHint: 1024,
-		BufferSize:   256,
-		SectionSize:  4096,
+		PageSizeHint:     1024,
+		BufferSize:       256,
+		SectionSize:      4096,
+		StripeMergeLimit: 2,
 	}
 
 	tracker := logs.New(nil, opts)
@@ -62,26 +56,23 @@ func Test(t *testing.T) {
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(5, 0).UTC(),
-			Metadata: push.LabelsAdapter{
-				{Name: "app", Value: "foo"},
-				{Name: "cluster", Value: "test"},
-			},
-			Line: "foo bar",
+			Metadata: labels.FromStrings(
+				"app", "foo",
+				"cluster", "test",
+			),
+			Line: []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0).UTC(),
-			Metadata:  push.LabelsAdapter{},
-			Line:      "hello world",
+			Metadata:  labels.FromStrings(),
+			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0).UTC(),
-			Metadata: push.LabelsAdapter{
-				{Name: "app", Value: "bar"},
-				{Name: "cluster", Value: "test"},
-			},
-			Line: "goodbye world",
+			Metadata:  labels.FromStrings("app", "bar", "cluster", "test"),
+			Line:      []byte("goodbye world"),
 		},
 	}
 

@@ -244,7 +244,7 @@ func TestParseRequest(t *testing.T) {
 			enableServiceDiscovery:    true,
 			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
-			expectedBytesUsageTracker: map[string]float64{`{__aggregated_metric__="stuff", foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
+			expectedBytesUsageTracker: map[string]float64{},
 			expectedLabels:            []labels.Labels{labels.FromStrings("__aggregated_metric__", "stuff", "foo", "bar2", "job", "stuff")},
 			aggregatedMetric:          true,
 		},
@@ -300,6 +300,7 @@ func TestParseRequest(t *testing.T) {
 			data, err := ParseRequest(
 				util_log.Logger,
 				"fake",
+				100<<20,
 				request,
 				test.fakeLimits,
 				ParseLokiRequest,
@@ -335,7 +336,11 @@ func TestParseRequest(t *testing.T) {
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, totalStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, totalBytes, bytesReceived)
-				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+				if !test.aggregatedMetric {
+					require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+				} else {
+					require.Equal(t, float64(0), tracker.Total(), "aggregated metrics should not be tracked")
+				}
 				require.Equal(t, totalLines, linesReceived)
 
 				for policyName, bytes := range test.expectedStructuredMetadataBytes {
@@ -433,7 +438,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseLokiRequest, tracker, streamResolver, false)
+		data, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, ParseLokiRequest, tracker, streamResolver, false)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -445,7 +450,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
+		data, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -460,7 +465,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{"special"},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
+		data, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -475,7 +480,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, ParseOTLPRequest, tracker, streamResolver, false)
+		data, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, ParseOTLPRequest, tracker, streamResolver, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
