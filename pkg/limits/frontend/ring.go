@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
@@ -65,7 +66,12 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 	instancesToQuery := make(map[string][]uint64)
 	for _, hash := range r.StreamHashes {
 		partitionID := int32(hash % uint64(g.numPartitions))
-		addr := partitionConsumers[partitionID]
+		addr, ok := partitionConsumers[partitionID]
+		if !ok {
+			// TODO Replace with a metric for partitions missing owners.
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
+			continue
+		}
 		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
 	}
 
