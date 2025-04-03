@@ -326,6 +326,7 @@ tenants:
     serviceAccount: lokistack-gateway
     redirectURL: https://localhost:8443/openshift/application/callback
     cookieSecret: abcd
+    ssrEnabled: true
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
     withAccessToken: true
@@ -335,6 +336,7 @@ tenants:
     serviceAccount: lokistack-gateway
     redirectURL: https://localhost:8443/openshift/infrastructure/callback
     cookieSecret: efgh
+    ssrEnabled: true
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
     withAccessToken: true
@@ -344,6 +346,7 @@ tenants:
     serviceAccount: lokistack-gateway
     redirectURL: https://localhost:8443/openshift/audit/callback
     cookieSecret: deadbeef
+    ssrEnabled: true
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
     withAccessToken: true
@@ -428,6 +431,7 @@ tenants:
     serviceAccount: lokistack-gateway
     redirectURL: https://localhost:8443/openshift/network/callback
     cookieSecret: whynot
+    ssrEnabled: true
   opa:
     url: http://127.0.0.1:8080/v1/data/lokistack/allow
     withAccessToken: true
