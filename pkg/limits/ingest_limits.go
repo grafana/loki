@@ -562,25 +562,11 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		totalSize     uint64
 	)
 
-	for _, requestedID := range req.Partitions {
-		// Consider the recorded stream if it's partition
-		// is one of the partitions we are still assigned to.
-		assigned := false
-		for assignedID := range partitions {
-			if requestedID == assignedID {
-				assigned = true
-				break
-			}
-		}
-
-		if !assigned {
-			continue
-		}
-
-		// If the stream is written into a partition we are
-		// assigned to and has been seen within the window,
-		// it is an active stream.
-		for _, stream := range partitions[requestedID] {
+	// If the stream is written into a partition we are
+	// assigned to and has been seen within the window,
+	// it is an active stream.
+	for _, streams := range partitions {
+		for _, stream := range streams {
 			if stream.lastSeenAt < cutoff {
 				continue
 			}
@@ -619,16 +605,6 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 
 	// Calculate rate using only data from within the rate window
 	rate := float64(totalSize) / s.cfg.RateWindow.Seconds()
-
-	// Debug logging to help diagnose rate calculation issues
-	level.Debug(s.logger).Log(
-		"msg", "calculated stream usage",
-		"tenant", req.Tenant,
-		"active_streams", activeStreams,
-		"total_size", util.HumanizeBytes(totalSize),
-		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", util.HumanizeBytes(uint64(rate)),
-	)
 
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,

@@ -48,7 +48,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}},
 		maxGlobalStreams:        10,
@@ -71,7 +70,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:        "test",
@@ -98,7 +96,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:         "test",
@@ -134,7 +131,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:         "test",
@@ -176,11 +172,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{1},
 		}},
 		// Each instance will respond stating that it doesn't know about the
 		// other stream.
