@@ -81,7 +81,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 	// Query each instance for stream usage
 	i := 0
 	for addr, hashes := range instancesToQuery {
-		j := 0
+		j := i
 		i++
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(addr)
