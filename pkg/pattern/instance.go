@@ -275,7 +275,7 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
 		if structuredMetadata.Has(constants.LevelLabel) {
 			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
-			level.Debug(i.logger).Log("msg", "observed level", "level", lvl)
+			level.Debug(i.logger).Log("msg", "observed level", "level", lvl, "stream", stream)
 		} else {
 			level.Debug(i.logger).Log("msg", "stream did not contain a level", "stream", stream)
 		}
