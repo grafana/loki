@@ -47,7 +47,6 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
-			Partitions:   []int32{1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:        "test",
@@ -84,7 +83,6 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
-			Partitions:   []int32{1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}, {
 			Tenant:        "test",
@@ -121,7 +119,6 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
-			Partitions:   []int32{1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}, {
 			Tenant:        "test",

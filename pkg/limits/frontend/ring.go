@@ -2,10 +2,8 @@ package frontend
 
 import (
 	"context"
-	"slices"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
@@ -59,50 +57,49 @@ func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStrea
 }
 
 func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitionConsumers, partitionMap, err := g.getPartitionConsumers(ctx, rs)
+	partitionConsumers, err := g.getPartitionConsumers(ctx, rs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Track unique partition consumers that own our streams
-	var owningConsumers []string
+	requests := make(map[string]*logproto.GetStreamUsageRequest)
 	for _, hash := range r.StreamHashes {
 		partitionID := int32(hash % uint64(g.numPartitions))
-
 		addr, ok := partitionConsumers[partitionID]
 		if !ok {
-			level.Warn(g.logger).Log("msg", "no partition consumer found for partition", "partition", partitionID, "stream_hash", hash)
 			continue
 		}
 
-		if !slices.Contains(owningConsumers, addr) {
-			owningConsumers = append(owningConsumers, addr)
+		req, ok := requests[addr]
+		if !ok {
+			req = &logproto.GetStreamUsageRequest{
+				Tenant:       r.Tenant,
+				StreamHashes: []uint64{hash},
+			}
+		} else {
+			req.StreamHashes = append(req.StreamHashes, hash)
 		}
+
+		requests[addr] = req
 	}
 
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(owningConsumers))
+	responses := make(map[string]*logproto.GetStreamUsageResponse)
 
 	// Query each instance for stream usage
-	for i, addr := range owningConsumers {
+	for addr, req := range requests {
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
 				return err
 			}
 
-			protoReq := &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: r.StreamHashes,
-				Partitions:   partitionMap[addr],
-			}
-
-			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
+			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, req)
 			if err != nil {
 				return err
 			}
 
-			responses[i] = GetStreamUsageResponse{Addr: addr, Response: resp}
+			responses[addr] = resp
 			return nil
 		})
 	}
@@ -111,7 +108,15 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 		return nil, err
 	}
 
-	return responses, nil
+	results := make([]GetStreamUsageResponse, 0, len(responses))
+	for addr, resp := range responses {
+		results = append(results, GetStreamUsageResponse{
+			Addr:     addr,
+			Response: resp,
+		})
+	}
+
+	return results, nil
 }
 
 type getAssignedPartitionsResponse struct {
@@ -119,7 +124,7 @@ type getAssignedPartitionsResponse struct {
 	Response *logproto.GetAssignedPartitionsResponse
 }
 
-func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, map[string][]int32, error) {
+func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
@@ -141,7 +146,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 		})
 	}
 	if err := errg.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Deduplicate the partitions. This can happen if the call to
@@ -150,17 +155,15 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 	// partition at the same time. In case of conflicts, choose the instance
 	// with the latest timestamp.
 	highestTimestamp := make(map[int32]int64)
-	consumers := make(map[int32]string)
-	partitionMap := make(map[string][]int32)
+	assigned := make(map[int32]string)
 	for _, resp := range responses {
 		for partition, assignedAt := range resp.Response.AssignedPartitions {
 			if t := highestTimestamp[partition]; t < assignedAt {
 				highestTimestamp[partition] = assignedAt
-				consumers[partition] = resp.Addr
-				partitionMap[resp.Addr] = append(partitionMap[resp.Addr], partition)
+				assigned[partition] = resp.Addr
 			}
 		}
 	}
 
-	return consumers, partitionMap, nil
+	return assigned, nil
 }
