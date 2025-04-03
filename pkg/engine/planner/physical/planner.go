@@ -85,7 +85,10 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	if err != nil {
+		return nil, err
+	}
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
