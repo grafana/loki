@@ -528,8 +528,8 @@ func configureGatewayServerPKI(
 		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
 	)
 
-	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
 
 	gwVolumes = append(gwVolumes,
