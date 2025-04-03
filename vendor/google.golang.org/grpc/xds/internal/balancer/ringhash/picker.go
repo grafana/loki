@@ -29,12 +29,17 @@ import (
 )
 
 type picker struct {
-	ring   *ring
-	logger *grpclog.PrefixLogger
+	ring          *ring
+	logger        *grpclog.PrefixLogger
+	subConnStates map[*subConn]connectivity.State
 }
 
 func newPicker(ring *ring, logger *grpclog.PrefixLogger) *picker {
-	return &picker{ring: ring, logger: logger}
+	states := make(map[*subConn]connectivity.State)
+	for _, e := range ring.items {
+		states[e.sc] = e.sc.effectiveState()
+	}
+	return &picker{ring: ring, logger: logger, subConnStates: states}
 }
 
 // handleRICSResult is the return type of handleRICS. It's needed to wrap the
@@ -54,7 +59,7 @@ type handleRICSResult struct {
 // or Shutdown. If it's true, the PickResult and error should be returned from
 // Pick() as is.
 func (p *picker) handleRICS(e *ringEntry) (handleRICSResult, bool) {
-	switch state := e.sc.effectiveState(); state {
+	switch state := p.subConnStates[e.sc]; state {
 	case connectivity.Ready:
 		return handleRICSResult{pr: balancer.PickResult{SubConn: e.sc.sc}}, true
 	case connectivity.Idle:
@@ -118,7 +123,7 @@ func (p *picker) handleTransientFailure(e *ringEntry) (balancer.PickResult, erro
 	// but don't not trigger Connect() on the other SubConns.
 	var firstNonFailedFound bool
 	for ee := nextSkippingDuplicates(p.ring, e2); ee != e; ee = nextSkippingDuplicates(p.ring, ee) {
-		scState := ee.sc.effectiveState()
+		scState := p.subConnStates[ee.sc]
 		if scState == connectivity.Ready {
 			return balancer.PickResult{SubConn: ee.sc.sc}, nil
 		}
