@@ -115,8 +115,8 @@ func (t *treeFormatter) convertBinOp(expr *BinOp) *tree.Node {
 
 func (t *treeFormatter) convertColumnRef(expr *ColumnRef) *tree.Node {
 	return tree.NewNode("ColumnRef", "",
-		tree.NewProperty("column", false, expr.Ref().Column),
-		tree.NewProperty("type", false, expr.Ref().Type),
+		tree.NewProperty("column", false, expr.Ref.Column),
+		tree.NewProperty("type", false, expr.Ref.Type),
 	)
 }
 
