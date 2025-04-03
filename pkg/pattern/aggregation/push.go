@@ -44,7 +44,7 @@ var defaultUserAgent = fmt.Sprintf("pattern-ingester-push/%s", build.GetVersion(
 type EntryWriter interface {
 	// WriteEntry handles sending the log to the output
 	// To maintain consistent log timing, Write is expected to be non-blocking
-	WriteEntry(ts time.Time, e string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter)
+	WriteEntry(ts time.Time, entry string, lbls labels.Labels)
 	Stop()
 }
 
@@ -78,10 +78,9 @@ type Push struct {
 }
 
 type entry struct {
-	ts                 time.Time
-	entry              string
-	labels             labels.Labels
-	structuredMetadata []logproto.LabelAdapter
+	ts     time.Time
+	entry  string
+	labels labels.Labels
 }
 
 type entries struct {
@@ -157,8 +156,8 @@ func NewPush(
 }
 
 // WriteEntry implements EntryWriter
-func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter) {
-	p.entries.add(entry{ts: ts, entry: e, labels: lbls, structuredMetadata: structuredMetadata})
+func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels) {
+	p.entries.add(entry{ts: ts, entry: e, labels: lbls})
 }
 
 // Stop will cancel any ongoing requests and stop the goroutine listening for requests
@@ -191,9 +190,8 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		}
 
 		entries = append(entries, logproto.Entry{
-			Timestamp:          e.ts,
-			Line:               e.entry,
-			StructuredMetadata: e.structuredMetadata,
+			Timestamp: e.ts,
+			Line:      e.entry,
 		})
 		entriesByStream[stream] = entries
 	}
