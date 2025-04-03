@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
@@ -58,54 +59,50 @@ func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStrea
 }
 
 func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitions, err := g.getPartitionConsumers(ctx, rs)
+	partitionConsumers, partitionMap, err := g.getPartitionConsumers(ctx, rs)
 	if err != nil {
 		return nil, err
 	}
 
-	errg, ctx := errgroup.WithContext(ctx)
-	var owningInstances []ring.InstanceDesc
-
-outer:
+	// Track unique partition consumers that own our streams
+	var owningConsumers []string
 	for _, hash := range r.StreamHashes {
-		for _, instance := range rs.Instances {
-			partitionID := int32(hash % uint64(g.numPartitions))
+		partitionID := int32(hash % uint64(g.numPartitions))
 
-			if !slices.Contains(partitions[instance.Addr], partitionID) {
-				continue
-			}
+		addr, ok := partitionConsumers[partitionID]
+		if !ok {
+			level.Warn(g.logger).Log("msg", "no partition consumer found for partition", "partition", partitionID, "stream_hash", hash)
+			continue
+		}
 
-			for _, owning := range owningInstances {
-				if owning.Addr == instance.Addr {
-					continue outer
-				}
-			}
-
-			owningInstances = append(owningInstances, instance)
-			continue outer
+		if !slices.Contains(owningConsumers, addr) {
+			owningConsumers = append(owningConsumers, addr)
 		}
 	}
 
-	responses := make([]GetStreamUsageResponse, len(owningInstances))
+	errg, ctx := errgroup.WithContext(ctx)
+	responses := make([]GetStreamUsageResponse, len(owningConsumers))
 
-	// TODO: We shouldn't query all instances since we know which instance holds which stream.
-	for i, instance := range owningInstances {
+	// Query each instance for stream usage
+	for i, addr := range owningConsumers {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
+			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
 				return err
 			}
+
 			protoReq := &logproto.GetStreamUsageRequest{
 				Tenant:       r.Tenant,
 				StreamHashes: r.StreamHashes,
-				Partitions:   partitions[instance.Addr],
+				Partitions:   partitionMap[addr],
 			}
 
 			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
 				return err
 			}
-			responses[i] = GetStreamUsageResponse{Addr: instance.Addr, Response: resp}
+
+			responses[i] = GetStreamUsageResponse{Addr: addr, Response: resp}
 			return nil
 		})
 	}
@@ -122,7 +119,7 @@ type getAssignedPartitionsResponse struct {
 	Response *logproto.GetAssignedPartitionsResponse
 }
 
-func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[string][]int32, error) {
+func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, map[string][]int32, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
@@ -144,7 +141,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 		})
 	}
 	if err := errg.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Deduplicate the partitions. This can happen if the call to
@@ -153,26 +150,17 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 	// partition at the same time. In case of conflicts, choose the instance
 	// with the latest timestamp.
 	highestTimestamp := make(map[int32]int64)
-	assigned := make(map[int32]string)
+	consumers := make(map[int32]string)
+	partitionMap := make(map[string][]int32)
 	for _, resp := range responses {
 		for partition, assignedAt := range resp.Response.AssignedPartitions {
 			if t := highestTimestamp[partition]; t < assignedAt {
 				highestTimestamp[partition] = assignedAt
-				assigned[partition] = resp.Addr
+				consumers[partition] = resp.Addr
+				partitionMap[resp.Addr] = append(partitionMap[resp.Addr], partition)
 			}
 		}
 	}
 
-	// Return a slice of partition IDs for each instance.
-	result := make(map[string][]int32)
-	for partition, addr := range assigned {
-		result[addr] = append(result[addr], partition)
-	}
-
-	// Sort the partition IDs.
-	for instance := range result {
-		slices.Sort(result[instance])
-	}
-
-	return result, nil
+	return consumers, partitionMap, nil
 }
