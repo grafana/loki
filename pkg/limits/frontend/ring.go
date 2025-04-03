@@ -62,56 +62,38 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 		return nil, err
 	}
 
-	type consumerReq struct {
-		addr     string
-		protoReq *logproto.GetStreamUsageRequest
-	}
-
-	requests := make([]consumerReq, 0, len(rs.Instances))
-
-outer:
+	instancesToQuery := make(map[string][]uint64)
 	for _, hash := range r.StreamHashes {
 		partitionID := int32(hash % uint64(g.numPartitions))
-		addr, ok := partitionConsumers[partitionID]
-		if !ok {
-			continue
-		}
-
-		for _, req := range requests {
-			if req.addr == addr {
-				req.protoReq.StreamHashes = append(req.protoReq.StreamHashes, hash)
-				continue outer
-			}
-		}
-
-		c := consumerReq{
-			addr: addr,
-			protoReq: &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: []uint64{hash},
-			},
-		}
-
-		requests = append(requests, c)
+		addr := partitionConsumers[partitionID]
+		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
 	}
 
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(requests))
+	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
 
 	// Query each instance for stream usage
-	for i, req := range requests {
+	i := 0
+	for addr, hashes := range instancesToQuery {
+		j := 0
+		i++
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(req.addr)
+			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
 				return err
 			}
 
-			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, req.protoReq)
+			protoReq := &logproto.GetStreamUsageRequest{
+				Tenant:       r.Tenant,
+				StreamHashes: hashes,
+			}
+
+			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
 				return err
 			}
 
-			responses[i] = GetStreamUsageResponse{Addr: req.addr, Response: resp}
+			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
 			return nil
 		})
 	}
