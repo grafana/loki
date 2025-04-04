@@ -879,7 +879,7 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 
 // shouldRejectLabel checks if the label should be rejected based on the values.
 // Returns true if all values are IDs or there are no values - meaning the label should be filtered out.
-// Special numeric case: boolean values (0,1,true,false) are not considered ID types.
+// Special numeric case: boolean values (0,1) are not considered ID types.
 // Otherwise it returns false.
 func shouldRejectLabel(values []string) bool {
 	// No values means we don't want to keep this label
@@ -887,28 +887,23 @@ func shouldRejectLabel(values []string) bool {
 		return true
 	}
 
-	// Boolean values should not be considered ID types
-	if len(values) <= 2 {
-		boolValues := map[string]bool{
-			"true":  true,
-			"false": true,
-			"0":     true,
-			"1":     true,
-		}
+	if len(values) > 2 {
+		return containsAllIDTypes(values)
+	}
 
-		allBooleans := true
-		for _, v := range values {
-			if !boolValues[v] {
-				allBooleans = false
-				break
-			}
-		}
-		if allBooleans {
-			return false
+	// Boolean values should not be considered ID types
+	boolValues := map[string]bool{
+		"0": true,
+		"1": true,
+	}
+
+	for _, v := range values {
+		if !boolValues[v] {
+			return containsAllIDTypes(values)
 		}
 	}
 
-	return containsAllIDTypes(values)
+	return false
 }
 
 // contjainsAllIDTypes checks if all values in the array are IDs (UUIDs or numeric values)
