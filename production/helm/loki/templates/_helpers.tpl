@@ -204,9 +204,10 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
+{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
 object_store:
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" ($bucketNames.chunks | required "loki.storage.bucketNames.chunks must be defined")) | nindent 2 }}
 {{- else }}
 {{- if .Values.minio.enabled -}}
 s3:
@@ -228,7 +229,7 @@ s3:
   {{- with .region }}
   region: {{ . }}
   {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucketnames: {{ $bucketNames.chunks | required "loki.storage.bucketNames.chunks must be defined" }}
   {{- with .secretAccessKey }}
   secret_access_key: {{ . }}
   {{- end }}
@@ -260,7 +261,7 @@ s3:
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucket_name: {{ $bucketNames.chunks | required "loki.storage.bucketNames.chunks must be defined" }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
   enable_http2: {{ .enableHttp2 }}
@@ -275,7 +276,7 @@ azure:
   {{- with .connectionString }}
   connection_string: {{ . }}
   {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  container_name: {{ $bucketNames.chunks | required "loki.storage.bucketNames.chunks must be defined" }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
@@ -294,7 +295,7 @@ azure:
 {{- else if eq .Values.loki.storage.type "alibabacloud" -}}
 {{- with .Values.loki.storage.alibabacloud }}
 alibabacloud:
-  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucket: {{ $bucketNames.chunks | required "loki.storage.bucketNames.chunks must be defined" }}
   endpoint: {{ .endpoint }}
   access_key_id: {{ .accessKeyId }}
   secret_access_key: {{ .secretAccessKey }}
@@ -318,6 +319,7 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
+{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 {{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
@@ -335,7 +337,7 @@ s3:
   {{- with .region }}
   region: {{ . }}
   {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
+  bucketnames: {{ $bucketNames.ruler | required "loki.storage.bucketNames.ruler must be defined" }}
   {{- with .secretAccessKey }}
   secret_access_key: {{ . }}
   {{- end }}
@@ -352,7 +354,7 @@ s3:
 {{- with .Values.loki.storage.gcs }}
 type: "gcs"
 gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
+  bucket_name: {{ $bucketNames.ruler | required "loki.storage.bucketNames.ruler must be defined" }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
   enable_http2: {{ .enableHttp2 }}
@@ -368,7 +370,7 @@ azure:
   {{- with .connectionString }}
   connection_string: {{ . }}
   {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
+  container_name: {{ $bucketNames.ruler | required "loki.storage.bucketNames.ruler must be defined" }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
@@ -439,6 +441,7 @@ ruler:
 
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
+{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 storage:
   {{- if .Values.loki.storage.use_thanos_objstore }}
   backend: {{ .Values.loki.storage.object_store.type }}
@@ -451,13 +454,13 @@ storage:
   {{- with .Values.loki.storage.s3 }}
   backend: "s3"
   s3:
-    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+    bucket_name: {{ $bucketNames.admin | required "loki.storage.bucketNames.admin must be defined" }}
   {{- end -}}
   {{- else if eq .Values.loki.storage.type "gcs" -}}
   {{- with .Values.loki.storage.gcs }}
   backend: "gcs"
   gcs:
-    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+    bucket_name: {{ $bucketNames.admin | required "loki.storage.bucketNames.admin must be defined" }}
   {{- end -}}
   {{- else if eq .Values.loki.storage.type "azure" -}}
   {{- with .Values.loki.storage.azure }}
@@ -470,7 +473,7 @@ storage:
     {{- with .connectionString }}
     connection_string: {{ . }}
     {{- end }}
-    container_name: {{ $.Values.loki.storage.bucketNames.admin }}
+    container_name: {{ $bucketNames.admin | required "loki.storage.bucketNames.admin must be defined" }}
     {{- with .endpointSuffix }}
     endpoint_suffix: {{ . }}
     {{- end }}
