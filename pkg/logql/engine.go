@@ -155,21 +155,15 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	// Enable the next generation Loki Query Engine (LQE) for supported queries.
+	EnableLQE bool `yaml:"enable_lqe" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(
-		&opts.MaxLookBackPeriod,
-		prefix+".engine.max-lookback-period",
-		30*time.Second,
-		"The maximum amount of time to look back for log lines. Used only for instant log queries.",
-	)
-	f.IntVar(
-		&opts.MaxCountMinSketchHeapSize,
-		prefix+".engine.max-count-min-sketch-heap-size",
-		10_000,
-		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
-	)
+	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.EnableLQE, prefix+"enable-lqe", false, "Experimental: Enable next generation query engine for supported queries.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }

@@ -76,7 +76,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.engineV2 != nil {
+	if q.cfg.Engine.EnableLQE {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if !errors.Is(err, engine.ErrNotSupported) {
