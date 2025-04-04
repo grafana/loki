@@ -25,6 +25,8 @@ query_range:
         enabled: true
         max_size_mb: 100
 
+limits_config:
+   enable_multi_variant_queries: true
 
 schema_config:
   configs:
@@ -38,6 +40,8 @@ schema_config:
 
 pattern_ingester:
   enabled: true
+  metric_aggregation:
+    loki_address: localhost:3100
 
 ruler:
   alertmanager_url: http://localhost:9093
