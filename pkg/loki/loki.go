@@ -422,8 +422,8 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	partitionRingWatcher      *ring.PartitionRingWatcher
-	PartitionRing             *ring.PartitionInstanceRing
+	PartitionRingWatcher      *ring.PartitionRingWatcher
+	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
