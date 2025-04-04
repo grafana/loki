@@ -1528,7 +1528,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		var engine *logql.Engine
+		var engine *logql.QueryEngine
 		engine, err = t.createRulerQueryEngine(logger, deleteStore)
 		if err != nil {
 			break
@@ -2164,7 +2164,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
-func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
+func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
 	querierStore, err := t.getQuerierStore()
 	if err != nil {
 		return nil, err
