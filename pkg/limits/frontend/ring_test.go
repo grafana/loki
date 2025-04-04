@@ -141,24 +141,26 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			clients := make([]logproto.IngestLimitsClient, len(test.expectedAssignedPartitionsRequest))
 			instances := make([]ring.InstanceDesc, len(clients))
 
-			for i := 0; i < len(test.expectedAssignedPartitionsRequest); i++ {
-				expectedStreamUsageReq := (*logproto.GetStreamUsageRequest)(nil)
-				getStreamUsageResp := (*logproto.GetStreamUsageResponse)(nil)
-
-				if i < len(test.expectedStreamUsageRequest) {
-					expectedStreamUsageReq = test.expectedStreamUsageRequest[i]
-				}
-				if i < len(test.getStreamUsageResponses) {
-					getStreamUsageResp = test.getStreamUsageResponses[i]
-				}
-
+			// Set up the mock clients for the assigned partitions requests.
+			// Note: Every client will return a response for its assigned partitions.
+			for i := range test.expectedAssignedPartitionsRequest {
 				clients[i] = &mockIngestLimitsClient{
+					t:                                 t,
 					expectedAssignedPartitionsRequest: test.expectedAssignedPartitionsRequest[i],
 					getAssignedPartitionsResponse:     test.getAssignedPartitionsResponses[i],
-					expectedStreamUsageRequest:        expectedStreamUsageReq,
-					getStreamUsageResponse:            getStreamUsageResp,
-					t:                                 t,
 				}
+			}
+
+			// Set up the mock clients for the stream usage requests.
+			// Note: Not every client will have a stream usage request because the
+			// requested stream hashes are owned only by a subset of partition consumers.
+			for i := range test.expectedStreamUsageRequest {
+				clients[i].(*mockIngestLimitsClient).expectedStreamUsageRequest = test.expectedStreamUsageRequest[i]
+				clients[i].(*mockIngestLimitsClient).getStreamUsageResponse = test.getStreamUsageResponses[i]
+			}
+
+			// Set up the instances for the ring.
+			for i := range len(clients) {
 				instances[i] = ring.InstanceDesc{
 					Addr: fmt.Sprintf("instance-%d", i),
 				}
