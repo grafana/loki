@@ -22,19 +22,43 @@ app.kubernetes.io/component: bloom-planner
 {{- end }}
 
 {{/*
+bloom planner livenessProbe
+*/}}
+{{- define "loki.bloomPlanner.livenessProbe" }}
+{{- if .Values.bloomPlanner.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.bloomPlanner.livenessProbe | nindent 2 }}
+{{- else if .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.loki.livenessProbe | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 bloom planner readinessProbe
 */}}
-{{- define "loki.bloomPlanner.readinessProbe" -}}
-{{- with .Values.bloomPlanner.readinessProbe }}
+{{- define "loki.bloomPlanner.readinessProbe" }}
+{{- if .Values.bloomPlanner.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.bloomPlanner.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
+
+{{/*
+bloom planner startupProbe
+*/}}
+{{- define "loki.bloomPlanner.startupProbe" }}
+{{- if .Values.bloomPlanner.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.bloomPlanner.startupProbe | nindent 2 }}
+{{- else if .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.loki.startupProbe | nindent 2 }}
+{{- end }}
+{{- end }}
 
 {{/*
 bloom planner priority class name
