@@ -111,6 +111,48 @@ func defaultLimitsTestConfig() validation.Limits {
 	return limits
 }
 
+func TestQuerier_containsAllIDTypes(t *testing.T) {
+	type testCase struct {
+		name   string
+		values []string
+		want   bool
+	}
+
+	for _, tc := range []testCase{
+		{
+			name:   "low cardinality numbers",
+			values: []string{"0", "1"},
+			want:   false,
+		},
+		{
+			name:   "high cardinality numbers",
+			values: []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"},
+			want:   true,
+		},
+		{
+			name:   "only UUIDs",
+			values: []string{"6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+			want:   true,
+		},
+		{
+			name:   "mix of valid UUIDs and numbers below threshold",
+			values: []string{"123", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+			want:   false,
+		},
+		{
+			name:   "invalid string included",
+			values: []string{"hello", "1", "2"},
+			want:   false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const threshold = 10
+			got := containsAllIDTypes(tc.values, threshold)
+			assert.Equal(t, tc.want, got, "containsAllIDTypes(%v)", tc.values)
+		})
+	}
+}
+
 func TestQuerier_validateQueryRequest(t *testing.T) {
 	request := logproto.QueryRequest{
 		Selector:  `{type="test", fail="yes"} |= "foo"`,
