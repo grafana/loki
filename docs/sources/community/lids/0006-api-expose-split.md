@@ -61,9 +61,11 @@ Without an API each client will have to use a LogQL parser.
 
 ### Proposal 1: Expose Splitting in an API
 
-A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits` parameter and the same parameters as the [/loki/api/v1/query_range](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-logs-within-a-range-of-time) endpoint.
+A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits` parameter and the same parameters as the [/loki/api/v1/query_range](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-logs-within-a-range-of-time) endpoint. The new endoint returns sub-queries split by time.
 
-The `splits` parameter defines the number of desired splits. The API is allowed to return fewer splits than requested.
+The `splits` parameter optionally defines the number of desired splits. The API is allowed to return fewer splits than requested.
+
+The `limit` parameter has extended semantics. Setting it to `-1` for a log stream query indicates to query all logs.
 
 The response body is JSON encoded:
 
