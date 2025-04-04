@@ -312,7 +312,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// Call GetStreamUsage.
 			req := &logproto.GetStreamUsageRequest{
 				Tenant:       tt.tenantID,
-				Partitions:   tt.partitionIDs,
 				StreamHashes: tt.streamHashes,
 			}
 
@@ -376,7 +375,6 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 
 			req := &logproto.GetStreamUsageRequest{
 				Tenant:       "tenant1",
-				Partitions:   []int32{0},
 				StreamHashes: []uint64{1, 2, 3, 4, 5},
 			}
 
