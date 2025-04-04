@@ -182,7 +182,7 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	switch e := expr.(type) {
 	case *log.BinaryLabelFilter:
 		op := types.BinaryOpOr
-		if e.And == true {
+		if e.And {
 			op = types.BinaryOpAnd
 		}
 		left, err := convertLabelFilter(e.Left)
