@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -519,6 +520,122 @@ func TestSliceToSet(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			actual := sliceToSet(tc.slice)
 			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc      string
+		orgID     string
+		expected  []*logproto.DetectedLabel
+		mockSetup func(*querierMock)
+	}{
+		{
+			desc:  "single tenant",
+			orgID: "1",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 100},
+				{Label: "env", Cardinality: 50},
+			},
+			mockSetup: func(q *querierMock) {
+				q.On("DetectedLabels", mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100},
+						{Label: "env", Cardinality: 50},
+					},
+				}, nil)
+			},
+		},
+		{
+			desc:  "multiple tenants with overlapping labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 150},    // 100 + 50
+				{Label: "env", Cardinality: 50},     // from tenant 1
+				{Label: "service", Cardinality: 75}, // from tenant 2
+			},
+			mockSetup: func(q *querierMock) {
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && (id == "1" || id == "2")
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100},
+						{Label: "env", Cardinality: 50},
+					},
+				}, nil).Once()
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && (id == "1" || id == "2")
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 50},
+						{Label: "service", Cardinality: 75},
+					},
+				}, nil).Once()
+			},
+		},
+		{
+			desc:  "multiple tenants with unique labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app1", Cardinality: 100},
+				{Label: "app2", Cardinality: 200},
+				{Label: "env1", Cardinality: 50},
+				{Label: "env2", Cardinality: 75},
+			},
+			mockSetup: func(q *querierMock) {
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && (id == "1" || id == "2")
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app1", Cardinality: 100},
+						{Label: "env1", Cardinality: 50},
+					},
+				}, nil).Once()
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && (id == "1" || id == "2")
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app2", Cardinality: 200},
+						{Label: "env2", Cardinality: 75},
+					},
+				}, nil).Once()
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			tc.mockSetup(querier)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+			req := &logproto.DetectedLabelsRequest{
+				Query: `{app="foo"}`,
+				Start: time.Now().Add(-1 * time.Hour),
+				End:   time.Now(),
+			}
+
+			resp, err := multiTenantQuerier.DetectedLabels(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, len(tc.expected), len(resp.DetectedLabels))
+
+			// Sort both slices for comparison
+			sort.Slice(tc.expected, func(i, j int) bool {
+				return tc.expected[i].Label < tc.expected[j].Label
+			})
+			sort.Slice(resp.DetectedLabels, func(i, j int) bool {
+				return resp.DetectedLabels[i].Label < resp.DetectedLabels[j].Label
+			})
+
+			for i := range tc.expected {
+				require.Equal(t, tc.expected[i].Label, resp.DetectedLabels[i].Label)
+				require.Equal(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality)
+			}
 		})
 	}
 }
