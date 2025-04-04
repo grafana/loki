@@ -72,10 +72,10 @@ message ExceedsLimitsRequest {
 
 message ExceedsLimitsResponse {
   string tenant = 1;
-  repeated RejectedStream rejectedStreams = 2;
+  repeated ExceedsLimitsResult results = 2;
 }
 
-message RejectedStream {
+message ExceedsLimitsResult {
   uint64 streamHash = 1;
   string reason = 2;
 }

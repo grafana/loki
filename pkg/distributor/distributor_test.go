@@ -2430,7 +2430,7 @@ func TestExceedsLimits(t *testing.T) {
 		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
 			return &logproto.ExceedsLimitsResponse{
 				Tenant: "test",
-				RejectedStreams: []*logproto.RejectedStream{{
+				Results: []*logproto.ExceedsLimitsResult{{
 					StreamHash: 1,
 					Reason:     "test",
 				}},

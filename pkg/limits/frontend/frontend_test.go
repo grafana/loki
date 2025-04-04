@@ -24,7 +24,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		getStreamUsageResponses        []*logproto.GetStreamUsageResponse
 		maxGlobalStreams               int
 		ingestionRate                  float64
-		expected                       []*logproto.RejectedStream
+		expected                       []*logproto.ExceedsLimitsResult
 	}{{
 		name: "no streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
@@ -80,7 +80,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		ingestionRate:    100,
 		expected:         nil,
 	}, {
-		name: "exceeds max streams limit, rejects new streams",
+		name: "exceeds max streams limit, returns the new streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -105,12 +105,12 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 5,
 		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
+		expected: []*logproto.ExceedsLimitsResult{
 			{StreamHash: 0x1, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 0x2, Reason: ReasonExceedsMaxStreams},
 		},
 	}, {
-		name: "exceeds max streams limit, allows existing streams and rejects new streams",
+		name: "exceeds max streams limit, allows existing streams and returns the new streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -140,7 +140,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 5,
 		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
+		expected: []*logproto.ExceedsLimitsResult{
 			{StreamHash: 6, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 7, Reason: ReasonExceedsMaxStreams},
 		},
@@ -191,10 +191,10 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 1,
 		ingestionRate:    100,
-		// No streams should be rejected.
+		// No streams should be returned.
 		expected: nil,
 	}, {
-		name: "exceeds rate limits, rejects all streams",
+		name: "exceeds rate limits, returns all streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*logproto.StreamMetadata{
@@ -214,7 +214,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 10,
 		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
+		expected: []*logproto.ExceedsLimitsResult{
 			{StreamHash: 1, Reason: ReasonExceedsRateLimit},
 			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 		},
@@ -247,7 +247,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 10,
 		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
+		expected: []*logproto.ExceedsLimitsResult{
 			{StreamHash: 1, Reason: ReasonExceedsRateLimit},
 			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
 		},
@@ -273,7 +273,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 5,
 		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
+		expected: []*logproto.ExceedsLimitsResult{
 			{StreamHash: 0x6, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 0x7, Reason: ReasonExceedsMaxStreams},
 			{StreamHash: 0x6, Reason: ReasonExceedsRateLimit},
@@ -319,7 +319,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 
 			resp, err := f.ExceedsLimits(ctx, test.exceedsLimitsRequest)
 			require.NoError(t, err)
-			require.Equal(t, test.expected, resp.RejectedStreams)
+			require.Equal(t, test.expected, resp.Results)
 		})
 	}
 }
