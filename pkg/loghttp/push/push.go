@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -202,6 +203,14 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
+
+	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
+	// Therefore, if the header is included, only log the first address
+	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	if agentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 

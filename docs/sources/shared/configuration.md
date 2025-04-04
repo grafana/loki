@@ -1205,6 +1205,10 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.recheck-period
   [recheck_period: <duration> | default = 10s]
 
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:

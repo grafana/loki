@@ -2,9 +2,9 @@ package frontend
 
 import (
 	"context"
-	"slices"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
@@ -24,17 +24,19 @@ var (
 // RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
 // limits instances.
 type RingStreamUsageGatherer struct {
-	logger log.Logger
-	ring   ring.ReadRing
-	pool   *ring_client.Pool
+	logger        log.Logger
+	ring          ring.ReadRing
+	pool          *ring_client.Pool
+	numPartitions int
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
-		logger: logger,
-		ring:   ring,
-		pool:   pool,
+		logger:        logger,
+		ring:          ring,
+		pool:          pool,
+		numPartitions: numPartitions,
 	}
 }
 
@@ -56,32 +58,48 @@ func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStrea
 }
 
 func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitions, err := g.getPartitionConsumers(ctx, rs)
+	partitionConsumers, err := g.getPartitionConsumers(ctx, rs)
 	if err != nil {
 		return nil, err
 	}
 
-	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(rs.Instances))
+	instancesToQuery := make(map[string][]uint64)
+	for _, hash := range r.StreamHashes {
+		partitionID := int32(hash % uint64(g.numPartitions))
+		addr, ok := partitionConsumers[partitionID]
+		if !ok {
+			// TODO Replace with a metric for partitions missing owners.
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
+			continue
+		}
+		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
+	}
 
-	// TODO: We shouldn't query all instances since we know which instance holds which stream.
-	for i, instance := range rs.Instances {
+	errg, ctx := errgroup.WithContext(ctx)
+	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
+
+	// Query each instance for stream usage
+	i := 0
+	for addr, hashes := range instancesToQuery {
+		j := i
+		i++
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
+			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
 				return err
 			}
+
 			protoReq := &logproto.GetStreamUsageRequest{
 				Tenant:       r.Tenant,
-				StreamHashes: r.StreamHashes,
-				Partitions:   partitions[instance.Addr],
+				StreamHashes: hashes,
 			}
 
 			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
 				return err
 			}
-			responses[i] = GetStreamUsageResponse{Addr: instance.Addr, Response: resp}
+
+			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
 			return nil
 		})
 	}
@@ -98,7 +116,7 @@ type getAssignedPartitionsResponse struct {
 	Response *logproto.GetAssignedPartitionsResponse
 }
 
-func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[string][]int32, error) {
+func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
@@ -139,16 +157,5 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 		}
 	}
 
-	// Return a slice of partition IDs for each instance.
-	result := make(map[string][]int32)
-	for partition, addr := range assigned {
-		result[addr] = append(result[addr], partition)
-	}
-
-	// Sort the partition IDs.
-	for instance := range result {
-		slices.Sort(result[instance])
-	}
-
-	return result, nil
+	return assigned, nil
 }
