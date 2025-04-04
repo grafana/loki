@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // A Stream is an individual stream in a data object.
@@ -33,6 +34,35 @@ type Stream struct {
 
 	// Labels of the stream.
 	Labels labels.Labels
+
+	// LbNameCaps and LbValueCaps are the capacity of the backing arrays for the equivalent labels structs in the Labels slice.
+	LbNameCaps, LbValueCaps []int
+}
+
+func (s *Stream) DeepCopy() Stream {
+	newStream := Stream{
+		ID:               s.ID,
+		MinTime:          s.MinTime,
+		MaxTime:          s.MaxTime,
+		UncompressedSize: s.UncompressedSize,
+		Labels:           copyLabels(s.Labels),
+		LbNameCaps:       make([]int, len(s.LbNameCaps)),
+		LbValueCaps:      make([]int, len(s.LbValueCaps)),
+	}
+	copy(newStream.LbNameCaps, s.LbNameCaps)
+	copy(newStream.LbValueCaps, s.LbValueCaps)
+	return newStream
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 // StreamsReader reads the set of streams from an [Object].
@@ -43,7 +73,8 @@ type StreamsReader struct {
 
 	predicate StreamsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	stream streams.Stream
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -92,9 +123,8 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
-
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)
@@ -102,18 +132,34 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		return 0, io.EOF
 	}
 
+	// Pre-allocate memory for metadata
+	for i := range s {
+		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.columns))
+		s[i].Labels = s[i].Labels[:len(r.columns)]
+		s[i].LbValueCaps = slicegrow.GrowToCap(s[i].LbValueCaps, len(r.columns))
+		s[i].LbValueCaps = s[i].LbValueCaps[:len(r.columns)]
+		s[i].LbNameCaps = slicegrow.GrowToCap(s[i].LbNameCaps, len(r.columns))
+		s[i].LbNameCaps = s[i].LbNameCaps[:len(r.columns)]
+	}
+
 	for i := range r.buf[:n] {
-		readStream, err := streams.Decode(r.columnDesc, r.buf[i])
-		if err != nil {
+		if err := streams.Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
-		s[i] = Stream{
-			ID:               readStream.ID,
-			MinTime:          readStream.MinTimestamp,
-			MaxTime:          readStream.MaxTimestamp,
-			UncompressedSize: readStream.UncompressedSize,
-			Labels:           readStream.Labels,
+		// Copy record data into pre-allocated output buffer
+		s[i].ID = r.stream.ID
+		s[i].MinTime = r.stream.MinTimestamp
+		s[i].MaxTime = r.stream.MaxTimestamp
+		s[i].UncompressedSize = r.stream.UncompressedSize
+		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
+		for j := range r.stream.Labels {
+			name := slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Name, s[i].LbNameCaps[j]), r.stream.Labels[j].Name)
+			s[i].Labels[j].Name = unsafeString(name)
+			s[i].LbNameCaps[j] = cap(name)
+			value := slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Value, s[i].LbValueCaps[j]), r.stream.Labels[j].Value)
+			s[i].Labels[j].Value = unsafeString(value)
+			s[i].LbValueCaps[j] = cap(value)
 		}
 	}
 

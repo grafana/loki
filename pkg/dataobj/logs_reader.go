@@ -7,10 +7,10 @@ import (
 	"io"
 	"iter"
 	"maps"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -23,14 +23,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // A Record is an individual log record in a data object.
 type Record struct {
-	StreamID  int64         // StreamID associated with the log record.
-	Timestamp time.Time     // Timestamp of the log record.
-	Metadata  labels.Labels // Set of metadata associated with the log record.
-	Line      []byte        // Line of the log record.
+	StreamID    int64         // StreamID associated with the log record.
+	Timestamp   time.Time     // Timestamp of the log record.
+	Metadata    labels.Labels // Set of metadata associated with the log record.
+	Line        []byte        // Line of the log record.
+	MdValueCaps []int         // Caps for the value of the metadata
+	MdNameCaps  []int         // Caps for the name of the metadata
 }
 
 // LogsReader reads the set of logs from an [Object].
@@ -42,7 +45,8 @@ type LogsReader struct {
 	matchIDs  map[int64]struct{}
 	predicate LogsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	record logs.Record
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -109,8 +113,19 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
+
+	// Fill the row buffer with empty values so they can re-use the memory we pass in.
+	for i := range r.buf {
+		r.buf[i].Values = slicegrow.GrowToCap(r.buf[i].Values, len(r.columns))
+		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
+		for j := range r.buf[i].Values {
+			if r.buf[i].Values[j].IsNil() {
+				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 8))
+			}
+		}
+	}
 
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -119,21 +134,56 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		return 0, io.EOF
 	}
 
+	metadataColumns := 0
+	for _, column := range r.columnDesc {
+		if column.Type == logsmd.COLUMN_TYPE_METADATA {
+			metadataColumns++
+		}
+	}
+
+	// Pre-allocate memory for metadata
+	for i := range s {
+		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, metadataColumns)
+		s[i].Metadata = s[i].Metadata[:metadataColumns]
+		s[i].MdNameCaps = slicegrow.GrowToCap(s[i].MdNameCaps, metadataColumns)
+		s[i].MdNameCaps = s[i].MdNameCaps[:metadataColumns]
+		s[i].MdValueCaps = slicegrow.GrowToCap(s[i].MdValueCaps, metadataColumns)
+		s[i].MdValueCaps = s[i].MdValueCaps[:metadataColumns]
+	}
+
 	for i := range r.buf[:n] {
-		readRecord, err := logs.Decode(r.columnDesc, r.buf[i])
+		err := logs.Decode(r.columnDesc, r.buf[i], &r.record)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
 
-		s[i] = Record{
-			StreamID:  readRecord.StreamID,
-			Timestamp: readRecord.Timestamp,
-			Metadata:  readRecord.Metadata,
-			Line:      readRecord.Line,
+		// Copy record data into pre-allocated output buffer
+		s[i].StreamID = r.record.StreamID
+		s[i].Timestamp = r.record.Timestamp
+		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
+		for j := range r.record.Metadata {
+			name := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
+			s[i].Metadata[j].Name = unsafeString(name)
+			s[i].MdNameCaps[j] = cap(name)
+			value := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
+			s[i].Metadata[j].Value = unsafeString(value)
+			s[i].MdValueCaps[j] = cap(value)
 		}
+		s[i].Line = slicegrow.CopyInto(s[i].Line, r.record.Line)
 	}
 
 	return n, nil
+}
+
+func unsafeSlice(data string, capacity int) []byte {
+	if capacity <= 0 {
+		capacity = len(data)
+	}
+	return unsafe.Slice(unsafe.StringData(data), capacity)
+}
+
+func unsafeString(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {

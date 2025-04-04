@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -14,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 var (
@@ -56,6 +59,8 @@ func newEntryIterator(ctx context.Context,
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
+	var labels []labels.Label
+
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -93,11 +98,18 @@ func newEntryIterator(ctx context.Context,
 				prevStreamID = record.StreamID
 			}
 
+			// Process will mutate the label names, so we need to copy them. We can re-use the values until a record is accepted, however.
+			labels := slices.Grow(labels, max(0, len(record.Metadata)-len(labels)))
+			labels = labels[:len(record.Metadata)]
+			md := copyLabelNames(labels, record.Metadata)
+
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, md...)
 			if !ok {
 				continue
 			}
+			// If we accept this record, we need to further copy the values into a new slice so we can re-use the read buffer.
+			record.Metadata = copyLabelValues(record.Metadata)
 			var metadata []logproto.LabelAdapter
 			if len(record.Metadata) > 0 {
 				metadata = logproto.FromLabelsToLabelAdapters(record.Metadata)
@@ -114,6 +126,24 @@ func newEntryIterator(ctx context.Context,
 		}
 	}
 	return top.Iterator(), nil
+}
+
+// Copies the label names from src to dst, while re-using the memory for values
+func copyLabelNames(dst labels.Labels, src labels.Labels) labels.Labels {
+	for i, label := range src {
+		dst[i].Name = strings.Clone(label.Name)
+		dst[i].Value = label.Value
+	}
+	return dst
+}
+
+// Copies the label values into a new slice. We re-use the label names as they were previously copied by Process.
+func copyLabelValues(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{Name: label.Name, Value: strings.Clone(label.Value)}
+	}
+	return lb
 }
 
 // entryHeap implements a min-heap of entries based on a custom less function.

@@ -61,6 +61,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
+		stream = stream.DeepCopy()
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
 	})
 	if err != nil {
@@ -178,6 +179,7 @@ func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, object
 }
 
 // ProcessParallel processes series from multiple readers in parallel
+// dataobj.Stream objects returned to onNewStream may be reused and must be deep copied for further use, including the stream.Labels keys and values.
 func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func(uint64, dataobj.Stream)) error {
 	readers, err := shardStreamReaders(ctx, sp.objects, sp.shard)
 	if err != nil {

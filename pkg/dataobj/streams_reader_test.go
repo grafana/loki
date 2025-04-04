@@ -32,9 +32,9 @@ var streamsTestdata = []struct {
 
 func TestStreamsReader(t *testing.T) {
 	expect := []dataobj.Stream{
-		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo")},
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar")},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz")},
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), nil, nil},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), nil, nil},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), nil, nil},
 	}
 
 	obj := buildStreamsObject(t, 1) // Many pages
@@ -45,12 +45,12 @@ func TestStreamsReader(t *testing.T) {
 	r := dataobj.NewStreamsReader(obj, 0)
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
-	require.Equal(t, expect, actual)
+	require.Equal(t, expect, removeCaps(actual))
 }
 
 func TestStreamsReader_AddLabelMatcher(t *testing.T) {
 	expect := []dataobj.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), nil, nil},
 	}
 
 	obj := buildStreamsObject(t, 1) // Many pages
@@ -63,13 +63,13 @@ func TestStreamsReader_AddLabelMatcher(t *testing.T) {
 
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
-	require.Equal(t, expect, actual)
+	require.Equal(t, expect, removeCaps(actual))
 }
 
 func TestStreamsReader_AddLabelFilter(t *testing.T) {
 	expect := []dataobj.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar")},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), nil, nil},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), nil, nil},
 	}
 
 	obj := buildStreamsObject(t, 1) // Many pages
@@ -89,7 +89,15 @@ func TestStreamsReader_AddLabelFilter(t *testing.T) {
 
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
-	require.Equal(t, expect, actual)
+	require.Equal(t, expect, removeCaps(actual))
+}
+
+func removeCaps(streams []dataobj.Stream) []dataobj.Stream {
+	for i := range streams {
+		streams[i].LbNameCaps = nil
+		streams[i].LbValueCaps = nil
+	}
+	return streams
 }
 
 func unixTime(sec int64) time.Time {

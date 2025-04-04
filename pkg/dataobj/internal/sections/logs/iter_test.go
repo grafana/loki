@@ -120,12 +120,14 @@ func TestDecode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			record, err := Decode(tt.columns, tt.row)
+			record := Record{}
+			err := Decode(tt.columns, tt.row, &record)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
+			record.MdValueCaps = nil
 			require.Equal(t, tt.expected, record)
 		})
 	}

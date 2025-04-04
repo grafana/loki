@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 func init() {
@@ -111,10 +112,9 @@ func (dec *plainStringDecoder) Decode(s []Value) (int, error) {
 	}
 
 	var err error
-	var v Value
 
 	for i := range s {
-		v, err = dec.decode()
+		err = dec.decode(&s[i])
 		if errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
@@ -123,23 +123,25 @@ func (dec *plainStringDecoder) Decode(s []Value) (int, error) {
 		} else if err != nil {
 			return i, err
 		}
-		s[i] = v
 	}
 	return len(s), nil
 }
 
 // decode decodes a string.
-func (dec *plainStringDecoder) decode() (Value, error) {
+func (dec *plainStringDecoder) decode(v *Value) error {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
-		return StringValue(""), err
+		return err
 	}
 
-	dst := make([]byte, int(sz))
+	dst := getDestinationBuffer(v, int(sz))
 	if _, err := io.ReadFull(dec.r, dst); err != nil {
-		return StringValue(""), err
+		return err
 	}
-	return StringValue(string(dst)), nil
+
+	v.num = sz
+	v.any = (stringptr)(unsafe.SliceData(dst))
+	return nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from r.
@@ -228,10 +230,9 @@ func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
 	}
 
 	var err error
-	var v Value
 
 	for i := range s {
-		v, err = dec.decode()
+		err = dec.decode(&s[i])
 		if errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
@@ -240,26 +241,56 @@ func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
 		} else if err != nil {
 			return i, err
 		}
-		s[i] = v
 	}
 	return len(s), nil
 }
 
 // decode decodes a string.
-func (dec *plainBytesDecoder) decode() (Value, error) {
+func (dec *plainBytesDecoder) decode(v *Value) error {
 	sz, err := binary.ReadUvarint(dec.r)
 	if err != nil {
-		return ByteArrayValue([]byte{}), err
+		return err
 	}
 
-	dst := make([]byte, int(sz))
+	dst := getDestinationBuffer(v, int(sz))
 	if _, err := io.ReadFull(dec.r, dst); err != nil {
-		return ByteArrayValue([]byte{}), err
+		return err
 	}
-	return ByteArrayValue(dst), nil
+
+	v.num = sz
+	v.any = (bytearray)(unsafe.SliceData(dst))
+	return nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from r.
 func (dec *plainBytesDecoder) Reset(r streamio.Reader) {
 	dec.r = r
+}
+
+func getDestinationBuffer(v *Value, sz int) []byte {
+	if v.cap == 0 {
+		dst := make([]byte, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+		return dst
+	}
+
+	var dst []byte
+	// Depending on which type this value was previously used for dictates how we reference the memory.
+	switch v.any.(type) {
+	case stringptr:
+		dst = unsafe.Slice(v.any.(stringptr), int(v.cap))
+	case bytearray:
+		dst = unsafe.Slice(v.any.(bytearray), int(v.cap))
+	default:
+		panic("unknown value type in Value's 'any' field")
+	}
+
+	// Grow the buffer attached to this Value if necessary.
+	if v.cap < uint64(sz) {
+		dst = slicegrow.GrowToCap(dst, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+	}
+	return dst[:sz]
 }

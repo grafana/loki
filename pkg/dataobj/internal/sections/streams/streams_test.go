@@ -3,6 +3,7 @@ package streams_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,10 +61,23 @@ func Test(t *testing.T) {
 	for result := range streams.Iter(context.Background(), dec) {
 		stream, err := result.Value()
 		require.NoError(t, err)
+		stream.Labels = copyLabels(stream.Labels)
+		stream.LbValueCaps = nil
 		actual = append(actual, stream)
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 func buildObject(st *streams.Streams) ([]byte, error) {

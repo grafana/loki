@@ -38,6 +38,9 @@ type Value struct {
 	// types.
 	num uint64
 
+	// cap holds the capacity for byte slice pointed to by any, if applicable.
+	cap uint64
+
 	// If any is of type [datasetmd.ValueType], then the value is in num as
 	// described above.
 	//
@@ -68,6 +71,7 @@ func StringValue(v string) Value {
 	return Value{
 		num: uint64(len(v)),
 		any: (stringptr)(unsafe.StringData(v)),
+		cap: uint64(len(v)),
 	}
 }
 
@@ -76,6 +80,7 @@ func ByteArrayValue(v []byte) Value {
 	return Value{
 		num: uint64(len(v)),
 		any: (bytearray)(unsafe.SliceData(v)),
+		cap: uint64(cap(v)),
 	}
 }
 

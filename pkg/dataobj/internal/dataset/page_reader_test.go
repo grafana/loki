@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -187,7 +188,7 @@ func convertToStrings(t *testing.T, values []Value) []string {
 			out = append(out, "")
 		} else {
 			require.Equal(t, datasetmd.VALUE_TYPE_STRING, v.Type())
-			out = append(out, v.String())
+			out = append(out, strings.Clone(v.String()))
 		}
 	}
 
