@@ -182,10 +182,11 @@ func NewPipeline(stages []Stage) Pipeline {
 type streamPipeline struct {
 	stages  []Stage
 	builder *LabelsBuilder
+	cache   *sync.Map
 }
 
 func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
-	return &streamPipeline{stages, labelsBuilder}
+	return &streamPipeline{stages, labelsBuilder, &sync.Map{}}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -226,7 +227,12 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	p.builder.Reset()
 
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+		if cached, ok := p.cache.Load(lb.Name); ok {
+			structuredMetadata[i].Name = cached.(string)
+		} else {
+			structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+			p.cache.Store(lb.Name, lb.Name)
+		}
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)

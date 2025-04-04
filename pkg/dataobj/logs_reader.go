@@ -122,7 +122,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
 		for j := range r.buf[i].Values {
 			if r.buf[i].Values[j].IsNil() {
-				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 0, 64))
+				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 8))
 			}
 		}
 	}
@@ -162,10 +162,12 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		s[i].Timestamp = r.record.Timestamp
 		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
 		for j := range r.record.Metadata {
-			s[i].Metadata[j].Name = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name))
-			s[i].Metadata[j].Value = unsafeString(slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value))
-			s[i].MdNameCaps[j] = max(s[i].MdNameCaps[j], len(s[i].Metadata[j].Name))
-			s[i].MdValueCaps[j] = max(s[i].MdValueCaps[j], len(s[i].Metadata[j].Value))
+			name := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
+			s[i].Metadata[j].Name = unsafeString(name)
+			s[i].MdNameCaps[j] = cap(name)
+			value := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
+			s[i].Metadata[j].Value = unsafeString(value)
+			s[i].MdValueCaps[j] = cap(value)
 		}
 		s[i].Line = slicegrow.CopyInto(s[i].Line, r.record.Line)
 	}

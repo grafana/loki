@@ -148,7 +148,7 @@ func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) er
 			// Convert the target pointer to a byte slice and grow it if necessary.
 			target := unsafeSlice(stream.Labels[nextLabelIdx].Value, stream.LbValueCaps[nextLabelIdx])
 			target = slicegrow.CopyStringInto(target, columnValue.String())
-			stream.LbValueCaps[nextLabelIdx] = max(stream.LbValueCaps[nextLabelIdx], len(target))
+			stream.LbValueCaps[nextLabelIdx] = cap(target)
 
 			stream.Labels[nextLabelIdx].Name = column.Info.Name
 			stream.Labels[nextLabelIdx].Value = unsafeString(target)
