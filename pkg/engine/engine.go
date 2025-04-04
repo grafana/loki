@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -19,29 +18,6 @@ import (
 var (
 	ErrNotSupported = errors.New("feature not supported in new query engine")
 )
-
-// canExecuteWithNewEngine determines whether a query can be executed by the new execution engine.
-func canExecuteWithNewEngine(expr syntax.Expr) bool {
-	switch expr := expr.(type) {
-	case syntax.SampleExpr:
-		return false
-	case syntax.LogSelectorExpr:
-		ret := true
-		expr.Walk(func(e syntax.Expr) bool {
-			switch e.(type) {
-			case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-				ret = false
-			case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
-				ret = false
-			case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
-				ret = false
-			}
-			return true
-		})
-		return ret
-	}
-	return false
-}
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
 func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limits, logger log.Logger) *QueryEngine {
