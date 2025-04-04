@@ -135,7 +135,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 			// Convert the target pointer to a byte slice and grow it if necessary.
 			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value, record.MdValueCaps[nextMetadataIdx])
 			target = slicegrow.CopyStringInto(target, columnValue.String())
-			record.MdValueCaps[nextMetadataIdx] = max(record.MdValueCaps[nextMetadataIdx], len(target))
+			record.MdValueCaps[nextMetadataIdx] = cap(target)
 
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
 			record.Metadata[nextMetadataIdx].Value = unsafeString(target)
