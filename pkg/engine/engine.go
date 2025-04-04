@@ -68,7 +68,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		level.Warn(logger).Log("engine", "v2", "msg", "failed to create physical plan", "err", err)
 		return result, ErrNotSupported
 	}
-	plan, err = planner.Optimize(plan)
+	_, err = planner.Optimize(plan)
 	if err != nil {
 		level.Warn(logger).Log("engine", "v2", "msg", "failed to optimize physical plan", "err", err)
 		return result, ErrNotSupported
