@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.4.3](https://github.com/grafana/loki/compare/v3.4.2...v3.4.3) (2025-04-03)
+
+
+### Bug Fixes
+
+* **deps:** Move to Go 1.23.7 ([#16682](https://github.com/grafana/loki/issues/16682)) ([5de86f1](https://github.com/grafana/loki/commit/5de86f1375ddbd7efbd1f786298163de68747484))
+* **deps:** update jwt, oauth and go-redis dependencies ([#17023](https://github.com/grafana/loki/issues/17023)) ([e038d0f](https://github.com/grafana/loki/commit/e038d0fc3af9cc2adecbda81dbc39163be22ba11))
+* **deps:** update module golang.org/x/crypto to v0.35.0 [security] (release-3.4.x) ([#16588](https://github.com/grafana/loki/issues/16588)) ([184fe1a](https://github.com/grafana/loki/commit/184fe1ac64c9e519bd173edf91eb0e408dbc0a39))
+* **deps:** update module golang.org/x/oauth2 to v0.27.0 [security] (release-3.4.x) ([#16589](https://github.com/grafana/loki/issues/16589)) ([bead91e](https://github.com/grafana/loki/commit/bead91ef11934a73a7722a03bebd2d8875428cbc))
+* **docs:** add a note on docker configuration.md doc to explain accep… (backport release-3.4.x) ([#16743](https://github.com/grafana/loki/issues/16743)) ([c39780d](https://github.com/grafana/loki/commit/c39780d44979d32e121c008c2194f4ec9dd09f78))
+
 ## [3.4.2](https://github.com/grafana/loki/compare/v3.4.1...v3.4.2) (2025-02-14)
 
 
