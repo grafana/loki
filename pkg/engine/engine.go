@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -43,19 +44,21 @@ func canExecuteWithNewEngine(expr syntax.Expr) bool {
 }
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, limits logql.Limits, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limits, logger log.Logger) *QueryEngine {
 	return &QueryEngine{
-		logger: logger,
-		limits: limits,
-		opts:   opts,
+		logger:    logger,
+		limits:    limits,
+		metastore: metastore,
+		opts:      opts,
 	}
 }
 
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
 type QueryEngine struct {
-	logger log.Logger
-	limits logql.Limits
-	opts   logql.EngineOpts
+	logger    log.Logger
+	limits    logql.Limits
+	metastore metastore.Metastore
+	opts      logql.EngineOpts
 }
 
 // Query implements [logql.Engine].
@@ -82,7 +85,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return result, ErrNotSupported
 	}
 
-	executionContext := physical.NewContext(ctx, nil, params.Start(), params.End())
+	executionContext := physical.NewContext(ctx, e.metastore, params.Start(), params.End())
 	planner := physical.NewPlanner(executionContext)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
