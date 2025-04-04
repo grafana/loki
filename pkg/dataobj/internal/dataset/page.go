@@ -46,8 +46,6 @@ type (
 	Pages []Page
 )
 
-var emptyReader = bytes.NewReader(nil)
-
 // A Page holds an encoded and optionally compressed sequence of [Value]s
 // within a [Column].
 type Page interface {
@@ -107,7 +105,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		sr := snappyPool.Get().(*snappy.Reader)
 		sr.Reset(compressedValuesReader)
 		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
-			sr.Reset(emptyReader) // Allow releasing the buffer.
+			sr.Reset(nil) // Allow releasing the buffer.
 			snappyPool.Put(sr)
 			return nil
 		}}, nil
@@ -124,7 +122,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		}
 
 		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
-			_ = zr.Reset(emptyReader) // Allow releasing the buffer.
+			_ = zr.Reset(nil) // Allow releasing the buffer.
 			zstdPool.Put(zr)
 			return nil
 		}}, nil
