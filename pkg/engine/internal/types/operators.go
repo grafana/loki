@@ -53,12 +53,12 @@ const (
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
 
-	BinaryOpMatchStr        // String matching operation (|=).
-	BinaryOpNotMatchStr     // String non-matching operation (!=).
-	BinaryOpMatchRe         // Regular expression matching operation (|~).
-	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~).
-	BinaryOpMatchPattern    // Pattern matching operation (|>).
-	BinaryOpNotMatchPattern // Pattern non-matching operation (!>).
+	BinaryOpMatchStr        // String matching operation (|=). Used for string match filter and label matcher.
+	BinaryOpNotMatchStr     // String non-matching operation (!=). Used for string match filter and label matcher.
+	BinaryOpMatchRe         // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+	BinaryOpMatchPattern    // Pattern matching operation (|>). Used for pattern match filter.
+	BinaryOpNotMatchPattern // Pattern non-matching operation (!>). Use for pattern match filter.
 )
 
 // String returns a human-readable representation of the binary operation kind.
