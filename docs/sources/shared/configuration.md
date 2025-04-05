@@ -1209,6 +1209,11 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
+  # The TTL for the stream usage cache. Disable caching by setting to 0 or
+  # negative.
+  # CLI flag: -ingest-limits-frontend.partition-id-cache-ttl
+  [partition_id_cache_ttl: <duration> | default = 1m]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:

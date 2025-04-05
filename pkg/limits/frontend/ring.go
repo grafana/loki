@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -28,15 +29,19 @@ type RingStreamUsageGatherer struct {
 	ring          ring.ReadRing
 	pool          *ring_client.Pool
 	numPartitions int
+	cache         PartitionConsumersCache
+	cacheTTL      time.Duration
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, numPartitions int) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache PartitionConsumersCache, cacheTTL time.Duration, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
 		logger:        logger,
 		ring:          ring,
 		pool:          pool,
 		numPartitions: numPartitions,
+		cache:         cache,
+		cacheTTL:      cacheTTL,
 	}
 }
 
@@ -117,42 +122,69 @@ type getAssignedPartitionsResponse struct {
 }
 
 func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, error) {
-	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
-
-	// Get the partitions assigned to each instance.
-	for i, instance := range rs.Instances {
-		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
-			if err != nil {
-				return err
-			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
-			if err != nil {
-				return err
-			}
-			// No need for a mutex here as responses is a "Structured variable"
-			// as described in https://go.dev/ref/spec#Variables.
-			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
-			return nil
-		})
-	}
-	if err := errg.Wait(); err != nil {
-		return nil, err
-	}
-
-	// Deduplicate the partitions. This can happen if the call to
-	// GetAssignedPartitions is interleaved with a partition rebalance, such
-	// that two or more instances claim to be the consumer of the same
-	// partition at the same time. In case of conflicts, choose the instance
-	// with the latest timestamp.
+	// Initialize result maps
 	highestTimestamp := make(map[int32]int64)
 	assigned := make(map[int32]string)
-	for _, resp := range responses {
-		for partition, assignedAt := range resp.Response.AssignedPartitions {
-			if t := highestTimestamp[partition]; t < assignedAt {
-				highestTimestamp[partition] = assignedAt
-				assigned[partition] = resp.Addr
+
+	// Track which instances need to be queried
+	toQuery := make([]ring.InstanceDesc, 0, len(rs.Instances))
+
+	// Try to get cached entries first
+	for _, instance := range rs.Instances {
+		if g.cache == nil {
+			toQuery = append(toQuery, instance)
+			continue
+		}
+
+		if cached := g.cache.Get(instance.Addr); cached != nil {
+			// Use cached partitions, but still participate in conflict resolution
+			for partition, assignedAt := range cached.Value() {
+				if t := highestTimestamp[partition]; t < assignedAt {
+					highestTimestamp[partition] = assignedAt
+					assigned[partition] = instance.Addr
+				}
+			}
+		} else {
+			toQuery = append(toQuery, instance)
+		}
+	}
+
+	// Query uncached instances
+	if len(toQuery) > 0 {
+		errg, ctx := errgroup.WithContext(ctx)
+		responses := make([]getAssignedPartitionsResponse, len(toQuery))
+
+		for i, instance := range toQuery {
+			errg.Go(func() error {
+				client, err := g.pool.GetClientFor(instance.Addr)
+				if err != nil {
+					return err
+				}
+				resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+				if err != nil {
+					return err
+				}
+				responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
+				return nil
+			})
+		}
+		if err := errg.Wait(); err != nil {
+			return nil, err
+		}
+
+		// Process and cache new responses
+		for _, resp := range responses {
+			assignments := make(map[int32]int64)
+			for partition, assignedAt := range resp.Response.AssignedPartitions {
+				if t := highestTimestamp[partition]; t < assignedAt {
+					highestTimestamp[partition] = assignedAt
+					assigned[partition] = resp.Addr
+					assignments[partition] = assignedAt
+				}
+			}
+			// Cache the instance's partitions
+			if g.cache != nil {
+				g.cache.Set(resp.Addr, assignments, g.cacheTTL)
 			}
 		}
 	}

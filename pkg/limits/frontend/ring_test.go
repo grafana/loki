@@ -168,7 +168,8 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
-			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), numPartitions)
+			// Disable caching for these tests
+			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), nil, 0*time.Second, numPartitions)
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

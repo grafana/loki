@@ -107,3 +107,177 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		})
 	}
 }
+
+func TestRingStreamUsageGatherer_ServeHTTP(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialCache   map[string]PartitionAssignments
+		expectedCache  map[string]PartitionAssignments
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:           "GET with empty cache",
+			initialCache:   map[string]PartitionAssignments{},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "Ring Stream Usage Cache",
+		},
+		{
+			name: "GET with populated cache",
+			initialCache: map[string]PartitionAssignments{
+				"instance1:8080": {
+					1: time.Now().Unix(),
+					2: time.Now().Unix(),
+					3: time.Now().Unix(),
+				},
+				"instance2:8080": {
+					4: time.Now().Unix(),
+					5: time.Now().Unix(),
+					6: time.Now().Unix(),
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "instance1:8080",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ttl := time.Hour
+			// Create a new cache with test data
+			cache := NewPartitionConsumerCache(ttl)
+			for k, v := range tt.initialCache {
+				cache.Set(k, v, ttl)
+			}
+
+			// Create the gatherer with our test cache
+			gatherer := &RingStreamUsageGatherer{
+				cache: cache,
+			}
+
+			f := Frontend{
+				cfg: Config{
+					PartitionIDCacheTTL: ttl,
+				},
+				streamUsage: gatherer,
+			}
+
+			// Create request
+			req := httptest.NewRequest(http.MethodGet, "/ring-usage", nil)
+
+			// Create response recorder
+			w := httptest.NewRecorder()
+
+			// Call the handler
+			f.PartitionConsumersCacheHandler(w, req)
+
+			// Check status code
+			require.Equal(t, tt.expectedStatus, w.Code)
+			require.Contains(t, w.Body.String(), tt.expectedBody)
+		})
+	}
+}
+
+func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T) {
+	tests := []struct {
+		name           string
+		formData       map[string]string
+		initialCache   map[string]PartitionAssignments
+		expectedCache  map[string]PartitionAssignments
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "POST clear specific instance",
+			formData: map[string]string{
+				"instance": "instance1:8080",
+			},
+			initialCache: map[string]PartitionAssignments{
+				"instance1:8080": {
+					1: time.Now().Unix(),
+					2: time.Now().Unix(),
+					3: time.Now().Unix(),
+				},
+				"instance2:8080": {
+					4: time.Now().Unix(),
+					5: time.Now().Unix(),
+					6: time.Now().Unix(),
+				},
+			},
+			expectedCache: map[string]PartitionAssignments{
+				"instance2:8080": {
+					4: time.Now().Unix(),
+					5: time.Now().Unix(),
+					6: time.Now().Unix(),
+				},
+			},
+			expectedStatus: http.StatusSeeOther,
+		},
+		{
+			name: "POST clear all cache",
+			initialCache: map[string]PartitionAssignments{
+				"instance1:8080": {
+					1: time.Now().Unix(),
+					2: time.Now().Unix(),
+					3: time.Now().Unix(),
+				},
+				"instance2:8080": {
+					4: time.Now().Unix(),
+					5: time.Now().Unix(),
+					6: time.Now().Unix(),
+				},
+			},
+			expectedCache:  map[string]PartitionAssignments{},
+			expectedStatus: http.StatusSeeOther,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ttl := time.Hour
+			// Create a new cache with test data
+			cache := NewPartitionConsumerCache(ttl)
+			for k, v := range tt.initialCache {
+				cache.Set(k, v, ttl)
+			}
+
+			// Create the gatherer with our test cache
+			gatherer := &RingStreamUsageGatherer{
+				cache: cache,
+			}
+
+			f := Frontend{
+				cfg: Config{
+					PartitionIDCacheTTL: ttl,
+				},
+				streamUsage: gatherer,
+			}
+
+			// Create request
+			req := httptest.NewRequest(http.MethodPost, "/ring-usage", nil)
+			if tt.formData != nil {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				form := make(map[string][]string)
+				for k, v := range tt.formData {
+					form[k] = []string{v}
+				}
+				req.PostForm = form
+				req.Form = form
+			}
+
+			// Create response recorder
+			w := httptest.NewRecorder()
+
+			// Call the handler
+			f.PartitionConsumersCacheEvictHandler(w, req)
+
+			// Check status code
+			require.Equal(t, tt.expectedStatus, w.Code)
+
+			require.Equal(t, len(tt.expectedCache), cache.Len())
+			for key := range tt.expectedCache {
+				require.NotNil(t, cache.Get(key))
+			}
+		})
+	}
+}
