@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +13,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+// canExecuteWithNewEngine determines whether a query can be executed by the new execution engine.
+func canExecuteWithNewEngine(expr syntax.Expr) bool {
+	switch expr := expr.(type) {
+	case syntax.SampleExpr:
+		return false
+	case syntax.LogSelectorExpr:
+		ret := true
+		expr.Walk(func(e syntax.Expr) bool {
+			switch e.(type) {
+			case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
+				ret = false
+			case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
+				ret = false
+			case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+				ret = false
+			}
+			return true
+		})
+		return ret
+	}
+	return false
+}
+
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
 func BuildPlan(query logql.Params) (*Plan, error) {
@@ -22,6 +46,11 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	var err error
 
 	expr := query.GetExpression()
+
+	if !canExecuteWithNewEngine(expr) {
+		return nil, errors.New("query contains unimplemented features")
+	}
+
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.MatchersExpr:
@@ -102,9 +131,9 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 func convertMatcherType(t labels.MatchType) types.BinaryOp {
 	switch t {
 	case labels.MatchEqual:
-		return types.BinaryOpEq
+		return types.BinaryOpMatchStr
 	case labels.MatchNotEqual:
-		return types.BinaryOpNeq
+		return types.BinaryOpNotMatchStr
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
@@ -182,7 +211,7 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	switch e := expr.(type) {
 	case *log.BinaryLabelFilter:
 		op := types.BinaryOpOr
-		if e.And == true {
+		if e.And {
 			op = types.BinaryOpAnd
 		}
 		left, err := convertLabelFilter(e.Left)

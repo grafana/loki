@@ -2,6 +2,7 @@ package physical
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,6 +50,10 @@ func NewContext(ctx context.Context, ms metastore.Metastore, from, through time.
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
 func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, error) {
+	if c.metastore == nil {
+		return nil, nil, errors.New("no metastore to resolve objects")
+	}
+
 	matchers, err := expressionToMatchers(selector)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)

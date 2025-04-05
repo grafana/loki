@@ -44,7 +44,7 @@ func ForEachSeries(ctx context.Context, bucket *bbolt.Bucket, config config.Peri
 
 		if len(current.Chunks()) == 0 {
 			current.Reset(ref.SeriesID, ref.UserID, labelsMapper.Get(ref.SeriesID, ref.UserID))
-		} else if bytes.Compare(current.UserID(), ref.UserID) != 0 || bytes.Compare(current.SeriesID(), ref.SeriesID) != 0 {
+		} else if !bytes.Equal(current.UserID(), ref.UserID) || !bytes.Equal(current.SeriesID(), ref.SeriesID) {
 			err = callback(current)
 			if err != nil {
 				return err

@@ -178,7 +178,7 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		optimizer := newOptimizer(plan, optimizations)
 		optimizer.optimize(root)
 		if i == 1 {
-			return nil, errors.New("physcial plan must only have exactly one root node")
+			return nil, errors.New("physical plan must only have exactly one root node")
 		}
 	}
 	return plan, nil

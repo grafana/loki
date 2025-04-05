@@ -28,7 +28,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, nil, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -268,6 +268,6 @@ func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptes
 }
 
 func setupAPI(querier *querierMock) *QuerierAPI {
-	api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+	api := NewQuerierAPI(Config{}, querier, nil, nil, log.NewNopLogger())
 	return api
 }
