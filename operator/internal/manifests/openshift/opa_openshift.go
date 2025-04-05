@@ -45,6 +45,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
 		"--opa.skip-tenants=audit,infrastructure",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
+		"--opa.ssar=true",
 	}
 
 	if len(adminGroups) > 0 {
