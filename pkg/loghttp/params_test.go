@@ -204,6 +204,10 @@ func Test_parseTimestamp(t *testing.T) {
 		{"RFC3339 format", "2002-10-02T15:00:00Z", now, time.Date(2002, 10, 02, 15, 0, 0, 0, time.UTC), false},
 		{"RFC3339nano format", "2009-11-10T23:00:00.000000001Z", now, time.Date(2009, 11, 10, 23, 0, 0, 1, time.UTC), false},
 		{"invalid", "we", now, time.Time{}, true},
+		{"valid with leading zeros", "0000123456", now, time.Unix(123456, 0), false},
+		{"valid with trailing zeros", "1571332130.000", now, time.Unix(1571332130, 0), false},
+		{"scientific notation", "1.5e9", now, time.Time{}, true},
+		{"multiple decimal points", "1571332130.934.123", now, time.Time{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
