@@ -8,7 +8,6 @@ import (
 )
 
 func TestDepthFirstTraversalVisitor(t *testing.T) {
-
 	visited := [][2]string{}
 
 	visitor := &DepthFirstTraversal{
@@ -65,6 +64,45 @@ func TestDepthFirstTraversalVisitor_Variants(t *testing.T) {
 	}
 
 	query := `variants(count_over_time({env="prod"}[1m])) of ({env="prod"}[1m])`
+	expr, err := ParseExpr(query)
+	require.NoError(t, err)
+	expr.Accept(visitor)
+	require.Equal(t, expected, visited)
+}
+
+func TestDepthFirstTraversalVisitor_LabelReplace(t *testing.T) {
+	visited := [][2]string{}
+
+	visitor := &DepthFirstTraversal{
+		VisitRangeAggregationFn: func(_ RootVisitor, e *RangeAggregationExpr) {
+			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
+		},
+	}
+
+	// Only expressions that have a Visit function defined are added to the list
+	expected := [][2]string{
+		{
+			"*syntax.RangeAggregationExpr",
+			"sum_over_time({namespace=\"tns\"} |= \"level=error\" | json | ( avg==5 , bar<25ms ) | unwrap duration(latency) | __error__!~\".*\"[5m])",
+		}, {
+			"*syntax.RangeAggregationExpr",
+			"count_over_time({namespace=\"tns\"} | logfmt | label_format foo=bar[5m])",
+		},
+	}
+
+	query := `label_replace(
+			sum by (job) (
+				sum_over_time(
+					{namespace="tns"} |= "level=error" | json | avg=5 and bar<25ms | unwrap duration(latency)  | __error__!~".*" [5m]
+				)
+			/
+				count_over_time({namespace="tns"} | logfmt | label_format foo=bar[5m])
+			),
+			"foo",
+			"$1",
+			"service",
+			"(.*):.*"
+		)`
 	expr, err := ParseExpr(query)
 	require.NoError(t, err)
 	expr.Accept(visitor)
