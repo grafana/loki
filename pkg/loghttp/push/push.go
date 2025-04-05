@@ -56,6 +56,11 @@ var (
 		Name:      "distributor_lines_received_total",
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant", "aggregated_metric", "policy"})
+	pushAgentLag = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_agent_most_recent_lag_milliseconds",
+		Help:      "The difference in milliseconds between the latest push request timetamp and the most recent timestamp in its payload",
+	}, []string{"tenant", "agent_ip_address", "path"})
 
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
@@ -189,6 +194,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	}
 	linesReceivedStats.Inc(totalNumLines)
 
+	mostRecentLag := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
+
 	logValues := []interface{}{
 		"msg", "push request parsed",
 		"path", r.URL.Path,
@@ -201,7 +208,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
+		"mostRecentLagMs", mostRecentLag,
 	}
 
 	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
@@ -210,6 +217,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	if agentIP != "" {
 		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
 	}
+	pushAgentLag.WithLabelValues(userID, strings.TrimSpace(agentIP), r.URL.Path).Add(float64(mostRecentLag))
 
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
