@@ -2,10 +2,8 @@ package distributor
 
 import (
 	"context"
-	"encoding/binary"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"math"
 	"net/http"
 	"runtime/pprof"
@@ -198,9 +196,7 @@ type Distributor struct {
 	ingesterTaskWg sync.WaitGroup
 
 	// Will succeed usage tracker in future.
-	limitsFrontendRing ring.ReadRing
-	limitsFrontends    *ring_client.Pool
-	limitsFailures     prometheus.Counter
+	ingestLimits *ingestLimits
 
 	// kafka
 	kafkaWriter   KafkaProducer
@@ -256,6 +252,17 @@ func New(
 	}
 
 	limitsFrontendClientFactory := limits_frontend_client.NewPoolFactory(limitsFrontendCfg)
+	limitsFrontendClientPool := limits_frontend_client.NewPool(
+		limits_frontend.RingName,
+		limitsFrontendCfg.PoolConfig,
+		limitsFrontendRing,
+		limitsFrontendClientFactory,
+		logger,
+	)
+	limitsFrontendClient := newIngestLimitsFrontendRingClient(
+		limitsFrontendRing,
+		limitsFrontendClientPool,
+	)
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
@@ -336,10 +343,6 @@ func New(
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant"}),
-		limitsFailures: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_ingest_limits_failures_total",
-			Help: "The total number of failures checking per-tenant ingest limits.",
-		}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -365,17 +368,10 @@ func New(
 			Help:      "The number of records a single per-partition write request has been split into.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}),
-		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
-		kafkaWriter:          kafkaWriter,
-		partitionRing:        partitionRing,
-		limitsFrontendRing:   limitsFrontendRing,
-		limitsFrontends: limits_frontend_client.NewPool(
-			limits_frontend.RingName,
-			limitsFrontendCfg.PoolConfig,
-			limitsFrontendRing,
-			limitsFrontendClientFactory,
-			logger,
-		),
+		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		kafkaWriter:           kafkaWriter,
+		partitionRing:         partitionRing,
+		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
@@ -726,15 +722,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
+		exceedsLimits, _, err := d.ingestLimits.ExceedsLimits(ctx, tenantID, streams)
 		if err != nil {
-			d.limitsFailures.Inc()
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
 		} else if exceedsLimits {
 			if d.cfg.IngestLimitsDryRunEnabled {
 				level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
 			} else {
-				return nil, httpgrpc.Error(http.StatusBadRequest, strings.Join(reasons, ","))
+				// TODO(grobinson): This will be removed, as we only want to fail the request
+				// when specific limits are exceeded.
+				return nil, httpgrpc.Error(http.StatusBadRequest, "request exceeded limits")
 			}
 		}
 	}
@@ -1183,127 +1180,6 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 			task.pushTracker.doneWithResult(nil)
 		}
 	}
-}
-
-// exceedsLimits returns true if the request exceeds the per-tenant limits,
-// otherwise false. If the request does exceed per-tenant limits, a list of
-// reasons are returned explaining which limits were exceeded. An error is
-// returned if the limits could not be checked.
-func (d *Distributor) exceedsLimits(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-	doExceedsLimitsFn doExceedsLimitsFunc,
-) (bool, []string, error) {
-	if !d.cfg.IngestLimitsEnabled {
-		return false, nil, nil
-	}
-	resp, err := doExceedsLimitsFn(ctx, tenantID, streams)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(resp.Results) == 0 {
-		return false, nil, nil
-	}
-	// hashesToLabels memoizes the labels for a stream hash so we can add
-	// it to the reason.
-	hashesToLabels := make(map[uint64]string)
-	for _, s := range streams {
-		hashesToLabels[s.HashKeyNoShard] = s.Stream.Labels
-	}
-	reasons := make([]string, 0, len(resp.Results))
-	for _, result := range resp.Results {
-		reasons = append(reasons, fmt.Sprintf(
-			"stream %s was rejected because %q",
-			hashesToLabels[result.StreamHash],
-			result.Reason,
-		))
-	}
-	return true, reasons, nil
-}
-
-// doExceedsLimitsFunc enables stubbing out doExceedsLimitsRPC for tests.
-type doExceedsLimitsFunc func(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-) (*logproto.ExceedsLimitsResponse, error)
-
-// doExceedsLimitsRPC executes an RPC to the limits-frontend service to check
-// if per-tenant limits have been exceeded. If an RPC call returns an error,
-// it failsover to the next limits-frontend service. The failover is repeated
-// until there are no more replicas remaining or the context is canceled,
-// whichever happens first.
-func (d *Distributor) doExceedsLimitsRPC(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-) (*logproto.ExceedsLimitsResponse, error) {
-	// We use an FNV-1 of all stream hashes in the request to load balance requests
-	// to limits-frontends instances.
-	h := fnv.New32()
-
-	// The distributor sends the hashes of all streams in the request to the
-	// limits-frontend. The limits-frontend is responsible for deciding if
-	// the request would exceed the tenants limits, and if so, which streams
-	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
-	for _, stream := range streams {
-		// Add the stream hash to FNV-1.
-		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.HashKeyNoShard)
-		_, _ = h.Write(buf)
-
-		// Calculate the size of the stream.
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-		// Add the stream hash to the request. This is sent to limits-frontend.
-		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
-			StreamHash:             stream.HashKeyNoShard,
-			EntriesSize:            entriesSize,
-			StructuredMetadataSize: structuredMetadataSize,
-		})
-	}
-
-	req := logproto.ExceedsLimitsRequest{
-		Tenant:  tenantID,
-		Streams: streamMetadata,
-	}
-
-	// Get the limits-frontend instances from the ring.
-	var descs [5]ring.InstanceDesc
-	rs, err := d.limitsFrontendRing.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
-	}
-
-	var lastErr error
-	// Send the request to the limits-frontend to see if it exceeds the tenant
-	// limits. If the RPC fails, failover to the next instance in the ring.
-	for _, instance := range rs.Instances {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		client := c.(logproto.IngestLimitsFrontendClient)
-		resp, err := client.ExceedsLimits(ctx, &req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		return resp, nil
-	}
-
-	return nil, lastErr
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
