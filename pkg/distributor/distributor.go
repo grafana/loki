@@ -89,6 +89,9 @@ type Config struct {
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
+	// Request parser
+	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
+
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
@@ -118,6 +121,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.TenantTopic.RegisterFlags(fs)
+	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -196,6 +200,7 @@ type Distributor struct {
 	// Will succeed usage tracker in future.
 	limitsFrontendRing ring.ReadRing
 	limitsFrontends    *ring_client.Pool
+	limitsFailures     prometheus.Counter
 
 	// kafka
 	kafkaWriter   KafkaProducer
@@ -331,6 +336,10 @@ func New(
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant"}),
+		limitsFailures: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_failures_total",
+			Help: "The total number of failures checking per-tenant ingest limits.",
+		}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -719,6 +728,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if d.cfg.IngestLimitsEnabled {
 		exceedsLimits, reasons, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
 		if err != nil {
+			d.limitsFailures.Inc()
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
 		} else if exceedsLimits {
 			if d.cfg.IngestLimitsDryRunEnabled {

@@ -9,10 +9,10 @@ import "fmt"
 type Limit struct {
 	id string
 
-	// Offset specifies how many initial rows should be skipped.
-	Offset uint64
-	// Limit specifies how many rows should be returned in total.
-	Limit uint64
+	// Skip specifies how many initial rows should be skipped.
+	Skip uint32
+	// Fetch specifies how many rows should be returned in total.
+	Fetch uint32
 }
 
 // ID implements the [Node] interface.

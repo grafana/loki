@@ -48,7 +48,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}},
 		maxGlobalStreams:        10,
@@ -71,7 +70,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:        "test",
@@ -98,7 +96,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:         "test",
@@ -134,7 +131,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7},
-			Partitions:   []int32{0},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:         "test",
@@ -176,11 +172,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
 		}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{1},
 		}},
 		// Each instance will respond stating that it doesn't know about the
 		// other stream.
@@ -293,7 +287,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			clients := make([]logproto.IngestLimitsClient, len(test.getAssignedPartitionsResponses))
 			instances := make([]ring.InstanceDesc, len(clients))
 
-			for i := 0; i < len(test.getAssignedPartitionsResponses); i++ {
+			for i := range test.getAssignedPartitionsResponses {
 				clients[i] = &mockIngestLimitsClient{
 					getAssignedPartitionsResponse: test.getAssignedPartitionsResponses[i],
 					getStreamUsageResponse:        test.getStreamUsageResponses[i],
@@ -315,7 +309,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), 2),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 

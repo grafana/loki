@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrinter(t *testing.T) {
+func dummyPlan() *Node {
 	root := NewNode("Root", "")
 	lvl1 := root.AddChild("Merge", "foo", []Property{
 		{Key: "key_a", Values: []any{"value_a"}, IsMultiValue: true},
@@ -28,6 +28,11 @@ func TestPrinter(t *testing.T) {
 		{Key: "selector", Values: []any{`{env="dev", region=".+"}`}},
 	})
 	_ = lvl1.AddChild("Scan", "baz", []Property{})
+	return root
+}
+
+func TestPrinter(t *testing.T) {
+	root := dummyPlan()
 
 	b := &strings.Builder{}
 	p := NewPrinter(b)
@@ -36,16 +41,16 @@ func TestPrinter(t *testing.T) {
 	t.Log("\n" + b.String())
 	expected := `
 Root
-└── Merge #foo key_a=(value_a) key_b=(value_b, value_c)
-    ├── Product #foobar relations=(foo, bar)
-    │   │   ├── Relation #foo
-    │   │   │   ├── Shard #0
-    │   │   │   ├── Shard #1
-    │   │   │   └── Shard #2
-    │   │   └── Relation #bar
-    │   ├── Scan #foo selector={env="prod", region=".+"}
-    │   └── Scan #bar selector={env="dev", region=".+"}
-    └── Scan #baz
+└── Merge <foo> key_a=(value_a) key_b=(value_b, value_c)
+    ├── Product <foobar> relations=(foo, bar)
+    │   │   ├── Relation <foo>
+    │   │   │   ├── Shard <0>
+    │   │   │   ├── Shard <1>
+    │   │   │   └── Shard <2>
+    │   │   └── Relation <bar>
+    │   ├── Scan <foo> selector={env="prod", region=".+"}
+    │   └── Scan <bar> selector={env="dev", region=".+"}
+    └── Scan <baz>
 `
 	require.Equal(t, expected, "\n"+b.String())
 }

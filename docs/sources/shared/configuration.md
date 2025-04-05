@@ -1205,6 +1205,10 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.recheck-period
   [recheck_period: <duration> | default = 10s]
 
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
@@ -2515,6 +2519,10 @@ ring:
 # Number of workers to push batches to ingesters.
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
+
+# The maximum size of a received message.
+# CLI flag: -distributor.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 104857600]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
