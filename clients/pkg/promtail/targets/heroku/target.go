@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/server"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/prometheus/common/model"
@@ -80,7 +79,7 @@ func (h *Target) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = dslog.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
+	h.config.Server.Log = log.With(util_log.Logger, "component", "heroku_drain")
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {

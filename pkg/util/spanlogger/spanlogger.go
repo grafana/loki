@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/spanlogger"
-	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -61,16 +60,5 @@ func FromContext(ctx context.Context) *SpanLogger {
 // within the context. If the context doesn't have a logger, the fallback
 // logger is used.
 func FromContextWithFallback(ctx context.Context, fallback log.Logger) *SpanLogger {
-	logger, ok := ctx.Value(loggerCtxKey).(log.Logger)
-	if !ok {
-		logger = fallback
-	}
-	sp := opentracing.SpanFromContext(ctx)
-	if sp == nil {
-		sp = defaultNoopSpan
-	}
-	return &SpanLogger{
-		Logger: util_log.WithContext(ctx, logger),
-		Span:   sp,
-	}
+	return spanlogger.FromContext(ctx, fallback, resolver)
 }
