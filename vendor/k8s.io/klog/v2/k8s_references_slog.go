@@ -1,5 +1,8 @@
+//go:build go1.21
+// +build go1.21
+
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +17,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package internal
+package klog
 
-// Used by tests to selectively disable experimental JSON unmarshaler
-var UseOptimizedJSONUnmarshaling bool = true
-var UseOptimizedJSONUnmarshalingV3 bool = true
+import (
+	"log/slog"
+)
 
-// Used by tests to selectively disable experimental JSON marshaler
-var UseOptimizedJSONMarshaling bool = true
-var UseOptimizedJSONMarshalingV3 bool = true
+func (ref ObjectRef) LogValue() slog.Value {
+	if ref.Namespace != "" {
+		return slog.GroupValue(slog.String("name", ref.Name), slog.String("namespace", ref.Namespace))
+	}
+	return slog.GroupValue(slog.String("name", ref.Name))
+}
+
+var _ slog.LogValuer = ObjectRef{}
+
+func (ks kobjSlice) LogValue() slog.Value {
+	return slog.AnyValue(ks.MarshalLog())
+}
+
+var _ slog.LogValuer = kobjSlice{}
