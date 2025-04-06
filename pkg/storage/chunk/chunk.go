@@ -10,8 +10,9 @@ import (
 	"sync"
 	"unsafe"
 
+	errs "errors"
+
 	"github.com/golang/snappy"
-	errs "github.com/grafana/dskit/errors"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"

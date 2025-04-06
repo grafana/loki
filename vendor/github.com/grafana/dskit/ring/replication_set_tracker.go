@@ -5,6 +5,8 @@ import (
 	"errors"
 	"math/rand"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 )
 
@@ -82,19 +84,21 @@ type defaultResultTracker struct {
 	instances        []InstanceDesc
 	instanceRelease  map[*InstanceDesc]chan struct{}
 	pendingInstances []*InstanceDesc
+	logger           log.Logger
 }
 
-func newDefaultResultTracker(instances []InstanceDesc, maxErrors int) *defaultResultTracker {
+func newDefaultResultTracker(instances []InstanceDesc, maxErrors int, logger log.Logger) *defaultResultTracker {
 	return &defaultResultTracker{
 		minSucceeded: len(instances) - maxErrors,
 		numSucceeded: 0,
 		numErrors:    0,
 		maxErrors:    maxErrors,
 		instances:    instances,
+		logger:       logger,
 	}
 }
 
-func (t *defaultResultTracker) done(_ *InstanceDesc, err error) {
+func (t *defaultResultTracker) done(instance *InstanceDesc, err error) {
 	if err == nil {
 		t.numSucceeded++
 
@@ -102,8 +106,14 @@ func (t *defaultResultTracker) done(_ *InstanceDesc, err error) {
 			t.onSucceeded()
 		}
 	} else {
+		level.Warn(t.logger).Log(
+			"msg", "instance failed",
+			"instance", instance.Addr,
+			"err", err,
+		)
+
 		t.numErrors++
-		t.startAdditionalRequests()
+		t.startAdditionalRequestsDueTo("failure of other instance")
 	}
 }
 
@@ -145,6 +155,7 @@ func (t *defaultResultTracker) startMinimumRequests() {
 		if len(t.pendingInstances) < t.maxErrors {
 			t.pendingInstances = append(t.pendingInstances, instance)
 		} else {
+			level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instance", instance.Addr)
 			t.instanceRelease[instance] <- struct{}{}
 		}
 	}
@@ -157,9 +168,14 @@ func (t *defaultResultTracker) startMinimumRequests() {
 }
 
 func (t *defaultResultTracker) startAdditionalRequests() {
+	t.startAdditionalRequestsDueTo("hedging")
+}
+
+func (t *defaultResultTracker) startAdditionalRequestsDueTo(reason string) {
 	if len(t.pendingInstances) > 0 {
 		// There are some outstanding requests we could make before we reach maxErrors. Release the next one.
 		i := t.pendingInstances[0]
+		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", reason, "instance", i.Addr)
 		t.instanceRelease[i] <- struct{}{}
 		t.pendingInstances = t.pendingInstances[1:]
 	}
@@ -170,6 +186,7 @@ func (t *defaultResultTracker) startAllRequests() {
 
 	for i := range t.instances {
 		instance := &t.instances[i]
+		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instance", instance.Addr)
 		t.instanceRelease[instance] = make(chan struct{}, 1)
 		t.instanceRelease[instance] <- struct{}{}
 	}
@@ -230,13 +247,15 @@ type zoneAwareResultTracker struct {
 	zoneRelease         map[string]chan struct{}
 	zoneShouldStart     map[string]*atomic.Bool
 	pendingZones        []string
+	logger              log.Logger
 }
 
-func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int) *zoneAwareResultTracker {
+func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int, logger log.Logger) *zoneAwareResultTracker {
 	t := &zoneAwareResultTracker{
 		waitingByZone:       make(map[string]int),
 		failuresByZone:      make(map[string]int),
 		maxUnavailableZones: maxUnavailableZones,
+		logger:              logger,
 	}
 
 	for _, instance := range instances {
@@ -263,8 +282,15 @@ func (t *zoneAwareResultTracker) done(instance *InstanceDesc, err error) {
 		t.failuresByZone[instance.Zone]++
 
 		if t.failuresByZone[instance.Zone] == 1 {
+			level.Warn(t.logger).Log(
+				"msg", "zone has failed",
+				"zone", instance.Zone,
+				"failingInstance", instance.Addr,
+				"err", err,
+			)
+
 			// If this was the first failure for this zone, release another zone's requests and signal they should start.
-			t.startAdditionalRequests()
+			t.startAdditionalRequestsDueTo("failure of other zone")
 		}
 	}
 }
@@ -315,6 +341,7 @@ func (t *zoneAwareResultTracker) startMinimumRequests() {
 	})
 
 	for i := 0; i < t.minSuccessfulZones; i++ {
+		level.Debug(t.logger).Log("msg", "starting requests to zone", "reason", "initial requests", "zone", allZones[i])
 		t.releaseZone(allZones[i], true)
 	}
 
@@ -328,8 +355,13 @@ func (t *zoneAwareResultTracker) startMinimumRequests() {
 }
 
 func (t *zoneAwareResultTracker) startAdditionalRequests() {
+	t.startAdditionalRequestsDueTo("hedging")
+}
+
+func (t *zoneAwareResultTracker) startAdditionalRequestsDueTo(reason string) {
 	if len(t.pendingZones) > 0 {
 		// If there are more zones we could try before reaching maxUnavailableZones, release another zone's requests and signal they should start.
+		level.Debug(t.logger).Log("msg", "starting requests to zone", "reason", reason, "zone", t.pendingZones[0])
 		t.releaseZone(t.pendingZones[0], true)
 		t.pendingZones = t.pendingZones[1:]
 	}
@@ -339,6 +371,7 @@ func (t *zoneAwareResultTracker) startAllRequests() {
 	t.createReleaseChannels()
 
 	for zone := range t.waitingByZone {
+		level.Debug(t.logger).Log("msg", "starting requests to zone", "reason", "initial requests", "zone", zone)
 		t.releaseZone(zone, true)
 	}
 }
