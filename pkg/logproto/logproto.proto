@@ -93,7 +93,7 @@ message GetStreamUsageRequest {
 message GetStreamUsageResponse {
   string tenant = 1;
   uint64 activeStreams = 2;
-  int64 rate = 3;
+  uint64 rate = 3;
   repeated uint64 unknownStreams = 4;
 }
 
