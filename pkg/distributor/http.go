@@ -65,7 +65,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			// `retention_hours` and `policy` because we don't know the labels.
 			// Ensure ContentLength is positive to avoid counter panic
 			if r.ContentLength > 0 {
-				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID).Add(float64(r.ContentLength))
+				// Add empty values for retention_hours and policy labels since we don't have
+				// that information for request body too large errors
+				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "").Add(float64(r.ContentLength))
 			}
 			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
 			return
