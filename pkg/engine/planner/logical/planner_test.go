@@ -13,84 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
-func TestPlanner_canExecuteWithNewEngine(t *testing.T) {
-	for _, tt := range []struct {
-		statement string
-		expected  bool
-	}{
-		{
-			statement: `{env="prod"}`,
-			expected:  true,
-		},
-		{
-			statement: `{env="prod"} |= "metrics.go"`,
-			expected:  true,
-		},
-		{
-			statement: `{env="prod"} |= "metrics.go"`,
-			expected:  true,
-		},
-		{
-			statement: `{env="prod"} | tenant="loki"`,
-			expected:  true,
-		},
-		{
-			statement: `{env="prod"} | tenant="loki" != "foo"`,
-			expected:  true,
-		},
-		{
-			statement: `{env="prod"} | json`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | json foo="bar"`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | logfmt`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | logfmt foo="bar"`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | pattern "<_> foo=<foo> <_>"`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | regexp ".* foo=(?P<foo>.+) .*"`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | unpack`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} |= "metrics.go" | logfmt`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | line_format "{.cluster}"`,
-			expected:  false,
-		},
-		{
-			statement: `{env="prod"} | label_format cluster="us"`,
-			expected:  false,
-		},
-		{
-			statement: `sum(rate({env="prod"}[1m]))`,
-			expected:  false,
-		},
-	} {
-		t.Run(tt.statement, func(t *testing.T) {
-			expr := syntax.MustParseExpr(tt.statement)
-			canExecute := canExecuteWithNewEngine(expr)
-			require.Equal(t, tt.expected, canExecute)
-		})
-	}
-}
-
 type query struct {
 	statement  string
 	start, end int64
@@ -198,15 +120,84 @@ RETURN %20
 	t.Logf("\n%s\n", sb.String())
 }
 
-func TestConvertAST_UnsupportedFeature(t *testing.T) {
-	q := &query{
-		statement: `{cluster="prod", namespace=~"loki-.*"} |= "metric.go" | retry > 2`,
-		start:     1000,
-		end:       2000,
-		direction: logproto.FORWARD,
-		limit:     1000,
+func TestCanExecuteQuery(t *testing.T) {
+	for _, tt := range []struct {
+		statement string
+		expected  bool
+	}{
+		{
+			statement: `{env="prod"}`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | tenant="loki"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | tenant="loki" != "foo"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | json`,
+		},
+		{
+			statement: `{env="prod"} | json foo="bar"`,
+		},
+		{
+			statement: `{env="prod"} | logfmt`,
+		},
+		{
+			statement: `{env="prod"} | logfmt foo="bar"`,
+		},
+		{
+			statement: `{env="prod"} | pattern "<_> foo=<foo> <_>"`,
+		},
+		{
+			statement: `{env="prod"} | regexp ".* foo=(?P<foo>.+) .*"`,
+		},
+		{
+			statement: `{env="prod"} | unpack`,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go" | logfmt`,
+		},
+		{
+			statement: `{env="prod"} | line_format "{.cluster}"`,
+		},
+		{
+			statement: `{env="prod"} | label_format cluster="us"`,
+		},
+		{
+			statement: `{env="prod"} |= "metric.go" | retry > 2`,
+		},
+		{
+			statement: `sum(rate({env="prod"}[1m]))`,
+		},
+	} {
+		t.Run(tt.statement, func(t *testing.T) {
+			q := &query{
+				statement: tt.statement,
+				start:     1000,
+				end:       2000,
+				direction: logproto.FORWARD,
+				limit:     1000,
+			}
+
+			logicalPlan, err := BuildPlan(q)
+			if tt.expected {
+				require.NoError(t, err)
+			} else {
+				require.Nil(t, logicalPlan)
+				require.ErrorContains(t, err, "failed to convert AST into logical plan")
+			}
+		})
 	}
-	logicalPlan, err := BuildPlan(q)
-	require.Nil(t, logicalPlan)
-	require.ErrorContains(t, err, "failed to convert AST into logical plan: not implemented: *log.NumericLabelFilter")
 }

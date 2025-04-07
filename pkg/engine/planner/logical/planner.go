@@ -13,28 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// canExecuteWithNewEngine determines whether a query can be executed by the new execution engine.
-func canExecuteWithNewEngine(expr syntax.Expr) bool {
-	switch expr := expr.(type) {
-	case syntax.SampleExpr:
-		return false
-	case syntax.LogSelectorExpr:
-		ret := true
-		expr.Walk(func(e syntax.Expr) bool {
-			switch e.(type) {
-			case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-				ret = false
-			case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
-				ret = false
-			case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
-				ret = false
-			}
-			return true
-		})
-		return ret
-	}
-	return false
-}
+var errUnimplemented = errors.New("query contains unimplemented features")
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -46,13 +25,20 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	var err error
 
 	expr := query.GetExpression()
-
-	if !canExecuteWithNewEngine(expr) {
-		return nil, errors.New("query contains unimplemented features")
-	}
-
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
+		case syntax.SampleExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+			err = errUnimplemented
+			return false // do not traverse children
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 		case *syntax.LineFilterExpr:
