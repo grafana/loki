@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -426,6 +427,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return res, nil
 	}
 	sl.rw.Lock()
+	defer sl.rw.Unlock()
 
 	var hash uint64
 	for i := 0; i < len(promResponse.Response.Data.Result); i++ {
@@ -447,7 +449,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		if variant != "" {
 			if _, ok := sl.skipVariants[variant]; ok {
 				// Remove this variant from the result slice
-				promResponse.Response.Data.Result = append(promResponse.Response.Data.Result[:i], promResponse.Response.Data.Result[i+1:]...)
+				slices.Delete(promResponse.Response.Data.Result, i, i+1)
 				i-- // Adjust the index since we removed an item
 				continue
 			}
@@ -465,7 +467,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 			if len(variantMap) > sl.maxSeries {
 				sl.skipVariants[variant] = struct{}{}
 				// Remove this variant from the result slice
-				promResponse.Response.Data.Result = append(promResponse.Response.Data.Result[:i], promResponse.Response.Data.Result[i+1:]...)
+				slices.Delete(promResponse.Response.Data.Result, i, i+1)
 				i-- // Adjust the index since we removed an item
 				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
 				continue
@@ -476,26 +478,18 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 			// Check if adding this series would exceed the global limit
 			if len(sl.hashes) > sl.maxSeries {
-				sl.rw.Unlock()
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 			}
 		}
 	}
 
-	sl.rw.Unlock()
 	return res, nil
 }
 
 func (sl *seriesLimiter) isLimitReached() bool {
 	sl.rw.RLock()
 	defer sl.rw.RUnlock()
-
-	// For non-variant series, check the global limit
-	if len(sl.hashes) > sl.maxSeries {
-		return true
-	}
-
-	return false
+	return len(sl.hashes) > sl.maxSeries
 }
 
 type limitedRoundTripper struct {

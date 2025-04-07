@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -455,8 +456,9 @@ func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
 	}
 }
 
-func multiVariantVectorsToSeries(vec promql.Vector, sm map[string]map[uint64]promql.Series) uint32 {
-	count := uint32(0)
+func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.Vector, sm map[string]map[uint64]promql.Series, skippedVariants map[string]struct{}) int {
+	count := 0
+	metadataCtx := metadata.FromContext(ctx)
 
 	for _, p := range vec {
 		var (
@@ -466,13 +468,28 @@ func multiVariantVectorsToSeries(vec promql.Vector, sm map[string]map[uint64]pro
 		)
 
 		if !p.Metric.Has(constants.VariantLabel) {
-			return count
+			continue
 		}
 
 		variantLabel := p.Metric.Get(constants.VariantLabel)
+
+		if _, ok = skippedVariants[variantLabel]; ok {
+			continue
+		}
+
 		if _, ok = sm[variantLabel]; !ok {
 			variant := make(map[uint64]promql.Series)
 			sm[variantLabel] = variant
+		}
+
+		if len(sm[variantLabel]) >= maxSeries {
+			skippedVariants[variantLabel] = struct{}{}
+			// This can cause count to be negative, as we may be removing series added in a previous iteration
+			// However, since we sum this value across all iterations, a negative will make sure the total series count is correct
+			count = count - len(sm[variantLabel])
+			delete(sm, variantLabel)
+			metadataCtx.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", maxSeries, variantLabel))
+			continue
 		}
 
 		series, ok = sm[variantLabel][hash]
@@ -565,8 +582,7 @@ func (q *query) JoinMultiVariantSampleVector(ctx context.Context, next bool, r S
 	skippedVariants := map[string]struct{}{}
 
 	if GetRangeType(q.params) == InstantType {
-		multiVariantVectorsToSeries(vec, seriesIndex)
-		enforceMultiVariantLimit(ctx, seriesIndex, maxSeries, skippedVariants)
+		multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
 
 		// Filter the vector to remove skipped variants
 		filterVariantVector(&vec, skippedVariants)
@@ -582,15 +598,12 @@ func (q *query) JoinMultiVariantSampleVector(ctx context.Context, next bool, r S
 		return vec, nil
 	}
 
-	seriesCount := uint32(0)
+	seriesCount := 0
 	for next {
 		vec = r.SampleVector()
 		// Filter out any samples from variants we've already skipped
 		filterVariantVector(&vec, skippedVariants)
-		seriesCount += multiVariantVectorsToSeries(vec, seriesIndex)
-
-		// Get any new variants that exceed limits
-		enforceMultiVariantLimit(ctx, seriesIndex, maxSeries, skippedVariants)
+		seriesCount += multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
 
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
@@ -617,28 +630,12 @@ func filterVariantVector(vec *promql.Vector, skipped map[string]struct{}) {
 	}
 
 	// Filter the vector
-	filtered := make(promql.Vector, 0, len(*vec))
-	for _, sample := range *vec {
+	for i, sample := range *vec {
 		if sample.Metric.Has(constants.VariantLabel) {
 			variant := sample.Metric.Get(constants.VariantLabel)
-			if _, shouldSkip := skipped[variant]; !shouldSkip {
-				filtered = append(filtered, sample)
+			if _, shouldSkip := skipped[variant]; shouldSkip {
+				slices.Delete(*vec, i, i+1)
 			}
-		} else {
-			filtered = append(filtered, sample)
-		}
-	}
-
-	*vec = filtered
-}
-
-func enforceMultiVariantLimit(ctx context.Context, seriesIndex map[string]map[uint64]promql.Series, maxSeries int, skippedVariants map[string]struct{}) {
-	metadataCtx := metadata.FromContext(ctx)
-	for variant, ss := range seriesIndex {
-		if len(ss) > maxSeries {
-			skippedVariants[variant] = struct{}{}
-			delete(seriesIndex, variant)
-			metadataCtx.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", maxSeries, variant))
 		}
 	}
 }
