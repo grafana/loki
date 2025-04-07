@@ -7,13 +7,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
+	kitlog "github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -32,10 +33,10 @@ func gzipString(source string) string {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	if _, err := zw.Write([]byte(source)); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	if err := zw.Close(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	return buf.String()
 }
@@ -45,10 +46,10 @@ func deflateString(source string) string {
 	var buf bytes.Buffer
 	zw, _ := flate.NewWriter(&buf, 6)
 	if _, err := zw.Write([]byte(source)); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	if err := zw.Close(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	return buf.String()
 }
@@ -583,7 +584,7 @@ func TestNegativeSizeHandling(t *testing.T) {
 	linesIngested.Reset()
 	
 	// Create a custom request parser that will generate negative sizes
-	var mockParser RequestParser = func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+	var mockParser RequestParser = func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
 		// Create a minimal valid request
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
