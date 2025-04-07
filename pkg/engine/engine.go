@@ -53,11 +53,11 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	var result logqlmodel.Result
 	logger := utillog.WithContext(ctx, e.logger)
-	logger = log.With(logger, "query", params.QueryString())
+	logger = log.With(logger, "query", params.QueryString(), "engine", "v2")
 
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
-		level.Warn(logger).Log("engine", "v2", "msg", "failed to create logical plan", "err", err)
+		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		return result, ErrNotSupported
 	}
 
@@ -65,12 +65,12 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	planner := physical.NewPlanner(executionContext)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
-		level.Warn(logger).Log("engine", "v2", "msg", "failed to create physical plan", "err", err)
+		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
 		return result, ErrNotSupported
 	}
 	_, err = planner.Optimize(plan)
 	if err != nil {
-		level.Warn(logger).Log("engine", "v2", "msg", "failed to optimize physical plan", "err", err)
+		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
 		return result, ErrNotSupported
 	}
 
