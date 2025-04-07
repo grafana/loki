@@ -4492,7 +4492,7 @@ engine:
 
   # Experimental: Enable next generation query engine for supported queries.
   # CLI flag: -querier.engine.enable-lqe
-  [enable_lqe: <boolean> | default = false]
+  [enable_v2_engine: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
