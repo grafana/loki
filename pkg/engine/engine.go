@@ -74,6 +74,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return result, ErrNotSupported
 	}
 
+	// TODO(chaudum): Replace the return values with the actual return values from the execution.
 	level.Info(logger).Log("msg", "execute query with new engine", "query", params.QueryString())
 	return result, ErrNotSupported
 }
