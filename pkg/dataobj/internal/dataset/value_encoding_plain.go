@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 func init() {
@@ -134,13 +133,13 @@ func (dec *plainStringDecoder) decode(v *Value) error {
 		return err
 	}
 
-	dst := getDestinationBuffer(v, int(sz))
+	dst := v.Buffer(int(sz))
+	dst = dst[:sz]
 	if _, err := io.ReadFull(dec.r, dst); err != nil {
 		return err
 	}
 
-	v.num = sz
-	v.any = (stringptr)(unsafe.SliceData(dst))
+	v.SetStringValue(dst)
 	return nil
 }
 
@@ -252,45 +251,17 @@ func (dec *plainBytesDecoder) decode(v *Value) error {
 		return err
 	}
 
-	dst := getDestinationBuffer(v, int(sz))
+	dst := v.Buffer(int(sz))
+	dst = dst[:sz]
 	if _, err := io.ReadFull(dec.r, dst); err != nil {
 		return err
 	}
 
-	v.num = sz
-	v.any = (bytearray)(unsafe.SliceData(dst))
+	v.SetByteArrayValue(dst)
 	return nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from r.
 func (dec *plainBytesDecoder) Reset(r streamio.Reader) {
 	dec.r = r
-}
-
-func getDestinationBuffer(v *Value, sz int) []byte {
-	if v.cap == 0 {
-		dst := make([]byte, sz)
-		v.any = (bytearray)(unsafe.SliceData(dst))
-		v.cap = uint64(cap(dst))
-		return dst
-	}
-
-	var dst []byte
-	// Depending on which type this value was previously used for dictates how we reference the memory.
-	switch v.any.(type) {
-	case stringptr:
-		dst = unsafe.Slice(v.any.(stringptr), int(v.cap))
-	case bytearray:
-		dst = unsafe.Slice(v.any.(bytearray), int(v.cap))
-	default:
-		panic("unknown value type in Value's 'any' field")
-	}
-
-	// Grow the buffer attached to this Value if necessary.
-	if v.cap < uint64(sz) {
-		dst = slicegrow.GrowToCap(dst, sz)
-		v.any = (bytearray)(unsafe.SliceData(dst))
-		v.cap = uint64(cap(dst))
-	}
-	return dst[:sz]
 }

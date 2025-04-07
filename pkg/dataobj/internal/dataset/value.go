@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
 )
 
 // Helper types
@@ -117,7 +118,7 @@ func (v Value) Type() datasetmd.ValueType {
 
 // Int64 returns v's value as an int64. It panics if v is not a
 // [datasetmd.VALUE_TYPE_INT64].
-func (v Value) Int64() int64 {
+func (v *Value) Int64() int64 {
 	if expect, actual := datasetmd.VALUE_TYPE_INT64, v.Type(); expect != actual {
 		panic(fmt.Sprintf("dataset.Value type is %s, not %s", actual, expect))
 	}
@@ -126,7 +127,7 @@ func (v Value) Int64() int64 {
 
 // Uint64 returns v's value as a uint64. It panics if v is not a
 // [datasetmd.VALUE_TYPE_UINT64].
-func (v Value) Uint64() uint64 {
+func (v *Value) Uint64() uint64 {
 	if expect, actual := datasetmd.VALUE_TYPE_UINT64, v.Type(); expect != actual {
 		panic(fmt.Sprintf("dataset.Value type is %s, not %s", actual, expect))
 	}
@@ -136,7 +137,7 @@ func (v Value) Uint64() uint64 {
 // String returns v's value as a string. Because of Go's String method
 // convention, if v is not a string, String returns a string of the form
 // "VALUE_TYPE_T", where T is the underlying type of v.
-func (v Value) String() string {
+func (v *Value) String() string {
 	if sp, ok := v.any.(stringptr); ok {
 		return unsafe.String(sp, v.num)
 	}
@@ -146,11 +147,59 @@ func (v Value) String() string {
 // ByteSlice returns v's value as a byte slice. If v is not a string,
 // ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
 // underlying type of v.
-func (v Value) ByteArray() []byte {
+func (v *Value) ByteArray() []byte {
 	if ba, ok := v.any.(bytearray); ok {
 		return unsafe.Slice(ba, v.num)
 	}
 	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
+}
+
+// Buffer returns the memory pointed to by this Value. The returned buffer will have a capacity of at least sz bytes & may be allocated if the existing buffer is too small.
+func (v *Value) Buffer(sz int) []byte {
+	if v.cap == 0 {
+		dst := make([]byte, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+		return dst
+	}
+
+	var dst []byte
+	// Depending on which type this value was previously used for dictates how we reference the memory.
+	switch v.any.(type) {
+	case stringptr:
+		dst = unsafe.Slice(v.any.(stringptr), int(v.cap))
+	case bytearray:
+		dst = unsafe.Slice(v.any.(bytearray), int(v.cap))
+	default:
+		panic("unknown value type in Value's 'any' field")
+	}
+
+	// Grow the buffer attached to this Value if necessary.
+	if v.cap < uint64(sz) {
+		dst = slicegrow.GrowToCap(dst, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+	}
+	return dst
+}
+
+// SetByteArray updates the value to point to the provided byte slice.
+func (v *Value) SetByteArrayValue(b []byte) {
+	v.any = (bytearray)(unsafe.SliceData(b))
+	v.num = uint64(len(b))
+	v.cap = uint64(cap(b))
+}
+
+// SetByteArray updates the value to point to the provided byte slice.
+func (v *Value) SetStringValue(b []byte) {
+	v.any = (stringptr)(unsafe.SliceData(b))
+	v.num = uint64(len(b))
+	v.cap = uint64(cap(b))
+}
+
+// Zero resets the value to its zero state. It retains pointers to any existing memory.
+func (v *Value) Zero() {
+	v.num = 0
 }
 
 // MarshalBinary encodes v into a binary representation. Non-NULL values encode

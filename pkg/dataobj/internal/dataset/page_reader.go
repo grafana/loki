@@ -193,22 +193,13 @@ func (pr *pageReader) init(ctx context.Context) error {
 		return fmt.Errorf("opening page for reading: %w", err)
 	}
 
-	if pr.presenceReader == nil {
-		pr.presenceReader = bufio.NewReader(presenceReader)
-	} else {
-		pr.presenceReader.Reset(presenceReader)
-	}
-	if pr.presenceDec == nil {
-		pr.presenceDec = newBitmapDecoder(pr.presenceReader)
-	} else {
-		pr.presenceDec.Reset(pr.presenceReader)
-	}
+	pr.presenceReader = pr.getPresenceReader()
+	pr.presenceReader.Reset(presenceReader)
+	pr.presenceDec = pr.getPresenceDecoder()
+	pr.presenceDec.Reset(pr.presenceReader)
 
-	if pr.valuesReader == nil {
-		pr.valuesReader = bufio.NewReader(valuesReader)
-	} else {
-		pr.valuesReader.Reset(valuesReader)
-	}
+	pr.valuesReader = pr.getValuesReader()
+	pr.valuesReader.Reset(valuesReader)
 	if pr.valuesDec == nil || pr.lastValue != pr.value || pr.lastEncoding != memPage.Info.Encoding {
 		var ok bool
 		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, pr.valuesReader)
@@ -306,4 +297,25 @@ func (pr *pageReader) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (pr *pageReader) getPresenceReader() *bufio.Reader {
+	if pr.presenceReader == nil {
+		return bufio.NewReader(nil)
+	}
+	return pr.presenceReader
+}
+
+func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
+	if pr.presenceDec == nil {
+		return newBitmapDecoder(nil)
+	}
+	return pr.presenceDec
+}
+
+func (pr *pageReader) getValuesReader() *bufio.Reader {
+	if pr.valuesReader == nil {
+		return bufio.NewReader(nil)
+	}
+	return pr.valuesReader
 }
