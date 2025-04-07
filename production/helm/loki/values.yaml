@@ -331,7 +331,7 @@ loki:
   memberlistConfig: {}
   # -- Extra memberlist configuration
   extraMemberlistConfig: {}
-  # -- Tenants list to be created on nginx htpasswd file, with name and password keys
+  # -- Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys
   tenants: []
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
   server:
@@ -1135,16 +1135,21 @@ gateway:
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
     # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
-    htpasswd: >-
-      {{ if .Values.loki.tenants }}
-
-
-        {{- range $t := .Values.loki.tenants }}
-      {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
-        {{- end }}
-      {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
+    htpasswd: |
+      {{ if .Values.loki.tenants -}}
+      {{ range $t := .Values.loki.tenants -}}
+      {{ $username := required "All tenants must have a 'name' set" $t.name -}}
+      {{ if $passwordHash := $t.passwordHash -}}
+      {{ printf "%s:%s" $username $passwordHash }}
+      {{ else if $password := $t.password -}}
+      {{ htpasswd $username $password }}
+      {{ else -}}
+      {{ fail "All tenants must have a 'password' or 'passwordHash' set" }}
+      {{ end -}}
+      {{ end -}}
+      {{ else -}}
+      {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }}
+      {{ end -}}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
   # Configures the readiness probe for the gateway
