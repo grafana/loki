@@ -1202,7 +1202,7 @@ func (d *Distributor) exceedsLimits(
 	if err != nil {
 		return false, nil, err
 	}
-	if len(resp.RejectedStreams) == 0 {
+	if len(resp.Results) == 0 {
 		return false, nil, nil
 	}
 	// hashesToLabels memoizes the labels for a stream hash so we can add
@@ -1211,12 +1211,12 @@ func (d *Distributor) exceedsLimits(
 	for _, s := range streams {
 		hashesToLabels[s.HashKeyNoShard] = s.Stream.Labels
 	}
-	reasons := make([]string, 0, len(resp.RejectedStreams))
-	for _, rejection := range resp.RejectedStreams {
+	reasons := make([]string, 0, len(resp.Results))
+	for _, result := range resp.Results {
 		reasons = append(reasons, fmt.Sprintf(
 			"stream %s was rejected because %q",
-			hashesToLabels[rejection.StreamHash],
-			rejection.Reason,
+			hashesToLabels[result.StreamHash],
+			result.Reason,
 		))
 	}
 	return true, reasons, nil
