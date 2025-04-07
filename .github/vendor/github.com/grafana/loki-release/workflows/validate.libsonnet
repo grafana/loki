@@ -161,6 +161,7 @@ local validationJob = _validationJob(false);
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': true,
+          args: '-v',
         }),
       ],
     )
