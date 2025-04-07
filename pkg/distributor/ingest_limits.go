@@ -92,7 +92,7 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 		client: client,
 		limitsFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_failures_total",
-			Help: "The total number of failures checking per-tenant ingest limits.",
+			Help: "The total number of failures checking ingest limits.",
 		}),
 	}
 }
