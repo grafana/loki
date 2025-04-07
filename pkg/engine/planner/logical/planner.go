@@ -154,9 +154,9 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	switch op {
 	case log.LineMatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpMatchSubstr
 	case log.LineMatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNotMatchSubstr
 	case log.LineMatchRegexp:
 		return types.BinaryOpMatchRe
 	case log.LineMatchNotRegexp:
@@ -181,9 +181,9 @@ func logColumnRef() *ColumnRef {
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
 	switch op {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpMatchSubstr
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNotMatchSubstr
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
