@@ -58,7 +58,7 @@ type httpExceedsLimitsRequest struct {
 }
 
 type httpExceedsLimitsResponse struct {
-	RejectedStreams []*logproto.RejectedStream `json:"rejectedStreams,omitempty"`
+	Results []*logproto.ExceedsLimitsResult `json:"results,omitempty"`
 }
 
 // ServeHTTP implements http.Handler.
@@ -99,7 +99,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	util.WriteJSONResponse(w, httpExceedsLimitsResponse{
-		RejectedStreams: resp.RejectedStreams,
+		Results: resp.Results,
 	})
 }
 

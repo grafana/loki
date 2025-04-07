@@ -821,7 +821,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !shouldRejectLabel(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -836,7 +836,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !shouldRejectLabel(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -877,7 +877,38 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-// containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
+// shouldRejectLabel checks if the label should be rejected based on the values.
+// Returns true if all values are IDs or there are no values - meaning the label should be filtered out.
+// Special numeric case: boolean values (0,1) are not considered ID types.
+// Otherwise it returns false.
+func shouldRejectLabel(values []string) bool {
+	// No values means we don't want to keep this label
+	if len(values) == 0 {
+		return true
+	}
+
+	if len(values) > 2 {
+		return containsAllIDTypes(values)
+	}
+
+	// Boolean values should not be considered ID types
+	boolValues := map[string]bool{
+		"0": true,
+		"1": true,
+	}
+
+	for _, v := range values {
+		if !boolValues[v] {
+			return containsAllIDTypes(values)
+		}
+	}
+
+	return false
+}
+
+// contjainsAllIDTypes checks if all values in the array are IDs (UUIDs or numeric values)
+// Returns false if at least one value is not an ID type - meaning the label should be kept.
+// Returns true if all values are IDs - meaning the label should be filtered out.
 func containsAllIDTypes(values []string) bool {
 	for _, v := range values {
 		_, err := strconv.ParseFloat(v, 64)
