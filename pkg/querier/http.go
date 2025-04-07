@@ -79,6 +79,9 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 	if q.cfg.Engine.EnableV2Engine {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
+		if err == nil {
+			return result, err
+		}
 		if !errors.Is(err, engine.ErrNotSupported) {
 			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
 			return result, errors.Wrap(err, "failed with new execution engine")
