@@ -628,11 +628,13 @@ func filterVariantVector(vec *promql.Vector, skipped map[string]struct{}) {
 	}
 
 	// Filter the vector
-	for i, sample := range *vec {
+	for i := 0; i < len(*vec); i++ {
+		sample := (*vec)[i]
 		if sample.Metric.Has(constants.VariantLabel) {
 			variant := sample.Metric.Get(constants.VariantLabel)
 			if _, shouldSkip := skipped[variant]; shouldSkip {
-				slices.Delete(*vec, i, i+1)
+				*vec = slices.Delete(*vec, i, i+1)
+				i-- // Adjust the index since we removed an item
 			}
 		}
 	}

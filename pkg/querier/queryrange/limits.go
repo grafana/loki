@@ -449,7 +449,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		if variant != "" {
 			if _, ok := sl.skipVariants[variant]; ok {
 				// Remove this variant from the result slice
-				slices.Delete(promResponse.Response.Data.Result, i, i+1)
+				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
 				i-- // Adjust the index since we removed an item
 				continue
 			}
@@ -467,7 +467,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 			if len(variantMap) > sl.maxSeries {
 				sl.skipVariants[variant] = struct{}{}
 				// Remove this variant from the result slice
-				slices.Delete(promResponse.Response.Data.Result, i, i+1)
+				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
 				i-- // Adjust the index since we removed an item
 				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
 				continue
