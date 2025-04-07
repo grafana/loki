@@ -23,7 +23,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/grafana/dskit/flagext"
-	
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -582,7 +582,7 @@ func TestNegativeSizeHandling(t *testing.T) {
 	structuredMetadataBytesIngested.Reset()
 	bytesIngested.Reset()
 	linesIngested.Reset()
-	
+
 	// Create a custom request parser that will generate negative sizes
 	var mockParser RequestParser = func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
 		// Create a minimal valid request
@@ -599,29 +599,29 @@ func TestNegativeSizeHandling(t *testing.T) {
 				},
 			},
 		}
-		
+
 		// Create stats with negative sizes to test our guard clauses
 		stats := NewPushStats()
 		policy := ""
 		retention := time.Hour
-		
+
 		// Set up negative sizes in both maps
 		stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
 		stats.LogLinesBytes[policy][retention] = -100
-		
+
 		stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		stats.StructuredMetadataBytes[policy][retention] = -200
-		
+
 		return req, stats, nil
 	}
-	
+
 	// Create a mock request
 	request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader("{}"))
 	request.Header.Add("Content-Type", "application/json")
-	
+
 	// Use a mock stream resolver to ensure consistent results
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-	
+
 	// This should not panic with our guard clauses in place
 	_, err := ParseRequest(
 		util_log.Logger,
@@ -634,15 +634,15 @@ func TestNegativeSizeHandling(t *testing.T) {
 		streamResolver,
 		false,
 	)
-	
+
 	// No error should be returned
 	require.NoError(t, err)
-	
+
 	// Check that the metrics were not incremented for negative values
 	userID := "fake"
 	isAggregatedMetric := "false"
 	policy := ""
-	
+
 	// Verify no counters were incremented since all sizes were negative
 	// This test passes if no panic occurred and the counters remain at 0
 	require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy)))
