@@ -1205,6 +1205,10 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.recheck-period
   [recheck_period: <duration> | default = 10s]
 
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
@@ -4489,6 +4493,10 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -querier.engine.enable-v2-engine
+  [enable_v2_engine: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

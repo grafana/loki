@@ -125,6 +125,10 @@ func newMemChunk() *chunkenc.MemChunk {
 }
 
 func (s *ChunkStore) flushChunk(ctx context.Context, memChunk *chunkenc.MemChunk, labelsString string) error {
+	if err := memChunk.Close(); err != nil {
+		return err
+	}
+
 	lbs, err := syntax.ParseLabels(labelsString)
 	if err != nil {
 		return err
