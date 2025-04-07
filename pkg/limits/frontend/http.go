@@ -132,7 +132,6 @@ func (f *Frontend) PartitionConsumersCacheEvictHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	
 	instance := r.FormValue("instance")
 	if instance == "" {
 		// Clear all cache
