@@ -167,7 +167,7 @@ func TestConvertAST_Success(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("\n%s\n", logicalPlan.String())
 
-	expected := `%1 = MATCH_STR label.cluster "prod"
+	expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
 %4 = MAKETABLE [selector=%3]

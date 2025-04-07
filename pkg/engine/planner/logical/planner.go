@@ -131,9 +131,9 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 func convertMatcherType(t labels.MatchType) types.BinaryOp {
 	switch t {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:

@@ -14,10 +14,10 @@ import (
 
 var (
 	binOpToMatchTypeMapping = map[types.BinaryOp]labels.MatchType{
-		types.BinaryOpMatchStr:    labels.MatchEqual,
-		types.BinaryOpNotMatchStr: labels.MatchNotEqual,
-		types.BinaryOpMatchRe:     labels.MatchRegexp,
-		types.BinaryOpNotMatchRe:  labels.MatchNotRegexp,
+		types.BinaryOpEq:         labels.MatchEqual,
+		types.BinaryOpNeq:        labels.MatchNotEqual,
+		types.BinaryOpMatchRe:    labels.MatchRegexp,
+		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
 	}
 )
 
@@ -89,7 +89,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 				return nil, err
 			}
 			return append(lhs, rhs...), nil
-		case types.BinaryOpMatchStr, types.BinaryOpNotMatchStr, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
+		case types.BinaryOpEq, types.BinaryOpNeq, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
 			op, err := convertBinaryOp(expr.Op)
 			if err != nil {
 				return nil, err
