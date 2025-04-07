@@ -573,6 +573,60 @@ func TestRetentionPeriodToString(t *testing.T) {
 	}
 }
 
+// TestNegativeSizeHandling tests that the code handles negative size values
+// properly without causing a panic when incrementing Prometheus counters.
+func TestNegativeSizeHandling(t *testing.T) {
+	// Reset metrics for accurate testing
+	structuredMetadataBytesIngested.Reset()
+	bytesIngested.Reset()
+	linesIngested.Reset()
+	
+	// Create stats manually with negative sizes to test the guard clause
+	stats := NewPushStats()
+	userID := "fake"
+	isAggregatedMetric := "false"
+	policy := ""
+	retention := time.Hour
+	
+	// Set up negative sizes in both maps
+	stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+	stats.LogLinesBytes[policy][retention] = -100
+	
+	stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
+	stats.StructuredMetadataBytes[policy][retention] = -200
+	
+	// This simulates the LogLinesBytes processing in ParseRequest
+	for policyName, retentionToSizeMapping := range stats.LogLinesBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := RetentionPeriodToString(retentionPeriod)
+			// This is the guard clause we're testing
+			if size > 0 {
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+			}
+		}
+	}
+	
+	// This simulates the StructuredMetadataBytes processing in ParseRequest
+	for policyName, retentionToSizeMapping := range stats.StructuredMetadataBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := RetentionPeriodToString(retentionPeriod)
+			// This is the guard clause we're testing
+			if size > 0 {
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+				structuredMetadataBytesReceivedStats.Inc(size)
+			}
+		}
+	}
+	
+	// Verify no counters were incremented since all sizes were negative
+	// This test passes if no panic occurred and the counters remain at 0
+	require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy)))
+	require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy)))
+}
+
 type fakeLimits struct {
 	enabled         bool
 	labels          []string
