@@ -25,7 +25,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
 	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
 	f.IntVar(&cfg.NumPartitions, "ingest-limits-frontend.num-partitions", 64, "The number of partitions to use for the ring.")
-	f.DurationVar(&cfg.PartitionIDCacheTTL, "ingest-limits-frontend.partition-id-cache-ttl", 1*time.Minute, "The TTL for the stream usage cache. Disable caching by setting to 0 or negative.")
+	f.DurationVar(&cfg.PartitionIDCacheTTL, "ingest-limits-frontend.partition-id-cache-ttl", 1*time.Minute, "The TTL for the stream usage cache.")
 }
 
 func (cfg *Config) Validate() error {

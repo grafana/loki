@@ -112,7 +112,8 @@ func (f *Frontend) PartitionConsumersCacheHandler(w http.ResponseWriter, _ *http
 	}
 
 	for addr, entry := range f.partitionIDCache.Items() {
-		for partition := range entry.Value() {
+		assignedPartitions := entry.Value().AssignedPartitions
+		for partition := range assignedPartitions {
 			data.Entries[addr] = append(data.Entries[addr], partition)
 		}
 	}

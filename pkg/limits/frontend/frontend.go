@@ -86,7 +86,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
 	partitionIDCache := NewPartitionConsumerCache(cfg.PartitionIDCacheTTL)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, partitionIDCache, cfg.PartitionIDCacheTTL, cfg.NumPartitions)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, partitionIDCache, cfg.NumPartitions)
 
 	f := &Frontend{
 		cfg:              cfg,
@@ -137,6 +137,8 @@ func (f *Frontend) starting(ctx context.Context) (err error) {
 	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
 		return fmt.Errorf("failed to start subservices: %w", err)
 	}
+
+	go f.partitionIDCache.Start()
 
 	return nil
 }

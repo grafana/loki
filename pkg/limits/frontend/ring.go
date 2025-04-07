@@ -2,12 +2,12 @@ package frontend
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -30,18 +30,16 @@ type RingStreamUsageGatherer struct {
 	pool          *ring_client.Pool
 	numPartitions int
 	cache         PartitionConsumersCache
-	cacheTTL      time.Duration
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache PartitionConsumersCache, cacheTTL time.Duration, numPartitions int) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache PartitionConsumersCache, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
 		logger:        logger,
 		ring:          ring,
 		pool:          pool,
 		numPartitions: numPartitions,
 		cache:         cache,
-		cacheTTL:      cacheTTL,
 	}
 }
 
@@ -126,65 +124,54 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 	highestTimestamp := make(map[int32]int64)
 	assigned := make(map[int32]string)
 
-	// Track which instances need to be queried
-	toQuery := make([]ring.InstanceDesc, 0, len(rs.Instances))
+	errg, ctx := errgroup.WithContext(ctx)
+	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
-	// Try to get cached entries first
-	for _, instance := range rs.Instances {
-		if g.cache == nil {
-			toQuery = append(toQuery, instance)
-			continue
-		}
+	for i, instance := range rs.Instances {
+		errg.Go(func() error {
+			errChan := make(chan error, 1)
+			defer close(errChan)
 
-		if cached := g.cache.Get(instance.Addr); cached != nil {
-			// Use cached partitions, but still participate in conflict resolution
-			for partition, assignedAt := range cached.Value() {
-				if t := highestTimestamp[partition]; t < assignedAt {
-					highestTimestamp[partition] = assignedAt
-					assigned[partition] = instance.Addr
-				}
+			loaderFunc := ttlcache.LoaderFunc[string, logproto.GetAssignedPartitionsResponse](
+				func(c *ttlcache.Cache[string, logproto.GetAssignedPartitionsResponse], key string) *ttlcache.Item[string, logproto.GetAssignedPartitionsResponse] {
+					client, err := g.pool.GetClientFor(instance.Addr)
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+
+					resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+					return c.Set(key, *resp, ttlcache.DefaultTTL)
+				},
+			)
+
+			cached := g.cache.Get(instance.Addr, ttlcache.WithLoader(loaderFunc))
+
+			select {
+			case err := <-errChan:
+				return err
+			default:
 			}
-		} else {
-			toQuery = append(toQuery, instance)
-		}
+
+			protoResp := cached.Value()
+			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: &protoResp}
+			return nil
+		})
 	}
 
-	// Query uncached instances
-	if len(toQuery) > 0 {
-		errg, ctx := errgroup.WithContext(ctx)
-		responses := make([]getAssignedPartitionsResponse, len(toQuery))
+	if err := errg.Wait(); err != nil {
+		return nil, err
+	}
 
-		for i, instance := range toQuery {
-			errg.Go(func() error {
-				client, err := g.pool.GetClientFor(instance.Addr)
-				if err != nil {
-					return err
-				}
-				resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
-				if err != nil {
-					return err
-				}
-				responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
-				return nil
-			})
-		}
-		if err := errg.Wait(); err != nil {
-			return nil, err
-		}
-
-		// Process and cache new responses
-		for _, resp := range responses {
-			assignments := make(map[int32]int64)
-			for partition, assignedAt := range resp.Response.AssignedPartitions {
-				if t := highestTimestamp[partition]; t < assignedAt {
-					highestTimestamp[partition] = assignedAt
-					assigned[partition] = resp.Addr
-					assignments[partition] = assignedAt
-				}
-			}
-			// Cache the instance's partitions
-			if g.cache != nil {
-				g.cache.Set(resp.Addr, assignments, g.cacheTTL)
+	for _, resp := range responses {
+		for partition, assignedAt := range resp.Response.AssignedPartitions {
+			if t := highestTimestamp[partition]; t < assignedAt {
+				highestTimestamp[partition] = assignedAt
+				assigned[partition] = resp.Addr
 			}
 		}
 	}
