@@ -7,13 +7,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +22,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/grafana/dskit/flagext"
-
+	
+	"github.com/grafana/loki/v3/pkg/logproto"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -31,10 +32,10 @@ func gzipString(source string) string {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	if _, err := zw.Write([]byte(source)); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	if err := zw.Close(); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	return buf.String()
 }
@@ -44,10 +45,10 @@ func deflateString(source string) string {
 	var buf bytes.Buffer
 	zw, _ := flate.NewWriter(&buf, 6)
 	if _, err := zw.Write([]byte(source)); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	if err := zw.Close(); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	return buf.String()
 }
@@ -581,45 +582,65 @@ func TestNegativeSizeHandling(t *testing.T) {
 	bytesIngested.Reset()
 	linesIngested.Reset()
 	
-	// Create stats manually with negative sizes to test the guard clause
-	stats := NewPushStats()
+	// Create a custom request parser that will generate negative sizes
+	var mockParser RequestParser = func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+		// Create a minimal valid request
+		req := &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{foo="bar"}`,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Now(),
+							Line:      "test line",
+						},
+					},
+				},
+			},
+		}
+		
+		// Create stats with negative sizes to test our guard clauses
+		stats := NewPushStats()
+		policy := ""
+		retention := time.Hour
+		
+		// Set up negative sizes in both maps
+		stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+		stats.LogLinesBytes[policy][retention] = -100
+		
+		stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
+		stats.StructuredMetadataBytes[policy][retention] = -200
+		
+		return req, stats, nil
+	}
+	
+	// Create a mock request
+	request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader("{}"))
+	request.Header.Add("Content-Type", "application/json")
+	
+	// Use a mock stream resolver to ensure consistent results
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+	
+	// This should not panic with our guard clauses in place
+	_, err := ParseRequest(
+		util_log.Logger,
+		"fake",
+		100<<20,
+		request,
+		&fakeLimits{},
+		mockParser,
+		NewMockTracker(),
+		streamResolver,
+		false,
+	)
+	
+	// No error should be returned
+	require.NoError(t, err)
+	
+	// Check that the metrics were not incremented for negative values
 	userID := "fake"
 	isAggregatedMetric := "false"
 	policy := ""
-	retention := time.Hour
-	
-	// Set up negative sizes in both maps
-	stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
-	stats.LogLinesBytes[policy][retention] = -100
-	
-	stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
-	stats.StructuredMetadataBytes[policy][retention] = -200
-	
-	// This simulates the LogLinesBytes processing in ParseRequest
-	for policyName, retentionToSizeMapping := range stats.LogLinesBytes {
-		for retentionPeriod, size := range retentionToSizeMapping {
-			retentionHours := RetentionPeriodToString(retentionPeriod)
-			// This is the guard clause we're testing
-			if size > 0 {
-				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-				bytesReceivedStats.Inc(size)
-			}
-		}
-	}
-	
-	// This simulates the StructuredMetadataBytes processing in ParseRequest
-	for policyName, retentionToSizeMapping := range stats.StructuredMetadataBytes {
-		for retentionPeriod, size := range retentionToSizeMapping {
-			retentionHours := RetentionPeriodToString(retentionPeriod)
-			// This is the guard clause we're testing
-			if size > 0 {
-				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-				bytesReceivedStats.Inc(size)
-				structuredMetadataBytesReceivedStats.Inc(size)
-			}
-		}
-	}
 	
 	// Verify no counters were incremented since all sizes were negative
 	// This test passes if no panic occurred and the counters remain at 0
