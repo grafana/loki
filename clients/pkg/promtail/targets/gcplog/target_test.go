@@ -1,7 +1,9 @@
 package gcplog
 
 import (
+	"flag"
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -49,6 +52,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_defaults_to_pull_target",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "",
 				},
 			},
@@ -64,6 +68,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_pull_subscriptiontype_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "pull",
 				},
 			},
@@ -79,6 +84,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_push_subscription_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "push",
 				},
 			},
@@ -94,6 +100,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_unknown_substype_fails_to_create_target",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "magic",
 				},
 			},
@@ -106,6 +113,12 @@ func TestNewGCPLogTarget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Since the push target underlying http server registers metrics in the default registerer, we have to override it to prevent duplicate metrics errors.
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+			serverConfig, _, err := GetServerConfigWithAvailablePort()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.args.config.Server = serverConfig
 
 			got, err := NewGCPLogTarget(tt.args.metrics, tt.args.logger, tt.args.handler, tt.args.relabel, tt.args.jobName, tt.args.config, option.WithCredentials(&google.Credentials{}))
 			// If the target was started, stop it after test
@@ -121,4 +134,32 @@ func TestNewGCPLogTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+const localhost = "127.0.0.1"
+
+func GetServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
+	// Get a randomly available port by open and closing a TCP socket
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
+	if err != nil {
+		return
+	}
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return
+	}
+	port = l.Addr().(*net.TCPAddr).Port
+	err = l.Close()
+	if err != nil {
+		return
+	}
+
+	// Adjust some of the defaults
+	cfg.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	cfg.HTTPListenAddress = localhost
+	cfg.HTTPListenPort = port
+	cfg.GRPCListenAddress = localhost
+	cfg.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+
+	return
 }
