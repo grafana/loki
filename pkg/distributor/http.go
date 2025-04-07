@@ -63,7 +63,10 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			// and thus we don't know the uncompressed size.
 			// In addition we don't add the metric label values for
 			// `retention_hours` and `policy` because we don't know the labels.
-			validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID).Add(float64(r.ContentLength))
+			// Ensure ContentLength is positive to avoid counter panic
+			if r.ContentLength > 0 {
+				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID).Add(float64(r.ContentLength))
+			}
 			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
 			return
 
