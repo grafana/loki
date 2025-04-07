@@ -33,6 +33,18 @@ func (c TestCase) Name() string {
 	return fmt.Sprintf("%s [%v]", c.Query, c.Direction)
 }
 
+// Kind returns the kind of the test case based on the query type.
+func (c TestCase) Kind() string {
+	expr, err := syntax.ParseExpr(c.Query)
+	if err != nil {
+		return "invalid"
+	}
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return "metric"
+	}
+	return "log"
+}
+
 // Description returns a detailed description of the test case including time range
 func (c TestCase) Description() string {
 	var b strings.Builder
