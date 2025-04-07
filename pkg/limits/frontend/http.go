@@ -111,9 +111,7 @@ func (f *Frontend) PartitionConsumersCacheHandler(w http.ResponseWriter, _ *http
 		Entries: make(map[string][]int32),
 	}
 
-	cache := f.streamUsage.(*RingStreamUsageGatherer).cache
-
-	for addr, entry := range cache.Items() {
+	for addr, entry := range f.partitionIDCache.Items() {
 		for partition := range entry.Value() {
 			data.Entries[addr] = append(data.Entries[addr], partition)
 		}
@@ -134,15 +132,14 @@ func (f *Frontend) PartitionConsumersCacheEvictHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	cache := f.streamUsage.(*RingStreamUsageGatherer).cache
-
+	
 	instance := r.FormValue("instance")
 	if instance == "" {
 		// Clear all cache
-		cache.DeleteAll()
+		f.partitionIDCache.DeleteAll()
 	} else {
 		// Clear specific instance
-		cache.Delete(instance)
+		f.partitionIDCache.Delete(instance)
 	}
 
 	// Redirect back to the GET page

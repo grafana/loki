@@ -150,16 +150,8 @@ func TestRingStreamUsageGatherer_ServeHTTP(t *testing.T) {
 				cache.Set(k, v, ttl)
 			}
 
-			// Create the gatherer with our test cache
-			gatherer := &RingStreamUsageGatherer{
-				cache: cache,
-			}
-
 			f := Frontend{
-				cfg: Config{
-					PartitionIDCacheTTL: ttl,
-				},
-				streamUsage: gatherer,
+				partitionIDCache: cache,
 			}
 
 			// Create request
@@ -241,16 +233,8 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 				cache.Set(k, v, ttl)
 			}
 
-			// Create the gatherer with our test cache
-			gatherer := &RingStreamUsageGatherer{
-				cache: cache,
-			}
-
 			f := Frontend{
-				cfg: Config{
-					PartitionIDCacheTTL: ttl,
-				},
-				streamUsage: gatherer,
+				partitionIDCache: cache,
 			}
 
 			// Create request

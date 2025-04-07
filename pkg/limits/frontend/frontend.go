@@ -58,10 +58,11 @@ type Frontend struct {
 	cfg    Config
 	logger log.Logger
 
-	limits      Limits
-	rateLimiter *limiter.RateLimiter
-	streamUsage StreamUsageGatherer
-	metrics     *metrics
+	limits           Limits
+	rateLimiter      *limiter.RateLimiter
+	streamUsage      StreamUsageGatherer
+	partitionIDCache PartitionConsumersCache
+	metrics          *metrics
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -88,12 +89,13 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, partitionIDCache, cfg.PartitionIDCacheTTL, cfg.NumPartitions)
 
 	f := &Frontend{
-		cfg:         cfg,
-		logger:      logger,
-		limits:      limits,
-		rateLimiter: rateLimiter,
-		streamUsage: streamUsage,
-		metrics:     newMetrics(reg),
+		cfg:              cfg,
+		logger:           logger,
+		limits:           limits,
+		rateLimiter:      rateLimiter,
+		streamUsage:      streamUsage,
+		partitionIDCache: partitionIDCache,
+		metrics:          newMetrics(reg),
 	}
 
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
