@@ -8,10 +8,11 @@ import (
 	"unsafe"
 
 	"github.com/grafana/jsonparser"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestEntryMarshalUnmarshalJSON(t *testing.T) {
