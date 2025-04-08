@@ -30,9 +30,9 @@
                 "CreateHmacKey"
               ]
             },
-            "CreateNotificationConfig": {
+            "CreateNotification": {
               "methods": [
-                "CreateNotificationConfig"
+                "CreateNotification"
               ]
             },
             "DeleteBucket": {
@@ -45,9 +45,9 @@
                 "DeleteHmacKey"
               ]
             },
-            "DeleteNotificationConfig": {
+            "DeleteNotification": {
               "methods": [
-                "DeleteNotificationConfig"
+                "DeleteNotification"
               ]
             },
             "DeleteObject": {
@@ -70,9 +70,9 @@
                 "GetIamPolicy"
               ]
             },
-            "GetNotificationConfig": {
+            "GetNotification": {
               "methods": [
-                "GetNotificationConfig"
+                "GetNotification"
               ]
             },
             "GetObject": {
@@ -95,9 +95,9 @@
                 "ListHmacKeys"
               ]
             },
-            "ListNotificationConfigs": {
+            "ListNotifications": {
               "methods": [
-                "ListNotificationConfigs"
+                "ListNotifications"
               ]
             },
             "ListObjects": {

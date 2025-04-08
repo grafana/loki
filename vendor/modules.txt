@@ -1,4 +1,4 @@
-# cloud.google.com/go v0.110.9
+# cloud.google.com/go v0.110.2
 ## explicit; go 1.19
 cloud.google.com/go
 cloud.google.com/go/internal
@@ -32,7 +32,7 @@ cloud.google.com/go/pubsub/apiv1/pubsubpb
 cloud.google.com/go/pubsub/internal
 cloud.google.com/go/pubsub/internal/distribution
 cloud.google.com/go/pubsub/internal/scheduler
-# cloud.google.com/go/storage v1.30.1
+# cloud.google.com/go/storage v1.29.0
 ## explicit; go 1.19
 cloud.google.com/go/storage
 cloud.google.com/go/storage/internal
