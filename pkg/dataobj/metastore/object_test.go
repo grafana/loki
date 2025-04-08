@@ -164,9 +164,9 @@ func TestStreamsRegexMatcher(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, matchedLabels, 3)
 		require.ElementsMatch(t, matchedLabels, []labels.Labels{
-			labels.Labels{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
-			labels.Labels{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
-			labels.Labels{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
+			{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
 		})
 	})
 }
@@ -180,9 +180,9 @@ func TestStreamsNotRegexMatcher(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, matchedLabels, 3)
 		require.ElementsMatch(t, matchedLabels, []labels.Labels{
-			labels.Labels{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
-			labels.Labels{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
-			labels.Labels{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
+			{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
 		})
 	})
 }
