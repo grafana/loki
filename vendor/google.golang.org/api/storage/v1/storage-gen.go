@@ -7260,8 +7260,7 @@ type ObjectAccessControlsDeleteCall struct {
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) Delete(bucket string, object string, entity string) *ObjectAccessControlsDeleteCall {
 	c := &ObjectAccessControlsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -7376,7 +7375,7 @@ func (c *ObjectAccessControlsDeleteCall) Do(opts ...googleapi.CallOption) error 
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -7417,8 +7416,7 @@ type ObjectAccessControlsGetCall struct {
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) Get(bucket string, object string, entity string) *ObjectAccessControlsGetCall {
 	c := &ObjectAccessControlsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -7571,7 +7569,7 @@ func (c *ObjectAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*ObjectA
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -7610,8 +7608,7 @@ type ObjectAccessControlsInsertCall struct {
 //
 //   - bucket: Name of a bucket.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) Insert(bucket string, object string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsInsertCall {
 	c := &ObjectAccessControlsInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -7748,7 +7745,7 @@ func (c *ObjectAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*Obje
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -7790,8 +7787,7 @@ type ObjectAccessControlsListCall struct {
 //
 //   - bucket: Name of a bucket.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) List(bucket string, object string) *ObjectAccessControlsListCall {
 	c := &ObjectAccessControlsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -7935,7 +7931,7 @@ func (c *ObjectAccessControlsListCall) Do(opts ...googleapi.CallOption) (*Object
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -7978,8 +7974,7 @@ type ObjectAccessControlsPatchCall struct {
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) Patch(bucket string, object string, entity string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsPatchCall {
 	c := &ObjectAccessControlsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -8125,7 +8120,7 @@ func (c *ObjectAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*Objec
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -8171,8 +8166,7 @@ type ObjectAccessControlsUpdateCall struct {
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectAccessControlsService) Update(bucket string, object string, entity string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsUpdateCall {
 	c := &ObjectAccessControlsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -8318,7 +8312,7 @@ func (c *ObjectAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*Obje
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -8363,7 +8357,7 @@ type ObjectsComposeCall struct {
 //     objects. The destination object is stored in this bucket.
 //   - destinationObject: Name of the new object. For information about
 //     how to URL encode object names to be path safe, see Encoding URI
-//     Path Parts (http://cloud/storage/docs/request-endpoints#encoding).
+//     Path Parts.
 func (r *ObjectsService) Compose(destinationBucket string, destinationObject string, composerequest *ComposeRequest) *ObjectsComposeCall {
 	c := &ObjectsComposeCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.destinationBucket = destinationBucket
@@ -8546,7 +8540,7 @@ func (c *ObjectsComposeCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "destinationObject": {
-	//       "description": "Name of the new object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the new object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -8631,8 +8625,7 @@ type ObjectsCopyCall struct {
 //   - destinationBucket: Name of the bucket in which to store the new
 //     object. Overrides the provided object metadata's bucket value, if
 //     any.For information about how to URL encode object names to be path
-//     safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     safe, see Encoding URI Path Parts.
 //   - destinationObject: Name of the new object. Required when the object
 //     metadata is not otherwise provided. Overrides the object metadata's
 //     name value, if any.
@@ -8640,7 +8633,7 @@ type ObjectsCopyCall struct {
 //     object.
 //   - sourceObject: Name of the source object. For information about how
 //     to URL encode object names to be path safe, see Encoding URI Path
-//     Parts (http://cloud/storage/docs/request-endpoints#encoding).
+//     Parts.
 func (r *ObjectsService) Copy(sourceBucket string, sourceObject string, destinationBucket string, destinationObject string, object *Object) *ObjectsCopyCall {
 	c := &ObjectsCopyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.sourceBucket = sourceBucket
@@ -8901,7 +8894,7 @@ func (c *ObjectsCopyCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//   ],
 	//   "parameters": {
 	//     "destinationBucket": {
-	//       "description": "Name of the bucket in which to store the new object. Overrides the provided object metadata's bucket value, if any.For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the bucket in which to store the new object. Overrides the provided object metadata's bucket value, if any.For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -9012,7 +9005,7 @@ func (c *ObjectsCopyCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "sourceObject": {
-	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -9056,8 +9049,7 @@ type ObjectsDeleteCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) Delete(bucket string, object string) *ObjectsDeleteCall {
 	c := &ObjectsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -9223,7 +9215,7 @@ func (c *ObjectsDeleteCall) Do(opts ...googleapi.CallOption) error {
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -9260,8 +9252,7 @@ type ObjectsGetCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) Get(bucket string, object string) *ObjectsGetCall {
 	c := &ObjectsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -9493,7 +9484,7 @@ func (c *ObjectsGetCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -9550,8 +9541,7 @@ type ObjectsGetIamPolicyCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) GetIamPolicy(bucket string, object string) *ObjectsGetIamPolicyCall {
 	c := &ObjectsGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -9695,7 +9685,7 @@ func (c *ObjectsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -9807,8 +9797,7 @@ func (c *ObjectsInsertCall) KmsKeyName(kmsKeyName string) *ObjectsInsertCall {
 // Name sets the optional parameter "name": Name of the object. Required
 // when the object metadata is not otherwise provided. Overrides the
 // object metadata's name value, if any. For information about how to
-// URL encode object names to be path safe, see Encoding URI Path Parts
-// (http://cloud/storage/docs/request-endpoints#encoding).
+// URL encode object names to be path safe, see Encoding URI Path Parts.
 func (c *ObjectsInsertCall) Name(name string) *ObjectsInsertCall {
 	c.urlParams_.Set("name", name)
 	return c
@@ -10118,7 +10107,7 @@ func (c *ObjectsInsertCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "name": {
-	//       "description": "Name of the object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "query",
 	//       "type": "string"
 	//     },
@@ -10528,8 +10517,7 @@ type ObjectsPatchCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) Patch(bucket string, object string, object2 *Object) *ObjectsPatchCall {
 	c := &ObjectsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -10768,7 +10756,7 @@ func (c *ObjectsPatchCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -10851,13 +10839,12 @@ type ObjectsRewriteCall struct {
 //   - destinationObject: Name of the new object. Required when the object
 //     metadata is not otherwise provided. Overrides the object metadata's
 //     name value, if any. For information about how to URL encode object
-//     names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     names to be path safe, see Encoding URI Path Parts.
 //   - sourceBucket: Name of the bucket in which to find the source
 //     object.
 //   - sourceObject: Name of the source object. For information about how
 //     to URL encode object names to be path safe, see Encoding URI Path
-//     Parts (http://cloud/storage/docs/request-endpoints#encoding).
+//     Parts.
 func (r *ObjectsService) Rewrite(sourceBucket string, sourceObject string, destinationBucket string, destinationObject string, object *Object) *ObjectsRewriteCall {
 	c := &ObjectsRewriteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.sourceBucket = sourceBucket
@@ -11153,7 +11140,7 @@ func (c *ObjectsRewriteCall) Do(opts ...googleapi.CallOption) (*RewriteResponse,
 	//       "type": "string"
 	//     },
 	//     "destinationObject": {
-	//       "description": "Name of the new object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the new object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -11264,7 +11251,7 @@ func (c *ObjectsRewriteCall) Do(opts ...googleapi.CallOption) (*RewriteResponse,
 	//       "type": "string"
 	//     },
 	//     "sourceObject": {
-	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -11307,8 +11294,7 @@ type ObjectsSetIamPolicyCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) SetIamPolicy(bucket string, object string, policy *Policy) *ObjectsSetIamPolicyCall {
 	c := &ObjectsSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -11445,7 +11431,7 @@ func (c *ObjectsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -11489,8 +11475,7 @@ type ObjectsTestIamPermissionsCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 //   - permissions: Permissions to test.
 func (r *ObjectsService) TestIamPermissions(bucket string, object string, permissions []string) *ObjectsTestIamPermissionsCall {
 	c := &ObjectsTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -11637,7 +11622,7 @@ func (c *ObjectsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestI
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
@@ -11686,8 +11671,7 @@ type ObjectsUpdateCall struct {
 //
 //   - bucket: Name of the bucket in which the object resides.
 //   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
-//     (http://cloud/storage/docs/request-endpoints#encoding).
+//     object names to be path safe, see Encoding URI Path Parts.
 func (r *ObjectsService) Update(bucket string, object string, object2 *Object) *ObjectsUpdateCall {
 	c := &ObjectsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -11926,7 +11910,7 @@ func (c *ObjectsUpdateCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	//       "type": "string"
 	//     },
 	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](http://cloud/storage/docs/request-endpoints#encoding).",
+	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"

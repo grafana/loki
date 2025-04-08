@@ -15,11 +15,11 @@ cloud.google.com/go/bigtable/internal/option
 # cloud.google.com/go/compute/metadata v0.3.0
 ## explicit; go 1.19
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v1.1.3
+# cloud.google.com/go/iam v1.1.2
 ## explicit; go 1.19
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
-# cloud.google.com/go/longrunning v0.5.2
+# cloud.google.com/go/longrunning v0.5.1
 ## explicit; go 1.19
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
@@ -816,12 +816,11 @@ github.com/google/uuid
 ## explicit; go 1.19
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
-# github.com/googleapis/gax-go/v2 v2.12.0
+# github.com/googleapis/gax-go/v2 v2.11.0
 ## explicit; go 1.19
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
 github.com/googleapis/gax-go/v2/apierror/internal/proto
-github.com/googleapis/gax-go/v2/callctx
 github.com/googleapis/gax-go/v2/internal
 # github.com/gophercloud/gophercloud v1.2.0
 ## explicit; go 1.14
@@ -1655,7 +1654,7 @@ golang.org/x/tools/internal/versions
 ## explicit; go 1.17
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.131.0
+# google.golang.org/api v0.126.0
 ## explicit; go 1.19
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
