@@ -37,7 +37,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, s := range in {
-		require.NoError(t, b.Append(i, ByteArrayValue([]byte(s))))
+		require.NoError(t, b.Append(i, ByteArrayValue(s)))
 	}
 
 	col, err := b.Flush()

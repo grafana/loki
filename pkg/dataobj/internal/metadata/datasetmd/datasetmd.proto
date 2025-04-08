@@ -53,6 +53,7 @@ enum ValueType {
   // VALUE_TYPE_BYTE_ARRAY is a column containing bytes with no specific type.
   VALUE_TYPE_BYTE_ARRAY = 4;
 
+  // Field 3 was VALUE_TYPE_STRING which was discontinued for performance reasons in favour of VALUE_TYPE_BYTE_ARRAY.
   reserved 3;
 }
 

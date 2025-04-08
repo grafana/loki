@@ -126,7 +126,6 @@ func TestDecode(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			record.MdValueCaps = nil
 			require.Equal(t, tt.expected, record)
 		})
 	}

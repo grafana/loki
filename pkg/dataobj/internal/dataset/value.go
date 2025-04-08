@@ -132,7 +132,16 @@ func (v *Value) ByteArray() []byte {
 	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
 }
 
-// Buffer returns the memory pointed to by this Value. The returned buffer will have a capacity of at least sz bytes & may be allocated if the existing buffer is too small.
+// Buffer returns a slice with a capacity of at least sz. Existing
+// memory pointed to by Value is reused where possible, either
+// returning the underlying memory or growing it to be at least
+// sz.
+//
+// If Value does not point to any underlying memory, a new slice
+// is allocated.
+//
+// After calling Buffer, Value is updated to store the returned
+// slice.
 func (v *Value) Buffer(sz int) []byte {
 	if v.cap == 0 {
 		dst := make([]byte, sz)
@@ -159,14 +168,20 @@ func (v *Value) Buffer(sz int) []byte {
 	return dst
 }
 
-// SetByteArray updates the value to point to the provided byte slice.
+// SetByteArrayValue updates the value to point to the provided byte slice.
+// This will overwrite any existing data stored in this Value and update it to be of type [datasetmd.VALUE_TYPE_BYTE_ARRAY].
 func (v *Value) SetByteArrayValue(b []byte) {
 	v.any = (bytearray)(unsafe.SliceData(b))
 	v.num = uint64(len(b))
 	v.cap = uint64(cap(b))
 }
 
-// Zero resets the value to its zero state. It retains pointers to any existing memory.
+// Zero resets the value to its zero state while retaining pointers to any existing memory.
+// After calling Zero:
+// - The value will report as zero but not nil if it points to underlying memory
+// - The value will also report as nil only if it doesn't point to any underlying memory
+// - Any subsequent operations that read the value will treat it as empty
+// - Any subsequent operations that write to a non-nil zero value will re-use the underlying memory.
 func (v *Value) Zero() {
 	v.num = 0
 }

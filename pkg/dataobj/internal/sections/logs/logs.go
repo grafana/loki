@@ -6,13 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -22,41 +19,16 @@ import (
 
 // A Record is an individual log record within the logs section.
 type Record struct {
-	StreamID    int64
-	Timestamp   time.Time
-	Metadata    []RecordMetadata
-	Line        []byte
-	MdValueCaps []int
+	StreamID  int64
+	Timestamp time.Time
+	Metadata  []RecordMetadata
+	Line      []byte
 }
 
 // A Labels-like type that holds byte buffers instead of strings.
 type RecordMetadata struct {
 	Name  string
 	Value []byte
-}
-
-/* func (r *Record) DeepCopy() Record {
-	newRecord := Record{
-		StreamID:    r.StreamID,
-		Timestamp:   r.Timestamp,
-		Metadata:    copyLabels(r.Metadata),
-		Line:        make([]byte, len(r.Line)),
-		MdValueCaps: make([]int, len(r.MdValueCaps)),
-	}
-	copy(newRecord.Line, r.Line)
-	copy(newRecord.MdValueCaps, r.MdValueCaps)
-	return newRecord
-} */
-
-func copyLabels(in labels.Labels) labels.Labels {
-	lb := make(labels.Labels, len(in))
-	for i, label := range in {
-		lb[i] = labels.Label{
-			Name:  strings.Clone(label.Name),
-			Value: strings.Clone(label.Value),
-		}
-	}
-	return lb
 }
 
 // Options configures the behavior of the logs section.
