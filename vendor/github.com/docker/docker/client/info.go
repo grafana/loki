@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/docker/docker/api/types/system"
+	"github.com/docker/docker/api/types"
 )
 
 // Info returns information about the docker server.
-func (cli *Client) Info(ctx context.Context) (system.Info, error) {
-	var info system.Info
+func (cli *Client) Info(ctx context.Context) (types.Info, error) {
+	var info types.Info
 	serverResp, err := cli.get(ctx, "/info", url.Values{}, nil)
 	defer ensureReaderClosed(serverResp)
 	if err != nil {

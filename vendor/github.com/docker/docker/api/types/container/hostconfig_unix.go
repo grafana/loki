@@ -1,8 +1,7 @@
 //go:build !windows
+// +build !windows
 
 package container // import "github.com/docker/docker/api/types/container"
-
-import "github.com/docker/docker/api/types/network"
 
 // IsValid indicates if an isolation technology is valid
 func (i Isolation) IsValid() bool {
@@ -12,15 +11,15 @@ func (i Isolation) IsValid() bool {
 // NetworkName returns the name of the network stack.
 func (n NetworkMode) NetworkName() string {
 	if n.IsBridge() {
-		return network.NetworkBridge
+		return "bridge"
 	} else if n.IsHost() {
-		return network.NetworkHost
+		return "host"
 	} else if n.IsContainer() {
 		return "container"
 	} else if n.IsNone() {
-		return network.NetworkNone
+		return "none"
 	} else if n.IsDefault() {
-		return network.NetworkDefault
+		return "default"
 	} else if n.IsUserDefined() {
 		return n.UserDefined()
 	}
@@ -29,12 +28,12 @@ func (n NetworkMode) NetworkName() string {
 
 // IsBridge indicates whether container uses the bridge network stack
 func (n NetworkMode) IsBridge() bool {
-	return n == network.NetworkBridge
+	return n == "bridge"
 }
 
 // IsHost indicates whether container uses the host network stack.
 func (n NetworkMode) IsHost() bool {
-	return n == network.NetworkHost
+	return n == "host"
 }
 
 // IsUserDefined indicates user-created network

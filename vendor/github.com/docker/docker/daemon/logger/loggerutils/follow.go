@@ -1,14 +1,13 @@
 package loggerutils // import "github.com/docker/docker/daemon/logger/loggerutils"
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/containerd/log"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 type follow struct {
@@ -17,13 +16,13 @@ type follow struct {
 	Decoder   Decoder
 	Forwarder *forwarder
 
-	log *log.Entry
+	log *logrus.Entry
 	c   chan logPos
 }
 
 // Do follows the log file as it is written, starting from f at read.
 func (fl *follow) Do(f *os.File, read logPos) {
-	fl.log = log.G(context.TODO()).WithFields(log.Fields{
+	fl.log = logrus.WithFields(logrus.Fields{
 		"module": "logger",
 		"file":   f.Name(),
 	})

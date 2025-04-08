@@ -14,21 +14,18 @@ import (
 // Ping pings the server and returns the value of the "Docker-Experimental",
 // "Builder-Version", "OS-Type" & "API-Version" headers. It attempts to use
 // a HEAD request on the endpoint, but falls back to GET if HEAD is not supported
-// by the daemon. It ignores internal server errors returned by the API, which
-// may be returned if the daemon is in an unhealthy state, but returns errors
-// for other non-success status codes, failing to connect to the API, or failing
-// to parse the API response.
+// by the daemon.
 func (cli *Client) Ping(ctx context.Context) (types.Ping, error) {
 	var ping types.Ping
 
 	// Using cli.buildRequest() + cli.doRequest() instead of cli.sendRequest()
 	// because ping requests are used during API version negotiation, so we want
 	// to hit the non-versioned /_ping endpoint, not /v1.xx/_ping
-	req, err := cli.buildRequest(ctx, http.MethodHead, path.Join(cli.basePath, "/_ping"), nil, nil)
+	req, err := cli.buildRequest(http.MethodHead, path.Join(cli.basePath, "/_ping"), nil, nil)
 	if err != nil {
 		return ping, err
 	}
-	serverResp, err := cli.doRequest(req)
+	serverResp, err := cli.doRequest(ctx, req)
 	if err == nil {
 		defer ensureReaderClosed(serverResp)
 		switch serverResp.statusCode {
@@ -40,9 +37,11 @@ func (cli *Client) Ping(ctx context.Context) (types.Ping, error) {
 		return ping, err
 	}
 
-	// HEAD failed; fallback to GET.
-	req.Method = http.MethodGet
-	serverResp, err = cli.doRequest(req)
+	req, err = cli.buildRequest(http.MethodGet, path.Join(cli.basePath, "/_ping"), nil, nil)
+	if err != nil {
+		return ping, err
+	}
+	serverResp, err = cli.doRequest(ctx, req)
 	defer ensureReaderClosed(serverResp)
 	if err != nil {
 		return ping, err

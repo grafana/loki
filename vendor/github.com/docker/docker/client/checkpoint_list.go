@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/url"
 
-	"github.com/docker/docker/api/types/checkpoint"
+	"github.com/docker/docker/api/types"
 )
 
 // CheckpointList returns the checkpoints of the given container in the docker host
-func (cli *Client) CheckpointList(ctx context.Context, container string, options checkpoint.ListOptions) ([]checkpoint.Summary, error) {
-	var checkpoints []checkpoint.Summary
+func (cli *Client) CheckpointList(ctx context.Context, container string, options types.CheckpointListOptions) ([]types.Checkpoint, error) {
+	var checkpoints []types.Checkpoint
 
 	query := url.Values{}
 	if options.CheckpointDir != "" {

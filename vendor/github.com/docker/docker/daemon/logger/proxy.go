@@ -74,7 +74,9 @@ type logPluginProxyCapabilitiesResponse struct {
 }
 
 func (pp *logPluginProxy) Capabilities() (cap Capability, err error) {
-	var ret logPluginProxyCapabilitiesResponse
+	var (
+		ret logPluginProxyCapabilitiesResponse
+	)
 
 	if err = pp.Call("LogDriver.Capabilities", nil, &ret); err != nil {
 		return
@@ -95,7 +97,9 @@ type logPluginProxyReadLogsRequest struct {
 }
 
 func (pp *logPluginProxy) ReadLogs(info Info, config ReadConfig) (stream io.ReadCloser, err error) {
-	var req logPluginProxyReadLogsRequest
+	var (
+		req logPluginProxyReadLogsRequest
+	)
 
 	req.Info = info
 	req.Config = config
