@@ -415,21 +415,21 @@ func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string)
 		objPath          string
 	)
 	for _, lb := range lbs {
-		if lb.Name == "__start__" {
+		if lb.Name == labelNameStart {
 			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
 			if err != nil {
 				panic(err)
 			}
 			objStart = time.Unix(0, tsNano).UTC()
 		}
-		if lb.Name == "__end__" {
+		if lb.Name == labelNameEnd {
 			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
 			if err != nil {
 				panic(err)
 			}
 			objEnd = time.Unix(0, tsNano).UTC()
 		}
-		if lb.Name == "__path__" {
+		if lb.Name == labelNamePath {
 			objPath = lb.Value
 		}
 	}
