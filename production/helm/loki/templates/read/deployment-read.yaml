@@ -96,9 +96,11 @@ spec:
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- if .Values.read.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.loki.read.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.read.livenessProbe | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
