@@ -116,7 +116,7 @@ func TestGenerateCondition(t *testing.T) {
 }
 
 func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
-	testError := errors.New("test-error") //nolint:goerr113
+	testError := errors.New("test-error") //nolint:err113
 	tt := []struct {
 		desc          string
 		nodes         []corev1.Node

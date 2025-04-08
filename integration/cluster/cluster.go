@@ -73,10 +73,17 @@ limits_config:
         attributes: [email]
 
 storage_config:
+  # Legacy config
   named_stores:
     filesystem:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
+  # Thanos config
+  object_store:
+    named_stores:
+      filesystem:
+        store-1:
+          dir: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
     active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache

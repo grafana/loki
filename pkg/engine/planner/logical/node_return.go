@@ -1,5 +1,7 @@
 package logical
 
+import "fmt"
+
 // The Return instruction yields a value to return from a plan. Return
 // implements [Instruction].
 type Return struct {
@@ -8,7 +10,7 @@ type Return struct {
 
 // String returns the disassembled SSA form of r.
 func (r *Return) String() string {
-	return "RETURN " + r.Value.Name()
+	return fmt.Sprintf("RETURN %s", r.Value.Name())
 }
 
 func (r *Return) isInstruction() {}

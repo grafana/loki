@@ -3,8 +3,8 @@ package metastore
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,10 +13,17 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
+)
+
+const (
+	labelNameStart = "__start__"
+	labelNameEnd   = "__end__"
+	labelNamePath  = "__path__"
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
@@ -122,9 +129,13 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 
 				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
 
-				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
+				ls := labels.New(
+					labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
+					labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
+					labels.Label{Name: labelNamePath, Value: dataobjPath},
+				)
 				err := m.metastoreBuilder.Append(logproto.Stream{
-					Labels:  ls,
+					Labels:  ls.String(),
 					Entries: []logproto.Entry{{Line: ""}},
 				})
 				if err != nil {
