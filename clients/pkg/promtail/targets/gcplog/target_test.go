@@ -50,6 +50,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				jobName: "test_job_defaults_to_pull_target",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "",
+					ProjectID:        "test",
 				},
 			},
 			wantType: &pullTarget{},
@@ -65,6 +66,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				jobName: "test_job_pull_subscriptiontype_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "pull",
+					ProjectID:        "test",
 				},
 			},
 			wantType: &pullTarget{},
@@ -80,6 +82,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				jobName: "test_job_push_subscription_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "push",
+					ProjectID:        "test",
 				},
 			},
 			wantType: &pushTarget{},
@@ -95,6 +98,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				jobName: "test_job_unknown_substype_fails_to_create_target",
 				config: &scrapeconfig.GcplogTargetConfig{
 					SubscriptionType: "magic",
+					ProjectID:        "test",
 				},
 			},
 			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {

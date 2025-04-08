@@ -1,5 +1,12 @@
 # Changes
 
+## [0.4.2](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.4.1...longrunning/v0.4.2) (2023-05-08)
+
+
+### Bug Fixes
+
+* **longrunning:** Update grpc to v1.55.0 ([1147ce0](https://github.com/googleapis/google-cloud-go/commit/1147ce02a990276ca4f8ab7a1ab65c14da4450ef))
+
 ## [0.4.1](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.4.0...longrunning/v0.4.1) (2023-02-14)
 
 
