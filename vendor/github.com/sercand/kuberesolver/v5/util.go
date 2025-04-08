@@ -7,12 +7,13 @@ import (
 	"google.golang.org/grpc/grpclog"
 )
 
-func until(f func(), period time.Duration, stopCh <-chan struct{}) {
+func until(f func(), initialPeriod, maxPeriod time.Duration, stopCh <-chan struct{}) {
 	select {
 	case <-stopCh:
 		return
 	default:
 	}
+	period := initialPeriod
 	for {
 		func() {
 			defer handleCrash()
@@ -22,6 +23,11 @@ func until(f func(), period time.Duration, stopCh <-chan struct{}) {
 		case <-stopCh:
 			return
 		case <-time.After(period):
+			if period*2 <= maxPeriod {
+				period *= 2
+			} else {
+				period = initialPeriod
+			}
 		}
 	}
 }

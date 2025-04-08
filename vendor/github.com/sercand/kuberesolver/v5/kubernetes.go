@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -75,11 +74,11 @@ func NewInClusterK8sClient() (K8sClient, error) {
 	if len(host) == 0 || len(port) == 0 {
 		return nil, fmt.Errorf("unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined")
 	}
-	token, err := ioutil.ReadFile(serviceAccountToken)
+	token, err := os.ReadFile(serviceAccountToken)
 	if err != nil {
 		return nil, err
 	}
-	ca, err := ioutil.ReadFile(serviceAccountCACert)
+	ca, err := os.ReadFile(serviceAccountCACert)
 	if err != nil {
 		return nil, err
 	}
@@ -112,18 +111,18 @@ func NewInClusterK8sClient() (K8sClient, error) {
 				}
 				// k8s configmaps uses symlinks, we need this workaround.
 				// original configmap file is removed
-				if event.Op == fsnotify.Remove || event.Op == fsnotify.Chmod {
+				if event.Op.Has(fsnotify.Remove) || event.Op.Has(fsnotify.Chmod) {
 					// remove watcher since the file is removed
 					watcher.Remove(event.Name)
 					// add a new watcher pointing to the new symlink/file
 					watcher.Add(serviceAccountToken)
-					token, err := ioutil.ReadFile(serviceAccountToken)
+					token, err := os.ReadFile(serviceAccountToken)
 					if err == nil {
 						client.setToken(string(token))
 					}
 				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					token, err := ioutil.ReadFile(serviceAccountToken)
+				if event.Has(fsnotify.Write) {
+					token, err := os.ReadFile(serviceAccountToken)
 					if err == nil {
 						client.setToken(string(token))
 					}
@@ -199,7 +198,7 @@ func watchEndpoints(ctx context.Context, client K8sClient, namespace, targetName
 }
 
 func getCurrentNamespaceOrDefault() string {
-	ns, err := ioutil.ReadFile(kubernetesNamespaceFile)
+	ns, err := os.ReadFile(kubernetesNamespaceFile)
 	if err != nil {
 		return defaultNamespace
 	}
