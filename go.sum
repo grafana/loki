@@ -1146,8 +1146,8 @@ github.com/hashicorp/consul v1.5.1 h1:p7tRmQ4m3ZMYkGQkuyjLXKbdU1weeumgZFqZOvw7o4
 github.com/hashicorp/consul v1.5.1/go.mod h1:QsmgXh2YA9Njv6y3/FHXqHYhsMye++3oBoAZ6SR8R8I=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/api v1.3.0/go.mod h1:MmDNSzIMUjNpY/mQ398R4bk2FnqQLoPndWW5VkKPlCE=
-github.com/hashicorp/consul/api v1.20.0 h1:9IHTjNVSZ7MIwjlW3N3a7iGiykCMDpxZu8jsxFJh0yc=
-github.com/hashicorp/consul/api v1.20.0/go.mod h1:nR64eD44KQ59Of/ECwt2vUmIK2DKsDzAwTmwmLl8Wpo=
+github.com/hashicorp/consul/api v1.21.0 h1:WMR2JiyuaQWRAMFaOGiYfY4Q4HRpyYRe/oYQofjyduM=
+github.com/hashicorp/consul/api v1.21.0/go.mod h1:f8zVJwBcLdr1IQnfdfszjUM0xzp31Zl3bpws3pL9uFM=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=
 github.com/hashicorp/consul/sdk v0.3.0/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=
 github.com/hashicorp/consul/sdk v0.13.1 h1:EygWVWWMczTzXGpO93awkHFzfUka6hLYJ0qhETd+6lY=
