@@ -583,7 +583,7 @@ func TestNegativeSizeHandling(t *testing.T) {
 	linesIngested.Reset()
 
 	// Create a custom request parser that will generate negative sizes
-	var mockParser RequestParser = func(_ string, _ *http.Request, _ Limits, _ int, _ UsageTracker, _ StreamResolver, _ bool, _ kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
+	var mockParser RequestParser = func(_ string, _ *http.Request, _ Limits, _ UsageTracker, _ StreamResolver, _ bool, _ kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
 		// Create a minimal valid request
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
@@ -625,7 +625,6 @@ func TestNegativeSizeHandling(t *testing.T) {
 	_, err := ParseRequest(
 		util_log.Logger,
 		"fake",
-		100<<20,
 		request,
 		&fakeLimits{},
 		mockParser,

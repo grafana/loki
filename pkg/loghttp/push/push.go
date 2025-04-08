@@ -138,8 +138,25 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(
+	logger log.Logger,
+	userID string,
+	r *http.Request,
+	limits Limits,
+	pushRequestParser RequestParser,
+	tracker UsageTracker,
+	streamResolver StreamResolver,
+	logPushRequestStreams bool,
+) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(
+		userID,
+		r,
+		limits,
+		tracker,
+		streamResolver,
+		logPushRequestStreams,
+		logger,
+	)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
