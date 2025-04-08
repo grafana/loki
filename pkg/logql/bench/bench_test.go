@@ -25,7 +25,7 @@ const testTenant = "test-tenant"
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
-func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.Engine, *GeneratorConfig) {
+func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngine, *GeneratorConfig) {
 	tb.Helper()
 	entries, err := os.ReadDir(DefaultDataDir)
 	if err != nil || len(entries) == 0 {
@@ -132,7 +132,7 @@ func BenchmarkLogQL(b *testing.B) {
 		cases := config.GenerateTestCases()
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("query=%s/store=%s", c.Name(), storeType), func(b *testing.B) {
+			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
 				params, err := logql.NewLiteralParams(
 					c.Query,
 					c.Start,

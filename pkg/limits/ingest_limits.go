@@ -608,6 +608,6 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		Tenant:         req.Tenant,
 		ActiveStreams:  activeStreams,
 		UnknownStreams: unknownStreams,
-		Rate:           int64(rate),
+		Rate:           uint64(rate),
 	}, nil
 }

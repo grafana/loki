@@ -121,7 +121,7 @@ func TestContext_ExpressionToMatchers(t *testing.T) {
 			expr: &BinaryExpr{
 				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
 				Right: NewLiteral("bar"),
-				Op:    types.BinaryOpMatchStr,
+				Op:    types.BinaryOpEq,
 			},
 			want: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
@@ -132,12 +132,12 @@ func TestContext_ExpressionToMatchers(t *testing.T) {
 				Left: &BinaryExpr{
 					Left:  newColumnExpr("foo", types.ColumnTypeLabel),
 					Right: NewLiteral("bar"),
-					Op:    types.BinaryOpMatchStr,
+					Op:    types.BinaryOpEq,
 				},
 				Right: &BinaryExpr{
 					Left:  newColumnExpr("bar", types.ColumnTypeLabel),
 					Right: NewLiteral("baz"),
-					Op:    types.BinaryOpNotMatchStr,
+					Op:    types.BinaryOpNeq,
 				},
 				Op: types.BinaryOpAnd,
 			},

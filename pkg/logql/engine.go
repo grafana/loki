@@ -139,6 +139,10 @@ type Querier interface {
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
 }
 
+type Engine interface {
+	Query(Params) Query
+}
+
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
@@ -151,21 +155,15 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	// Enable the next generation Loki Query Engine for supported queries.
+	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(
-		&opts.MaxLookBackPeriod,
-		prefix+".engine.max-lookback-period",
-		30*time.Second,
-		"The maximum amount of time to look back for log lines. Used only for instant log queries.",
-	)
-	f.IntVar(
-		&opts.MaxCountMinSketchHeapSize,
-		prefix+".engine.max-count-min-sketch-heap-size",
-		10_000,
-		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
-	)
+	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -176,21 +174,21 @@ func (opts *EngineOpts) applyDefault() {
 	}
 }
 
-// Engine is the LogQL engine.
-type Engine struct {
+// QueryEngine is the LogQL engine.
+type QueryEngine struct {
 	logger           log.Logger
 	evaluatorFactory EvaluatorFactory
 	limits           Limits
 	opts             EngineOpts
 }
 
-// NewEngine creates a new LogQL Engine.
-func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+// NewEngine creates a new LogQL [QueryEngine].
+func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEngine {
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	return &Engine{
+	return &QueryEngine{
 		logger:           logger,
 		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
 		limits:           l,
@@ -199,14 +197,14 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 }
 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
-func (ng *Engine) Query(params Params) Query {
+func (qe *QueryEngine) Query(params Params) Query {
 	return &query{
-		logger:       ng.logger,
+		logger:       qe.logger,
 		params:       params,
-		evaluator:    ng.evaluatorFactory,
+		evaluator:    qe.evaluatorFactory,
 		record:       true,
-		logExecQuery: ng.opts.LogExecutingQuery,
-		limits:       ng.limits,
+		logExecQuery: qe.opts.LogExecutingQuery,
+		limits:       qe.limits,
 	}
 }
 
