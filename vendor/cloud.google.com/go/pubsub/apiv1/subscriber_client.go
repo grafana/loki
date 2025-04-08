@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -82,6 +82,7 @@ func defaultSubscriberGRPCClientOptions() []option.ClientOption {
 func defaultSubscriberCallOptions() *SubscriberCallOptions {
 	return &SubscriberCallOptions{
 		CreateSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -95,6 +96,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		GetSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -108,6 +110,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		UpdateSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -119,6 +122,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ListSubscriptions: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -132,6 +136,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		DeleteSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -143,6 +148,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ModifyAckDeadline: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -154,6 +160,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Acknowledge: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -165,6 +172,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Pull: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -194,6 +202,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ModifyPushConfig: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -205,6 +214,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		GetSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -218,6 +228,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ListSnapshots: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -231,6 +242,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		CreateSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -242,6 +254,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		UpdateSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -253,6 +266,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		DeleteSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unavailable,
@@ -264,6 +278,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Seek: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnCodes([]codes.Code{
 					codes.Unknown,
@@ -285,6 +300,7 @@ func defaultSubscriberCallOptions() *SubscriberCallOptions {
 func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 	return &SubscriberCallOptions{
 		CreateSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -297,6 +313,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		GetSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -309,6 +326,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		UpdateSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -319,6 +337,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ListSubscriptions: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -331,6 +350,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		DeleteSubscription: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -341,6 +361,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ModifyAckDeadline: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -351,6 +372,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Acknowledge: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -361,6 +383,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Pull: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -374,6 +397,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		StreamingPull: []gax.CallOption{
+			gax.WithTimeout(900000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -388,6 +412,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ModifyPushConfig: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -398,6 +423,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		GetSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -410,6 +436,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		ListSnapshots: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -422,6 +449,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		CreateSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -432,6 +460,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		UpdateSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -442,6 +471,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		DeleteSnapshot: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -452,6 +482,7 @@ func defaultSubscriberRESTCallOptions() *SubscriberCallOptions {
 			}),
 		},
 		Seek: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
 			gax.WithRetry(func() gax.Retryer {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
@@ -723,9 +754,6 @@ type subscriberGRPCClient struct {
 	// Connection pool of gRPC connections to the service.
 	connPool gtransport.ConnPool
 
-	// flag to opt out of default deadlines via GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE
-	disableDeadlines bool
-
 	// Points back to the CallOptions field of the containing SubscriberClient
 	CallOptions **SubscriberCallOptions
 
@@ -754,11 +782,6 @@ func NewSubscriberClient(ctx context.Context, opts ...option.ClientOption) (*Sub
 		clientOpts = append(clientOpts, hookOpts...)
 	}
 
-	disableDeadlines, err := checkDisableDeadlines()
-	if err != nil {
-		return nil, err
-	}
-
 	connPool, err := gtransport.DialPool(ctx, append(clientOpts, opts...)...)
 	if err != nil {
 		return nil, err
@@ -767,7 +790,6 @@ func NewSubscriberClient(ctx context.Context, opts ...option.ClientOption) (*Sub
 
 	c := &subscriberGRPCClient{
 		connPool:         connPool,
-		disableDeadlines: disableDeadlines,
 		subscriberClient: pubsubpb.NewSubscriberClient(connPool),
 		CallOptions:      &client.CallOptions,
 		iamPolicyClient:  iampb.NewIAMPolicyClient(connPool),
@@ -791,7 +813,7 @@ func (c *subscriberGRPCClient) Connection() *grpc.ClientConn {
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
 func (c *subscriberGRPCClient) setGoogleClientInfo(keyval ...string) {
-	kv := append([]string{"gl-go", versionGo()}, keyval...)
+	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
 	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
@@ -853,7 +875,7 @@ func defaultSubscriberRESTClientOptions() []option.ClientOption {
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
 func (c *subscriberRESTClient) setGoogleClientInfo(keyval ...string) {
-	kv := append([]string{"gl-go", versionGo()}, keyval...)
+	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN")
 	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
@@ -873,11 +895,6 @@ func (c *subscriberRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
 func (c *subscriberGRPCClient) CreateSubscription(ctx context.Context, req *pubsubpb.Subscription, opts ...gax.CallOption) (*pubsubpb.Subscription, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -895,11 +912,6 @@ func (c *subscriberGRPCClient) CreateSubscription(ctx context.Context, req *pubs
 }
 
 func (c *subscriberGRPCClient) GetSubscription(ctx context.Context, req *pubsubpb.GetSubscriptionRequest, opts ...gax.CallOption) (*pubsubpb.Subscription, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -917,11 +929,6 @@ func (c *subscriberGRPCClient) GetSubscription(ctx context.Context, req *pubsubp
 }
 
 func (c *subscriberGRPCClient) UpdateSubscription(ctx context.Context, req *pubsubpb.UpdateSubscriptionRequest, opts ...gax.CallOption) (*pubsubpb.Subscription, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription.name", url.QueryEscape(req.GetSubscription().GetName())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -984,11 +991,6 @@ func (c *subscriberGRPCClient) ListSubscriptions(ctx context.Context, req *pubsu
 }
 
 func (c *subscriberGRPCClient) DeleteSubscription(ctx context.Context, req *pubsubpb.DeleteSubscriptionRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1002,11 +1004,6 @@ func (c *subscriberGRPCClient) DeleteSubscription(ctx context.Context, req *pubs
 }
 
 func (c *subscriberGRPCClient) ModifyAckDeadline(ctx context.Context, req *pubsubpb.ModifyAckDeadlineRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1020,11 +1017,6 @@ func (c *subscriberGRPCClient) ModifyAckDeadline(ctx context.Context, req *pubsu
 }
 
 func (c *subscriberGRPCClient) Acknowledge(ctx context.Context, req *pubsubpb.AcknowledgeRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1038,11 +1030,6 @@ func (c *subscriberGRPCClient) Acknowledge(ctx context.Context, req *pubsubpb.Ac
 }
 
 func (c *subscriberGRPCClient) Pull(ctx context.Context, req *pubsubpb.PullRequest, opts ...gax.CallOption) (*pubsubpb.PullResponse, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1075,11 +1062,6 @@ func (c *subscriberGRPCClient) StreamingPull(ctx context.Context, opts ...gax.Ca
 }
 
 func (c *subscriberGRPCClient) ModifyPushConfig(ctx context.Context, req *pubsubpb.ModifyPushConfigRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1093,11 +1075,6 @@ func (c *subscriberGRPCClient) ModifyPushConfig(ctx context.Context, req *pubsub
 }
 
 func (c *subscriberGRPCClient) GetSnapshot(ctx context.Context, req *pubsubpb.GetSnapshotRequest, opts ...gax.CallOption) (*pubsubpb.Snapshot, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "snapshot", url.QueryEscape(req.GetSnapshot())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1160,11 +1137,6 @@ func (c *subscriberGRPCClient) ListSnapshots(ctx context.Context, req *pubsubpb.
 }
 
 func (c *subscriberGRPCClient) CreateSnapshot(ctx context.Context, req *pubsubpb.CreateSnapshotRequest, opts ...gax.CallOption) (*pubsubpb.Snapshot, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1182,11 +1154,6 @@ func (c *subscriberGRPCClient) CreateSnapshot(ctx context.Context, req *pubsubpb
 }
 
 func (c *subscriberGRPCClient) UpdateSnapshot(ctx context.Context, req *pubsubpb.UpdateSnapshotRequest, opts ...gax.CallOption) (*pubsubpb.Snapshot, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "snapshot.name", url.QueryEscape(req.GetSnapshot().GetName())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1204,11 +1171,6 @@ func (c *subscriberGRPCClient) UpdateSnapshot(ctx context.Context, req *pubsubpb
 }
 
 func (c *subscriberGRPCClient) DeleteSnapshot(ctx context.Context, req *pubsubpb.DeleteSnapshotRequest, opts ...gax.CallOption) error {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "snapshot", url.QueryEscape(req.GetSnapshot())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1222,11 +1184,6 @@ func (c *subscriberGRPCClient) DeleteSnapshot(ctx context.Context, req *pubsubpb
 }
 
 func (c *subscriberGRPCClient) Seek(ctx context.Context, req *pubsubpb.SeekRequest, opts ...gax.CallOption) (*pubsubpb.SeekResponse, error) {
-	if _, ok := ctx.Deadline(); !ok && !c.disableDeadlines {
-		cctx, cancel := context.WithTimeout(ctx, 60000*time.Millisecond)
-		defer cancel()
-		ctx = cctx
-	}
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
@@ -1351,13 +1308,13 @@ func (c *subscriberRESTClient) CreateSubscription(ctx context.Context, req *pubs
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -1409,13 +1366,13 @@ func (c *subscriberRESTClient) GetSubscription(ctx context.Context, req *pubsubp
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -1474,13 +1431,13 @@ func (c *subscriberRESTClient) UpdateSubscription(ctx context.Context, req *pubs
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -1545,13 +1502,13 @@ func (c *subscriberRESTClient) ListSubscriptions(ctx context.Context, req *pubsu
 				return err
 			}
 
-			buf, err := ioutil.ReadAll(httpRsp.Body)
+			buf, err := io.ReadAll(httpRsp.Body)
 			if err != nil {
 				return err
 			}
 
 			if err := unm.Unmarshal(buf, resp); err != nil {
-				return maybeUnknownEnum(err)
+				return err
 			}
 
 			return nil
@@ -1772,13 +1729,13 @@ func (c *subscriberRESTClient) Pull(ctx context.Context, req *pubsubpb.PullReque
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -1898,13 +1855,13 @@ func (c *subscriberRESTClient) GetSnapshot(ctx context.Context, req *pubsubpb.Ge
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -1972,13 +1929,13 @@ func (c *subscriberRESTClient) ListSnapshots(ctx context.Context, req *pubsubpb.
 				return err
 			}
 
-			buf, err := ioutil.ReadAll(httpRsp.Body)
+			buf, err := io.ReadAll(httpRsp.Body)
 			if err != nil {
 				return err
 			}
 
 			if err := unm.Unmarshal(buf, resp); err != nil {
-				return maybeUnknownEnum(err)
+				return err
 			}
 
 			return nil
@@ -2068,13 +2025,13 @@ func (c *subscriberRESTClient) CreateSnapshot(ctx context.Context, req *pubsubpb
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -2136,13 +2093,13 @@ func (c *subscriberRESTClient) UpdateSnapshot(ctx context.Context, req *pubsubpb
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -2254,13 +2211,13 @@ func (c *subscriberRESTClient) Seek(ctx context.Context, req *pubsubpb.SeekReque
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -2316,13 +2273,13 @@ func (c *subscriberRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetI
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -2384,13 +2341,13 @@ func (c *subscriberRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetI
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
@@ -2454,13 +2411,13 @@ func (c *subscriberRESTClient) TestIamPermissions(ctx context.Context, req *iamp
 			return err
 		}
 
-		buf, err := ioutil.ReadAll(httpRsp.Body)
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
 
 		if err := unm.Unmarshal(buf, resp); err != nil {
-			return maybeUnknownEnum(err)
+			return err
 		}
 
 		return nil
