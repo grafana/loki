@@ -40,7 +40,7 @@ const Name = "gzip"
 
 func init() {
 	c := &compressor{}
-	c.poolCompressor.New = func() any {
+	c.poolCompressor.New = func() interface{} {
 		return &writer{Writer: gzip.NewWriter(io.Discard), pool: &c.poolCompressor}
 	}
 	encoding.RegisterCompressor(c)
@@ -61,7 +61,7 @@ func SetLevel(level int) error {
 		return fmt.Errorf("grpc: invalid gzip compression level: %d", level)
 	}
 	c := encoding.GetCompressor(Name).(*compressor)
-	c.poolCompressor.New = func() any {
+	c.poolCompressor.New = func() interface{} {
 		w, err := gzip.NewWriterLevel(io.Discard, level)
 		if err != nil {
 			panic(err)

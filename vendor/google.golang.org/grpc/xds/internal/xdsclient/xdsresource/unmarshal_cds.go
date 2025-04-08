@@ -76,8 +76,6 @@ const (
 	defaultRingHashMinSize = 1024
 	defaultRingHashMaxSize = 8 * 1024 * 1024 // 8M
 	ringHashSizeUpperBound = 8 * 1024 * 1024 // 8M
-
-	defaultLeastRequestChoiceCount = 2
 )
 
 func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
@@ -106,26 +104,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
-	case v3clusterpb.Cluster_LEAST_REQUEST:
-		if !envconfig.LeastRequestLB {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
-
-		// "The configuration for the Least Request LB policy is the
-		// least_request_lb_config field. The field is optional; if not present,
-		// defaults will be assumed for all of its values." - A48
-		lr := cluster.GetLeastRequestLbConfig()
-		var choiceCount uint32 = defaultLeastRequestChoiceCount
-		if cc := lr.GetChoiceCount(); cc != nil {
-			choiceCount = cc.GetValue()
-		}
-		// "If choice_count < 2, the config will be rejected." - A48
-		if choiceCount < 2 {
-			return ClusterUpdate{}, fmt.Errorf("Cluster_LeastRequestLbConfig.ChoiceCount must be >= 2, got: %v", choiceCount)
-		}
-
-		lrLBCfg := []byte(fmt.Sprintf("{\"choiceCount\": %d}", choiceCount))
-		lbPolicy = []byte(fmt.Sprintf(`[{"least_request_experimental": %s}]`, lrLBCfg))
 	default:
 		return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
 	}

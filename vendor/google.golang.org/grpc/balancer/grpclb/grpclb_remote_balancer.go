@@ -27,8 +27,11 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	timestamppb "github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
+	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/internal/backoff"
@@ -36,28 +39,13 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
-
-	timestamppb "github.com/golang/protobuf/ptypes/timestamp"
-	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 )
-
-func serverListEqual(a, b []*lbpb.Server) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := 0; i < len(a); i++ {
-		if !proto.Equal(a[i], b[i]) {
-			return false
-		}
-	}
-	return true
-}
 
 // processServerList updates balancer's internal state, create/remove SubConns
 // and regenerates picker using the received serverList.
 func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
-	if lb.logger.V(2) {
-		lb.logger.Infof("Processing server list: %#v", l)
+	if logger.V(2) {
+		logger.Infof("lbBalancer: processing server list: %+v", l)
 	}
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
@@ -67,9 +55,9 @@ func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
 	lb.serverListReceived = true
 
 	// If the new server list == old server list, do nothing.
-	if serverListEqual(lb.fullServerList, l.Servers) {
-		if lb.logger.V(2) {
-			lb.logger.Infof("Ignoring new server list as it is the same as the previous one")
+	if cmp.Equal(lb.fullServerList, l.Servers, cmp.Comparer(proto.Equal)) {
+		if logger.V(2) {
+			logger.Infof("lbBalancer: new serverlist same as the previous one, ignoring")
 		}
 		return
 	}
@@ -90,8 +78,9 @@ func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
 			ipStr = fmt.Sprintf("[%s]", ipStr)
 		}
 		addr := imetadata.Set(resolver.Address{Addr: fmt.Sprintf("%s:%d", ipStr, s.Port)}, md)
-		if lb.logger.V(2) {
-			lb.logger.Infof("Server list entry:|%d|, ipStr:|%s|, port:|%d|, load balancer token:|%v|", i, ipStr, s.Port, s.LoadBalanceToken)
+		if logger.V(2) {
+			logger.Infof("lbBalancer: server list entry[%d]: ipStr:|%s|, port:|%d|, load balancer token:|%v|",
+				i, ipStr, s.Port, s.LoadBalanceToken)
 		}
 		backendAddrs = append(backendAddrs, addr)
 	}
@@ -124,6 +113,7 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 	}
 
 	balancingPolicyChanged := lb.usePickFirst != pickFirst
+	oldUsePickFirst := lb.usePickFirst
 	lb.usePickFirst = pickFirst
 
 	if fallbackModeChanged || balancingPolicyChanged {
@@ -133,7 +123,13 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 		// For fallback mode switching with pickfirst, we want to recreate the
 		// SubConn because the creds could be different.
 		for a, sc := range lb.subConns {
-			sc.Shutdown()
+			if oldUsePickFirst {
+				// If old SubConn were created for pickfirst, bypass cache and
+				// remove directly.
+				lb.cc.cc.RemoveSubConn(sc)
+			} else {
+				lb.cc.RemoveSubConn(sc)
+			}
 			delete(lb.subConns, a)
 		}
 	}
@@ -148,19 +144,18 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 		}
 		if sc != nil {
 			if len(backendAddrs) == 0 {
-				sc.Shutdown()
+				lb.cc.cc.RemoveSubConn(sc)
 				delete(lb.subConns, scKey)
 				return
 			}
-			lb.cc.ClientConn.UpdateAddresses(sc, backendAddrs)
+			lb.cc.cc.UpdateAddresses(sc, backendAddrs)
 			sc.Connect()
 			return
 		}
-		opts.StateListener = func(scs balancer.SubConnState) { lb.updateSubConnState(sc, scs) }
 		// This bypasses the cc wrapper with SubConn cache.
-		sc, err := lb.cc.ClientConn.NewSubConn(backendAddrs, opts)
+		sc, err := lb.cc.cc.NewSubConn(backendAddrs, opts)
 		if err != nil {
-			lb.logger.Warningf("Failed to create new SubConn: %v", err)
+			logger.Warningf("grpclb: failed to create new SubConn: %v", err)
 			return
 		}
 		sc.Connect()
@@ -181,11 +176,9 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 
 		if _, ok := lb.subConns[addrWithoutAttrs]; !ok {
 			// Use addrWithMD to create the SubConn.
-			var sc balancer.SubConn
-			opts.StateListener = func(scs balancer.SubConnState) { lb.updateSubConnState(sc, scs) }
 			sc, err := lb.cc.NewSubConn([]resolver.Address{addr}, opts)
 			if err != nil {
-				lb.logger.Warningf("Failed to create new SubConn: %v", err)
+				logger.Warningf("grpclb: failed to create new SubConn: %v", err)
 				continue
 			}
 			lb.subConns[addrWithoutAttrs] = sc // Use the addr without MD as key for the map.
@@ -201,7 +194,7 @@ func (lb *lbBalancer) refreshSubConns(backendAddrs []resolver.Address, fallback 
 	for a, sc := range lb.subConns {
 		// a was removed by resolver.
 		if _, ok := addrsSet[a]; !ok {
-			sc.Shutdown()
+			lb.cc.RemoveSubConn(sc)
 			delete(lb.subConns, a)
 			// Keep the state of this sc in b.scStates until sc's state becomes Shutdown.
 			// The entry will be deleted in UpdateSubConnState.
@@ -228,7 +221,7 @@ type remoteBalancerCCWrapper struct {
 	wg sync.WaitGroup
 }
 
-func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
+func (lb *lbBalancer) newRemoteBalancerCCWrapper() {
 	var dopts []grpc.DialOption
 	if creds := lb.opt.DialCreds; creds != nil {
 		dopts = append(dopts, grpc.WithTransportCredentials(creds))
@@ -259,10 +252,9 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	//
 	// The grpclb server addresses will set field ServerName, and creds will
 	// receive ServerName as authority.
-	target := lb.manualResolver.Scheme() + ":///grpclb.subClientConn"
-	cc, err := grpc.Dial(target, dopts...)
+	cc, err := grpc.DialContext(context.Background(), lb.manualResolver.Scheme()+":///grpclb.subClientConn", dopts...)
 	if err != nil {
-		return fmt.Errorf("grpc.Dial(%s): %v", target, err)
+		logger.Fatalf("failed to dial: %v", err)
 	}
 	ccw := &remoteBalancerCCWrapper{
 		cc:      cc,
@@ -273,7 +265,6 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	lb.ccRemoteLB = ccw
 	ccw.wg.Add(1)
 	go ccw.watchRemoteBalancer()
-	return nil
 }
 
 // close closed the ClientConn to remote balancer, and waits until all
@@ -421,14 +412,14 @@ func (ccw *remoteBalancerCCWrapper) watchRemoteBalancer() {
 		default:
 			if err != nil {
 				if err == errServerTerminatedConnection {
-					ccw.lb.logger.Infof("Call to remote balancer failed: %v", err)
+					logger.Info(err)
 				} else {
-					ccw.lb.logger.Warningf("Call to remote balancer failed: %v", err)
+					logger.Warning(err)
 				}
 			}
 		}
 		// Trigger a re-resolve when the stream errors.
-		ccw.lb.cc.ClientConn.ResolveNow(resolver.ResolveNowOptions{})
+		ccw.lb.cc.cc.ResolveNow(resolver.ResolveNowOptions{})
 
 		ccw.lb.mu.Lock()
 		ccw.lb.remoteBalancerConnected = false

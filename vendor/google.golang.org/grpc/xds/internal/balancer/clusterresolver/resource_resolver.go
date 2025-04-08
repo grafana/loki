@@ -19,11 +19,9 @@
 package clusterresolver
 
 import (
-	"context"
 	"sync"
 
 	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -40,6 +38,7 @@ type resourceUpdate struct {
 // from underlying concrete resolvers.
 type topLevelResolver interface {
 	onUpdate()
+	onError(error)
 }
 
 // endpointsResolver wraps the functionality to resolve a given resource name to
@@ -54,7 +53,7 @@ type endpointsResolver interface {
 	// The second return result indicates whether the resolver was able to
 	// successfully resolve the resource name to endpoints. If set to false, the
 	// first return result is invalid and must not be used.
-	lastUpdate() (any, bool)
+	lastUpdate() (interface{}, bool)
 
 	// resolverNow triggers re-resolution of the resource.
 	resolveNow()
@@ -85,11 +84,9 @@ type discoveryMechanismAndResolver struct {
 }
 
 type resourceResolver struct {
-	parent           *clusterResolverBalancer
-	logger           *grpclog.PrefixLogger
-	updateChannel    chan *resourceUpdate
-	serializer       *grpcsync.CallbackSerializer
-	serializerCancel context.CancelFunc
+	parent        *clusterResolverBalancer
+	logger        *grpclog.PrefixLogger
+	updateChannel chan *resourceUpdate
 
 	// mu protects the slice and map, and content of the resolvers in the slice.
 	mu         sync.Mutex
@@ -110,16 +107,12 @@ type resourceResolver struct {
 }
 
 func newResourceResolver(parent *clusterResolverBalancer, logger *grpclog.PrefixLogger) *resourceResolver {
-	rr := &resourceResolver{
+	return &resourceResolver{
 		parent:        parent,
 		logger:        logger,
 		updateChannel: make(chan *resourceUpdate, 1),
 		childrenMap:   make(map[discoveryMechanismKey]discoveryMechanismAndResolver),
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	rr.serializer = grpcsync.NewCallbackSerializer(ctx)
-	rr.serializerCancel = cancel
-	return rr
 }
 
 func equalDiscoveryMechanisms(a, b []DiscoveryMechanism) bool {
@@ -200,7 +193,7 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	for dm, r := range rr.childrenMap {
 		if !newDMs[dm] {
 			delete(rr.childrenMap, dm)
-			go r.r.stop()
+			r.r.stop()
 		}
 	}
 	// Regenerate even if there's no change in discovery mechanism, in case
@@ -218,9 +211,8 @@ func (rr *resourceResolver) resolveNow() {
 	}
 }
 
-func (rr *resourceResolver) stop(closing bool) {
+func (rr *resourceResolver) stop() {
 	rr.mu.Lock()
-
 	// Save the previous childrenMap to stop the children outside the mutex,
 	// and reinitialize the map.  We only need to reinitialize to allow for the
 	// policy to be reused if the resource comes back.  In practice, this does
@@ -231,16 +223,10 @@ func (rr *resourceResolver) stop(closing bool) {
 	rr.childrenMap = make(map[discoveryMechanismKey]discoveryMechanismAndResolver)
 	rr.mechanisms = nil
 	rr.children = nil
-
 	rr.mu.Unlock()
 
 	for _, r := range cm {
 		r.r.stop()
-	}
-
-	if closing {
-		rr.serializerCancel()
-		<-rr.serializer.Done()
 	}
 
 	// stop() is called when the LB policy is closed or when the underlying
@@ -287,9 +273,15 @@ func (rr *resourceResolver) generateLocked() {
 }
 
 func (rr *resourceResolver) onUpdate() {
-	rr.serializer.Schedule(func(context.Context) {
-		rr.mu.Lock()
-		rr.generateLocked()
-		rr.mu.Unlock()
-	})
+	rr.mu.Lock()
+	rr.generateLocked()
+	rr.mu.Unlock()
+}
+
+func (rr *resourceResolver) onError(err error) {
+	select {
+	case <-rr.updateChannel:
+	default:
+	}
+	rr.updateChannel <- &resourceUpdate{err: err}
 }

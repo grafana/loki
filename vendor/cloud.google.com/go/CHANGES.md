@@ -1,19 +1,11 @@
 # Changes
 
-## [0.110.10](https://github.com/googleapis/google-cloud-go/compare/v0.110.9...v0.110.10) (2023-10-31)
-
-
-### Bug Fixes
-
-* **all:** Update grpc-go to v1.56.3 ([#8916](https://github.com/googleapis/google-cloud-go/issues/8916)) ([343cea8](https://github.com/googleapis/google-cloud-go/commit/343cea8c43b1e31ae21ad50ad31d3b0b60143f8c))
-* **all:** Update grpc-go to v1.59.0 ([#8922](https://github.com/googleapis/google-cloud-go/issues/8922)) ([81a97b0](https://github.com/googleapis/google-cloud-go/commit/81a97b06cb28b25432e4ece595c55a9857e960b7))
-* **internal/godocfx:** Fix links to other packages in summary ([#8756](https://github.com/googleapis/google-cloud-go/issues/8756)) ([6220a9a](https://github.com/googleapis/google-cloud-go/commit/6220a9afeb89df3080e9e663e97648939fd4e15f))
-
 ## [0.110.9](https://github.com/googleapis/google-cloud-go/compare/v0.110.8...v0.110.9) (2023-10-19)
 
 
 ### Bug Fixes
 
+* **/Users/chrisdsmith/oss/google-cloud-go:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
 * **all:** Update golang.org/x/net to v0.17.0 ([#8705](https://github.com/googleapis/google-cloud-go/issues/8705)) ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
 * **internal/aliasgen:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
 * **internal/examples/fake:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))

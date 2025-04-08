@@ -628,7 +628,6 @@ type tracedChannel interface {
 
 type channelTrace struct {
 	cm          *channelMap
-	clearCalled bool
 	createdTime time.Time
 	eventCount  int64
 	mu          sync.Mutex
@@ -657,10 +656,6 @@ func (c *channelTrace) append(e *TraceEvent) {
 }
 
 func (c *channelTrace) clear() {
-	if c.clearCalled {
-		return
-	}
-	c.clearCalled = true
 	c.mu.Lock()
 	for _, e := range c.events {
 		if e.RefID != 0 {

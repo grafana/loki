@@ -109,7 +109,7 @@ const (
 
 type simpleSharedBufferChildPool interface {
 	Get(size int) []byte
-	Put(any)
+	Put(interface{})
 }
 
 type bufferPool struct {
@@ -133,7 +133,7 @@ func (p *bufferPool) Get(size int) []byte {
 func newBytesPool(size int) simpleSharedBufferChildPool {
 	return &bufferPool{
 		Pool: sync.Pool{
-			New: func() any {
+			New: func() interface{} {
 				bs := make([]byte, size)
 				return &bs
 			},

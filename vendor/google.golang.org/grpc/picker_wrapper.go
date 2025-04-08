@@ -28,26 +28,21 @@ import (
 	"google.golang.org/grpc/internal/channelz"
 	istatus "google.golang.org/grpc/internal/status"
 	"google.golang.org/grpc/internal/transport"
-	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
 
 // pickerWrapper is a wrapper of balancer.Picker. It blocks on certain pick
 // actions and unblock when there's a picker update.
 type pickerWrapper struct {
-	mu            sync.Mutex
-	done          bool
-	idle          bool
-	blockingCh    chan struct{}
-	picker        balancer.Picker
-	statsHandlers []stats.Handler // to record blocking picker calls
+	mu         sync.Mutex
+	done       bool
+	idle       bool
+	blockingCh chan struct{}
+	picker     balancer.Picker
 }
 
-func newPickerWrapper(statsHandlers []stats.Handler) *pickerWrapper {
-	return &pickerWrapper{
-		blockingCh:    make(chan struct{}),
-		statsHandlers: statsHandlers,
-	}
+func newPickerWrapper() *pickerWrapper {
+	return &pickerWrapper{blockingCh: make(chan struct{})}
 }
 
 // updatePicker is called by UpdateBalancerState. It unblocks all blocked pick.
@@ -100,7 +95,6 @@ func (pw *pickerWrapper) pick(ctx context.Context, failfast bool, info balancer.
 	var ch chan struct{}
 
 	var lastPickErr error
-
 	for {
 		pw.mu.Lock()
 		if pw.done {
@@ -133,20 +127,6 @@ func (pw *pickerWrapper) pick(ctx context.Context, failfast bool, info balancer.
 			case <-ch:
 			}
 			continue
-		}
-
-		// If the channel is set, it means that the pick call had to wait for a
-		// new picker at some point. Either it's the first iteration and this
-		// function received the first picker, or a picker errored with
-		// ErrNoSubConnAvailable or errored with failfast set to false, which
-		// will trigger a continue to the next iteration. In the first case this
-		// conditional will hit if this call had to block (the channel is set).
-		// In the second case, the only way it will get to this conditional is
-		// if there is a new picker.
-		if ch != nil {
-			for _, sh := range pw.statsHandlers {
-				sh.HandleRPC(ctx, &stats.PickerUpdated{})
-			}
 		}
 
 		ch = pw.blockingCh

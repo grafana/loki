@@ -218,12 +218,7 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 		addrsSet.Set(addr, true)
 		newWeight := getWeightAttribute(addr)
 		if val, ok := b.subConns.Get(addr); !ok {
-			var sc balancer.SubConn
-			opts := balancer.NewSubConnOptions{
-				HealthCheckEnabled: true,
-				StateListener:      func(state balancer.SubConnState) { b.updateSubConnState(sc, state) },
-			}
-			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, opts)
+			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{HealthCheckEnabled: true})
 			if err != nil {
 				b.logger.Warningf("Failed to create new SubConn: %v", err)
 				continue
@@ -257,11 +252,11 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 		if _, ok := addrsSet.Get(addr); !ok {
 			v, _ := b.subConns.Get(addr)
 			scInfo := v.(*subConn)
-			scInfo.sc.Shutdown()
+			b.cc.RemoveSubConn(scInfo.sc)
 			b.subConns.Delete(addr)
 			addrsUpdated = true
 			// Keep the state of this sc in b.scStates until sc's state becomes Shutdown.
-			// The entry will be deleted in updateSubConnState.
+			// The entry will be deleted in UpdateSubConnState.
 		}
 	}
 	return addrsUpdated
@@ -326,11 +321,7 @@ func (b *ringhashBalancer) ResolverError(err error) {
 	})
 }
 
-func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
-}
-
-// updateSubConnState updates the per-SubConn state stored in the ring, and also
+// UpdateSubConnState updates the per-SubConn state stored in the ring, and also
 // the aggregated state.
 //
 //	It triggers an update to cc when:
@@ -341,7 +332,7 @@ func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balance
 //	- the aggregated state is changed
 //	  - the same picker will be sent again, but this update may trigger a re-pick
 //	    for some RPCs.
-func (b *ringhashBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+func (b *ringhashBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	s := state.ConnectivityState
 	if logger.V(2) {
 		b.logger.Infof("Handle SubConn state change: %p, %v", sc, s)
@@ -363,8 +354,8 @@ func (b *ringhashBalancer) updateSubConnState(sc balancer.SubConn, state balance
 		// Save error to be reported via picker.
 		b.connErr = state.ConnectionError
 	case connectivity.Shutdown:
-		// When an address was removed by resolver, b called Shutdown but kept
-		// the sc's state in scStates. Remove state for this sc here.
+		// When an address was removed by resolver, b called RemoveSubConn but
+		// kept the sc's state in scStates. Remove state for this sc here.
 		delete(b.scStates, sc)
 	}
 

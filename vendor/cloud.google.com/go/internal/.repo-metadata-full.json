@@ -972,7 +972,7 @@
   "cloud.google.com/go/dlp/apiv2": {
     "api_shortname": "dlp",
     "distribution_name": "cloud.google.com/go/dlp/apiv2",
-    "description": "Cloud Data Loss Prevention (DLP)",
+    "description": "Cloud Data Loss Prevention (DLP) API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/dlp/latest/apiv2",
@@ -1876,16 +1876,6 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/redis/latest/apiv1beta1",
-    "release_level": "preview",
-    "library_type": "GAPIC_AUTO"
-  },
-  "cloud.google.com/go/redis/cluster/apiv1": {
-    "api_shortname": "redis",
-    "distribution_name": "cloud.google.com/go/redis/cluster/apiv1",
-    "description": "Google Cloud Memorystore for Redis API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/redis/latest/cluster/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },

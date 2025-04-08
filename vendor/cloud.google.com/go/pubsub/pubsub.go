@@ -16,7 +16,6 @@ package pubsub // import "cloud.google.com/go/pubsub"
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -24,7 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/internal/detect"
 	vkit "cloud.google.com/go/pubsub/apiv1"
 	"cloud.google.com/go/pubsub/internal"
 	gax "github.com/googleapis/gax-go/v2"
@@ -115,20 +113,6 @@ func mergeSubscriberCallOptions(a *vkit.SubscriberCallOptions, b *vkit.Subscribe
 	return res
 }
 
-// DetectProjectID is a sentinel value that instructs NewClient to detect the
-// project ID. It is given in place of the projectID argument. NewClient will
-// use the project ID from the given credentials or the default credentials
-// (https://developers.google.com/accounts/docs/application-default-credentials)
-// if no credentials were provided. When providing credentials, not all
-// options will allow NewClient to extract the project ID. Specifically a JWT
-// does not have the project ID encoded.
-const DetectProjectID = "*detect-project-id*"
-
-// ErrEmptyProjectID denotes that the project string passed into NewClient was empty.
-// Please provide a valid project ID or use the DetectProjectID sentinel value to detect
-// project ID from well defined sources.
-var ErrEmptyProjectID = errors.New("pubsub: projectID string is empty")
-
 // NewClient creates a new PubSub client. It uses a default configuration.
 func NewClient(ctx context.Context, projectID string, opts ...option.ClientOption) (c *Client, err error) {
 	return NewClientWithConfig(ctx, projectID, nil, opts...)
@@ -136,9 +120,6 @@ func NewClient(ctx context.Context, projectID string, opts ...option.ClientOptio
 
 // NewClientWithConfig creates a new PubSub client.
 func NewClientWithConfig(ctx context.Context, projectID string, config *ClientConfig, opts ...option.ClientOption) (c *Client, err error) {
-	if projectID == "" {
-		return nil, ErrEmptyProjectID
-	}
 	var o []option.ClientOption
 	// Environment variables for gcloud emulator:
 	// https://cloud.google.com/sdk/gcloud/reference/beta/emulators/pubsub/
@@ -176,24 +157,11 @@ func NewClientWithConfig(ctx context.Context, projectID string, config *ClientCo
 		subc.CallOptions = mergeSubscriberCallOptions(subc.CallOptions, config.SubscriberCallOptions)
 	}
 	pubc.SetGoogleClientInfo("gccl", internal.Version)
-
-	// Handle project autodetection.
-	projectID, err = detect.ProjectID(ctx, projectID, "", opts...)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Client{
 		projectID: projectID,
 		pubc:      pubc,
 		subc:      subc,
 	}, nil
-}
-
-// Project returns the project ID or number for this instance of the client, which may have
-// either been explicitly specified or autodetected.
-func (c *Client) Project() string {
-	return c.projectID
 }
 
 // Close releases any resources held by the client,

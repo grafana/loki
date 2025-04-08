@@ -65,6 +65,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		closed:          grpcsync.NewEvent(),
 		done:            grpcsync.NewEvent(),
 		loadWrapper:     loadstore.NewWrapper(),
+		scWrappers:      make(map[balancer.SubConn]*scWrapper),
 		pickerUpdateCh:  buffer.NewUnbounded(),
 		requestCountMax: defaultRequestCountMax,
 	}
@@ -111,6 +112,18 @@ type clusterImplBalancer struct {
 
 	clusterNameMu sync.Mutex
 	clusterName   string
+
+	scWrappersMu sync.Mutex
+	// The SubConns passed to the child policy are wrapped in a wrapper, to keep
+	// locality ID. But when the parent ClientConn sends updates, it's going to
+	// give the original SubConn, not the wrapper. But the child policies only
+	// know about the wrapper, so when forwarding SubConn updates, they must be
+	// sent for the wrappers.
+	//
+	// This keeps a map from original SubConn to wrapper, so that when
+	// forwarding the SubConn state update, the child policy will get the
+	// wrappers.
+	scWrappers map[balancer.SubConn]*scWrapper
 
 	// childState/drops/requestCounter keeps the state used by the most recently
 	// generated picker. All fields can only be accessed in run(). And run() is
@@ -266,7 +279,7 @@ func (b *clusterImplBalancer) ResolverError(err error) {
 	b.child.ResolverError(err)
 }
 
-func (b *clusterImplBalancer) updateSubConnState(sc balancer.SubConn, s balancer.SubConnState, cb func(balancer.SubConnState)) {
+func (b *clusterImplBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.SubConnState) {
 	if b.closed.HasFired() {
 		b.logger.Warningf("xds: received subconn state change {%+v, %+v} after clusterImplBalancer was closed", sc, s)
 		return
@@ -283,13 +296,16 @@ func (b *clusterImplBalancer) updateSubConnState(sc balancer.SubConn, s balancer
 		b.ClientConn.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
-	if cb != nil {
-		cb(s)
+	b.scWrappersMu.Lock()
+	if scw, ok := b.scWrappers[sc]; ok {
+		sc = scw
+		if s.ConnectivityState == connectivity.Shutdown {
+			// Remove this SubConn from the map on Shutdown.
+			delete(b.scWrappers, scw.SubConn)
+		}
 	}
-}
-
-func (b *clusterImplBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.SubConnState) {
-	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, s)
+	b.scWrappersMu.Unlock()
+	b.child.UpdateSubConnState(sc, s)
 }
 
 func (b *clusterImplBalancer) Close() {
@@ -362,21 +378,33 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
-	var sc balancer.SubConn
-	oldListener := opts.StateListener
-	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state, oldListener) }
 	sc, err := b.ClientConn.NewSubConn(newAddrs, opts)
 	if err != nil {
 		return nil, err
 	}
 	// Wrap this SubConn in a wrapper, and add it to the map.
+	b.scWrappersMu.Lock()
 	ret := &scWrapper{SubConn: sc}
 	ret.updateLocalityID(lID)
+	b.scWrappers[sc] = ret
+	b.scWrappersMu.Unlock()
 	return ret, nil
 }
 
 func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {
-	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
+	scw, ok := sc.(*scWrapper)
+	if !ok {
+		b.ClientConn.RemoveSubConn(sc)
+		return
+	}
+	// Remove the original SubConn from the parent ClientConn.
+	//
+	// Note that we don't remove this SubConn from the scWrappers map. We will
+	// need it to forward the final SubConn state Shutdown to the child policy.
+	//
+	// This entry is kept in the map until it's state is changes to Shutdown,
+	// and will be deleted in UpdateSubConnState().
+	b.ClientConn.RemoveSubConn(scw.SubConn)
 }
 
 func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {

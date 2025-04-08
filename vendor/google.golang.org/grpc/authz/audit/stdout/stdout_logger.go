@@ -56,7 +56,7 @@ type logger struct {
 
 // Log marshals the audit.Event to json and prints it to standard output.
 func (l *logger) Log(event *audit.Event) {
-	jsonContainer := map[string]any{
+	jsonContainer := map[string]interface{}{
 		"grpc_audit_log": convertEvent(event),
 	}
 	jsonBytes, err := json.Marshal(jsonContainer)
