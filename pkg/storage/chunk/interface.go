@@ -20,7 +20,8 @@ import (
 	"context"
 	"io"
 
-	errs "github.com/grafana/dskit/errors"
+	errs "errors"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -30,9 +31,11 @@ import (
 const (
 	// ChunkLen is the length of a chunk in bytes.
 	ChunkLen = 1024
+)
 
-	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
-	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+var (
+	ErrSliceNoDataInRange = errs.New("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errs.New("slicing should not overflow a chunk")
 )
 
 // Data is the interface for all chunks. Chunks are generally not

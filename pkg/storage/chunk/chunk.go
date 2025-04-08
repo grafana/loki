@@ -10,8 +10,9 @@ import (
 	"sync"
 	"unsafe"
 
+	errs "errors"
+
 	"github.com/golang/snappy"
-	errs "github.com/grafana/dskit/errors"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -20,12 +21,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-const (
-	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
-	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
-	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
-	ErrDataLength      = errs.Error("chunk data wrong length")
-	ErrSliceOutOfRange = errs.Error("chunk can't be sliced out of its data range")
+var (
+	ErrInvalidChecksum = errs.New("invalid chunk checksum")
+	ErrWrongMetadata   = errs.New("wrong chunk metadata")
+	ErrMetadataLength  = errs.New("chunk metadata wrong length")
+	ErrDataLength      = errs.New("chunk data wrong length")
+	ErrSliceOutOfRange = errs.New("chunk can't be sliced out of its data range")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)

@@ -5,9 +5,14 @@ body {
 header {
   background-color: {{.HeaderColor}};
   color: #fff;
-  font-size: 2rem;
+  font-size: 1rem;
   padding: 1rem;
 }
 main {
   padding: 1rem;
 }
+label {
+  display: inline-block;
+  width: {{.Form.Width}}em;
+}
+{{.ExtraCSS}}
