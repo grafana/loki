@@ -67,6 +67,7 @@ type lazyExtensionValue struct {
 	xi         *extensionFieldInfo
 	value      protoreflect.Value
 	b          []byte
+	fn         func() protoreflect.Value
 }
 
 type ExtensionField struct {
@@ -96,28 +97,6 @@ func (f *ExtensionField) canLazy(xt protoreflect.ExtensionType) bool {
 		return true
 	}
 	return false
-}
-
-// isUnexpandedLazy returns true if the ExensionField is lazy and not
-// yet expanded, which means it's present and already checked for
-// initialized required fields.
-func (f *ExtensionField) isUnexpandedLazy() bool {
-	return f.lazy != nil && atomic.LoadUint32(&f.lazy.atomicOnce) == 0
-}
-
-// lazyBuffer retrieves the buffer for a lazy extension if it's not yet expanded.
-//
-// The returned buffer has to be kept over whatever operation we're planning,
-// as re-retrieving it will fail after the message is lazily decoded.
-func (f *ExtensionField) lazyBuffer() []byte {
-	// This function might be in the critical path, so check the atomic without
-	// taking a look first, then only take the lock if needed.
-	if !f.isUnexpandedLazy() {
-		return nil
-	}
-	f.lazy.mu.Lock()
-	defer f.lazy.mu.Unlock()
-	return f.lazy.b
 }
 
 func (f *ExtensionField) lazyInit() {
@@ -157,9 +136,10 @@ func (f *ExtensionField) lazyInit() {
 		}
 		f.lazy.value = val
 	} else {
-		panic("No support for lazy fns for ExtensionField")
+		f.lazy.value = f.lazy.fn()
 	}
 	f.lazy.xi = nil
+	f.lazy.fn = nil
 	f.lazy.b = nil
 	atomic.StoreUint32(&f.lazy.atomicOnce, 1)
 }
@@ -170,6 +150,13 @@ func (f *ExtensionField) Set(t protoreflect.ExtensionType, v protoreflect.Value)
 	f.typ = t
 	f.value = v
 	f.lazy = nil
+}
+
+// SetLazy sets the type and a value that is to be lazily evaluated upon first use.
+// This must not be called concurrently.
+func (f *ExtensionField) SetLazy(t protoreflect.ExtensionType, fn func() protoreflect.Value) {
+	f.typ = t
+	f.lazy = &lazyExtensionValue{fn: fn}
 }
 
 // Value returns the value of the extension field.

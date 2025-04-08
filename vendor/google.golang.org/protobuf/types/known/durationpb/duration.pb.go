@@ -245,9 +245,11 @@ func (x *Duration) check() uint {
 
 func (x *Duration) Reset() {
 	*x = Duration{}
-	mi := &file_google_protobuf_duration_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
+	if protoimpl.UnsafeEnabled {
+		mi := &file_google_protobuf_duration_proto_msgTypes[0]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
 }
 
 func (x *Duration) String() string {
@@ -258,7 +260,7 @@ func (*Duration) ProtoMessage() {}
 
 func (x *Duration) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_duration_proto_msgTypes[0]
-	if x != nil {
+	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -321,7 +323,7 @@ func file_google_protobuf_duration_proto_rawDescGZIP() []byte {
 }
 
 var file_google_protobuf_duration_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_google_protobuf_duration_proto_goTypes = []any{
+var file_google_protobuf_duration_proto_goTypes = []interface{}{
 	(*Duration)(nil), // 0: google.protobuf.Duration
 }
 var file_google_protobuf_duration_proto_depIdxs = []int32{
@@ -336,6 +338,20 @@ func init() { file_google_protobuf_duration_proto_init() }
 func file_google_protobuf_duration_proto_init() {
 	if File_google_protobuf_duration_proto != nil {
 		return
+	}
+	if !protoimpl.UnsafeEnabled {
+		file_google_protobuf_duration_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Duration); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

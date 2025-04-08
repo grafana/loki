@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 
 	"google.golang.org/protobuf/internal/flags"
-	"google.golang.org/protobuf/proto"
+	proto "google.golang.org/protobuf/proto"
 	piface "google.golang.org/protobuf/runtime/protoiface"
 )
 
@@ -49,11 +49,8 @@ func (mi *MessageInfo) sizePointer(p pointer, opts marshalOptions) (size int) {
 		return 0
 	}
 	if opts.UseCachedSize() && mi.sizecacheOffset.IsValid() {
-		// The size cache contains the size + 1, to allow the
-		// zero value to be invalid, while also allowing for a
-		// 0 size to be cached.
-		if size := atomic.LoadInt32(p.Apply(mi.sizecacheOffset).Int32()); size > 0 {
-			return int(size - 1)
+		if size := atomic.LoadInt32(p.Apply(mi.sizecacheOffset).Int32()); size >= 0 {
+			return int(size)
 		}
 	}
 	return mi.sizePointerSlow(p, opts)
@@ -63,7 +60,7 @@ func (mi *MessageInfo) sizePointerSlow(p pointer, opts marshalOptions) (size int
 	if flags.ProtoLegacy && mi.isMessageSet {
 		size = sizeMessageSet(mi, p, opts)
 		if mi.sizecacheOffset.IsValid() {
-			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), int32(size+1))
+			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), int32(size))
 		}
 		return size
 	}
@@ -87,16 +84,13 @@ func (mi *MessageInfo) sizePointerSlow(p pointer, opts marshalOptions) (size int
 		}
 	}
 	if mi.sizecacheOffset.IsValid() {
-		if size > (math.MaxInt32 - 1) {
+		if size > math.MaxInt32 {
 			// The size is too large for the int32 sizecache field.
 			// We will need to recompute the size when encoding;
 			// unfortunately expensive, but better than invalid output.
-			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), 0)
+			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), -1)
 		} else {
-			// The size cache contains the size + 1, to allow the
-			// zero value to be invalid, while also allowing for a
-			// 0 size to be cached.
-			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), int32(size+1))
+			atomic.StoreInt32(p.Apply(mi.sizecacheOffset).Int32(), int32(size))
 		}
 	}
 	return size
@@ -155,14 +149,6 @@ func (mi *MessageInfo) marshalAppendPointer(b []byte, p pointer, opts marshalOpt
 	return b, nil
 }
 
-// fullyLazyExtensions returns true if we should attempt to keep extensions lazy over size and marshal.
-func fullyLazyExtensions(opts marshalOptions) bool {
-	// When deterministic marshaling is requested, force an unmarshal for lazy
-	// extensions to produce a deterministic result, instead of passing through
-	// bytes lazily that may or may not match what Go Protobuf would produce.
-	return opts.flags&piface.MarshalDeterministic == 0
-}
-
 func (mi *MessageInfo) sizeExtensions(ext *map[int32]ExtensionField, opts marshalOptions) (n int) {
 	if ext == nil {
 		return 0
@@ -171,14 +157,6 @@ func (mi *MessageInfo) sizeExtensions(ext *map[int32]ExtensionField, opts marsha
 		xi := getExtensionFieldInfo(x.Type())
 		if xi.funcs.size == nil {
 			continue
-		}
-		if fullyLazyExtensions(opts) {
-			// Don't expand the extension, instead use the buffer to calculate size
-			if lb := x.lazyBuffer(); lb != nil {
-				// We got hold of the buffer, so it's still lazy.
-				n += len(lb)
-				continue
-			}
 		}
 		n += xi.funcs.size(x.Value(), xi.tagsize, opts)
 	}
@@ -198,13 +176,6 @@ func (mi *MessageInfo) appendExtensions(b []byte, ext *map[int32]ExtensionField,
 		var err error
 		for _, x := range *ext {
 			xi := getExtensionFieldInfo(x.Type())
-			if fullyLazyExtensions(opts) {
-				// Don't expand the extension if it's still in wire format, instead use the buffer content.
-				if lb := x.lazyBuffer(); lb != nil {
-					b = append(b, lb...)
-					continue
-				}
-			}
 			b, err = xi.funcs.marshal(b, x.Value(), xi.wiretag, opts)
 		}
 		return b, err
@@ -220,13 +191,6 @@ func (mi *MessageInfo) appendExtensions(b []byte, ext *map[int32]ExtensionField,
 		for _, k := range keys {
 			x := (*ext)[int32(k)]
 			xi := getExtensionFieldInfo(x.Type())
-			if fullyLazyExtensions(opts) {
-				// Don't expand the extension if it's still in wire format, instead use the buffer content.
-				if lb := x.lazyBuffer(); lb != nil {
-					b = append(b, lb...)
-					continue
-				}
-			}
 			b, err = xi.funcs.marshal(b, x.Value(), xi.wiretag, opts)
 			if err != nil {
 				return b, err
