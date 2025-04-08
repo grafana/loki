@@ -108,4 +108,4 @@ exchange large data sets in shards between services.
 *Cons*
 - Loki would have to support Apache Arrow which make the implementation more complicated.
 - Arrow Flight RPC assumes the data is being queried on the first request. Which means all shards are available at the
-  same time. However, the intend of this document is that shards can be queried independently.
+  same time. However, the intent of this document is that shards can be queried independently.
