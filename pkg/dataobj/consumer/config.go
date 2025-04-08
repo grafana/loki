@@ -22,10 +22,6 @@ func (cfg *Config) Validate() error {
 	return cfg.BuilderConfig.Validate()
 }
 
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("dataobj-consumer.", f)
-}
-
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)

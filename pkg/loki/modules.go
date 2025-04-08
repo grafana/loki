@@ -2121,6 +2121,8 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 }
 
 func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+	logger := log.With(util_log.Logger, "component", "dataobj-bucket")
+
 	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
@@ -2138,13 +2140,17 @@ func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
 	}
 
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	if t.Cfg.DataObj.StorageBucketPrefix != "" {
 		objstoreBucket = objstore.NewPrefixedBucket(objstoreBucket, t.Cfg.DataObj.StorageBucketPrefix)
+	}
+
+	if cache.IsCacheConfigured(t.Cfg.DataObj.StoreCache.Cache) {
+		objstoreBucket = bucket.NewCachingBucket(objstoreBucket, t.Cfg.DataObj.StoreCache, logger, nil)
 	}
 
 	return objstoreBucket, nil

@@ -70,10 +70,10 @@ type Config struct {
 	ShardFactor int                   `yaml:"shard_factor" doc:"description=The number of shards to use for the dataobj querier."`
 }
 
-func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&c.Enabled, "dataobj-querier-enabled", false, "Enable the dataobj querier.")
-	f.Var(&c.From, "dataobj-querier-from", "The start time to query from.")
-	f.IntVar(&c.ShardFactor, "dataobj-querier-shard-factor", 32, "The number of shards to use for the dataobj querier.")
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Enable the dataobj querier.")
+	f.Var(&c.From, prefix+"from", "The start time to query from.")
+	f.IntVar(&c.ShardFactor, prefix+"shard-factor", 32, "The number of shards to use for the dataobj querier.")
 }
 
 func (c *Config) Validate() error {
