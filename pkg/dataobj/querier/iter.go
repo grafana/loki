@@ -105,17 +105,14 @@ func newEntryIterator(ctx context.Context,
 			}
 			statistics.AddPostFilterLines(1)
 
-			var metadata []logproto.LabelAdapter
-			if len(record.Metadata) > 0 {
-				metadata = logproto.FromLabelsToLabelAdapters(record.Metadata)
-			}
 			top.Add(entryWithLabels{
 				Labels:     parsedLabels.String(),
 				StreamHash: streamHash,
 				Entry: logproto.Entry{
 					Timestamp:          record.Timestamp,
 					Line:               string(line),
-					StructuredMetadata: metadata,
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLabels.StructuredMetadata()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLabels.Parsed()),
 				},
 			})
 		}
@@ -202,11 +199,12 @@ func newTopK(k int, direction logproto.Direction) *topk {
 		panic("k must be greater than 0")
 	}
 	entries := entryWithLabelsPool.Get().(*[]entryWithLabels)
+
 	return &topk{
 		k: k,
 		minHeap: entryHeap{
 			less:    lessFn(direction),
-			entries: *entries,
+			entries: (*entries)[:0],
 		},
 	}
 }
@@ -279,6 +277,7 @@ func (s *sliceIterator) StreamHash() uint64 {
 }
 
 func (s *sliceIterator) Close() error {
+	clear(s.entries)
 	entryWithLabelsPool.Put(&s.entries)
 	return nil
 }
