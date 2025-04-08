@@ -263,7 +263,7 @@ func TestObjectEachHandlingOfNewlines(t *testing.T) {
 
 	// Parse using ObjectEach like we do in the UnmarshalJSON method
 	var parsedValue string
-	err := jsonparser.ObjectEach([]byte(jsonObj), func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
+	err := jsonparser.ObjectEach([]byte(jsonObj), func(_ []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 		if dataType == jsonparser.String {
 			parsedStr, err := jsonparser.ParseString(value)
 			if err != nil {
