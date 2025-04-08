@@ -163,6 +163,14 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 			if size > 0 {
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative log lines bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
 			}
 			entriesSize += size
 		}
@@ -178,6 +186,14 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 				structuredMetadataBytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative structured metadata bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
 			}
 
 			entriesSize += size
