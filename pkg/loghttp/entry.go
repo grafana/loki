@@ -92,14 +92,9 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 					return nil
 				}
 				if dataType == jsonparser.String || t != jsonparser.Number {
-					// Use ParseString to properly decode escape sequences like \n
-					val, err := jsonparser.ParseString(value)
-					if err != nil {
-						return err
-					}
 					structuredMetadata = append(structuredMetadata, labels.Label{
 						Name:  string(key),
-						Value: val,
+						Value: string(value),
 					})
 					return nil
 				}
@@ -235,7 +230,7 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 				stream.WriteMore()
 			}
 			stream.WriteObjectField(lbl.Name)
-			stream.WriteStringWithHTMLEscaped(lbl.Value)
+			stream.WriteString(lbl.Value)
 		}
 		stream.WriteObjectEnd()
 	}

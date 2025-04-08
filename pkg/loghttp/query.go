@@ -186,14 +186,9 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				// Parse the string to properly handle escaped characters like newlines
-				parsedVal, err := jsonparser.ParseString(val)
-				if err != nil {
-					return err
-				}
 				structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
 					Name:  string(key),
-					Value: parsedVal,
+					Value: string(val),
 				})
 				return nil
 			})
