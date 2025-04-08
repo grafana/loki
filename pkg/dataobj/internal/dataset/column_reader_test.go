@@ -107,14 +107,14 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
 		PageSizeHint: 128, // Small page size to force multiple pages
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	})
 	require.NoError(t, err)
 
 	for i, v := range values {
-		require.NoError(t, builder.Append(i, StringValue(v)))
+		require.NoError(t, builder.Append(i, ByteArrayValue([]byte(v))))
 	}
 
 	col, err := builder.Flush()

@@ -296,7 +296,7 @@ func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, col
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.StringValue(p.Value),
+			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case LabelFilterPredicate:

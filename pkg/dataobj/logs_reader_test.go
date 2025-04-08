@@ -23,11 +23,11 @@ import (
 
 var recordsTestdata = []logs.Record{
 	{StreamID: 1, Timestamp: unixTime(10), Metadata: nil, Line: []byte("hello")},
-	{StreamID: 1, Timestamp: unixTime(15), Metadata: labels.FromStrings("trace_id", "123"), Line: []byte("world")},
+	{StreamID: 1, Timestamp: unixTime(15), Metadata: []logs.RecordMetadata{{Name: "trace_id", Value: []byte("123")}}, Line: []byte("world")},
 	{StreamID: 2, Timestamp: unixTime(5), Metadata: nil, Line: []byte("hello again")},
-	{StreamID: 2, Timestamp: unixTime(20), Metadata: labels.FromStrings("user", "12"), Line: []byte("world again")},
-	{StreamID: 3, Timestamp: unixTime(25), Metadata: labels.FromStrings("user", "14"), Line: []byte("hello one more time")},
-	{StreamID: 3, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123"), Line: []byte("world one more time")},
+	{StreamID: 2, Timestamp: unixTime(20), Metadata: []logs.RecordMetadata{{Name: "user", Value: []byte("12")}}, Line: []byte("world again")},
+	{StreamID: 3, Timestamp: unixTime(25), Metadata: []logs.RecordMetadata{{Name: "user", Value: []byte("14")}}, Line: []byte("hello one more time")},
+	{StreamID: 3, Timestamp: unixTime(30), Metadata: []logs.RecordMetadata{{Name: "trace_id", Value: []byte("123")}}, Line: []byte("world one more time")},
 }
 
 func metadata(kvps ...string) push.LabelsAdapter {

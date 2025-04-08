@@ -289,7 +289,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
 			PageSizeHint: s.pageSize,
-			Value:        datasetmd.VALUE_TYPE_STRING,
+			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
@@ -319,7 +319,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
-			_ = builder.Append(i, dataset.StringValue(label.Value))
+			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
 		}
 	}
 

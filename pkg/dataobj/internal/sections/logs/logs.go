@@ -24,12 +24,18 @@ import (
 type Record struct {
 	StreamID    int64
 	Timestamp   time.Time
-	Metadata    labels.Labels
+	Metadata    []RecordMetadata
 	Line        []byte
 	MdValueCaps []int
 }
 
-func (r *Record) DeepCopy() Record {
+// A Labels-like type that holds byte buffers instead of strings.
+type RecordMetadata struct {
+	Name  string
+	Value []byte
+}
+
+/* func (r *Record) DeepCopy() Record {
 	newRecord := Record{
 		StreamID:    r.StreamID,
 		Timestamp:   r.Timestamp,
@@ -40,7 +46,7 @@ func (r *Record) DeepCopy() Record {
 	copy(newRecord.Line, r.Line)
 	copy(newRecord.MdValueCaps, r.MdValueCaps)
 	return newRecord
-}
+} */
 
 func copyLabels(in labels.Labels) labels.Labels {
 	lb := make(labels.Labels, len(in))

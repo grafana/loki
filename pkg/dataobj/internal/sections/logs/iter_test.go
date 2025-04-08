@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -33,15 +32,15 @@ func TestDecode(t *testing.T) {
 				Values: []dataset.Value{
 					dataset.Int64Value(123),
 					dataset.Int64Value(1234567890000000000),
-					dataset.StringValue("test-app"),
-					dataset.StringValue("prod"),
+					dataset.ByteArrayValue([]byte("test-app")),
+					dataset.ByteArrayValue([]byte("prod")),
 					dataset.ByteArrayValue([]byte("test message")),
 				},
 			},
 			expected: Record{
 				StreamID:  123,
 				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:  labels.FromStrings("app", "test-app", "env", "prod"),
+				Metadata:  []RecordMetadata{{Name: "app", Value: []byte("test-app")}, {Name: "env", Value: []byte("prod")}},
 				Line:      []byte("test message"),
 			},
 		},
@@ -64,7 +63,7 @@ func TestDecode(t *testing.T) {
 			expected: Record{
 				StreamID:  123,
 				Timestamp: time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC),
-				Metadata:  labels.FromStrings(),
+				Metadata:  []RecordMetadata{},
 				Line:      []byte("test message"),
 			},
 		},
@@ -75,7 +74,7 @@ func TestDecode(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.StringValue("invalid"),
+					dataset.ByteArrayValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,
@@ -87,7 +86,7 @@ func TestDecode(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.StringValue("invalid"),
+					dataset.ByteArrayValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,

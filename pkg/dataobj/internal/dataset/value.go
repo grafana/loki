@@ -13,7 +13,6 @@ import (
 
 // Helper types
 type (
-	stringptr *byte
 	bytearray *byte
 )
 
@@ -67,15 +66,6 @@ func Uint64Value(v uint64) Value {
 	}
 }
 
-// StringValue returns a [Value] for a string.
-func StringValue(v string) Value {
-	return Value{
-		num: uint64(len(v)),
-		any: (stringptr)(unsafe.StringData(v)),
-		cap: uint64(len(v)),
-	}
-}
-
 // ByteArrayValue returns a [Value] for a byte slice representing a string.
 func ByteArrayValue(v []byte) Value {
 	return Value{
@@ -107,8 +97,6 @@ func (v Value) Type() datasetmd.ValueType {
 	switch v := v.any.(type) {
 	case datasetmd.ValueType:
 		return v
-	case stringptr:
-		return datasetmd.VALUE_TYPE_STRING
 	case bytearray:
 		return datasetmd.VALUE_TYPE_BYTE_ARRAY
 	default:
@@ -134,16 +122,6 @@ func (v *Value) Uint64() uint64 {
 	return v.num
 }
 
-// String returns v's value as a string. Because of Go's String method
-// convention, if v is not a string, String returns a string of the form
-// "VALUE_TYPE_T", where T is the underlying type of v.
-func (v *Value) String() string {
-	if sp, ok := v.any.(stringptr); ok {
-		return unsafe.String(sp, v.num)
-	}
-	return v.Type().String()
-}
-
 // ByteSlice returns v's value as a byte slice. If v is not a string,
 // ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
 // underlying type of v.
@@ -166,12 +144,10 @@ func (v *Value) Buffer(sz int) []byte {
 	var dst []byte
 	// Depending on which type this value was previously used for dictates how we reference the memory.
 	switch v.any.(type) {
-	case stringptr:
-		dst = unsafe.Slice(v.any.(stringptr), int(v.cap))
 	case bytearray:
 		dst = unsafe.Slice(v.any.(bytearray), int(v.cap))
 	default:
-		panic("unknown value type in Value's 'any' field")
+		panic("unsupported value type for buffer in Value's 'any' field, got " + v.Type().String())
 	}
 
 	// Grow the buffer attached to this Value if necessary.
@@ -186,13 +162,6 @@ func (v *Value) Buffer(sz int) []byte {
 // SetByteArray updates the value to point to the provided byte slice.
 func (v *Value) SetByteArrayValue(b []byte) {
 	v.any = (bytearray)(unsafe.SliceData(b))
-	v.num = uint64(len(b))
-	v.cap = uint64(cap(b))
-}
-
-// SetByteArray updates the value to point to the provided byte slice.
-func (v *Value) SetStringValue(b []byte) {
-	v.any = (stringptr)(unsafe.SliceData(b))
 	v.num = uint64(len(b))
 	v.cap = uint64(cap(b))
 }
@@ -223,9 +192,6 @@ func (v Value) MarshalBinary() (data []byte, err error) {
 		buf = binary.AppendVarint(buf, v.Int64())
 	case datasetmd.VALUE_TYPE_UINT64:
 		buf = binary.AppendUvarint(buf, v.Uint64())
-	case datasetmd.VALUE_TYPE_STRING:
-		str := v.String()
-		buf = append(buf, unsafe.Slice(unsafe.StringData(str), len(str))...)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		buf = append(buf, v.ByteArray()...)
 	default:
@@ -261,9 +227,6 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid uint64 value")
 		}
 		*v = Uint64Value(val)
-	case datasetmd.VALUE_TYPE_STRING:
-		str := string(data[n:])
-		*v = StringValue(str)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		*v = ByteArrayValue(data[n:])
 	default:
@@ -299,8 +262,6 @@ func CompareValues(a, b Value) int {
 		return cmp.Compare(a.Int64(), b.Int64())
 	case datasetmd.VALUE_TYPE_UINT64:
 		return cmp.Compare(a.Uint64(), b.Uint64())
-	case datasetmd.VALUE_TYPE_STRING:
-		return cmp.Compare(a.String(), b.String())
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		return bytes.Compare(a.ByteArray(), b.ByteArray())
 	default:

@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -154,7 +155,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 			name := slicegrow.CopyString(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
 			s[i].Metadata[j].Name = unsafeString(name)
 			s[i].MdNameCaps[j] = cap(name)
-			value := slicegrow.CopyString(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
+			value := slicegrow.Copy(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
 			s[i].Metadata[j].Value = unsafeString(value)
 			s[i].MdValueCaps[j] = cap(value)
 		}
@@ -243,12 +244,17 @@ func (r *LogsReader) findSection(ctx context.Context) (*filemd.SectionInfo, erro
 	return nil, fmt.Errorf("section index %d not found", r.idx)
 }
 
-func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := make(labels.Labels, 0, len(md))
+func convertMetadata(md push.LabelsAdapter) []logs.RecordMetadata {
+	l := make([]logs.RecordMetadata, 0, len(md))
 	for _, label := range md {
-		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
+		l = append(l, logs.RecordMetadata{Name: label.Name, Value: unsafeSlice(label.Value, 0)})
 	}
-	sort.Sort(l)
+	sort.Slice(l, func(i, j int) bool {
+		if l[i].Name == l[j].Name {
+			return cmp.Compare(unsafeString(l[i].Value), unsafeString(l[j].Value)) < 0
+		}
+		return cmp.Compare(l[i].Name, l[j].Name) < 0
+	})
 	return l
 }
 
@@ -349,9 +355,9 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+				if value.Type() == datasetmd.VALUE_TYPE_BYTE_ARRAY {
 					// To handle older dataobjs that still use string type for message column. This can be removed in future.
-					return p.Keep([]byte(value.String()))
+					return p.Keep(value.ByteArray())
 				}
 
 				return p.Keep(value.ByteArray())
@@ -367,7 +373,7 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.StringValue(p.Value),
+			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case MetadataFilterPredicate:
@@ -441,8 +447,8 @@ func valueToString(value dataset.Value) string {
 		return strconv.FormatInt(value.Int64(), 10)
 	case datasetmd.VALUE_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_STRING:
-		return value.String()
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		return unsafeString(value.ByteArray())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
 	}

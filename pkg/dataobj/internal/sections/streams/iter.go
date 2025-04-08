@@ -141,13 +141,13 @@ func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) er
 			stream.UncompressedSize = columnValue.Int64()
 
 		case streamsmd.COLUMN_TYPE_LABEL:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
 			// Convert the target pointer to a byte slice and grow it if necessary.
 			target := unsafeSlice(stream.Labels[nextLabelIdx].Value, stream.LbValueCaps[nextLabelIdx])
-			target = slicegrow.CopyString(target, columnValue.String())
+			target = slicegrow.Copy(target, columnValue.ByteArray())
 			stream.LbValueCaps[nextLabelIdx] = cap(target)
 
 			stream.Labels[nextLabelIdx].Name = column.Info.Name

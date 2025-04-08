@@ -1,16 +1,15 @@
 package logs
 
 import (
-	"cmp"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 	"unsafe"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -104,8 +103,6 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 	metadataColumns := metadataColumns(columns)
 	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
 	record.Metadata = record.Metadata[:metadataColumns]
-	record.MdValueCaps = slicegrow.GrowToCap(record.MdValueCaps, metadataColumns)
-	record.MdValueCaps = record.MdValueCaps[:metadataColumns]
 	nextMetadataIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
@@ -128,17 +125,15 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 			record.Timestamp = time.Unix(0, columnValue.Int64()).UTC()
 
 		case logsmd.COLUMN_TYPE_METADATA:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
 			// Convert the target pointer to a byte slice and grow it if necessary.
-			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value, record.MdValueCaps[nextMetadataIdx])
-			target = slicegrow.CopyString(target, columnValue.String())
-			record.MdValueCaps[nextMetadataIdx] = cap(target)
+			target := slicegrow.Copy(record.Metadata[nextMetadataIdx].Value, columnValue.ByteArray())
 
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
-			record.Metadata[nextMetadataIdx].Value = unsafeString(target)
+			record.Metadata[nextMetadataIdx].Value = target
 			nextMetadataIdx++
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
@@ -156,11 +151,11 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 	// Metadata is originally sorted in received order; we sort it by key
 	// per-record since it might not be obvious why keys appear in a certain
 	// order.
-	slices.SortFunc(record.Metadata, func(a, b labels.Label) int {
-		if res := cmp.Compare(a.Name, b.Name); res != 0 {
+	slices.SortFunc(record.Metadata, func(a, b RecordMetadata) int {
+		if res := strings.Compare(a.Name, b.Name); res != 0 {
 			return res
 		}
-		return cmp.Compare(a.Value, b.Value)
+		return bytes.Compare(a.Value, b.Value)
 	})
 
 	return nil
