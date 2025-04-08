@@ -186,7 +186,9 @@ func (m *Message) AckWithResult() *AckResult {
 	if m.ackh != nil {
 		return m.ackh.OnAckWithResult()
 	}
-	return nil
+	// When the message was constructed directly rather passed in the callback in `sub.Receive`,
+	// ready the message with success so calling `AckResult.Get` doesn't panic.
+	return newSuccessAckResult()
 }
 
 // NackWithResult declines to acknowledge the message which indicates that
@@ -206,7 +208,9 @@ func (m *Message) NackWithResult() *AckResult {
 	if m.ackh != nil {
 		return m.ackh.OnNackWithResult()
 	}
-	return nil
+	// When the message was constructed directly rather passed in the callback in `sub.Receive`,
+	// ready the message with success so calling `AckResult.Get` doesn't panic.
+	return newSuccessAckResult()
 }
 
 // NewMessage creates a message with an AckHandler implementation, which should
@@ -218,4 +222,10 @@ func NewMessage(ackh AckHandler) *Message {
 // MessageAckHandler provides access to the internal field Message.ackh.
 func MessageAckHandler(m *Message) AckHandler {
 	return m.ackh
+}
+
+func newSuccessAckResult() *AckResult {
+	ar := NewAckResult()
+	SetAckResult(ar, AcknowledgeStatusSuccess, nil)
+	return ar
 }
