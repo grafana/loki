@@ -3,8 +3,9 @@ package frontend
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/jellydator/ttlcache/v3"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type PartitionConsumersCache = *ttlcache.Cache[string, logproto.GetAssignedPartitionsResponse]
