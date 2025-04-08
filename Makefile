@@ -317,6 +317,7 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
+	golangci-lint cache clean
 	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
