@@ -196,7 +196,7 @@ func (s *Store) Volume(_ context.Context, _ string, _ model.Time, _ model.Time, 
 }
 
 // GetShards implements querier.Store
-func (s *Store) GetShards(ctx context.Context, tenant string, from model.Time, through model.Time, targetBytesPerShard uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+func (s *Store) GetShards(ctx context.Context, tenant string, from model.Time, through model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
 
 	// Get statistics to determine total data size
 	stats, err := s.Stats(ctx, tenant, from, through)
