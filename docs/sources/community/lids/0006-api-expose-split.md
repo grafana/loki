@@ -43,7 +43,7 @@ sequentially or in parallel. The joined result of the sub-queries must be the sa
 
 ## Non-Goals
 
-This proposal does not aim to provider pagination for query results.
+This proposal does not aim to provide pagination for query results.
 
 ## Proposals
 
