@@ -78,7 +78,6 @@ type dialOptions struct {
 	defaultServiceConfigRawJSON *string
 	resolvers                   []resolver.Builder
 	idleTimeout                 time.Duration
-	recvBufferPool              SharedBufferPool
 }
 
 // DialOption configures how we set up the connection.
@@ -629,7 +628,6 @@ func defaultDialOptions() dialOptions {
 			ReadBufferSize:  defaultReadBufSize,
 			UseProxy:        true,
 		},
-		recvBufferPool: nopBufferPool{},
 	}
 }
 
@@ -676,26 +674,5 @@ func WithResolvers(rs ...resolver.Builder) DialOption {
 func WithIdleTimeout(d time.Duration) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.idleTimeout = d
-	})
-}
-
-// WithRecvBufferPool returns a DialOption that configures the ClientConn
-// to use the provided shared buffer pool for parsing incoming messages. Depending
-// on the application's workload, this could result in reduced memory allocation.
-//
-// If you are unsure about how to implement a memory pool but want to utilize one,
-// begin with grpc.NewSharedBufferPool.
-//
-// Note: The shared buffer pool feature will not be active if any of the following
-// options are used: WithStatsHandler, EnableTracing, or binary logging. In such
-// cases, the shared buffer pool will be ignored.
-//
-// # Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
-func WithRecvBufferPool(bufferPool SharedBufferPool) DialOption {
-	return newFuncDialOption(func(o *dialOptions) {
-		o.recvBufferPool = bufferPool
 	})
 }

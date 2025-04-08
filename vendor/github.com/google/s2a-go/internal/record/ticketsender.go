@@ -83,15 +83,13 @@ func (t *ticketSender) sendTicketsToS2A(sessionTickets [][]byte, callComplete ch
 					t.ensureProcessSessionTickets.Done()
 				}
 			}()
-			ctx, cancel := context.WithTimeout(context.Background(), sessionTimeout)
-			defer cancel()
-			// The transportCreds only needs to be set when talking to S2AV2 and also
-			// if mTLS is required.
-			hsConn, err := service.Dial(ctx, t.hsAddr, nil)
+			hsConn, err := service.Dial(t.hsAddr)
 			if err != nil {
 				return err
 			}
 			client := s2apb.NewS2AServiceClient(hsConn)
+			ctx, cancel := context.WithTimeout(context.Background(), sessionTimeout)
+			defer cancel()
 			session, err := client.SetUpSession(ctx)
 			if err != nil {
 				return err

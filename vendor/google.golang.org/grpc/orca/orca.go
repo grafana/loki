@@ -49,6 +49,9 @@ func (loadParser) Parse(md metadata.MD) interface{} {
 	if err != nil {
 		logger.Infof("Parse failed: %v", err)
 	}
+	if lr == nil && logger.V(2) {
+		logger.Infof("Missing ORCA load report data")
+	}
 	return lr
 }
 

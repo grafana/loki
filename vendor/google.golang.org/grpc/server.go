@@ -115,12 +115,6 @@ type serviceInfo struct {
 	mdata       interface{}
 }
 
-type serverWorkerData struct {
-	st     transport.ServerTransport
-	wg     *sync.WaitGroup
-	stream *transport.Stream
-}
-
 // Server is a gRPC server to serve RPC requests.
 type Server struct {
 	opts serverOptions
@@ -145,7 +139,7 @@ type Server struct {
 	channelzID *channelz.Identifier
 	czData     *channelzData
 
-	serverWorkerChannel chan *serverWorkerData
+	serverWorkerChannel chan func()
 }
 
 type serverOptions struct {
@@ -174,16 +168,15 @@ type serverOptions struct {
 	maxHeaderListSize     *uint32
 	headerTableSize       *uint32
 	numServerWorkers      uint32
-	recvBufferPool        SharedBufferPool
 }
 
 var defaultServerOptions = serverOptions{
+	maxConcurrentStreams:  math.MaxUint32,
 	maxReceiveMessageSize: defaultServerMaxReceiveMessageSize,
 	maxSendMessageSize:    defaultServerMaxSendMessageSize,
 	connectionTimeout:     120 * time.Second,
 	writeBufferSize:       defaultWriteBufSize,
 	readBufferSize:        defaultReadBufSize,
-	recvBufferPool:        nopBufferPool{},
 }
 var globalServerOptions []ServerOption
 
@@ -389,6 +382,9 @@ func MaxSendMsgSize(m int) ServerOption {
 // MaxConcurrentStreams returns a ServerOption that will apply a limit on the number
 // of concurrent streams to each ServerTransport.
 func MaxConcurrentStreams(n uint32) ServerOption {
+	if n == 0 {
+		n = math.MaxUint32
+	}
 	return newFuncServerOption(func(o *serverOptions) {
 		o.maxConcurrentStreams = n
 	})
@@ -554,27 +550,6 @@ func NumStreamWorkers(numServerWorkers uint32) ServerOption {
 	})
 }
 
-// RecvBufferPool returns a ServerOption that configures the server
-// to use the provided shared buffer pool for parsing incoming messages. Depending
-// on the application's workload, this could result in reduced memory allocation.
-//
-// If you are unsure about how to implement a memory pool but want to utilize one,
-// begin with grpc.NewSharedBufferPool.
-//
-// Note: The shared buffer pool feature will not be active if any of the following
-// options are used: StatsHandler, EnableTracing, or binary logging. In such
-// cases, the shared buffer pool will be ignored.
-//
-// # Experimental
-//
-// Notice: This API is EXPERIMENTAL and may be changed or removed in a
-// later release.
-func RecvBufferPool(bufferPool SharedBufferPool) ServerOption {
-	return newFuncServerOption(func(o *serverOptions) {
-		o.recvBufferPool = bufferPool
-	})
-}
-
 // serverWorkerResetThreshold defines how often the stack must be reset. Every
 // N requests, by spawning a new goroutine in its place, a worker can reset its
 // stack so that large stacks don't live in memory forever. 2^16 should allow
@@ -590,24 +565,19 @@ const serverWorkerResetThreshold = 1 << 16
 // [1] https://github.com/golang/go/issues/18138
 func (s *Server) serverWorker() {
 	for completed := 0; completed < serverWorkerResetThreshold; completed++ {
-		data, ok := <-s.serverWorkerChannel
+		f, ok := <-s.serverWorkerChannel
 		if !ok {
 			return
 		}
-		s.handleSingleStream(data)
+		f()
 	}
 	go s.serverWorker()
-}
-
-func (s *Server) handleSingleStream(data *serverWorkerData) {
-	defer data.wg.Done()
-	s.handleStream(data.st, data.stream, s.traceInfo(data.st, data.stream))
 }
 
 // initServerWorkers creates worker goroutines and a channel to process incoming
 // connections to reduce the time spent overall on runtime.morestack.
 func (s *Server) initServerWorkers() {
-	s.serverWorkerChannel = make(chan *serverWorkerData)
+	s.serverWorkerChannel = make(chan func())
 	for i := uint32(0); i < s.opts.numServerWorkers; i++ {
 		go s.serverWorker()
 	}
@@ -966,21 +936,26 @@ func (s *Server) serveStreams(st transport.ServerTransport) {
 	defer st.Close(errors.New("finished serving streams for the server transport"))
 	var wg sync.WaitGroup
 
+	streamQuota := newHandlerQuota(s.opts.maxConcurrentStreams)
 	st.HandleStreams(func(stream *transport.Stream) {
 		wg.Add(1)
+
+		streamQuota.acquire()
+		f := func() {
+			defer streamQuota.release()
+			defer wg.Done()
+			s.handleStream(st, stream, s.traceInfo(st, stream))
+		}
+
 		if s.opts.numServerWorkers > 0 {
-			data := &serverWorkerData{st: st, wg: &wg, stream: stream}
 			select {
-			case s.serverWorkerChannel <- data:
+			case s.serverWorkerChannel <- f:
 				return
 			default:
 				// If all stream workers are busy, fallback to the default code path.
 			}
 		}
-		go func() {
-			defer wg.Done()
-			s.handleStream(st, stream, s.traceInfo(st, stream))
-		}()
+		go f()
 	}, func(ctx context.Context, method string) context.Context {
 		if !EnableTracing {
 			return ctx
@@ -1319,7 +1294,7 @@ func (s *Server) processUnaryRPC(t transport.ServerTransport, stream *transport.
 	if len(shs) != 0 || len(binlogs) != 0 {
 		payInfo = &payloadInfo{}
 	}
-	d, err := recvAndDecompress(&parser{r: stream, recvBufferPool: s.opts.recvBufferPool}, stream, dc, s.opts.maxReceiveMessageSize, payInfo, decomp)
+	d, err := recvAndDecompress(&parser{r: stream}, stream, dc, s.opts.maxReceiveMessageSize, payInfo, decomp)
 	if err != nil {
 		if e := t.WriteStatus(stream, status.Convert(err)); e != nil {
 			channelz.Warningf(logger, s.channelzID, "grpc: Server.processUnaryRPC failed to write status: %v", e)
@@ -1529,7 +1504,7 @@ func (s *Server) processStreamingRPC(t transport.ServerTransport, stream *transp
 		ctx:                   ctx,
 		t:                     t,
 		s:                     stream,
-		p:                     &parser{r: stream, recvBufferPool: s.opts.recvBufferPool},
+		p:                     &parser{r: stream},
 		codec:                 s.getCodec(stream.ContentSubtype()),
 		maxReceiveMessageSize: s.opts.maxReceiveMessageSize,
 		maxSendMessageSize:    s.opts.maxSendMessageSize,
@@ -2074,4 +2049,33 @@ func validateSendCompressor(name, clientCompressors string) error {
 		}
 	}
 	return fmt.Errorf("client does not support compressor %q", name)
+}
+
+// atomicSemaphore implements a blocking, counting semaphore. acquire should be
+// called synchronously; release may be called asynchronously.
+type atomicSemaphore struct {
+	n    int64
+	wait chan struct{}
+}
+
+func (q *atomicSemaphore) acquire() {
+	if atomic.AddInt64(&q.n, -1) < 0 {
+		// We ran out of quota.  Block until a release happens.
+		<-q.wait
+	}
+}
+
+func (q *atomicSemaphore) release() {
+	// N.B. the "<= 0" check below should allow for this to work with multiple
+	// concurrent calls to acquire, but also note that with synchronous calls to
+	// acquire, as our system does, n will never be less than -1.  There are
+	// fairness issues (queuing) to consider if this was to be generalized.
+	if atomic.AddInt64(&q.n, 1) <= 0 {
+		// An acquire was waiting on us.  Unblock it.
+		q.wait <- struct{}{}
+	}
+}
+
+func newHandlerQuota(n uint32) *atomicSemaphore {
+	return &atomicSemaphore{n: int64(n), wait: make(chan struct{}, 1)}
 }

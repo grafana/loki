@@ -25,16 +25,10 @@ import (
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 )
 
+const prefix = "[xds-client %p] "
+
 var logger = grpclog.Component("xds")
 
 func prefixLogger(p *clientImpl) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, clientPrefix(p))
-}
-
-func clientPrefix(p *clientImpl) string {
-	return fmt.Sprintf("[xds-client %p] ", p)
-}
-
-func authorityPrefix(p *clientImpl, serverURI string) string {
-	return fmt.Sprintf("%s[%s] ", clientPrefix(p), serverURI)
+	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf(prefix, p))
 }

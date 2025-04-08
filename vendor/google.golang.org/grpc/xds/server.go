@@ -173,9 +173,6 @@ func (s *GRPCServer) GetServiceInfo() map[string]grpc.ServiceInfo {
 func (s *GRPCServer) initXDSClient() error {
 	s.clientMu.Lock()
 	defer s.clientMu.Unlock()
-	if s.quit.HasFired() {
-		return grpc.ErrServerStopped
-	}
 
 	if s.xdsC != nil {
 		return nil
@@ -335,8 +332,6 @@ func (s *GRPCServer) handleServingModeChanges(updateCh *buffer.Unbounded) {
 // corresponding pending RPCs on the client side will get notified by connection
 // errors.
 func (s *GRPCServer) Stop() {
-	s.clientMu.Lock()
-	defer s.clientMu.Unlock()
 	s.quit.Fire()
 	s.gs.Stop()
 	if s.xdsC != nil {
@@ -348,8 +343,6 @@ func (s *GRPCServer) Stop() {
 // from accepting new connections and RPCs and blocks until all the pending RPCs
 // are finished.
 func (s *GRPCServer) GracefulStop() {
-	s.clientMu.Lock()
-	defer s.clientMu.Unlock()
 	s.quit.Fire()
 	s.gs.GracefulStop()
 	if s.xdsC != nil {

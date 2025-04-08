@@ -85,7 +85,7 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 
-	b.resourceWatcher = newResourceResolver(b, b.logger)
+	b.resourceWatcher = newResourceResolver(b)
 	b.cc = &ccWrapper{
 		ClientConn:      cc,
 		resourceWatcher: b.resourceWatcher,

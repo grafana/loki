@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	v3clusterpb "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -174,9 +173,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		}
 		ret.ClusterType = ClusterTypeEDS
 		ret.EDSServiceName = cluster.GetEdsClusterConfig().GetServiceName()
-		if strings.HasPrefix(ret.ClusterName, "xdstp:") && ret.EDSServiceName == "" {
-			return ClusterUpdate{}, fmt.Errorf("CDS's EDS service name is not set with a new-style cluster name: %+v", cluster)
-		}
 		return ret, nil
 	case cluster.GetType() == v3clusterpb.Cluster_LOGICAL_DNS:
 		if !envconfig.XDSAggregateAndDNS {

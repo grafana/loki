@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 
-	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -110,7 +109,7 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 		serializer:         c.serializer,
 		resourceTypeGetter: c.resourceTypes.get,
 		watchExpiryTimeout: c.watchExpiryTimeout,
-		logger:             grpclog.NewPrefixLogger(logger, authorityPrefix(c, config.ServerURI)),
+		logger:             c.logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating new authority for config %q: %v", config.String(), err)
