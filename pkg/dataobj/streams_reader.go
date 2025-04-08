@@ -154,10 +154,10 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		s[i].UncompressedSize = r.stream.UncompressedSize
 		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
 		for j := range r.stream.Labels {
-			name := slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Name, s[i].LbNameCaps[j]), r.stream.Labels[j].Name)
+			name := slicegrow.CopyString(unsafeSlice(s[i].Labels[j].Name, s[i].LbNameCaps[j]), r.stream.Labels[j].Name)
 			s[i].Labels[j].Name = unsafeString(name)
 			s[i].LbNameCaps[j] = cap(name)
-			value := slicegrow.CopyStringInto(unsafeSlice(s[i].Labels[j].Value, s[i].LbValueCaps[j]), r.stream.Labels[j].Value)
+			value := slicegrow.CopyString(unsafeSlice(s[i].Labels[j].Value, s[i].LbValueCaps[j]), r.stream.Labels[j].Value)
 			s[i].Labels[j].Value = unsafeString(value)
 			s[i].LbValueCaps[j] = cap(value)
 		}

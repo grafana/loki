@@ -9,14 +9,14 @@ func GrowToCap[Slice ~[]E, E any](s Slice, n int) Slice {
 	return slices.Grow(s, max(0, n-len(s)))
 }
 
-func CopyInto[Slice ~[]E, E any](dst Slice, src Slice) Slice {
+func Copy[Slice ~[]E, E any](dst Slice, src Slice) Slice {
 	dst = GrowToCap(dst, len(src))
 	dst = dst[:len(src)]
 	copy(dst, src)
 	return dst
 }
 
-func CopyStringInto[Slice ~[]byte](dst Slice, src string) Slice {
+func CopyString[Slice ~[]byte](dst Slice, src string) Slice {
 	dst = GrowToCap(dst, len(src))
 	dst = dst[:len(src)]
 	copy(dst, src)

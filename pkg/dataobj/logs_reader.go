@@ -116,17 +116,6 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
 
-	// Fill the row buffer with empty values so they can re-use the memory we pass in.
-	for i := range r.buf {
-		r.buf[i].Values = slicegrow.GrowToCap(r.buf[i].Values, len(r.columns))
-		r.buf[i].Values = r.buf[i].Values[:len(r.columns)]
-		for j := range r.buf[i].Values {
-			if r.buf[i].Values[j].IsNil() {
-				r.buf[i].Values[j] = dataset.ByteArrayValue(make([]byte, 8))
-			}
-		}
-	}
-
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)
@@ -162,14 +151,14 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		s[i].Timestamp = r.record.Timestamp
 		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
 		for j := range r.record.Metadata {
-			name := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
+			name := slicegrow.CopyString(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
 			s[i].Metadata[j].Name = unsafeString(name)
 			s[i].MdNameCaps[j] = cap(name)
-			value := slicegrow.CopyStringInto(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
+			value := slicegrow.CopyString(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
 			s[i].Metadata[j].Value = unsafeString(value)
 			s[i].MdValueCaps[j] = cap(value)
 		}
-		s[i].Line = slicegrow.CopyInto(s[i].Line, r.record.Line)
+		s[i].Line = slicegrow.Copy(s[i].Line, r.record.Line)
 	}
 
 	return n, nil

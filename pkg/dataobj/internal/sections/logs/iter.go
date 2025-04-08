@@ -134,7 +134,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 
 			// Convert the target pointer to a byte slice and grow it if necessary.
 			target := unsafeSlice(record.Metadata[nextMetadataIdx].Value, record.MdValueCaps[nextMetadataIdx])
-			target = slicegrow.CopyStringInto(target, columnValue.String())
+			target = slicegrow.CopyString(target, columnValue.String())
 			record.MdValueCaps[nextMetadataIdx] = cap(target)
 
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
@@ -146,7 +146,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			line := columnValue.ByteArray()
-			record.Line = slicegrow.CopyInto(record.Line, line)
+			record.Line = slicegrow.Copy(record.Line, line)
 		}
 	}
 
