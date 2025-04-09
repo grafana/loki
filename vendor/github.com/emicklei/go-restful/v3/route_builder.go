@@ -31,17 +31,18 @@ type RouteBuilder struct {
 	typeNameHandleFunc TypeNameHandleFunction // required
 
 	// documentation
-	doc                     string
-	notes                   string
-	operation               string
-	readSample, writeSample interface{}
-	parameters              []*Parameter
-	errorMap                map[int]ResponseError
-	defaultResponse         *ResponseError
-	metadata                map[string]interface{}
-	extensions              map[string]interface{}
-	deprecated              bool
-	contentEncodingEnabled  *bool
+	doc                    string
+	notes                  string
+	operation              string
+	readSample             interface{}
+	writeSamples           []interface{}
+	parameters             []*Parameter
+	errorMap               map[int]ResponseError
+	defaultResponse        *ResponseError
+	metadata               map[string]interface{}
+	extensions             map[string]interface{}
+	deprecated             bool
+	contentEncodingEnabled *bool
 }
 
 // Do evaluates each argument with the RouteBuilder itself.
@@ -135,9 +136,9 @@ func (b RouteBuilder) ParameterNamed(name string) (p *Parameter) {
 	return p
 }
 
-// Writes tells what resource type will be written as the response payload. Optional.
-func (b *RouteBuilder) Writes(sample interface{}) *RouteBuilder {
-	b.writeSample = sample
+// Writes tells which one of the resource types will be written as the response payload. Optional.
+func (b *RouteBuilder) Writes(samples ...interface{}) *RouteBuilder {
+	b.writeSamples = samples // oneof
 	return b
 }
 
@@ -342,19 +343,29 @@ func (b *RouteBuilder) Build() Route {
 		ResponseErrors:                   b.errorMap,
 		DefaultResponse:                  b.defaultResponse,
 		ReadSample:                       b.readSample,
-		WriteSample:                      b.writeSample,
+		WriteSamples:                     b.writeSamples,
 		Metadata:                         b.metadata,
 		Deprecated:                       b.deprecated,
 		contentEncodingEnabled:           b.contentEncodingEnabled,
 		allowedMethodsWithoutContentType: b.allowedMethodsWithoutContentType,
+	}
+	// set WriteSample if one specified
+	if len(b.writeSamples) == 1 {
+		route.WriteSample = b.writeSamples[0]
 	}
 	route.Extensions = b.extensions
 	route.postBuild()
 	return route
 }
 
-func concatPath(path1, path2 string) string {
-	return path.Join(path1, path2)
+// merge two paths using the current (package global) merge path strategy.
+func concatPath(rootPath, routePath string) string {
+
+	if TrimRightSlashEnabled {
+		return strings.TrimRight(rootPath, "/") + "/" + strings.TrimLeft(routePath, "/")
+	} else {
+		return path.Join(rootPath, routePath)
+	}
 }
 
 var anonymousFuncCount int32
