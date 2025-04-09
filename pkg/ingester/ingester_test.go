@@ -604,7 +604,7 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 				cfg: ingesterConfig,
 			}
 
-			start, end, ok := i.buildStoreRequest(tc.start, tc.end, now)
+			start, end, ok := i.getStoreQueryTimeRange(false, tc.start, tc.end, now)
 
 			if !tc.shouldQuery {
 				require.False(t, ok)
