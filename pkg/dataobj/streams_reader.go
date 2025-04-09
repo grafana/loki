@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,7 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // A Stream is an individual stream in a data object.
@@ -34,35 +34,6 @@ type Stream struct {
 
 	// Labels of the stream.
 	Labels labels.Labels
-
-	// LbNameCaps and LbValueCaps are the capacity of the backing arrays for the equivalent labels structs in the Labels slice.
-	LbNameCaps, LbValueCaps []int
-}
-
-func (s *Stream) DeepCopy() Stream {
-	newStream := Stream{
-		ID:               s.ID,
-		MinTime:          s.MinTime,
-		MaxTime:          s.MaxTime,
-		UncompressedSize: s.UncompressedSize,
-		Labels:           copyLabels(s.Labels),
-		LbNameCaps:       make([]int, len(s.LbNameCaps)),
-		LbValueCaps:      make([]int, len(s.LbValueCaps)),
-	}
-	copy(newStream.LbNameCaps, s.LbNameCaps)
-	copy(newStream.LbValueCaps, s.LbValueCaps)
-	return newStream
-}
-
-func copyLabels(in labels.Labels) labels.Labels {
-	lb := make(labels.Labels, len(in))
-	for i, label := range in {
-		lb[i] = labels.Label{
-			Name:  strings.Clone(label.Name),
-			Value: strings.Clone(label.Value),
-		}
-	}
-	return lb
 }
 
 // StreamsReader reads the set of streams from an [Object].
@@ -79,6 +50,8 @@ type StreamsReader struct {
 	reader     *dataset.Reader
 	columns    []dataset.Column
 	columnDesc []*streamsmd.ColumnDesc
+
+	symbols *symbolizer.Symbolizer
 }
 
 // NewStreamsReader creates a new StreamsReader that reads from the streams
@@ -132,16 +105,6 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		return 0, io.EOF
 	}
 
-	// Pre-allocate memory for metadata
-	for i := range s {
-		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.columns))
-		s[i].Labels = s[i].Labels[:len(r.columns)]
-		s[i].LbValueCaps = slicegrow.GrowToCap(s[i].LbValueCaps, len(r.columns))
-		s[i].LbValueCaps = s[i].LbValueCaps[:len(r.columns)]
-		s[i].LbNameCaps = slicegrow.GrowToCap(s[i].LbNameCaps, len(r.columns))
-		s[i].LbNameCaps = s[i].LbNameCaps[:len(r.columns)]
-	}
-
 	for i := range r.buf[:n] {
 		if err := streams.Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
@@ -152,14 +115,11 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		s[i].MinTime = r.stream.MinTimestamp
 		s[i].MaxTime = r.stream.MaxTimestamp
 		s[i].UncompressedSize = r.stream.UncompressedSize
+		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.stream.Labels))
 		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
 		for j := range r.stream.Labels {
-			name := slicegrow.CopyString(unsafeSlice(s[i].Labels[j].Name, s[i].LbNameCaps[j]), r.stream.Labels[j].Name)
-			s[i].Labels[j].Name = unsafeString(name)
-			s[i].LbNameCaps[j] = cap(name)
-			value := slicegrow.CopyString(unsafeSlice(s[i].Labels[j].Value, s[i].LbValueCaps[j]), r.stream.Labels[j].Value)
-			s[i].Labels[j].Value = unsafeString(value)
-			s[i].LbValueCaps[j] = cap(value)
+			s[i].Labels[j].Name = r.symbols.Get(r.stream.Labels[j].Name)
+			s[i].Labels[j].Value = r.symbols.Get(r.stream.Labels[j].Value)
 		}
 	}
 
@@ -196,6 +156,12 @@ func (r *StreamsReader) initReader(ctx context.Context) error {
 		r.reader = dataset.NewReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+
+	if r.symbols == nil {
+		r.symbols = symbolizer.New(128, 100_000)
+	} else {
+		r.symbols.Reset()
 	}
 
 	r.columnDesc = columnDescs
@@ -238,6 +204,10 @@ func (r *StreamsReader) Reset(obj *Object, sectionIndex int) {
 	r.ready = false
 	r.columns = nil
 	r.columnDesc = nil
+
+	if r.symbols != nil {
+		r.symbols.Reset()
+	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.

@@ -24,17 +24,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // A Record is an individual log record in a data object.
 type Record struct {
-	StreamID    int64         // StreamID associated with the log record.
-	Timestamp   time.Time     // Timestamp of the log record.
-	Metadata    labels.Labels // Set of metadata associated with the log record.
-	Line        []byte        // Line of the log record.
-	MdValueCaps []int         // Caps for the value of the metadata
-	MdNameCaps  []int         // Caps for the name of the metadata
+	StreamID  int64         // StreamID associated with the log record.
+	Timestamp time.Time     // Timestamp of the log record.
+	Metadata  labels.Labels // Set of metadata associated with the log record.
+	Line      []byte        // Line of the log record.
 }
 
 // LogsReader reads the set of logs from an [Object].
@@ -52,6 +51,8 @@ type LogsReader struct {
 	reader     *dataset.Reader
 	columns    []dataset.Column
 	columnDesc []*logsmd.ColumnDesc
+
+	symbols *symbolizer.Symbolizer
 }
 
 // NewLogsReader creates a new LogsReader that reads from the logs section of
@@ -124,23 +125,6 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		return 0, io.EOF
 	}
 
-	metadataColumns := 0
-	for _, column := range r.columnDesc {
-		if column.Type == logsmd.COLUMN_TYPE_METADATA {
-			metadataColumns++
-		}
-	}
-
-	// Pre-allocate memory for metadata
-	for i := range s {
-		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, metadataColumns)
-		s[i].Metadata = s[i].Metadata[:metadataColumns]
-		s[i].MdNameCaps = slicegrow.GrowToCap(s[i].MdNameCaps, metadataColumns)
-		s[i].MdNameCaps = s[i].MdNameCaps[:metadataColumns]
-		s[i].MdValueCaps = slicegrow.GrowToCap(s[i].MdValueCaps, metadataColumns)
-		s[i].MdValueCaps = s[i].MdValueCaps[:metadataColumns]
-	}
-
 	for i := range r.buf[:n] {
 		err := logs.Decode(r.columnDesc, r.buf[i], &r.record)
 		if err != nil {
@@ -150,14 +134,11 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		// Copy record data into pre-allocated output buffer
 		s[i].StreamID = r.record.StreamID
 		s[i].Timestamp = r.record.Timestamp
+		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, len(r.record.Metadata))
 		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
 		for j := range r.record.Metadata {
-			name := slicegrow.CopyString(unsafeSlice(s[i].Metadata[j].Name, s[i].MdNameCaps[j]), r.record.Metadata[j].Name)
-			s[i].Metadata[j].Name = unsafeString(name)
-			s[i].MdNameCaps[j] = cap(name)
-			value := slicegrow.Copy(unsafeSlice(s[i].Metadata[j].Value, s[i].MdValueCaps[j]), r.record.Metadata[j].Value)
-			s[i].Metadata[j].Value = unsafeString(value)
-			s[i].MdValueCaps[j] = cap(value)
+			s[i].Metadata[j].Name = r.symbols.Get(r.record.Metadata[j].Name)
+			s[i].Metadata[j].Value = r.symbols.Get(unsafeString(r.record.Metadata[j].Value))
 		}
 		s[i].Line = slicegrow.Copy(s[i].Line, r.record.Line)
 	}
@@ -218,6 +199,12 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		r.reader.Reset(readerOpts)
 	}
 
+	if r.symbols == nil {
+		r.symbols = symbolizer.New(128, 100_000)
+	} else {
+		r.symbols.Reset()
+	}
+
 	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
@@ -275,6 +262,10 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 
 	r.columns = nil
 	r.columnDesc = nil
+
+	if r.symbols != nil {
+		r.symbols.Reset()
+	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.

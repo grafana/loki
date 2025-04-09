@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -59,8 +58,6 @@ func newEntryIterator(ctx context.Context,
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
-	var labels []labels.Label
-
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -98,18 +95,12 @@ func newEntryIterator(ctx context.Context,
 				prevStreamID = record.StreamID
 			}
 
-			// Process will mutate the label names, so we need to copy them. We can re-use the values until a record is accepted, however.
-			labels := slices.Grow(labels, max(0, len(record.Metadata)-len(labels)))
-			labels = labels[:len(record.Metadata)]
-			md := copyLabelNames(labels, record.Metadata)
-
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, md...)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 			if !ok {
 				continue
 			}
-			// If we accept this record, we need to further copy the values into a new slice so we can re-use the read buffer.
-			record.Metadata = copyLabelValues(record.Metadata)
+
 			var metadata []logproto.LabelAdapter
 			if len(record.Metadata) > 0 {
 				metadata = logproto.FromLabelsToLabelAdapters(record.Metadata)

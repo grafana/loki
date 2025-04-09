@@ -61,7 +61,6 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
-		stream = stream.DeepCopy()
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
 	})
 	if err != nil {
