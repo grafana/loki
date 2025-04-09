@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,13 +16,11 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -380,6 +379,9 @@ type testStore struct {
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
 }
 
+// Compile check to ensure testStore implements Store.
+var _ Store = (*testStore)(nil)
+
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(
@@ -478,6 +480,18 @@ func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 }
 
 func (s *testStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
+}
+
+func (s *testStore) GetSeries(_ context.Context, _ string, _ model.Time, _ model.Time, _ ...*labels.Matcher) ([]labels.Labels, error) {
+	return nil, nil
+}
+
+func (s *testStore) LabelNamesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
+func (s *testStore) LabelValuesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

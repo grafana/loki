@@ -212,6 +212,7 @@ type Store interface {
 	stores.ChunkFetcher
 	storage.SelectStore
 	storage.SchemaConfigProvider
+	indexstore.BaseReader
 	indexstore.StatsReader
 }
 
@@ -1289,16 +1290,13 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	if req.Start == nil {
-		return resp, nil
-	}
-
-	if _, ok := i.store.(indexstore.BaseReader); !ok {
+	// If no start/end time are specified, then only look at in-memory labels.
+	if req.Start == nil || req.End == nil {
 		return resp, nil
 	}
 
 	// Adjust the start and end time based on QueryStoreMaxLookBackPeriod.
-	start, end, adjusted := i.getStoreQueryTimeRange(true, *req.Start, *req.End, time.Now().UTC())
+	start, end, adjusted := i.getStoreQueryTimeRange(true, *req.Start, *req.End, time.Now())
 	if !adjusted {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
@@ -1307,17 +1305,12 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano())
 	var storeValues []string
 	if req.Values {
-		// i.store can be safely cast here, because the assertion already happens in i.getStoreQueryTimeRange()
-		storeValues, err = i.store.(indexstore.BaseReader).LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-		if err != nil {
-			return nil, err
-		}
+		storeValues, err = i.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 	} else {
-		// i.store can be safely cast here, because the assertion already happens in i.getStoreQueryTimeRange()
-		storeValues, err = i.store.(indexstore.BaseReader).LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
-		if err != nil {
-			return nil, err
-		}
+		storeValues, err = i.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return &logproto.LabelResponse{
@@ -1353,41 +1346,29 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	if start, end, ok := i.getStoreQueryTimeRange(true, req.Start, req.End, time.Now()); ok {
-		var storeSeries []logproto.SeriesIdentifier
-		var parsed syntax.Expr
+	// Adjust the start and end time based on QueryStoreMaxLookBackPeriod.
+	start, end, adjusted := i.getStoreQueryTimeRange(true, req.Start, req.End, time.Now())
+	if !adjusted {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
 
-		groups := []string{""}
-		if len(req.Groups) != 0 {
-			groups = req.Groups
+	groups, err := logql.MatchForSeriesRequest(req.GetGroups())
+	if err != nil {
+		return nil, err
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano())
+	for _, g := range groups {
+		res, err := i.store.GetSeries(ctx, instanceID, from, through, g...)
+
+		if err != nil {
+			return nil, err
 		}
-
-		for _, group := range groups {
-			if group != "" {
-				parsed, err = syntax.ParseExpr(group)
-				if err != nil {
-					return nil, err
-				}
-			}
-			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
-				QueryRequest: &logproto.QueryRequest{
-					Selector:  group,
-					Limit:     1,
-					Start:     start,
-					End:       end,
-					Direction: logproto.FORWARD,
-					Shards:    req.Shards,
-					Plan: &plan.QueryPlan{
-						AST: parsed,
-					},
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			resp.Series = append(resp.Series, storeSeries...)
+		for _, lbs := range res {
+			resp.Series = append(resp.Series, logproto.SeriesIdentifierFromLabels(lbs))
 		}
 	}
+
 	return resp, nil
 }
 

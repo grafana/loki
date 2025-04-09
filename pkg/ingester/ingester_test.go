@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -434,9 +434,13 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 }
 
 type mockStore struct {
-	mtx    sync.Mutex
-	chunks map[string][]chunk.Chunk
+	mtx      sync.Mutex
+	chunks   map[string][]chunk.Chunk
+	lookback time.Duration
 }
+
+// Compile check to ensure mockStore implements Store.
+var _ Store = (*mockStore)(nil)
 
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
@@ -460,11 +464,22 @@ func (s *mockStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 }
 
 func (s *mockStore) SelectSeries(_ context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
-	// NOTE: If the time range includes one hour before the current time, the return value is returned.
-	thresTime := time.Now().Add(-1 * time.Hour)
-	if !thresTime.Before(req.Start) && !thresTime.After(req.End) {
+	// If the time range includes the offset then return additional series.
+	offset := time.Now().Add(s.lookback)
+	if req.Start.Before(offset) && req.End.After(offset) {
 		return []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{a="11",c="33"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11",c="33"}`)},
+		}, nil
+	}
+	return nil, nil
+}
+
+func (s *mockStore) GetSeries(_ context.Context, _ string, from model.Time, through model.Time, _ ...*labels.Matcher) ([]labels.Labels, error) {
+	// If the time range includes the offset then return additional labels.
+	offset := time.Now().Add(s.lookback)
+	if from.Time().Before(offset) && through.Time().After(offset) {
+		return []labels.Labels{
+			mustParseLabels(`{a="11",c="33"}`),
 		}, nil
 	}
 	return nil, nil
@@ -828,7 +843,8 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	store := &mockStore{
-		chunks: map[string][]chunk.Chunk{},
+		lookback: -1 * time.Hour,
+		chunks:   map[string][]chunk.Chunk{},
 	}
 
 	readRingMock := mockReadRingWithOneActiveIngester()
@@ -1408,7 +1424,8 @@ func Test_Series(t *testing.T) {
 	require.NoError(t, err)
 
 	store := &mockStore{
-		chunks: map[string][]chunk.Chunk{},
+		chunks:   map[string][]chunk.Chunk{},
+		lookback: -1 * time.Hour,
 	}
 
 	mockRing := mockReadRingWithOneActiveIngester()
@@ -1450,8 +1467,8 @@ func Test_Series(t *testing.T) {
 		})
 
 		expectedSeries := []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{a="11", b="22"}`)},
-			{Labels: mustParseLabels(`{a="11", c="33"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11", b="22"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11", c="33"}`)},
 		}
 		// ignore order
 		sortLabels(res.Series)
@@ -1488,8 +1505,8 @@ func Test_Series(t *testing.T) {
 		})
 
 		expectedSeries := []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{a="11", b="22"}`)},
-			{Labels: mustParseLabels(`{a="11", c="33"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11", b="22"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11", c="33"}`)},
 		}
 		// ignore order
 		sortLabels(res.Series)
@@ -1526,7 +1543,7 @@ func Test_Series(t *testing.T) {
 		})
 
 		expectedSeries := []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{a="11", b="22"}`)},
+			{Labels: mustParseSeriesIdentifier(`{a="11", b="22"}`)},
 		}
 		// ignore order
 		sortLabels(res.Series)
@@ -1810,15 +1827,24 @@ func TestUpdateOwnedStreams(t *testing.T) {
 	require.Equal(t, 8, ownedStreams)
 }
 
-func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
+func mustParseLabels(s string) labels.Labels {
 	l, err := marshal.NewLabelSet(s)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse %s", s))
 	}
-
-	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
+	result := make([]labels.Label, 0, len(l))
 	for k, v := range l {
-		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+		result = append(result, labels.Label{Name: k, Value: v})
+	}
+	return result
+}
+
+func mustParseSeriesIdentifier(s string) []logproto.SeriesIdentifier_LabelsEntry {
+	ls := mustParseLabels(s)
+
+	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(ls))
+	for _, lbl := range ls {
+		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: lbl.Name, Value: lbl.Value})
 	}
 	return result
 }
