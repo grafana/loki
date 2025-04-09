@@ -1617,15 +1617,6 @@ func (r *Reader) SymbolTableSize() uint64 {
 	return uint64(r.symbols.Size())
 }
 
-// SortedLabelValues returns value tuples that exist for the given label name.
-func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	values, err := r.LabelValues(name, matchers...)
-	if err == nil && r.version == FormatV1 {
-		sort.Strings(values)
-	}
-	return values, err
-}
-
 // LabelValues returns value tuples that exist for the given label name.
 // The returned values should be copied if they need to be used beyond the current tsdb read operation, including sending back as response.
 // TODO(replay): Support filtering by matchers

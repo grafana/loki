@@ -449,9 +449,10 @@ func TestPersistence_index_e2e(t *testing.T) {
 	for k, v := range labelPairs {
 		sort.Strings(v)
 
-		res, err := ir.SortedLabelValues(k)
+		res, err := ir.LabelValues(k)
 		require.NoError(t, err)
 
+		sort.Strings(res)
 		require.Equal(t, len(v), len(res))
 		for i := 0; i < len(v); i++ {
 			require.Equal(t, v[i], res[i])
