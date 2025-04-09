@@ -27,7 +27,7 @@ import (
 
 // weightedItem is a wrapped weighted item that is used to implement weighted random algorithm.
 type weightedItem struct {
-	item              any
+	item              interface{}
 	weight            int64
 	accumulatedWeight int64
 }
@@ -51,7 +51,7 @@ func NewRandom() WRR {
 
 var grpcrandInt63n = grpcrand.Int63n
 
-func (rw *randomWRR) Next() (item any) {
+func (rw *randomWRR) Next() (item interface{}) {
 	rw.mu.RLock()
 	defer rw.mu.RUnlock()
 	if len(rw.items) == 0 {
@@ -71,7 +71,7 @@ func (rw *randomWRR) Next() (item any) {
 	return rw.items[i].item
 }
 
-func (rw *randomWRR) Add(item any, weight int64) {
+func (rw *randomWRR) Add(item interface{}, weight int64) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 	accumulatedWeight := weight

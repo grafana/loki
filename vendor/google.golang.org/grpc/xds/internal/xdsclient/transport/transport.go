@@ -325,29 +325,43 @@ func (t *Transport) adsRunner(ctx context.Context) {
 
 	go t.send(ctx)
 
-	// We reset backoff state when we successfully receive at least one
-	// message from the server.
-	runStreamWithBackoff := func() error {
-		stream, err := t.newAggregatedDiscoveryServiceStream(ctx, t.cc)
-		if err != nil {
-			t.onErrorHandler(err)
-			t.logger.Warningf("Creating new ADS stream failed: %v", err)
-			return nil
-		}
-		t.logger.Infof("ADS stream created")
-
+	backoffAttempt := 0
+	backoffTimer := time.NewTimer(0)
+	for ctx.Err() == nil {
 		select {
-		case <-t.adsStreamCh:
-		default:
+		case <-backoffTimer.C:
+		case <-ctx.Done():
+			backoffTimer.Stop()
+			return
 		}
-		t.adsStreamCh <- stream
-		msgReceived := t.recv(stream)
-		if msgReceived {
-			return backoff.ErrResetBackoff
+
+		// We reset backoff state when we successfully receive at least one
+		// message from the server.
+		resetBackoff := func() bool {
+			stream, err := t.newAggregatedDiscoveryServiceStream(ctx, t.cc)
+			if err != nil {
+				t.onErrorHandler(err)
+				t.logger.Warningf("Creating new ADS stream failed: %v", err)
+				return false
+			}
+			t.logger.Infof("ADS stream created")
+
+			select {
+			case <-t.adsStreamCh:
+			default:
+			}
+			t.adsStreamCh <- stream
+			return t.recv(stream)
+		}()
+
+		if resetBackoff {
+			backoffTimer.Reset(0)
+			backoffAttempt = 0
+		} else {
+			backoffTimer.Reset(t.backoff(backoffAttempt))
+			backoffAttempt++
 		}
-		return nil
 	}
-	backoff.RunF(ctx, runStreamWithBackoff, t.backoff)
 }
 
 // send is a separate goroutine for sending resource requests on the ADS stream.

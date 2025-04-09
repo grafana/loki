@@ -25,12 +25,12 @@ import (
 type requestInfoKey struct{}
 
 // NewRequestInfoContext creates a context with ri.
-func NewRequestInfoContext(ctx context.Context, ri any) context.Context {
+func NewRequestInfoContext(ctx context.Context, ri interface{}) context.Context {
 	return context.WithValue(ctx, requestInfoKey{}, ri)
 }
 
 // RequestInfoFromContext extracts the RequestInfo from ctx.
-func RequestInfoFromContext(ctx context.Context) any {
+func RequestInfoFromContext(ctx context.Context) interface{} {
 	return ctx.Value(requestInfoKey{})
 }
 
@@ -39,11 +39,11 @@ func RequestInfoFromContext(ctx context.Context) any {
 type clientHandshakeInfoKey struct{}
 
 // ClientHandshakeInfoFromContext extracts the ClientHandshakeInfo from ctx.
-func ClientHandshakeInfoFromContext(ctx context.Context) any {
+func ClientHandshakeInfoFromContext(ctx context.Context) interface{} {
 	return ctx.Value(clientHandshakeInfoKey{})
 }
 
 // NewClientHandshakeInfoContext creates a context with chi.
-func NewClientHandshakeInfoContext(ctx context.Context, chi any) context.Context {
+func NewClientHandshakeInfoContext(ctx context.Context, chi interface{}) context.Context {
 	return context.WithValue(ctx, clientHandshakeInfoKey{}, chi)
 }

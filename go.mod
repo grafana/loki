@@ -352,3 +352,5 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
 
 replace google.golang.org/api => google.golang.org/api v0.128.0
+
+replace google.golang.org/grpc => google.golang.org/grpc v1.56.3

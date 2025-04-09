@@ -230,7 +230,7 @@ type ClientMessage struct {
 	OnClientSide bool
 	// Message can be a proto.Message or []byte. Other messages formats are not
 	// supported.
-	Message any
+	Message interface{}
 }
 
 func (c *ClientMessage) toProto() *binlogpb.GrpcLogEntry {
@@ -270,7 +270,7 @@ type ServerMessage struct {
 	OnClientSide bool
 	// Message can be a proto.Message or []byte. Other messages formats are not
 	// supported.
-	Message any
+	Message interface{}
 }
 
 func (c *ServerMessage) toProto() *binlogpb.GrpcLogEntry {
