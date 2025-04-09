@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.34.1-loki-2.9.x
+BUILD_IMAGE_VERSION := 0.34.3-loki-2.9.x
 
 # Docker image info
 IMAGE_PREFIX ?= grafana

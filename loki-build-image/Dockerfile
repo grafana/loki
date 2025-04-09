@@ -24,7 +24,12 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.20.2 as golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.51.2
+    curl -L -o golangci-lint.tar.gz https://github.com/golangci/golangci-lint/releases/download/v1.60.3/golangci-lint-1.60.3-linux-amd64.tar.gz && \
+    ls -l golangci-lint.tar.gz && \
+    tar -xzvf golangci-lint.tar.gz && \
+    mv golangci-lint-1.60.3-linux-amd64/golangci-lint /usr/local/bin/ && \
+    rm -rf golangci-lint.tar.gz golangci-lint-1.60.3-linux-amd64 && \
+    golangci-lint --version
 
 FROM alpine:3.20.2 as buf
 
@@ -96,7 +101,7 @@ COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
-COPY --from=golangci /bin/golangci-lint /usr/local/bin
+COPY --from=golangci /usr/local/bin/golangci-lint /usr/local/bin
 COPY --from=buf /usr/bin/buf /usr/bin/buf
 COPY --from=drone /usr/local/bin/drone /usr/bin/drone
 COPY --from=faillint /go/bin/faillint /usr/bin/faillint

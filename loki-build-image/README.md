@@ -2,6 +2,10 @@
 
 ## Versions
 
+### 0.34.3-loki-2.9.x
+
+- Update golangci-lint to v1.60.3
+
 ### 0.34.1-loki-2.9.x
 
 - Update faillint to v1.15.0
