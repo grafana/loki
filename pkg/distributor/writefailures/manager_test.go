@@ -113,10 +113,10 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 			errorStr2.WriteRune('y')
 		}
 
-		manager.Log("known-tenant", fmt.Errorf(errorStr1.String())) //nolint:govet
-		manager.Log("known-tenant", fmt.Errorf(errorStr2.String())) // more than 1KB/s //nolint:govet
+		manager.Log("known-tenant", fmt.Errorf(errorStr1.String())) //nolint:govet,staticcheck
+		manager.Log("known-tenant", fmt.Errorf(errorStr2.String())) // more than 1KB/s //nolint:govet,staticcheck
 		time.Sleep(time.Second)
-		manager.Log("known-tenant", fmt.Errorf(errorStr3.String())) //nolint:govet
+		manager.Log("known-tenant", fmt.Errorf(errorStr3.String())) //nolint:govet,staticcheck
 
 		content := buf.String()
 		require.NotEmpty(t, content)
