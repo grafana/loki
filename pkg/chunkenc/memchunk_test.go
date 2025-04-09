@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -274,7 +275,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, `__variant__="0"`) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
@@ -285,7 +286,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, `__variant__="0"`) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
