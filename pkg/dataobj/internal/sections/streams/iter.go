@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Iter iterates over streams in the provided decoder. All streams sections are
@@ -69,7 +69,7 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 		})
 		defer r.Close()
 
-		var rows [3]dataset.Row
+		var rows [1]dataset.Row
 		for {
 			n, err := r.Read(ctx, rows[:])
 			if err != nil && !errors.Is(err, io.EOF) {

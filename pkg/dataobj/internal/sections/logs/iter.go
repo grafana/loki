@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Iter iterates over records in the provided decoder. All logs sections are

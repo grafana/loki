@@ -7,7 +7,7 @@ import (
 	"io"
 	"iter"
 
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.

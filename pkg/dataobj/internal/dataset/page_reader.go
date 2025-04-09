@@ -8,7 +8,7 @@ import (
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 type pageReader struct {

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // rowRanges tracks a set of row ranges that are "valid."

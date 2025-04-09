@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	slicegrow "github.com/grafana/loki/v3/pkg/dataobj/internal/util"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Helper types
