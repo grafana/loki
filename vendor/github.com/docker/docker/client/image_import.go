@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/distribution/reference"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
 )
 

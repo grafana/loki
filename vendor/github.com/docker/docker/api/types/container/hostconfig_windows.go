@@ -1,11 +1,9 @@
 package container // import "github.com/docker/docker/api/types/container"
 
-import "github.com/docker/docker/api/types/network"
-
 // IsBridge indicates whether container uses the bridge network stack
 // in windows it is given the name NAT
 func (n NetworkMode) IsBridge() bool {
-	return n == network.NetworkNat
+	return n == "nat"
 }
 
 // IsHost indicates whether container uses the host network stack.
@@ -27,11 +25,11 @@ func (i Isolation) IsValid() bool {
 // NetworkName returns the name of the network stack.
 func (n NetworkMode) NetworkName() string {
 	if n.IsDefault() {
-		return network.NetworkDefault
+		return "default"
 	} else if n.IsBridge() {
-		return network.NetworkNat
+		return "nat"
 	} else if n.IsNone() {
-		return network.NetworkNone
+		return "none"
 	} else if n.IsContainer() {
 		return "container"
 	} else if n.IsUserDefined() {

@@ -10,40 +10,37 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/containerd/containerd/pkg/userns"
-	"github.com/containerd/log"
 	"github.com/pkg/errors"
 )
 
-// ErrNotFound plugin not found
-var ErrNotFound = errors.New("plugin not found")
-
-const defaultSocketsPath = "/run/docker/plugins"
+var (
+	// ErrNotFound plugin not found
+	ErrNotFound = errors.New("plugin not found")
+	socketsPath = "/run/docker/plugins"
+)
 
 // LocalRegistry defines a registry that is local (using unix socket).
 type LocalRegistry struct {
-	socketsPath string
-	specsPaths  []string
+	SpecsPaths func() []string
 }
 
 func NewLocalRegistry() LocalRegistry {
 	return LocalRegistry{
-		socketsPath: defaultSocketsPath,
-		specsPaths:  specsPaths(),
+		SpecsPaths,
 	}
 }
 
 // Scan scans all the plugin paths and returns all the names it found
 func (l *LocalRegistry) Scan() ([]string, error) {
 	var names []string
-	dirEntries, err := os.ReadDir(l.socketsPath)
+	dirEntries, err := os.ReadDir(socketsPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, errors.Wrap(err, "error reading dir entries")
 	}
 
 	for _, entry := range dirEntries {
 		if entry.IsDir() {
-			fi, err := os.Stat(filepath.Join(l.socketsPath, entry.Name(), entry.Name()+".sock"))
+			fi, err := os.Stat(filepath.Join(socketsPath, entry.Name(), entry.Name()+".sock"))
 			if err != nil {
 				continue
 			}
@@ -56,36 +53,31 @@ func (l *LocalRegistry) Scan() ([]string, error) {
 		}
 	}
 
-	for _, p := range l.specsPaths {
-		dirEntries, err = os.ReadDir(p)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			if os.IsPermission(err) && userns.RunningInUserNS() {
-				log.L.Debug(err.Error())
-				continue
-			}
+	for _, p := range l.SpecsPaths() {
+		dirEntries, err := os.ReadDir(p)
+		if err != nil && !os.IsNotExist(err) {
 			return nil, errors.Wrap(err, "error reading dir entries")
 		}
-		for _, entry := range dirEntries {
-			if entry.IsDir() {
-				infos, err := os.ReadDir(filepath.Join(p, entry.Name()))
+
+		for _, fi := range dirEntries {
+			if fi.IsDir() {
+				infos, err := os.ReadDir(filepath.Join(p, fi.Name()))
 				if err != nil {
 					continue
 				}
 
 				for _, info := range infos {
-					if strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())) == entry.Name() {
-						entry = info
+					if strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())) == fi.Name() {
+						fi = info
 						break
 					}
 				}
 			}
 
-			switch ext := filepath.Ext(entry.Name()); ext {
+			ext := filepath.Ext(fi.Name())
+			switch ext {
 			case ".spec", ".json":
-				plugin := strings.TrimSuffix(entry.Name(), ext)
+				plugin := strings.TrimSuffix(fi.Name(), ext)
 				names = append(names, plugin)
 			default:
 			}
@@ -96,20 +88,21 @@ func (l *LocalRegistry) Scan() ([]string, error) {
 
 // Plugin returns the plugin registered with the given name (or returns an error).
 func (l *LocalRegistry) Plugin(name string) (*Plugin, error) {
-	socketPaths := pluginPaths(l.socketsPath, name, ".sock")
-	for _, p := range socketPaths {
+	socketpaths := pluginPaths(socketsPath, name, ".sock")
+
+	for _, p := range socketpaths {
 		if fi, err := os.Stat(p); err == nil && fi.Mode()&os.ModeSocket != 0 {
 			return NewLocalPlugin(name, "unix://"+p), nil
 		}
 	}
 
-	var txtSpecPaths []string
-	for _, p := range l.specsPaths {
-		txtSpecPaths = append(txtSpecPaths, pluginPaths(p, name, ".spec")...)
-		txtSpecPaths = append(txtSpecPaths, pluginPaths(p, name, ".json")...)
+	var txtspecpaths []string
+	for _, p := range l.SpecsPaths() {
+		txtspecpaths = append(txtspecpaths, pluginPaths(p, name, ".spec")...)
+		txtspecpaths = append(txtspecpaths, pluginPaths(p, name, ".json")...)
 	}
 
-	for _, p := range txtSpecPaths {
+	for _, p := range txtspecpaths {
 		if _, err := os.Stat(p); err == nil {
 			if strings.HasSuffix(p, ".json") {
 				return readPluginJSONInfo(name, p)
@@ -118,25 +111,6 @@ func (l *LocalRegistry) Plugin(name string) (*Plugin, error) {
 		}
 	}
 	return nil, errors.Wrapf(ErrNotFound, "could not find plugin %s in v1 plugin registry", name)
-}
-
-// SpecsPaths returns paths in which to look for plugins, in order of priority.
-//
-// On Windows:
-//
-//   - "%programdata%\docker\plugins"
-//
-// On Unix in non-rootless mode:
-//
-//   - "/etc/docker/plugins"
-//   - "/usr/lib/docker/plugins"
-//
-// On Unix in rootless-mode:
-//
-//   - "$XDG_CONFIG_HOME/docker/plugins" (or "/etc/docker/plugins" if $XDG_CONFIG_HOME is not set)
-//   - "$HOME/.local/lib/docker/plugins" (pr "/usr/lib/docker/plugins" if $HOME is set)
-func SpecsPaths() []string {
-	return specsPaths()
 }
 
 func readPluginInfo(name, path string) (*Plugin, error) {

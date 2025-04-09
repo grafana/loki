@@ -1,16 +1,7 @@
-package errdefs
-
-import (
-	"context"
-	"errors"
-)
+package errdefs // import "github.com/docker/docker/errdefs"
 
 type causer interface {
 	Cause() error
-}
-
-type wrapErr interface {
-	Unwrap() error
 }
 
 func getImplementer(err error) error {
@@ -32,8 +23,6 @@ func getImplementer(err error) error {
 		return err
 	case causer:
 		return getImplementer(e.Cause())
-	case wrapErr:
-		return getImplementer(e.Unwrap())
 	default:
 		return err
 	}
@@ -115,9 +104,4 @@ func IsDeadline(err error) bool {
 func IsDataLoss(err error) bool {
 	_, ok := getImplementer(err).(ErrDataLoss)
 	return ok
-}
-
-// IsContext returns if the passed in error is due to context cancellation or deadline exceeded.
-func IsContext(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

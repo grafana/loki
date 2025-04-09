@@ -6,11 +6,10 @@ import (
 	"net/url"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/image"
 )
 
 // ImageRemove removes an image from the docker host.
-func (cli *Client) ImageRemove(ctx context.Context, imageID string, options types.ImageRemoveOptions) ([]image.DeleteResponse, error) {
+func (cli *Client) ImageRemove(ctx context.Context, imageID string, options types.ImageRemoveOptions) ([]types.ImageDeleteResponseItem, error) {
 	query := url.Values{}
 
 	if options.Force {
@@ -20,7 +19,7 @@ func (cli *Client) ImageRemove(ctx context.Context, imageID string, options type
 		query.Set("noprune", "1")
 	}
 
-	var dels []image.DeleteResponse
+	var dels []types.ImageDeleteResponseItem
 	resp, err := cli.delete(ctx, "/images/"+imageID, query, nil)
 	defer ensureReaderClosed(resp)
 	if err != nil {

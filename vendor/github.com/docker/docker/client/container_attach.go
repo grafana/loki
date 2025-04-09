@@ -2,11 +2,9 @@ package client // import "github.com/docker/docker/client"
 
 import (
 	"context"
-	"net/http"
 	"net/url"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 )
 
 // ContainerAttach attaches a connection to a container in the server.
@@ -33,7 +31,7 @@ import (
 //
 // You can use github.com/docker/docker/pkg/stdcopy.StdCopy to demultiplex this
 // stream.
-func (cli *Client) ContainerAttach(ctx context.Context, container string, options container.AttachOptions) (types.HijackedResponse, error) {
+func (cli *Client) ContainerAttach(ctx context.Context, container string, options types.ContainerAttachOptions) (types.HijackedResponse, error) {
 	query := url.Values{}
 	if options.Stream {
 		query.Set("stream", "1")
@@ -54,7 +52,8 @@ func (cli *Client) ContainerAttach(ctx context.Context, container string, option
 		query.Set("logs", "1")
 	}
 
-	return cli.postHijacked(ctx, "/containers/"+container+"/attach", query, nil, http.Header{
+	headers := map[string][]string{
 		"Content-Type": {"text/plain"},
-	})
+	}
+	return cli.postHijacked(ctx, "/containers/"+container+"/attach", query, nil, headers)
 }

@@ -3,7 +3,6 @@ package client // import "github.com/docker/docker/client"
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/url"
 	"strconv"
 
@@ -49,7 +48,6 @@ func (cli *Client) ImageSearch(ctx context.Context, term string, options types.I
 }
 
 func (cli *Client) tryImageSearch(ctx context.Context, query url.Values, registryAuth string) (serverResponse, error) {
-	return cli.get(ctx, "/images/search", query, http.Header{
-		registry.AuthHeader: {registryAuth},
-	})
+	headers := map[string][]string{registry.AuthHeader: {registryAuth}}
+	return cli.get(ctx, "/images/search", query, headers)
 }

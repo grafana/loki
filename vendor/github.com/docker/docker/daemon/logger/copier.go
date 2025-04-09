@@ -2,14 +2,13 @@ package logger // import "github.com/docker/docker/daemon/logger"
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/containerd/log"
 	types "github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/pkg/stringid"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -88,7 +87,7 @@ func (c *Copier) copySrc(name string, src io.Reader) {
 				if err != nil {
 					if err != io.EOF {
 						logReadsFailedCount.Inc(1)
-						log.G(context.TODO()).Errorf("Error scanning log stream: %s", err)
+						logrus.Errorf("Error scanning log stream: %s", err)
 						return
 					}
 					eof = true

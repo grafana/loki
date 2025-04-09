@@ -7,12 +7,11 @@ import (
 	"strconv"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 )
 
 // ContainerList returns the list of containers in the docker host.
-func (cli *Client) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+func (cli *Client) ContainerList(ctx context.Context, options types.ContainerListOptions) ([]types.Container, error) {
 	query := url.Values{}
 
 	if options.All {
@@ -38,6 +37,7 @@ func (cli *Client) ContainerList(ctx context.Context, options container.ListOpti
 	if options.Filters.Len() > 0 {
 		//nolint:staticcheck // ignore SA1019 for old code
 		filterJSON, err := filters.ToParamWithVersion(cli.version, options.Filters)
+
 		if err != nil {
 			return nil, err
 		}
