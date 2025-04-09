@@ -15,7 +15,7 @@
     distMakeTargets=['dist', 'packages'],
     dryRun=false,
     dockerUsername='grafana',
-    golangCiLintVersion='v1.56.0',
+    golangCiLintVersion='v1.60.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -139,7 +139,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.56.0',
+            default: 'v1.60.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -190,7 +190,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.56.0',
+            default: 'v1.60.0',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
