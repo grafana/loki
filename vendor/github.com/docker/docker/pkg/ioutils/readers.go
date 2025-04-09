@@ -11,7 +11,7 @@ import (
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 
-	"github.com/sirupsen/logrus"
+	"github.com/containerd/log"
 )
 
 // ReadCloserWrapper wraps an io.Reader, and implements an io.ReadCloser
@@ -165,8 +165,8 @@ func (p *cancelReadCloser) Close() error {
 }
 
 func subsequentCloseWarn(name string) {
-	logrus.Error("subsequent attempt to close " + name)
-	if logrus.GetLevel() >= logrus.DebugLevel {
-		logrus.Errorf("stack trace: %s", string(debug.Stack()))
+	log.G(context.TODO()).Error("subsequent attempt to close " + name)
+	if log.GetLevel() >= log.DebugLevel {
+		log.G(context.TODO()).Errorf("stack trace: %s", string(debug.Stack()))
 	}
 }
