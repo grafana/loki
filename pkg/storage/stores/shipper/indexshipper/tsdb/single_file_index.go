@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -269,17 +268,10 @@ func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, mat
 }
 
 func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	if len(matchers) != 0 {
-		return labelValuesWithMatchers(i.reader, name, matchers...)
+	if len(matchers) == 0 {
+		return i.reader.LabelValues(name)
 	}
-
-	labelValues, err := i.reader.LabelValues(name)
-	if err != nil {
-		return nil, err
-	}
-
-	// cloning the string
-	return cloneStringList(labelValues), nil
+	return labelValuesWithMatchers(i.reader, name, matchers...)
 }
 
 func (i *TSDBIndex) Checksum() uint32 {
@@ -461,12 +453,4 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
-}
-
-func cloneStringList(strs []string) []string {
-	res := make([]string, 0, len(strs))
-	for _, str := range strs {
-		res = append(res, strings.Clone(str))
-	}
-	return res
 }
