@@ -21,7 +21,7 @@ local imageJobs = {
 };
 
 local buildImage = 'grafana/loki-build-image:0.34.2-loki-2.9.x';
-local golangCiLintVersion = 'v1.56.0';
+local golangCiLintVersion = 'v1.60.0';
 
 local imageBuildTimeoutMin = 40;
 local imagePrefix = 'grafana';

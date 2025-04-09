@@ -24,7 +24,12 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.20.2 as golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.56.0
+    curl -L -o golangci-lint.tar.gz https://github.com/golangci/golangci-lint/releases/download/v1.60.0/golangci-lint-1.60.0-linux-amd64.tar.gz && \
+    ls -l golangci-lint.tar.gz && \
+    tar -xzvf golangci-lint.tar.gz && \
+    mv golangci-lint-1.60.0-linux-amd64/golangci-lint /bin/golangci-lint && \
+    rm -rf golangci-lint.tar.gz golangci-lint-1.60.0-linux-amd64 && \
+    golangci-lint --version
 
 FROM alpine:3.20.2 as buf
 
