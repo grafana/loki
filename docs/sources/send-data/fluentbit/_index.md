@@ -122,7 +122,7 @@ If you also want to host your Loki instance inside the cluster install the [offi
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation]({{< relref "../promtail/cloud/ecs" >}})
+For more information about this see our [AWS documentation](../promtail/cloud/ecs/)
 
 ### Local
 
@@ -170,7 +170,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs]({{< relref "../../query" >}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs](../../query/) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 

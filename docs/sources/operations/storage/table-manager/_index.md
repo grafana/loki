@@ -23,7 +23,7 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)]({{< relref "../boltdb-shipper" >}})
+  - [Single Store (boltdb-shipper)](../boltdb-shipper/)
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
@@ -140,7 +140,7 @@ It's important to note that - due to the internal implementation - the table
 the expected behavior.
 
 For detailed information on configuring the retention, refer to the
-[Loki Storage Retention]({{< relref "../retention" >}})
+[Loki Storage Retention](../retention/)
 documentation.
 
 
@@ -200,13 +200,13 @@ The Table Manager can be executed in two ways:
 
 ### Monolithic mode
 
-When Loki runs in [monolithic mode]({{< relref "../../../get-started/deployment-modes" >}}),
+When Loki runs in [monolithic mode](../../../get-started/deployment-modes/),
 the Table Manager is also started as component of the entire stack.
 
 
 ### Microservices mode
 
-When Loki runs in [microservices mode]({{< relref "../../../get-started/deployment-modes" >}}),
+When Loki runs in [microservices mode](../../../get-started/deployment-modes/),
 the Table Manager should be started as separate service named `table-manager`.
 
 You can check out a production grade deployment example at

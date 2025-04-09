@@ -9,7 +9,7 @@ weight:  700
 
 # Lambda Promtail client 
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../../send-data/promtail/configuration#loki_push_api" >}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
 
 ## Deployment
 
@@ -89,7 +89,7 @@ To modify an existing CloudFormation stack, use [update-stack](https://docs.aws.
 
 ### Ephemeral Jobs
 
-This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients]({{< relref ".." >}}).
+This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
 Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
 
@@ -126,7 +126,7 @@ Triggering lambda-promtail through SQS allows handling on-failure recovery of th
 
 ## Propagated Labels
 
-Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../send-data/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../send-data/promtail/pipelines" >}}):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_configs) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.

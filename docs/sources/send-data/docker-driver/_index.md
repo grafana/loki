@@ -17,7 +17,7 @@ Docker plugins are not supported on Windows; see the [Docker Engine managed plug
 {{% /admonition %}}
 
 Documentation on configuring the Loki Docker Driver can be found on the
-[configuration page]({{< relref "./configuration" >}}).
+[configuration page](configuration/).
 
 If you have any questions or issues using the Docker plugin, open an issue in
 the [Loki repository](https://github.com/grafana/loki/issues).
@@ -41,7 +41,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once you have successfully installed the plugin you can [configure]({{< relref "./configuration" >}}) it.
+Once you have successfully installed the plugin you can [configure](configuration/) it.
 
 ## Upgrade the Docker driver client
 
@@ -73,4 +73,4 @@ The driver keeps all logs in memory and will drop log entries if Loki is not rea
 
 The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
 
-To avoid this issue, use the Promtail [Docker target]({{< relref "../../send-data/promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../../send-data/promtail/configuration#docker_sd_configs" >}}).
+To avoid this issue, use the Promtail [Docker target](../promtail/configuration/#docker) or [Docker service discovery](../promtail/configuration/#docker_sd_configs).
