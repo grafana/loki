@@ -132,7 +132,7 @@ require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/oauth2 v0.27.0
 	golang.org/x/text v0.22.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.35.2
 )
 
 require (
@@ -350,3 +350,5 @@ replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-2022100509
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 replace go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
+
+replace google.golang.org/api => google.golang.org/api v0.128.0
