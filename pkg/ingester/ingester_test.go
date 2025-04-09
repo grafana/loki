@@ -600,7 +600,11 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 			ingesterConfig.QueryStore = tc.queryStore
 			ingesterConfig.QueryStoreMaxLookBackPeriod = tc.maxLookBackPeriod
 
-			start, end, ok := buildStoreRequest(ingesterConfig, tc.start, tc.end, now)
+			i := &Ingester{
+				cfg: ingesterConfig,
+			}
+
+			start, end, ok := i.buildStoreRequest(tc.start, tc.end, now)
 
 			if !tc.shouldQuery {
 				require.False(t, ok)

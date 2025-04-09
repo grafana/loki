@@ -1088,7 +1088,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	if start, end, ok := i.buildStoreRequest(req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Selector,
 			Direction: req.Direction,
@@ -1159,7 +1159,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	if start, end, ok := i.buildStoreRequest(req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start:    start,
 			End:      end,
@@ -1362,7 +1362,7 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	if start, end, ok := i.buildStoreRequest(req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
 		var parsed syntax.Expr
 
@@ -1624,11 +1624,11 @@ func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResp
 // buildStoreRequest returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too many duplicates by covering the whole time range in query.
-func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
-	if !cfg.QueryStore {
+func (i *Ingester) buildStoreRequest(start, end, now time.Time) (time.Time, time.Time, bool) {
+	if !i.cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
 	}
-	start = adjustQueryStartTime(cfg.QueryStoreMaxLookBackPeriod, start, now)
+	start = adjustQueryStartTime(i.cfg.QueryStoreMaxLookBackPeriod, start, now)
 
 	if start.After(end) {
 		return time.Time{}, time.Time{}, false
