@@ -361,3 +361,6 @@ replace go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.6
 
 // TODO: temporarily replace docker/docker to reduce number of changed files
 replace github.com/docker/docker => github.com/docker/docker v24.0.7+incompatible
+
+// TODO: temporarily replace google.golang.org/protobuf to reduce number of changed files
+replace google.golang.org/protobuf => google.golang.org/protobuf v1.33.0

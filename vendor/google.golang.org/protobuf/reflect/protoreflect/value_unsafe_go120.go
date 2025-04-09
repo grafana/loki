@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !go1.21
+//go:build !purego && !appengine && !go1.21
+// +build !purego,!appengine,!go1.21
 
 package protoreflect
 
@@ -44,7 +45,7 @@ var (
 
 // typeOf returns a pointer to the Go type information.
 // The pointer is comparable and equal if and only if the types are identical.
-func typeOf(t any) unsafe.Pointer {
+func typeOf(t interface{}) unsafe.Pointer {
 	return (*ifaceHeader)(unsafe.Pointer(&t)).Type
 }
 
@@ -79,7 +80,7 @@ func valueOfBytes(v []byte) Value {
 	p := (*sliceHeader)(unsafe.Pointer(&v))
 	return Value{typ: bytesType, ptr: p.Data, num: uint64(len(v))}
 }
-func valueOfIface(v any) Value {
+func valueOfIface(v interface{}) Value {
 	p := (*ifaceHeader)(unsafe.Pointer(&v))
 	return Value{typ: p.Type, ptr: p.Data}
 }
@@ -92,7 +93,7 @@ func (v Value) getBytes() (x []byte) {
 	*(*sliceHeader)(unsafe.Pointer(&x)) = sliceHeader{Data: v.ptr, Len: int(v.num), Cap: int(v.num)}
 	return x
 }
-func (v Value) getIface() (x any) {
+func (v Value) getIface() (x interface{}) {
 	*(*ifaceHeader)(unsafe.Pointer(&x)) = ifaceHeader{Type: v.typ, Data: v.ptr}
 	return x
 }

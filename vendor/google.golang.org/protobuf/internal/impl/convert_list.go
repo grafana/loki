@@ -136,6 +136,6 @@ func (ls *listReflect) NewElement() protoreflect.Value {
 func (ls *listReflect) IsValid() bool {
 	return !ls.v.IsNil()
 }
-func (ls *listReflect) protoUnwrap() any {
+func (ls *listReflect) protoUnwrap() interface{} {
 	return ls.v.Interface()
 }

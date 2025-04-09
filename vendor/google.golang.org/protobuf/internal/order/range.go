@@ -18,7 +18,7 @@ type messageField struct {
 }
 
 var messageFieldPool = sync.Pool{
-	New: func() any { return new([]messageField) },
+	New: func() interface{} { return new([]messageField) },
 }
 
 type (
@@ -69,7 +69,7 @@ type mapEntry struct {
 }
 
 var mapEntryPool = sync.Pool{
-	New: func() any { return new([]mapEntry) },
+	New: func() interface{} { return new([]mapEntry) },
 }
 
 type (

@@ -254,9 +254,11 @@ func (x *Timestamp) check() uint {
 
 func (x *Timestamp) Reset() {
 	*x = Timestamp{}
-	mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
+	if protoimpl.UnsafeEnabled {
+		mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
 }
 
 func (x *Timestamp) String() string {
@@ -267,7 +269,7 @@ func (*Timestamp) ProtoMessage() {}
 
 func (x *Timestamp) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_timestamp_proto_msgTypes[0]
-	if x != nil {
+	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -330,7 +332,7 @@ func file_google_protobuf_timestamp_proto_rawDescGZIP() []byte {
 }
 
 var file_google_protobuf_timestamp_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_google_protobuf_timestamp_proto_goTypes = []any{
+var file_google_protobuf_timestamp_proto_goTypes = []interface{}{
 	(*Timestamp)(nil), // 0: google.protobuf.Timestamp
 }
 var file_google_protobuf_timestamp_proto_depIdxs = []int32{
@@ -345,6 +347,20 @@ func init() { file_google_protobuf_timestamp_proto_init() }
 func file_google_protobuf_timestamp_proto_init() {
 	if File_google_protobuf_timestamp_proto != nil {
 		return
+	}
+	if !protoimpl.UnsafeEnabled {
+		file_google_protobuf_timestamp_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Timestamp); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
