@@ -7,18 +7,18 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "31d67c597422f2522d5f46187c19f1e89c0dc394"
+  RELEASE_LIB_REF: "6a48e31c22d2a7c1298561845f545b012bf44e28"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@31d67c597422f2522d5f46187c19f1e89c0dc394"
+    uses: "grafana/loki-release/.github/workflows/check.yml@6a48e31c22d2a7c1298561845f545b012bf44e28"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "31d67c597422f2522d5f46187c19f1e89c0dc394"
+      release_lib_ref: "6a48e31c22d2a7c1298561845f545b012bf44e28"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
