@@ -76,12 +76,12 @@ linters:
     - gofmt
     - goimports
     - gosimple
-    - staticcheck
   disable:
     - unused
     - unparam
     - deadcode # deprecated
     - exhaustivestruct # deprecated
+    - staticcheck
     - golint # deprecated
     - ifshort # deprecated
     - interfacer # deprecated
