@@ -51,6 +51,9 @@ type IndexReader interface {
 	// beyond the lifetime of the index reader.
 	Symbols() index.StringIter
 
+	// SortedLabelValues returns sorted possible label values.
+	SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
+
 	// LabelValues returns possible label values which may not be sorted.
 	LabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
 
