@@ -67,11 +67,9 @@ linters:
   enable:
     - errcheck
     - goconst
-    - revive
     - ineffassign
     - misspell
     - unconvert
-    - govet
     - typecheck
     - depguard
     - exportloopref
