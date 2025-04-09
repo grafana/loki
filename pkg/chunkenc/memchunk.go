@@ -1298,7 +1298,7 @@ func unsafeGetBytes(s string) []byte {
 	var buf []byte
 	p := unsafe.Pointer(&buf)
 	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
+	(*reflect.SliceHeader)(p).Cap = len(s) //nolint:staticcheck
 	return buf
 }
 

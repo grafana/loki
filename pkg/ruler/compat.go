@@ -250,9 +250,9 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 		return errors.Errorf("field 'expr' must be set in rule")
 	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
 		if r.Record.Value != "" {
-			return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
+			return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)) //nolint:govet
 		}
-		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName))
+		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName)) //nolint:govet
 	}
 
 	if r.Record.Value != "" {

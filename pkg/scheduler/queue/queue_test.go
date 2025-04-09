@@ -337,7 +337,7 @@ func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, ms
 	select {
 	case <-c:
 	case <-time.After(timeout):
-		t.Fatalf(msg)
+		t.Fatalf(msg) //nolint:govet
 	}
 }
 

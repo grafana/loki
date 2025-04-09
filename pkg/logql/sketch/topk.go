@@ -216,7 +216,7 @@ func unsafeGetBytes(s string) []byte {
 		return nil // or []byte{}
 	}
 	return (*[0x7fff0000]byte)(unsafe.Pointer(
-		(*reflect.StringHeader)(unsafe.Pointer(&s)).Data),
+		(*reflect.StringHeader)(unsafe.Pointer(&s)).Data), //nolint:staticcheck
 	)[:len(s):len(s)]
 }
 

@@ -381,7 +381,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error()) //nolint:govet
 	}
 
 	// Return early if none of the streams contained entries
@@ -397,7 +397,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error()) //nolint:govet
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
