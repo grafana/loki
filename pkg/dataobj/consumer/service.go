@@ -63,7 +63,7 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		kafkaCfg,
 		partitionRing,
 		groupName,
-		client.NewReaderClientMetrics(groupName, reg),
+		client.NewReaderClientMetrics(groupName, reg, kafkaCfg.EnableKafkaHistograms),
 		logger,
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),

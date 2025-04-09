@@ -162,7 +162,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s.lifecyclerWatcher = services.NewFailureWatcher()
 	s.lifecyclerWatcher.WatchService(s.lifecycler)
 
-	metrics := client.NewReaderClientMetrics("ingest-limits", reg)
+	metrics := client.NewReaderClientMetrics("ingest-limits", reg, cfg.KafkaConfig.EnableKafkaHistograms)
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
