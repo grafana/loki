@@ -107,7 +107,7 @@ require (
 	golang.org/x/sys v0.30.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.128.0
-	google.golang.org/grpc v1.56.3
+	google.golang.org/grpc v1.59.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -136,10 +136,10 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.110.2 // indirect
+	cloud.google.com/go v0.110.7 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
-	cloud.google.com/go/iam v1.1.0 // indirect
-	cloud.google.com/go/longrunning v0.4.2 // indirect
+	cloud.google.com/go/iam v1.1.1 // indirect
+	cloud.google.com/go/longrunning v0.5.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
 	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1 // indirect
@@ -196,8 +196,8 @@ require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/efficientgo/core v1.0.0-rc.2 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.1 // indirect
-	github.com/envoyproxy/go-control-plane v0.11.1-0.20230524094728-9239064ad72f // indirect
-	github.com/envoyproxy/protoc-gen-validate v0.10.1 // indirect
+	github.com/envoyproxy/go-control-plane v0.11.1 // indirect
+	github.com/envoyproxy/protoc-gen-validate v1.0.2 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
@@ -310,9 +310,9 @@ require (
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
+	google.golang.org/genproto v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
