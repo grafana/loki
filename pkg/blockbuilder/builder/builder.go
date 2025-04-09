@@ -626,7 +626,7 @@ func withBackoff[T any](
 ) (T, error) {
 	var zero T
 
-	boff := backoff.New(ctx, config)
+	var boff = backoff.New(ctx, config)
 	for boff.Ongoing() {
 		res, err := fn()
 		if err != nil {
