@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -90,6 +91,7 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 		From:      c.From,
 		RowShards: uint32(c.ShardFactor),
 		Schema:    "v13",
+		IndexType: types.DataObjType,
 	}
 }
 

@@ -202,7 +202,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	var strategy logql.ShardingStrategy
 
-	if conf.IndexType == types.TSDBType {
+	if conf.IndexType == types.TSDBType || conf.IndexType == types.DataObjType {
 		v := ast.limits.TSDBShardingStrategy(tenants[0])
 		version, err := logql.ParseShardVersion(v)
 		if err != nil {
