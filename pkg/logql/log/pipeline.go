@@ -68,7 +68,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 	n.mu.RUnlock()
 
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h), &sync.Map{}}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -94,6 +94,7 @@ func IsNoopPipeline(p Pipeline) bool {
 
 type noopStreamPipeline struct {
 	builder *LabelsBuilder
+	cache   *sync.Map
 }
 
 func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
@@ -103,7 +104,12 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+		if cached, ok := n.cache.Load(lb.Name); ok {
+			structuredMetadata[i].Name = cached.(string)
+		} else {
+			structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+			n.cache.Store(lb.Name, structuredMetadata[i].Name)
+		}
 	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
