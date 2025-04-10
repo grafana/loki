@@ -700,6 +700,10 @@ func (m *mockExpirationChecker) CanSkipSeries(_ []byte, lbls labels.Labels, _ []
 	return m.skipSeries[lbls.String()]
 }
 
+func (m *mockExpirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
+}
+
 func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 	now := model.Now()
 	schema := allSchemas[2]

@@ -695,30 +695,18 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 				{
 					T: 1568404331324,
 					F: 0.013333333333333334,
-					Metric: []labels.Label{
-						{
-							Name:  "filename",
-							Value: `/var/hostlog/apport.log`,
-						},
-						{
-							Name:  "job",
-							Value: "varlogs",
-						},
-					},
+					Metric: labels.FromStrings(
+						"filename", `/var/hostlog/apport.log`,
+						"job", "varlogs",
+					),
 				},
 				{
 					T: 1568404331324,
 					F: 3.45,
-					Metric: []labels.Label{
-						{
-							Name:  "filename",
-							Value: `/var/hostlog/syslog`,
-						},
-						{
-							Name:  "job",
-							Value: "varlogs",
-						},
-					},
+					Metric: labels.FromStrings(
+						"filename", `/var/hostlog/syslog`,
+						"job", "varlogs",
+					),
 				},
 			},
 			`{
@@ -762,16 +750,10 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 							F: 0.013333333333333334,
 						},
 					},
-					Metric: []labels.Label{
-						{
-							Name:  "filename",
-							Value: `/var/hostlog/apport.log`,
-						},
-						{
-							Name:  "job",
-							Value: "varlogs",
-						},
-					},
+					Metric: labels.FromStrings(
+						"filename", `/var/hostlog/apport.log`,
+						"job", "varlogs",
+					),
 				},
 				{
 					Floats: []promql.FPoint{
@@ -784,16 +766,10 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 							F: 4.45,
 						},
 					},
-					Metric: []labels.Label{
-						{
-							Name:  "filename",
-							Value: `/var/hostlog/syslog`,
-						},
-						{
-							Name:  "job",
-							Value: "varlogs",
-						},
-					},
+					Metric: labels.FromStrings(
+						"filename", `/var/hostlog/syslog`,
+						"job", "varlogs",
+					),
 				},
 			},
 			`{
