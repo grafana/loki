@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/tenant"
 	"gopkg.in/yaml.v2"
 )
 
@@ -121,9 +121,9 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		user := mux.Vars(r)["tenant"]
-		if user == "" {
-			http.Error(w, "Tenant ID not provided", http.StatusBadRequest)
+		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 
