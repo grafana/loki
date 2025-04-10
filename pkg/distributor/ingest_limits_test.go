@@ -21,7 +21,7 @@ type mockIngestLimitsFrontendClient struct {
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	require.Equal(c.t, c.expectedRequest, r)
 	if c.responseErr != nil {
 		return nil, c.responseErr
@@ -109,7 +109,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			exceedsLimits, rejectedStreams, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
+			exceedsLimits, rejectedStreams, err := l.exceedsLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.False(t, exceedsLimits)

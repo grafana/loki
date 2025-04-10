@@ -722,7 +722,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, _, err := d.ingestLimits.ExceedsLimits(ctx, tenantID, streams)
+		exceedsLimits, _, err := d.ingestLimits.exceedsLimits(ctx, tenantID, streams)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
 		} else if exceedsLimits {
