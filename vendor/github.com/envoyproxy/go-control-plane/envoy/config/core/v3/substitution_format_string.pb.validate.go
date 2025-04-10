@@ -35,6 +35,110 @@ var (
 	_ = sort.Sort
 )
 
+// Validate checks the field values on JsonFormatOptions with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *JsonFormatOptions) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on JsonFormatOptions with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// JsonFormatOptionsMultiError, or nil if none found.
+func (m *JsonFormatOptions) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *JsonFormatOptions) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for SortProperties
+
+	if len(errors) > 0 {
+		return JsonFormatOptionsMultiError(errors)
+	}
+
+	return nil
+}
+
+// JsonFormatOptionsMultiError is an error wrapping multiple validation errors
+// returned by JsonFormatOptions.ValidateAll() if the designated constraints
+// aren't met.
+type JsonFormatOptionsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m JsonFormatOptionsMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m JsonFormatOptionsMultiError) AllErrors() []error { return m }
+
+// JsonFormatOptionsValidationError is the validation error returned by
+// JsonFormatOptions.Validate if the designated constraints aren't met.
+type JsonFormatOptionsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e JsonFormatOptionsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e JsonFormatOptionsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e JsonFormatOptionsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e JsonFormatOptionsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e JsonFormatOptionsValidationError) ErrorName() string {
+	return "JsonFormatOptionsValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e JsonFormatOptionsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sJsonFormatOptions.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = JsonFormatOptionsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = JsonFormatOptionsValidationError{}
+
 // Validate checks the field values on SubstitutionFormatString with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -102,6 +206,35 @@ func (m *SubstitutionFormatString) validate(all bool) error {
 			}
 		}
 
+	}
+
+	if all {
+		switch v := interface{}(m.GetJsonFormatOptions()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, SubstitutionFormatStringValidationError{
+					field:  "JsonFormatOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, SubstitutionFormatStringValidationError{
+					field:  "JsonFormatOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetJsonFormatOptions()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SubstitutionFormatStringValidationError{
+				field:  "JsonFormatOptions",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
 	}
 
 	oneofFormatPresent := false

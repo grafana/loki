@@ -101,7 +101,7 @@ func (s *SchemaValidator) SetPath(path string) {
 }
 
 // Applies returns true when this schema validator applies
-func (s *SchemaValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (s *SchemaValidator) Applies(source interface{}, _ reflect.Kind) bool {
 	_, ok := source.(*spec.Schema)
 	return ok
 }

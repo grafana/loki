@@ -412,6 +412,10 @@ func (m *QuicProtocolOptions) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for ConnectionOptions
+
+	// no validation rules for ClientConnectionOptions
+
 	if len(errors) > 0 {
 		return QuicProtocolOptionsMultiError(errors)
 	}

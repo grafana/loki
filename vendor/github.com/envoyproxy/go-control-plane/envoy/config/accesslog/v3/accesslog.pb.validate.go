@@ -2107,7 +2107,7 @@ func (m *ResponseFlagFilter) validate(all bool) error {
 		if _, ok := _ResponseFlagFilter_Flags_InLookup[item]; !ok {
 			err := ResponseFlagFilterValidationError{
 				field:  fmt.Sprintf("Flags[%v]", idx),
-				reason: "value must be in list [LH UH UT LR UR UF UC UO NR DI FI RL UAEX RLSE DC URX SI IH DPE UMSDR RFCF NFCF DT UPE NC OM]",
+				reason: "value must be in list [LH UH UT LR UR UF UC UO NR DI FI RL UAEX RLSE DC URX SI IH DPE UMSDR RFCF NFCF DT UPE NC OM DF DO]",
 			}
 			if !all {
 				return err
@@ -2224,6 +2224,8 @@ var _ResponseFlagFilter_Flags_InLookup = map[string]struct{}{
 	"UPE":   {},
 	"NC":    {},
 	"OM":    {},
+	"DF":    {},
+	"DO":    {},
 }
 
 // Validate checks the field values on GrpcStatusFilter with the rules defined

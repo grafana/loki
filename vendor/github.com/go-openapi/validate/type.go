@@ -90,7 +90,7 @@ func (t *typeValidator) schemaInfoForType(data interface{}) (string, string) {
 	default:
 		val := reflect.ValueOf(data)
 		tpe := val.Type()
-		switch tpe.Kind() {
+		switch tpe.Kind() { //nolint:exhaustive
 		case reflect.Bool:
 			return booleanType, ""
 		case reflect.String:

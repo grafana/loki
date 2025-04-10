@@ -128,6 +128,35 @@ func (m *UpstreamTlsContext) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetEnforceRsaKeyUsage()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, UpstreamTlsContextValidationError{
+					field:  "EnforceRsaKeyUsage",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, UpstreamTlsContextValidationError{
+					field:  "EnforceRsaKeyUsage",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetEnforceRsaKeyUsage()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return UpstreamTlsContextValidationError{
+				field:  "EnforceRsaKeyUsage",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return UpstreamTlsContextMultiError(errors)
 	}
@@ -316,6 +345,8 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 			}
 		}
 	}
+
+	// no validation rules for DisableStatefulSessionResumption
 
 	if d := m.GetSessionTimeout(); d != nil {
 		dur, err := d.AsDuration(), d.CheckValid()
