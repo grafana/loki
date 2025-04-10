@@ -6,6 +6,22 @@
 * Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 
+## [2.9.14](https://github.com/grafana/loki/compare/v2.9.13...v2.9.14) (2025-04-10)
+
+
+### Features
+
+* Upgrade `golang.org/x/oauth2` to 0.27.0 ([#16960](https://github.com/grafana/loki/issues/16960)) ([fb70d03](https://github.com/grafana/loki/commit/fb70d0305f96a9c6278e9707fc061f03d6aae0f1))
+
+
+### Bug Fixes
+
+* Fix Loki CVEs for 2.9 ([#17065](https://github.com/grafana/loki/issues/17065)) ([5faccce](https://github.com/grafana/loki/commit/5facccece401c73af859644e4f0849096dcea95e))
+* Remove remaining replaces to fix CVEs for 2.9.x ([#17095](https://github.com/grafana/loki/issues/17095)) ([26fcedb](https://github.com/grafana/loki/commit/26fcedb3d39a84afcf76f8b3a134657d218f947e))
+* Upgrade `docker/docker` used by 2.9.x ([#17091](https://github.com/grafana/loki/issues/17091)) ([914adec](https://github.com/grafana/loki/commit/914adec3d86eb8c6eaed1e1f2cf41206b2bf919a))
+* Upgrade `k8s.io/api` used by Loki 2.9.x ([#17093](https://github.com/grafana/loki/issues/17093)) ([0da39f4](https://github.com/grafana/loki/commit/0da39f47fef4030d0915312c4a6a5e941f6db0ef))
+* Upgrade packages used by `docker/docker` for 2.9.x ([#17074](https://github.com/grafana/loki/issues/17074)) ([2c8da3d](https://github.com/grafana/loki/commit/2c8da3de5ef4e4a19cfe2c4b47f97611a82d75cb))
+
 ## [2.9.13](https://github.com/grafana/loki/compare/v2.9.12...v2.9.13) (2025-03-12)
 
 
