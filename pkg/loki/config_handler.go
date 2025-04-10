@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/gorilla/mux"
 	"gopkg.in/yaml.v2"
 )
 
@@ -110,6 +111,29 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		writeYAMLResponse(w, output)
+	}
+}
+
+func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if t.TenantLimits == nil {
+			http.Error(w, "Tenant configs not enabled", http.StatusNotFound)
+			return
+		}
+
+		user := mux.Vars(r)["tenant"]
+		if user == "" {
+			http.Error(w, "Tenant ID not provided", http.StatusBadRequest)
+			return
+		}
+
+		limit := t.TenantLimits.TenantLimits(user)
+		if limit == nil {
+			http.Error(w, "Tenant limits not found", http.StatusNotFound)
+			return
+		}
+
+		writeYAMLResponse(w, limit)
 	}
 }
 
