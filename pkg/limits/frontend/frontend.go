@@ -155,6 +155,7 @@ func (f *Frontend) running(ctx context.Context) error {
 
 // stopping implements services.Service.
 func (f *Frontend) stopping(_ error) error {
+	f.partitionIDCache.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
