@@ -826,6 +826,11 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # Enable collection of the following kafka latency histograms: read-wait,
+  # read-timing, write-wait, write-timing
+  # CLI flag: -kafka.enable-kafka-histograms
+  [enable_kafka_histograms: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:

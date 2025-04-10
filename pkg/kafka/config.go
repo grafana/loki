@@ -56,6 +56,8 @@ type Config struct {
 	ProducerMaxBufferedBytes   int64 `yaml:"producer_max_buffered_bytes"`
 
 	MaxConsumerLagAtStartup time.Duration `yaml:"max_consumer_lag_at_startup"`
+
+	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -85,6 +87,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	consumerLagUsage := fmt.Sprintf("Set -%s to 0 to disable waiting for maximum consumer lag being honored at startup.", prefix+".max-consumer-lag-at-startup")
 	f.DurationVar(&cfg.MaxConsumerLagAtStartup, prefix+".max-consumer-lag-at-startup", 15*time.Second, "The guaranteed maximum lag before a consumer is considered to have caught up reading from a partition at startup, becomes ACTIVE in the hash ring and passes the readiness check. "+consumerLagUsage)
+
+	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
 }
 
 func (cfg *Config) Validate() error {
