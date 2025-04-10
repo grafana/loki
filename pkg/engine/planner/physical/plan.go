@@ -50,7 +50,8 @@ type Node interface {
 	Accept(Visitor) error
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
-	isNode()
+	// TODO(chaudum): Temporarily disable constraint.
+	// isNode()
 }
 
 var _ Node = (*DataObjScan)(nil)
@@ -264,6 +265,26 @@ func (p *Plan) Roots() []Node {
 	return roots
 }
 
+// Root returns the root node that have no parents. It returns an error if the plan has no or multiple root nodes.
+func (p *Plan) Root() (Node, error) {
+	if len(p.nodes) == 0 {
+		return nil, nil
+	}
+
+	var roots []Node
+	for node := range p.nodes {
+		if len(p.parents[node]) == 0 {
+			roots = append(roots, node)
+		}
+	}
+	if len(roots) == 0 {
+		return nil, errors.New("plan has no root node")
+	} else if len(roots) > 1 {
+		return nil, errors.New("plan has multiple root nodes")
+	}
+	return roots[0], nil
+}
+
 // Leaves returns all nodes that have no children
 func (p *Plan) Leaves() []Node {
 	if len(p.nodes) == 0 {
@@ -325,4 +346,28 @@ func (p *Plan) postOrderWalk(n Node, v Visitor, visited nodeSet) error {
 		}
 	}
 	return n.Accept(v)
+}
+
+func NewBuilder() *Builder {
+	return &Builder{plan: &Plan{}}
+}
+
+type Builder struct {
+	plan *Plan
+	node Node
+}
+
+func (b *Builder) Add(node Node) *Builder {
+	b.plan.addNode(node)
+	if b.node != nil {
+		b.plan.addEdge(Edge{Parent: b.node, Child: node})
+	}
+	return &Builder{
+		plan: b.plan,
+		node: node,
+	}
+}
+
+func (b *Builder) Plan() *Plan {
+	return b.plan
 }
