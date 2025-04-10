@@ -90,6 +90,27 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 	}
 }
 
+// enforceLimits returns a slice of streams that are within the per-tenant
+// limits, and in the case where one or more streams exceed per-tenant
+// limits, the reasons those streams were not included in the result.
+// An error is returned if per-tenant limits could not be enforced.
+func (l *ingestLimits) enforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, map[uint64][]string, error) {
+	exceedsLimits, reasons, err := l.exceedsLimits(ctx, tenant, streams)
+	if !exceedsLimits || err != nil {
+		return streams, nil, err
+	}
+	// We can do this without allocation if needed, but doing so will modify
+	// the original backing array. See "Filtering without allocation" from
+	// https://go.dev/wiki/SliceTricks.
+	withinLimits := make([]KeyedStream, 0, len(streams))
+	for _, s := range streams {
+		if _, ok := reasons[s.HashKeyNoShard]; !ok {
+			withinLimits = append(withinLimits, s)
+		}
+	}
+	return withinLimits, reasons, nil
+}
+
 // ExceedsLimits returns true if one or more streams exceeds per-tenant limits,
 // and false if no streams exceed per-tenant limits. In the case where one or
 // more streams exceeds per-tenant limits, it returns the reasons for each stream.
