@@ -5,7 +5,7 @@ weight: 40
 ---
 # Grafana Loki Storage
 
-[High level storage overview here]({{< relref "../../storage/_index.md" >}})
+[High level storage overview here](../../storage/)
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
@@ -17,14 +17,14 @@ format](#chunk-format) for how chunks are stored internally.
 The **index** stores each stream's label set and links them to the individual
 chunks.
 
-Refer to Loki's [configuration]({{< relref "../../configure" >}}) for details on
+Refer to Loki's [configuration](../../configure/) for details on
 how to configure the storage and the index.
 
 For more information:
 
-1. [Table Manager]({{< relref "./table-manager" >}})
-1. [Retention]({{< relref "./retention" >}})
-1. [Logs Deletion]({{< relref "./logs-deletion" >}})
+1. [Table Manager](table-manager/)
+1. [Retention](retention/)
+1. [Logs Deletion](logs-deletion/)
 
 ## Supported Stores
 
@@ -44,7 +44,7 @@ The following are supported for the chunks:
 - [Apache Cassandra](https://cassandra.apache.org)
 - [Amazon S3](https://aws.amazon.com/s3)
 - [Google Cloud Storage](https://cloud.google.com/storage/)
-- [Filesystem]({{< relref "./filesystem" >}}) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - [Baidu Object Storage](https://cloud.baidu.com/product/bos.html)
 - [IBM Cloud Object Storage](https://www.ibm.com/cloud/object-storage)
 
@@ -61,7 +61,7 @@ When using S3 as object storage, the following permissions are needed:
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
-See the [AWS deployment section]({{< relref "../../storage#aws-deployment-s3-single-store" >}}) on the storage page for a detailed setup guide.
+See the [AWS deployment section](../../storage/#aws-deployment-s3-single-store) on the storage page for a detailed setup guide.
 
 ### DynamoDB
 
@@ -114,7 +114,7 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage-cos" >}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section](../../storage/#ibm-cloud-object-storage-cos) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 

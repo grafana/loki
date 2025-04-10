@@ -63,7 +63,7 @@ index and in stored chunks.
 respectively.
 
 The `structuredMetadata` section stores non-repeated strings. It is used to store label names and label values from
-[structured metadata]({{< relref "./labels/structured-metadata" >}}).
+[structured metadata](../labels/structured-metadata/).
 Note that the labels strings and lengths within the `structuredMetadata` section are stored compressed.
 
 ### Block Format
@@ -95,7 +95,7 @@ Symbols store references to the actual strings containing label names and values
 
 ### Single Store
 
-Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
+Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`](../../operations/storage/boltdb-shipper/) to store the `index` in object storage (the same way we store `chunks`).
 
 ###  Deprecated: Multi-store
 
@@ -116,7 +116,7 @@ maintenance tasks. It consists of:
 
 > Unlike the other core components of Loki, the chunk store is not a separate
 > service, job, or process, but rather a library embedded in the two services
-> that need to access Loki data: the [ingester]({{< relref "./components#ingester" >}}) and [querier]({{< relref "./components#querier" >}}).
+> that need to access Loki data: the [ingester](../components/#ingester) and [querier](../components/#querier).
 
 The chunk store relies on a unified interface to the
 "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
