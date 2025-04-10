@@ -2,6 +2,7 @@ package physical
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 
 var (
 	binOpToMatchTypeMapping = map[types.BinaryOp]labels.MatchType{
-		types.BinaryOpMatchStr:    labels.MatchEqual,
-		types.BinaryOpNotMatchStr: labels.MatchNotEqual,
-		types.BinaryOpMatchRe:     labels.MatchRegexp,
-		types.BinaryOpNotMatchRe:  labels.MatchNotRegexp,
+		types.BinaryOpEq:         labels.MatchEqual,
+		types.BinaryOpNeq:        labels.MatchNotEqual,
+		types.BinaryOpMatchRe:    labels.MatchRegexp,
+		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
 	}
 )
 
@@ -49,6 +50,10 @@ func NewContext(ctx context.Context, ms metastore.Metastore, from, through time.
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
 func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, error) {
+	if c.metastore == nil {
+		return nil, nil, errors.New("no metastore to resolve objects")
+	}
+
 	matchers, err := expressionToMatchers(selector)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
@@ -84,7 +89,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 				return nil, err
 			}
 			return append(lhs, rhs...), nil
-		case types.BinaryOpMatchStr, types.BinaryOpNotMatchStr, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
+		case types.BinaryOpEq, types.BinaryOpNeq, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
 			op, err := convertBinaryOp(expr.Op)
 			if err != nil {
 				return nil, err

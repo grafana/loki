@@ -530,10 +530,10 @@ func buildTestRegex(tests []string, storageType string) string {
 		// If no tests are selected, match all tests
 		if storageType == "" {
 			// Match any storage type
-			return "^BenchmarkLogQL/.+/.*$"
+			return "^BenchmarkLogQL/query=.+/kind=.+/store=.+$"
 		}
 		// Match specific storage type
-		return fmt.Sprintf("^BenchmarkLogQL/%s/.*$", storageType)
+		return fmt.Sprintf("^BenchmarkLogQL/query=.+/kind=.+/store=%s$", storageType)
 	}
 
 	formatted := []string{}
@@ -542,10 +542,10 @@ func buildTestRegex(tests []string, storageType string) string {
 		var escaped string
 		if storageType == "" {
 			// When no storage type is specified, match any storage type
-			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/.+/%s", t), "{", "\\{")
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/query=%s/kind=.+/store=.+", t), "{", "\\{")
 		} else {
 			// When a storage type is specified, match only that storage type
-			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/%s/%s", storageType, t), "{", "\\{")
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/query=%s/kind=.+/store=%s", t, storageType), "{", "\\{")
 		}
 		escaped = strings.ReplaceAll(escaped, "}", "\\}")
 		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")

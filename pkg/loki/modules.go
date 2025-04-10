@@ -617,7 +617,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+	store, err := t.createDataObjBucket("dataobj-querier")
+	if err != nil {
+		return nil, err
+	}
+
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, metastore.NewObjectMetastore(store), logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1533,7 +1538,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		var engine *logql.Engine
+		var engine *logql.QueryEngine
 		engine, err = t.createRulerQueryEngine(logger, deleteStore)
 		if err != nil {
 			break
@@ -2124,8 +2129,20 @@ func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
 	}
+
+	// Handle named stores
+	cfg := t.Cfg.StorageConfig.ObjectStore
+	backend := schema.ObjectType
+	if st, ok := cfg.NamedStores.LookupStoreType(schema.ObjectType); ok {
+		backend = st
+		// override config with values from named store config
+		if err := cfg.NamedStores.OverrideConfig(&cfg.Config, schema.ObjectType); err != nil {
+			return nil, err
+		}
+	}
+
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, clientName, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -2169,7 +2186,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
-func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
+func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
 	querierStore, err := t.getQuerierStore()
 	if err != nil {
 		return nil, err

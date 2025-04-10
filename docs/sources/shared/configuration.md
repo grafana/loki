@@ -4498,6 +4498,10 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -querier.engine.enable-v2-engine
+  [enable_v2_engine: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
