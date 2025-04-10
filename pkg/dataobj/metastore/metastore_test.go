@@ -408,9 +408,9 @@ func TestObjectOverlapsRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create labels with timestamps in nanoseconds
 			lbs := labels.Labels{
-				{Name: "__start__", Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
-				{Name: "__end__", Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
-				{Name: "__path__", Value: testPath},
+				{Name: labelNameStart, Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
+				{Name: labelNameEnd, Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
+				{Name: labelNamePath, Value: testPath},
 			}
 
 			gotMatch, gotPath := objectOverlapsRange(lbs, tt.queryStart, tt.queryEnd)
