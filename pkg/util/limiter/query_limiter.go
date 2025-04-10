@@ -97,7 +97,7 @@ func (ql *QueryLimiter) AddChunks(count int) error {
 	}
 
 	if ql.chunkCount.Add(int64(count)) > int64(ql.maxChunksPerQuery) {
-		return fmt.Errorf(fmt.Sprintf(ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery))
+		return fmt.Errorf(fmt.Sprintf(ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery)) //nolint:govet,staticcheck
 	}
 	return nil
 }

@@ -285,7 +285,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error()) //nolint:govet
 	}
 	fp := i.getHashForLabels(labels)
 

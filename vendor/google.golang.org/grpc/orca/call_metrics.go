@@ -135,8 +135,8 @@ func CallMetricsServerOption(smp ServerMetricsProvider) grpc.ServerOption {
 	return joinServerOptions(grpc.ChainUnaryInterceptor(unaryInt(smp)), grpc.ChainStreamInterceptor(streamInt(smp)))
 }
 
-func unaryInt(smp ServerMetricsProvider) func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func unaryInt(smp ServerMetricsProvider) func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		// We don't allocate the metric recorder here. It will be allocated the
 		// first time the user calls CallMetricsRecorderFromContext().
 		rw := &recorderWrapper{smp: smp}
@@ -155,8 +155,8 @@ func unaryInt(smp ServerMetricsProvider) func(ctx context.Context, req interface
 	}
 }
 
-func streamInt(smp ServerMetricsProvider) func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func streamInt(smp ServerMetricsProvider) func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		// We don't allocate the metric recorder here. It will be allocated the
 		// first time the user calls CallMetricsRecorderFromContext().
 		rw := &recorderWrapper{smp: smp}

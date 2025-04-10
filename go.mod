@@ -311,7 +311,6 @@ require (
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20231211222908-989df2bf70f3 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231120223509-83a465c0220f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
@@ -353,11 +352,3 @@ replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-2022100509
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 replace go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
-
-replace google.golang.org/api => google.golang.org/api v0.128.0
-
-replace google.golang.org/grpc => google.golang.org/grpc v1.56.3
-
-replace github.com/golang/protobuf => github.com/golang/protobuf v1.5.3
-
-replace go.etcd.io/bbolt => go.etcd.io/bbolt v1.3.6

@@ -88,7 +88,7 @@ func (t *Target) processLoop(ctx context.Context) {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
-	opts := docker_types.ContainerLogsOptions{
+	opts := docker_types.ContainerLogsOptions{ //nolint:staticcheck
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,

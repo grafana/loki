@@ -44,13 +44,10 @@ var logger = grpclog.Component("orca-backend-metrics")
 // import cycle. Hence this roundabout method is used.
 type loadParser struct{}
 
-func (loadParser) Parse(md metadata.MD) interface{} {
+func (loadParser) Parse(md metadata.MD) any {
 	lr, err := internal.ToLoadReport(md)
 	if err != nil {
 		logger.Infof("Parse failed: %v", err)
-	}
-	if lr == nil && logger.V(2) {
-		logger.Infof("Missing ORCA load report data")
 	}
 	return lr
 }
