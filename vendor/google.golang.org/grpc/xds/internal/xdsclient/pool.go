@@ -220,7 +220,25 @@ func (p *Pool) newRefCounted(name string, watchExpiryTimeout time.Duration, stre
 	defer p.mu.Unlock()
 
 	if p.config == nil {
-		return nil, nil, fmt.Errorf("xds: bootstrap configuration not set in the pool")
+		if len(p.clients) != 0 || p != DefaultPool {
+			// If the current pool `p` already contains xDS clients or it is not
+			// the `DefaultPool`, the bootstrap config should have been already
+			// present in the pool.
+			return nil, nil, fmt.Errorf("xds: bootstrap configuration not set in the pool")
+		}
+		// If the current pool `p` is the `DefaultPool` and has no clients, it
+		// might be the first time an xDS client is being created on it. So,
+		// the bootstrap configuration is read from environment variables.
+		//
+		// DefaultPool is initialized with bootstrap configuration from one of the
+		// supported environment variables. If the environment variables are not
+		// set, then fallback bootstrap configuration should be set before
+		// attempting to create an xDS client, else xDS client creation will fail.
+		config, err := bootstrap.GetConfiguration()
+		if err != nil {
+			return nil, nil, fmt.Errorf("xds: failed to read xDS bootstrap config from env vars:  %v", err)
+		}
+		p.config = config
 	}
 
 	if c := p.clients[name]; c != nil {
