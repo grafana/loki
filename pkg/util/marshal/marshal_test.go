@@ -302,30 +302,18 @@ var queryTests = []struct {
 			{
 				T: 1568404331324,
 				F: 0.013333333333333334,
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "varlogs",
+				),
 			},
 			{
 				T: 1568404331324,
 				F: 3.45,
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/syslog`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/syslog`,
+					"job", "varlogs",
+				),
 			},
 		},
 		fmt.Sprintf(`{
@@ -369,16 +357,10 @@ var queryTests = []struct {
 						F: 0.013333333333333334,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "varlogs",
+				),
 			},
 			{
 				Floats: []promql.FPoint{
@@ -391,16 +373,10 @@ var queryTests = []struct {
 						F: 4.45,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/syslog`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/syslog`,
+					"job", "varlogs",
+				),
 			},
 		},
 		fmt.Sprintf(`{
@@ -987,11 +963,13 @@ func randLabel(rand *rand.Rand) labels.Label {
 }
 
 func randLabels(rand *rand.Rand) labels.Labels {
-	var labels labels.Labels
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	nLabels := rand.Intn(100)
 	for i := 0; i < nLabels; i++ {
-		labels = append(labels, randLabel(rand))
+		label := randLabel(rand)
+		builder.Set(label.Name, label.Value)
 	}
+	labels := builder.Labels()
 
 	return labels
 }

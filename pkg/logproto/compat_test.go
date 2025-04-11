@@ -80,7 +80,7 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 
 func TestFromLabelAdaptersToLabels(t *testing.T) {
 	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
+	expected := labels.FromStrings("hello", "world")
 	actual := FromLabelAdaptersToLabels(input)
 
 	assert.Equal(t, expected, actual)
