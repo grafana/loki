@@ -19,7 +19,13 @@ func NoParserHints() ParserHint {
 //
 // All we need to extract is the status_code in the json parser.
 type ParserHint interface {
-	// Tells if a label with the given key should be extracted.
+	// Extracted returns whether a key has already been extracted by a previous
+	// parse stage. This result must not be cached.
+	Extracted(key string) bool
+
+	// Tells if a label with the given key should be extracted. Parsers may cache
+	// the result of ShouldExtract, so implementations of houldExtract must
+	// return consistent results for any log line or parser stage.
 	ShouldExtract(key string) bool
 
 	// Tells if there's any hint that start with the given prefix.
@@ -54,17 +60,20 @@ type Hints struct {
 	noLabels            bool
 	requiredLabels      []string
 	shouldPreserveError bool
-	extracted           []string
+	extracted           map[string]struct{}
 	labelFilters        []LabelFilterer
 	labelNames          []string
 }
 
+func (p *Hints) Extracted(key string) bool {
+	_, ok := p.extracted[key] // It's safe to read from a nil map.
+	return ok
+}
+
 func (p *Hints) ShouldExtract(key string) bool {
-	for _, l := range p.extracted {
-		if l == key {
-			return false
-		}
-	}
+	// The result of ShouldExtract gets cached in parser stages, so we must
+	// return consistent results throughout the lifetime of a query; this means
+	// we can't account for p.extracted here.
 
 	for _, l := range p.requiredLabels {
 		if l == key {
@@ -93,7 +102,10 @@ func (p *Hints) NoLabels() bool {
 }
 
 func (p *Hints) RecordExtracted(key string) {
-	p.extracted = append(p.extracted, key)
+	if p.extracted == nil {
+		p.extracted = make(map[string]struct{})
+	}
+	p.extracted[key] = struct{}{}
 }
 
 func (p *Hints) AllRequiredExtracted() bool {
@@ -103,11 +115,8 @@ func (p *Hints) AllRequiredExtracted() bool {
 
 	found := 0
 	for _, l := range p.requiredLabels {
-		for _, e := range p.extracted {
-			if l == e {
-				found++
-				break
-			}
+		if p.Extracted(l) {
+			found++
 		}
 	}
 
@@ -115,7 +124,7 @@ func (p *Hints) AllRequiredExtracted() bool {
 }
 
 func (p *Hints) Reset() {
-	p.extracted = p.extracted[:0]
+	clear(p.extracted)
 }
 
 func (p *Hints) PreserveError() bool {
@@ -159,7 +168,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 		}
 	}
 
-	extracted := make([]string, 0, len(hints))
+	extracted := make(map[string]struct{}, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
 			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints), labelFilters: labelFilters, labelNames: labelNames}
