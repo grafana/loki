@@ -726,6 +726,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
 		} else if len(streamsWithinLimits) == 0 {
+			level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
 			// TODO(grobinson): Do we need to create another map for fast lookups?
 			streamsForReasons := make(map[string][]uint64)
 			for streamHash, reasons := range reasonsForStreams {
