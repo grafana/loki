@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -165,15 +164,4 @@ func metadataColumns(columns []*logsmd.ColumnDesc) int {
 		}
 	}
 	return count
-}
-
-func unsafeSlice(data string, capacity int) []byte {
-	if capacity <= 0 {
-		capacity = len(data)
-	}
-	return unsafe.Slice(unsafe.StringData(data), capacity)
-}
-
-func unsafeString(data []byte) string {
-	return unsafe.String(unsafe.SliceData(data), len(data))
 }
