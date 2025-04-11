@@ -118,7 +118,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 		labels labels.Labels
 	}
 
-	t.Run("single variant is equivilent to non-variant", func(t *testing.T) {
+	t.Run("single variant is equivalent to non-variant", func(t *testing.T) {
 		for _, tc := range []struct {
 			query        string
 			variantQuery string

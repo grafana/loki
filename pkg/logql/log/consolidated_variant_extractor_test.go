@@ -106,12 +106,12 @@ func (m *MockCommonStreamPipeline) ReferencedStructuredMetadata() bool {
 	return false
 }
 
-func (m *MockCommonStreamPipeline) Process(ts int64, line []byte, lb ...labels.Label) ([]byte, LabelsResult, bool) {
+func (m *MockCommonStreamPipeline) Process(_ int64, _ []byte, _ ...labels.Label) ([]byte, LabelsResult, bool) {
 	m.counter.ProcessCount++
 	return []byte(m.processedLine), m.labels, m.shouldPass
 }
 
-func (m *MockCommonStreamPipeline) ProcessString(ts int64, line string, lb ...labels.Label) (string, LabelsResult, bool) {
+func (m *MockCommonStreamPipeline) ProcessString(_ int64, _ string, _ ...labels.Label) (string, LabelsResult, bool) {
 	m.counter.ProcessCount++
 	return m.processedLine, m.labels, m.shouldPass
 }
@@ -142,7 +142,7 @@ func (m *mockVariantSpecificStreamExtractor) BaseLabels() LabelsResult {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *mockVariantSpecificStreamExtractor) Process(ts int64, line []byte, lbls ...labels.Label) ([]ExtractedSample, bool) {
+func (m *mockVariantSpecificStreamExtractor) Process(_ int64, _ []byte, _ ...labels.Label) ([]ExtractedSample, bool) {
 	result := []ExtractedSample{
 		{
 			Value:  m.valueToExtract,
@@ -160,4 +160,3 @@ func (m *mockVariantSpecificStreamExtractor) ProcessString(ts int64, line string
 func (m *mockVariantSpecificStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
 }
-

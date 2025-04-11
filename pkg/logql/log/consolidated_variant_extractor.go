@@ -3,8 +3,9 @@ package log
 import (
 	"strconv"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func NewConsolidatedMultiVariantExtractor(commonPipeline Pipeline, variants []SampleExtractor) SampleExtractor {
