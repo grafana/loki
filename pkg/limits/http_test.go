@@ -20,20 +20,31 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			RateWindow:     time.Minute,
 			BucketDuration: 30 * time.Second,
 		},
-		metadata: map[string]map[int32][]streamMetadata{
-			"tenant": {
-				0: {{
-					hash:      0x1,
-					totalSize: 100,
-					rateBuckets: []rateBucket{{
-						timestamp: time.Now().UnixNano(),
-						size:      1,
-					}},
-					lastSeenAt: time.Now().UnixNano(),
-				}},
+		metadata: &streamMetadataStripes{
+			size: 1,
+			stripes: []map[string]map[int32][]*streamMetadata{
+				{
+					"tenant": {
+						0: {{
+							hash:      0x1,
+							totalSize: 100,
+							rateBuckets: []rateBucket{{
+								timestamp: time.Now().UnixNano(),
+								size:      1,
+							}},
+							lastSeenAt: time.Now().UnixNano(),
+						}},
+					},
+				},
 			},
+			locks: make([]stripeLock, 1),
 		},
 		logger: log.NewNopLogger(),
+		partitionManager: &PartitionManager{
+			partitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		},
 	}
 
 	// Set up a mux router for the test server otherwise mux.Vars() won't work.
