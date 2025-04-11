@@ -722,11 +722,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		var reasonsForStreams map[uint64][]string
-		streams, reasonsForStreams, err = d.ingestLimits.enforceLimits(ctx, tenantID, streams)
+		streamsWithinLimits, reasonsForStreams, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if reasonsForStreams != nil {
+		} else if len(streamsWithinLimits) == 0 {
 			// TODO(grobinson): Do we need to create another map for fast lookups?
 			streamsForReasons := make(map[string][]uint64)
 			for streamHash, reasons := range reasonsForStreams {
@@ -740,7 +739,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			if !d.cfg.IngestLimitsDryRunEnabled {
 				// TODO(grobinson): Return the reasons for each stream, instead of
 				// generic error messages.
-				if len(newStreams) == len(streams) {
+				if len(newStreams) > 0 {
 					return nil, httpgrpc.Error(
 						http.StatusBadRequest,
 						"request exceeded limits: max streams exceeded",

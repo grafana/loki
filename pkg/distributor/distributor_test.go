@@ -2456,7 +2456,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &logproto.ExceedsLimitsResponse{
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
-				StreamHash: 1,
+				StreamHash: 0x90eb45def17f924,
 				Reason:     limits_frontend.ReasonExceedsMaxStreams,
 			}},
 		},
@@ -2486,7 +2486,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &logproto.ExceedsLimitsResponse{
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
-				StreamHash: 1,
+				StreamHash: 0x90eb45def17f924,
 				Reason:     limits_frontend.ReasonExceedsRateLimit,
 			}},
 		},
