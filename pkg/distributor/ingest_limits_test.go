@@ -34,14 +34,15 @@ func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *log
 // expected streams each with their expected reasons.
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name            string
-		tenant          string
-		streams         []KeyedStream
-		expectedRequest *logproto.ExceedsLimitsRequest
-		response        *logproto.ExceedsLimitsResponse
-		responseErr     error
-		expected        []exceedsIngestLimitsResult
-		expectedErr     string
+		name                  string
+		tenant                string
+		streams               []KeyedStream
+		expectedRequest       *logproto.ExceedsLimitsRequest
+		response              *logproto.ExceedsLimitsResponse
+		responseErr           error
+		expectedExceedsLimits bool
+		expectedReasons       map[uint64][]string
+		expectedErr           string
 	}{{
 		name:   "error should be returned if limits cannot be checked",
 		tenant: "test",
@@ -75,10 +76,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				Reason:     "test",
 			}},
 		},
-		expected: []exceedsIngestLimitsResult{{
-			hash:    1,
-			reasons: []string{"test"},
-		}},
+		expectedExceedsLimits: true,
+		expectedReasons:       map[uint64][]string{1: {"test"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -95,7 +94,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		},
-		expected: nil,
+		expectedReasons: nil,
 	}}
 
 	for _, test := range tests {
@@ -109,15 +108,15 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			exceedsLimits, rejectedStreams, err := l.exceedsLimits(ctx, test.tenant, test.streams)
+			exceedsLimits, reasons, err := l.exceedsLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.False(t, exceedsLimits)
-				require.Empty(t, rejectedStreams)
+				require.Nil(t, reasons)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expected, rejectedStreams)
-				require.Equal(t, len(test.expected) > 0, exceedsLimits)
+				require.Equal(t, test.expectedExceedsLimits, exceedsLimits)
+				require.Equal(t, test.expectedReasons, reasons)
 			}
 		})
 	}

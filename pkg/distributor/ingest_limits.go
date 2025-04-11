@@ -75,13 +75,6 @@ func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req 
 	return nil, lastErr
 }
 
-// exceedsIngestLimitsResult contains the reasons a stream exceeds per-tenant
-// ingest limits.
-type exceedsIngestLimitsResult struct {
-	hash    uint64
-	reasons []string
-}
-
 type ingestLimits struct {
 	client         ingestLimitsFrontendClient
 	limitsFailures prometheus.Counter
@@ -97,12 +90,11 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 	}
 }
 
-// ExceedsLimits returns true if at least one stream exceeds the per-tenant
-// limits, otherwise false. It also returns a slice containing the streams
-// that exceeded the per-tenant limits, and for each stream the reasons it
-// exceeded the limits. This slice can be nil. An error is returned if the
-// limits could not be checked.
-func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, []exceedsIngestLimitsResult, error) {
+// ExceedsLimits returns true if one or more streams exceeds per-tenant limits,
+// and false if no streams exceed per-tenant limits. In the case where one or
+// more streams exceeds per-tenant limits, it returns the reasons for each stream.
+// An error is returned if per-tenant limits could not be checked.
+func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, map[uint64][]string, error) {
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
 		return false, nil, err
@@ -114,23 +106,13 @@ func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams
 	if len(resp.Results) == 0 {
 		return false, nil, nil
 	}
-	// A stream can exceed limits for multiple reasons. For example, exceeding
-	// both per-tenant stream limit and rate limits. We organize the reasons
-	// for each stream into a slice, and then add that to the results.
 	reasonsForHashes := make(map[uint64][]string)
 	for _, result := range resp.Results {
 		reasons := reasonsForHashes[result.StreamHash]
 		reasons = append(reasons, result.Reason)
 		reasonsForHashes[result.StreamHash] = reasons
 	}
-	result := make([]exceedsIngestLimitsResult, 0, len(reasonsForHashes))
-	for hash, reasons := range reasonsForHashes {
-		result = append(result, exceedsIngestLimitsResult{
-			hash:    hash,
-			reasons: reasons,
-		})
-	}
-	return true, result, nil
+	return true, reasonsForHashes, nil
 }
 
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*logproto.ExceedsLimitsRequest, error) {
