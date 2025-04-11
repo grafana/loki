@@ -53,10 +53,12 @@ const (
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
 
-	BinaryOpMatchStr    // String matching operation (|=).
-	BinaryOpNotMatchStr // String non-matching operation (!=).
-	BinaryOpMatchRe     // Regular expression matching operation (|~).
-	BinaryOpNotMatchRe  // Regular expression non-matching operation (!~).
+	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
+	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
+	BinaryOpMatchRe         // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+	BinaryOpMatchPattern    // Pattern matching operation (|>). Used for pattern match filter.
+	BinaryOpNotMatchPattern // Pattern non-matching operation (!>). Use for pattern match filter.
 )
 
 // String returns a human-readable representation of the binary operation kind.
@@ -94,9 +96,9 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
-	case BinaryOpMatchStr:
+	case BinaryOpMatchSubstr:
 		return "MATCH_STR"
-	case BinaryOpNotMatchStr:
+	case BinaryOpNotMatchSubstr:
 		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
 	case BinaryOpMatchRe:
 		return "MATCH_RE"

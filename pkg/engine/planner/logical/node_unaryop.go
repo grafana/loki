@@ -26,7 +26,7 @@ func (u *UnaryOp) Name() string {
 	if u.id != "" {
 		return u.id
 	}
-	return fmt.Sprintf("<%p>", u)
+	return fmt.Sprintf("%p", u)
 }
 
 // String returns the disassembled SSA form of the UnaryOp instruction.

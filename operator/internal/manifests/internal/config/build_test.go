@@ -64,6 +64,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -127,6 +128,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -325,6 +327,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -388,6 +391,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -754,6 +758,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -817,6 +822,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1115,6 +1121,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1178,6 +1185,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1477,6 +1485,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1540,6 +1549,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1873,6 +1883,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1941,6 +1952,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2211,6 +2223,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2274,6 +2287,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2646,6 +2660,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2716,6 +2731,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2980,6 +2996,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3043,6 +3060,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3480,6 +3498,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3544,6 +3563,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3744,6 +3764,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3808,6 +3829,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4009,6 +4031,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4072,6 +4095,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4275,6 +4299,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4338,6 +4363,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4577,6 +4603,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4640,6 +4667,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4877,6 +4905,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4936,6 +4965,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5377,6 +5407,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5436,6 +5467,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5555,6 +5587,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5614,6 +5647,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5726,6 +5760,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5789,6 +5824,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -6119,6 +6155,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -6202,6 +6239,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s

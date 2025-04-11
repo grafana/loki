@@ -26,7 +26,8 @@ const (
 )
 
 type ObjectMetastore struct {
-	bucket objstore.Bucket
+	bucket      objstore.Bucket
+	parallelism int
 }
 
 func metastorePath(tenantID string, window time.Time) string {
@@ -48,7 +49,8 @@ func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
 
 func NewObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	return &ObjectMetastore{
-		bucket: bucket,
+		bucket:      bucket,
+		parallelism: 64,
 	}
 }
 
@@ -72,6 +74,40 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
 	return m.listStreamsFromObjects(ctx, paths, predicate)
+}
+
+func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Get all metastore paths for the time range
+	var storePaths []string
+	for path := range iterStorePaths(tenantID, start, end) {
+		storePaths = append(storePaths, path)
+	}
+
+	// List objects from all stores concurrently
+	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Search the stream sections of the matching objects to find matching streams
+	predicate := predicateFromMatchers(start, end, matchers...)
+	streamIDs, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
+
+	// Remove objects that do not contain any matching streams
+	for i := 0; i < len(paths); i++ {
+		if len(streamIDs[i]) == 0 {
+			paths = slices.Delete(paths, i, i+1)
+			streamIDs = slices.Delete(streamIDs, i, i+1)
+			i--
+		}
+	}
+
+	return paths, streamIDs, err
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
@@ -226,7 +262,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	streams := make(map[uint64][]*labels.Labels, 1024)
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(64)
+	g.SetLimit(m.parallelism)
 
 	for _, path := range paths {
 		g.Go(func() error {
@@ -248,6 +284,31 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	}
 
 	return streamsSlice, nil
+}
+
+func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate dataobj.StreamsPredicate) ([][]int64, error) {
+	streamIDs := make([][]int64, len(paths))
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	for i, path := range paths {
+		func(idx int) {
+			g.Go(func() error {
+				object := dataobj.FromBucket(m.bucket, path)
+
+				return forEachStream(ctx, object, predicate, func(stream dataobj.Stream) {
+					streamIDs[idx] = append(streamIDs[idx], stream.ID)
+				})
+			})
+		}(i)
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return streamIDs, nil
 }
 
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
@@ -354,21 +415,21 @@ func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string)
 		objPath          string
 	)
 	for _, lb := range lbs {
-		if lb.Name == "__start__" {
+		if lb.Name == labelNameStart {
 			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
 			if err != nil {
 				panic(err)
 			}
 			objStart = time.Unix(0, tsNano).UTC()
 		}
-		if lb.Name == "__end__" {
+		if lb.Name == labelNameEnd {
 			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
 			if err != nil {
 				panic(err)
 			}
 			objEnd = time.Unix(0, tsNano).UTC()
 		}
-		if lb.Name == "__path__" {
+		if lb.Name == labelNamePath {
 			objPath = lb.Value
 		}
 	}

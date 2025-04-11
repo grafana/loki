@@ -17,6 +17,8 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -27,7 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
@@ -38,41 +40,56 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
-type Engine interface {
-	Query(logql.Params) logql.Query
-}
-
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
-	querier Querier
-	cfg     Config
-	limits  querier_limits.Limits
-	engine  Engine
+	querier  Querier
+	cfg      Config
+	limits   querier_limits.Limits
+	engineV1 logql.Engine // Loki's current query engine
+	engineV2 logql.Engine // Loki's next generation query engine
+	logger   log.Logger
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, logger log.Logger) *QuerierAPI {
-	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
-		cfg:     cfg,
-		limits:  limits,
-		querier: querier,
-		engine:  engine,
+		cfg:      cfg,
+		limits:   limits,
+		querier:  querier,
+		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
+		engineV2: engine.New(cfg.Engine, metastore, limits, logger),
+		logger:   logger,
 	}
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
+	var result logqlmodel.Result
+	logger := utillog.WithContext(ctx, q.logger)
+
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
-		return logqlmodel.Result{}, err
+		return result, err
 	}
 
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		return logqlmodel.Result{}, err
+		return result, err
 	}
 
-	query := q.engine.Query(params)
+	if q.cfg.Engine.EnableV2Engine {
+		query := q.engineV2.Query(params)
+		result, err = query.Exec(ctx)
+		if err == nil {
+			return result, err
+		}
+		if !errors.Is(err, engine.ErrNotSupported) {
+			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
+			return result, errors.Wrap(err, "failed with new execution engine")
+		}
+		level.Warn(logger).Log("msg", "falling back to legacy query engine", "err", err)
+	}
+
+	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
 }
 
@@ -91,7 +108,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	query := q.engine.Query(params)
+	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
 }
 
@@ -116,7 +133,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -144,7 +161,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordSeriesQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
 }
@@ -171,7 +188,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordStatsQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordStatsQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -200,7 +217,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordShardsQueryMetrics(
-		ctx, util_log.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
+		ctx, utillog.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
 
 	return resp, err
@@ -232,7 +249,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordVolumeQueryMetrics(ctx, util_log.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

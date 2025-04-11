@@ -235,7 +235,7 @@ outer:
 }
 
 type MockDownstreamer struct {
-	*Engine
+	*QueryEngine
 }
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }

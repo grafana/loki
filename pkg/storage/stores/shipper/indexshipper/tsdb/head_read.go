@@ -55,18 +55,6 @@ func (h *headIndexReader) Symbols() index.StringIter {
 	return h.head.postings.Symbols()
 }
 
-// SortedLabelValues returns label values present in the head for the
-// specific label name that are within the time range mint to maxt.
-// If matchers are specified the returned result set is reduced
-// to label values of metrics matching the matchers.
-func (h *headIndexReader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	values, err := h.LabelValues(name, matchers...)
-	if err == nil {
-		sort.Strings(values)
-	}
-	return values, err
-}
-
 // LabelValues returns label values present in the head for the
 // specific label name that are within the time range mint to maxt.
 // If matchers are specified the returned result set is reduced
