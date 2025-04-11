@@ -16,19 +16,19 @@ func Test(t *testing.T) {
 	records := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
+			Timestamp: time.Unix(10, 0),
 			Metadata:  nil,
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
+			Timestamp: time.Unix(100, 0),
 			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("bar")}},
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
+			Timestamp: time.Unix(5, 0),
 			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("foo")}},
 			Line:      []byte("foo bar"),
 		},
@@ -54,19 +54,19 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
+			Timestamp: time.Unix(5, 0),
 			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("foo")}, {Name: "cluster", Value: []byte("test")}},
 			Line:      []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
+			Timestamp: time.Unix(10, 0),
 			Metadata:  []logs.RecordMetadata{},
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
+			Timestamp: time.Unix(100, 0),
 			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("bar")}, {Name: "cluster", Value: []byte("test")}},
 			Line:      []byte("goodbye world"),
 		},

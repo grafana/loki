@@ -117,7 +117,7 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Timestamp = time.Unix(0, columnValue.Int64()).UTC()
+			record.Timestamp = time.Unix(0, columnValue.Int64())
 
 		case logsmd.COLUMN_TYPE_METADATA:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
