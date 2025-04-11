@@ -7,6 +7,8 @@ export const AVAILABLE_RINGS: Array<{ id: RingType; title: string }> = [
   { id: RingTypes.INGESTER, title: "Ingester" },
   { id: RingTypes.PARTITION_INGESTER, title: "Partition Ingester" },
   { id: RingTypes.DISTRIBUTOR, title: "Distributor" },
+  { id: RingTypes.INGEST_LIMITS_FRONTEND, title: "Ingest Limits Frontend" },
+  { id: RingTypes.INGEST_LIMITS, title: "Ingest Limits" },
   { id: RingTypes.PATTERN_INGESTER, title: "Pattern Ingester" },
   { id: RingTypes.QUERY_SCHEDULER, title: "Scheduler" },
   { id: RingTypes.COMPACTOR, title: "Compactor" },

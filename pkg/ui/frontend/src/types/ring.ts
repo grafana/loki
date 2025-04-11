@@ -20,6 +20,8 @@ export const RingTypes: Record<string, string> = {
   INGESTER: "ingester",
   PARTITION_INGESTER: "partition-ingester",
   DISTRIBUTOR: "distributor",
+  INGEST_LIMITS_FRONTEND: "ingest-limits-frontend",
+  INGEST_LIMITS: "ingest-limits",
   PATTERN_INGESTER: "pattern-ingester",
   QUERY_SCHEDULER: "query-scheduler",
   COMPACTOR: "compactor",
