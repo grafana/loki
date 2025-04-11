@@ -323,14 +323,17 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
 
 			for _, extractor := range extractor {
-				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata...)
-				if !ok {
+				samples, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				if !ok || len(samples) == 0 {
 					return nil
 				}
 				var (
 					found bool
 					s     *logproto.Series
 				)
+
+				value := samples[0].Value
+				lbls := samples[0].Labels
 
 				lblStr := lbls.String()
 				s, found = series[lblStr]

@@ -339,11 +339,14 @@ func newSampleIterator(ctx context.Context,
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
 				statistics.AddDecompressedLines(1)
-				value, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 				if !ok {
 					continue
 				}
 				statistics.AddPostFilterLines(1)
+
+				parsedLabels := samples[0].Labels
+				value := samples[0].Value
 
 				// Get or create series for the parsed labels
 				labelString := parsedLabels.String()

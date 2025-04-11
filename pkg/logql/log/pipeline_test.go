@@ -644,13 +644,27 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line)
+			samples, ok := ex.Process(0, line)
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
+			samples, ok := ex.ProcessString(0, lineString)
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 
@@ -661,13 +675,27 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line)
+			samples, ok := ex.Process(0, line)
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString)
+			samples, ok := ex.ProcessString(0, lineString)
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 }

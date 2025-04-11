@@ -1316,14 +1316,17 @@ func (hb *headBlock) SampleIterator(
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
-			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-			if !ok {
+			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			if !ok || len(samples) == 0 {
 				continue
 			}
 			var (
 				found bool
 				s     *logproto.Series
 			)
+
+			value := samples[0].Value
+			lbls := samples[0].Labels
 
 			lblStr := lbls.String()
 			baseHash := extractor.BaseLabels().Hash()
@@ -1739,13 +1742,13 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
-		if !ok {
+		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		if !ok || len(samples) == 0 {
 			continue
 		}
 		e.stats.AddPostFilterLines(1)
-		e.currLabels = labels
-		e.cur.Value = val
+		e.currLabels = samples[0].Labels
+		e.cur.Value = samples[0].Value
 		e.cur.Hash = xxhash.Sum64(e.currLine)
 		e.cur.Timestamp = e.currTs
 		return true
