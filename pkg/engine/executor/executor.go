@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/arrow/go/v18/arrow"
-	"github.com/apache/arrow/go/v18/arrow/array"
-
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -33,25 +30,14 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 }
 
 func errorPipeline(err error) Pipeline {
-	return NewGeneric(Local).WithRead(func(_ []Pipeline) State {
+	return newGenericPipeline(Local, func(_ []Pipeline) State {
 		return State{err: err}
 	})
 }
 
 func emptyPipeline() Pipeline {
-	return NewGeneric(Local).WithRead(func(_ []Pipeline) State {
+	return newGenericPipeline(Local, func(_ []Pipeline) State {
 		return Exhausted
-	})
-}
-
-func passthroughPipeline() Pipeline {
-	return NewGeneric(Local).WithRead(func(inputs []Pipeline) State {
-		_ = inputs[0].Read()
-		batch, err := inputs[0].Value()
-		return State{
-			batch: batch,
-			err:   err,
-		}
 	})
 }
 
@@ -90,7 +76,7 @@ func (c *Context) executeDataGenerator(ctx context.Context, n *dataGenerator) Pi
 	rows := int64(0)
 	limit := int64(n.limit)
 
-	return NewGeneric(Local).WithRead(func(_ []Pipeline) State {
+	return newGenericPipeline(Local, func(_ []Pipeline) State {
 		// Stop once we reached the limit
 		if rows >= limit {
 			return Exhausted
@@ -120,104 +106,15 @@ func (c *Context) executeSortMerge(ctx context.Context, n *physical.SortMerge, i
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
-	active := make([]bool, len(inputs))
-	batches := make([]arrow.Record, len(inputs))
-	rows := make([]int64, len(inputs))
 
-	mh := &MinHeap{}
+	mh := MinHeap()
 	heap.Init(mh)
 
-	var initialized bool
-
-	return NewGeneric(Local, inputs...).WithRead(func(inputs []Pipeline) State {
-
-		if !initialized {
-			initialized = true
-			for i, input := range inputs {
-				// Pull first batch and load it into the heap
-				err := input.Read()
-				if err != nil {
-					if err == EOF {
-						continue
-					} else {
-						return failure(err)
-					}
-				}
-				active[i] = true
-
-				batch, _ := input.Value()
-				batches[i] = batch
-				rows[i] = batch.NumRows()
-				col := batch.Column(2) // assuming timestamp column is at index 2
-				tsCol, ok := col.(*array.Uint64)
-				if !ok {
-					return failure(errors.New("column is not a timestamp column"))
-				}
-
-				for j := 0; int64(j) < batch.NumRows(); j++ {
-					row := Row{
-						value:   tsCol.Value(j),
-						rowIdx:  j,
-						iterIdx: i,
-					}
-					fmt.Printf("Push(row) %+v\n", row)
-					heap.Push(mh, row)
-				}
-			}
-		}
-
-		if mh.Len() <= 0 {
-			return Exhausted
-		}
-
-		// Fill heap from active iterators
-		for i := range inputs {
-			for active[i] && rows[i] <= 0 {
-				batches[i].Release()
-				err := inputs[i].Read()
-				if err == EOF {
-					active[i] = false
-					fmt.Printf("no more results from downstream %d\n", i)
-					break
-				}
-				batch, err := inputs[i].Value()
-				if err != nil {
-					return passthrough(batch, err)
-				}
-
-				batches[i] = batch
-				rows[i] = batch.NumRows()
-				fmt.Printf("new rows %d from input %d\n", rows[i], i)
-				col := batch.Column(2) // assuming timestamp column is at index 2
-				tsCol, ok := col.(*array.Uint64)
-				if !ok {
-					return failure(errors.New("column is not a timestamp column"))
-				}
-
-				for j := 0; int64(j) < batch.NumRows(); j++ {
-					row := Row{
-						value:   tsCol.Value(j),
-						rowIdx:  j,
-						iterIdx: i,
-					}
-					fmt.Printf("Push(row) %+v\n", row)
-					heap.Push(mh, row)
-				}
-			}
-		}
-
-		row := heap.Pop(mh).(Row)
-		i := row.iterIdx
-		r := row.rowIdx
-
-		rows[i]--
-
-		fmt.Printf("yield(row) %+v\n", row)
-
-		// TODO(chaudum): This yields single-row batches!!!
-		rec := batches[row.iterIdx].NewSlice(int64(r), int64(r)+1)
-		return success(rec)
-	})
+	return &HeapSortMerge{
+		inputs:    inputs,
+		heap:      mh,
+		batchSize: c.batchSize,
+	}
 }
 
 func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []Pipeline) Pipeline {
@@ -235,7 +132,7 @@ func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []
 		limit  = int64(n.Fetch)
 	)
 
-	return NewGeneric(Local, inputs...).WithRead(func(inputs []Pipeline) State {
+	return newGenericPipeline(Local, func(inputs []Pipeline) State {
 		// Stop once we reached the limit
 		if limit <= 0 {
 			return Exhausted
@@ -247,7 +144,7 @@ func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []
 		input := inputs[0]
 		err := input.Read()
 		if err != nil {
-			return passthrough(input.Value())
+			return state(input.Value())
 		}
 		batch, _ := input.Value()
 
@@ -269,7 +166,7 @@ func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []
 
 		rec := batch.NewSlice(start, end)
 		return success(rec)
-	})
+	}, inputs...)
 }
 
 func (c *Context) executeFilter(ctx context.Context, n *physical.Filter, inputs []Pipeline) Pipeline {

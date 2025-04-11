@@ -54,7 +54,7 @@ func success(batch arrow.Record) State {
 	return State{batch: batch}
 }
 
-func passthrough(batch arrow.Record, err error) State {
+func state(batch arrow.Record, err error) State {
 	return State{batch: batch, err: err}
 }
 
@@ -65,16 +65,12 @@ type GenericPipeline struct {
 	read   func([]Pipeline) State
 }
 
-func NewGeneric(t Transport, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipeline(t Transport, read func([]Pipeline) State, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		t:      t,
+		read:   read,
 		inputs: inputs,
 	}
-}
-
-func (p *GenericPipeline) WithRead(fn func([]Pipeline) State) *GenericPipeline {
-	p.read = fn
-	return p
 }
 
 var _ Pipeline = (*GenericPipeline)(nil)
