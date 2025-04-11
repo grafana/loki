@@ -148,6 +148,7 @@ type UploadInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMode      string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
@@ -223,6 +224,7 @@ type ObjectInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMode      string
 
 	Internal *struct {
 		K int // Data blocks
