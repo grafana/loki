@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -138,8 +139,8 @@ func (s *ChunkStore) flushChunk(ctx context.Context, memChunk *chunkenc.MemChunk
 	metric := labelsBuilder.Labels()
 	fp := client.Fingerprint(lbs)
 
-	from, to := memChunk.Bounds()
-	c := chunk.NewChunk(s.tenantID, fp, metric, chunkenc.NewFacade(memChunk, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+	firstTime, lastTime := util.RoundToMilliseconds(memChunk.Bounds())
+	c := chunk.NewChunk(s.tenantID, fp, metric, chunkenc.NewFacade(memChunk, 0, 0), firstTime, lastTime)
 	if err := c.Encode(); err != nil {
 		return err
 	}
