@@ -2,7 +2,6 @@ package distributor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -901,7 +900,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
+			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
 		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
@@ -912,7 +911,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
+			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i+2))
 		}
 	})
 }
@@ -1306,16 +1305,10 @@ func TestParseStreamLabels(t *testing.T) {
 				limits.MaxLabelNamesPerSeries = 1
 				return limits
 			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  loghttp_push.LabelServiceName,
-					Value: loghttp_push.ServiceUnknown,
-				},
-			},
+			expectedLabels: labels.FromStrings(
+				"foo", "bar",
+				loghttp_push.LabelServiceName, loghttp_push.ServiceUnknown,
+			),
 		},
 	} {
 		limits := tc.generateLimits()
@@ -2387,68 +2380,4 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 
 	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
-}
-
-func TestExceedsLimits(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	distributors, _ := prepare(t, 1, 0, limits, nil)
-	d := distributors[0]
-
-	ctx := context.Background()
-	streams := []KeyedStream{{
-		HashKeyNoShard: 1,
-		Stream: logproto.Stream{
-			Labels: "{foo=\"bar\"}",
-		},
-	}}
-
-	t.Run("no limits should be checked when disabled", func(t *testing.T) {
-		d.cfg.IngestLimitsEnabled = false
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			t.Fail() // Should not be called.
-			return nil, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
-
-	t.Run("error should be returned if limits cannot be checked", func(t *testing.T) {
-		d.cfg.IngestLimitsEnabled = true
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return nil, errors.New("failed to check limits")
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.EqualError(t, err, "failed to check limits")
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
-
-	t.Run("stream exceeds limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return &logproto.ExceedsLimitsResponse{
-				Tenant: "test",
-				RejectedStreams: []*logproto.RejectedStream{{
-					StreamHash: 1,
-					Reason:     "test",
-				}},
-			}, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.True(t, exceedsLimits)
-		require.Equal(t, []string{"stream {foo=\"bar\"} was rejected because \"test\""}, reasons)
-	})
-
-	t.Run("stream does not exceed limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return &logproto.ExceedsLimitsResponse{}, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
 }

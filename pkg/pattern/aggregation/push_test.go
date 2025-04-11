@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -32,6 +33,9 @@ const (
 
 func Test_Push(t *testing.T) {
 	lbls := labels.New(labels.Label{Name: "test", Value: "test"})
+	structuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: "info"},
+	}
 
 	// create dummy loki server
 	responses := make(chan response, 1) // buffered not to block the response handler
@@ -62,7 +66,7 @@ func Test_Push(t *testing.T) {
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
-		push.WriteEntry(ts, payload, lbls)
+		push.WriteEntry(ts, payload, lbls, structuredMetadata)
 		resp := <-responses
 		assertResponse(t, resp, false, labelSet("test", "test"), ts, payload)
 	})
@@ -87,7 +91,7 @@ func Test_Push(t *testing.T) {
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
-		push.WriteEntry(ts, payload, lbls)
+		push.WriteEntry(ts, payload, lbls, structuredMetadata)
 		resp := <-responses
 		assertResponse(t, resp, true, labelSet("test", "test"), ts, payload)
 	})
@@ -142,32 +146,37 @@ func Test_Push(t *testing.T) {
 			wayBack,
 			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service", lbls1),
 			lbls1,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			then,
 			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service", lbls1),
 			lbls1,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			now,
 			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service", lbls1),
 			lbls1,
+			structuredMetadata,
 		)
-
 		p.WriteEntry(
 			wayBack,
 			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service", lbls2),
 			lbls2,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			then,
 			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service", lbls2),
 			lbls2,
+			structuredMetadata,
 		)
 		p.WriteEntry(
 			now,
 			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service", lbls2),
 			lbls2,
+			structuredMetadata,
 		)
 
 		p.running.Add(1)
@@ -325,13 +334,13 @@ func labelSet(keyVals ...string) labels.Labels {
 		panic("not matching key-value pairs")
 	}
 
-	lbls := labels.Labels{}
+	lbls := labels.NewBuilder(labels.EmptyLabels())
 
 	for i := 0; i < len(keyVals)-1; i += 2 {
-		lbls = append(lbls, labels.Label{Name: keyVals[i], Value: keyVals[i+1]})
+		lbls.Set(keyVals[i], keyVals[i+1])
 	}
 
-	return lbls
+	return lbls.Labels()
 }
 
 func testPayload() (time.Time, string) {

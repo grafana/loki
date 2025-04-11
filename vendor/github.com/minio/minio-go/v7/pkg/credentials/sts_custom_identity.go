@@ -69,6 +69,9 @@ type CustomTokenIdentity struct {
 	// RequestedExpiry is to set the validity of the generated credentials
 	// (this value bounded by server).
 	RequestedExpiry time.Duration
+
+	// Optional, used for token revokation
+	TokenRevokeType string
 }
 
 // RetrieveWithCredContext with Retrieve optionally cred context
@@ -97,6 +100,9 @@ func (c *CustomTokenIdentity) RetrieveWithCredContext(cc *CredContext) (value Va
 	v.Set("Token", c.Token)
 	if c.RequestedExpiry != 0 {
 		v.Set("DurationSeconds", fmt.Sprintf("%d", int(c.RequestedExpiry.Seconds())))
+	}
+	if c.TokenRevokeType != "" {
+		v.Set("TokenRevokeType", c.TokenRevokeType)
 	}
 
 	u.RawQuery = v.Encode()

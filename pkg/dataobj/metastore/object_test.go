@@ -87,6 +87,21 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	b.builder.Reset()
 }
 
+func TestStreamIDs(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		paths, streamIDs, err := mstore.StreamIDs(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, paths, 1)
+		require.Len(t, streamIDs, 1)
+		require.Equal(t, []int64{1}, streamIDs[0])
+	})
+}
+
 func TestLabels(t *testing.T) {
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),

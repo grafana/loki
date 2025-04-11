@@ -13,15 +13,19 @@ import (
 
 // Config contains the config for an ingest-limits-frontend.
 type Config struct {
-	ClientConfig     limits_client.Config  `yaml:"client_config"`
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-	RecheckPeriod    time.Duration         `yaml:"recheck_period"`
+	ClientConfig        limits_client.Config  `yaml:"client_config"`
+	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+	RecheckPeriod       time.Duration         `yaml:"recheck_period"`
+	NumPartitions       int                   `yaml:"num_partitions"`
+	PartitionIDCacheTTL time.Duration         `yaml:"partition_id_cache_ttl"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.", f, util_log.Logger)
 	f.DurationVar(&cfg.RecheckPeriod, "ingest-limits-frontend.recheck-period", 10*time.Second, "The period to recheck per tenant ingestion rate limit configuration.")
+	f.IntVar(&cfg.NumPartitions, "ingest-limits-frontend.num-partitions", 64, "The number of partitions to use for the ring.")
+	f.DurationVar(&cfg.PartitionIDCacheTTL, "ingest-limits-frontend.partition-id-cache-ttl", 1*time.Minute, "The TTL for the stream usage cache.")
 }
 
 func (cfg *Config) Validate() error {

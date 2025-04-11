@@ -29,12 +29,12 @@ func (t *MakeTable) Name() string {
 	if t.id != "" {
 		return t.id
 	}
-	return fmt.Sprintf("<%p>", t)
+	return fmt.Sprintf("%p", t)
 }
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {
-	return fmt.Sprintf("MAKE_TABLE [selector=%s]", t.Selector.Name())
+	return fmt.Sprintf("MAKETABLE [selector=%s]", t.Selector.Name())
 }
 
 // Schema returns the schema of the table.

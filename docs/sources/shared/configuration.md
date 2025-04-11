@@ -826,6 +826,11 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # Enable collection of the following kafka latency histograms: read-wait,
+  # read-timing, write-wait, write-timing
+  # CLI flag: -kafka.enable-kafka-histograms
+  [enable_kafka_histograms: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -1204,6 +1209,14 @@ ingest_limits_frontend:
   # The period to recheck per tenant ingestion rate limit configuration.
   # CLI flag: -ingest-limits-frontend.recheck-period
   [recheck_period: <duration> | default = 10s]
+
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
+  # The TTL for the stream usage cache.
+  # CLI flag: -ingest-limits-frontend.partition-id-cache-ttl
+  [partition_id_cache_ttl: <duration> | default = 1m]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -2515,6 +2528,10 @@ ring:
 # Number of workers to push batches to ingesters.
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
+
+# The maximum size of a received message.
+# CLI flag: -distributor.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 104857600]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
@@ -4485,6 +4502,10 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -querier.engine.enable-v2-engine
+  [enable_v2_engine: <boolean> | default = false]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -6878,7 +6899,7 @@ bos:
   [secret_key: <string> | default = ""]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
-# only contain digits and English alphabet letters.
+# only contain digits, English alphabet letters and dashes.
 # CLI flag: -<prefix>.storage-prefix
 [storage_prefix: <string> | default = ""]
 ```
