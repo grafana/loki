@@ -16,6 +16,8 @@ loki:
     prometheus.io/scrape: "true"
     prometheus.io/port: "3100"
   storage:
+    # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
+    # Please provide these values if you are using object storage.
     bucketNames:
       chunks: chunks
       ruler: ruler
