@@ -1,6 +1,6 @@
-from grafana/promtail:main-c9ef062
+FROM grafana/promtail:main-c9ef062
 
-# Copy the config.yml file we created in the step above, inside the container itself. This simplifies the 
+# Copy the config.yml file we created in the step above, inside the container itself. This simplifies the
 # configuration of the Promtail instance.
 COPY config.yml /etc/promtail/config.yml
 

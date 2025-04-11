@@ -1,8 +1,8 @@
 ARG BUILD_IMAGE=grafana/loki-build-image:0.33.6
 
 FROM golang:1.23.6-alpine as goenv
-RUN go env GOARCH > /goarch && \
-  go env GOARM > /goarm
+RUN go env GOARCH >/goarch \
+    && go env GOARM >/goarm
 
 FROM --platform=linux/amd64 $BUILD_IMAGE as builder
 COPY --from=goenv /goarch /goarm /

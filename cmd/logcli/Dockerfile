@@ -10,7 +10,7 @@ RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} logcli
 FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/logcli/logcli /usr/bin/logcli
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
 
-ENTRYPOINT [ "/usr/bin/logcli" ]
+ENTRYPOINT ["/usr/bin/logcli"]

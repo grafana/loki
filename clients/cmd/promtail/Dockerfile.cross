@@ -4,8 +4,8 @@ ARG GO_VERSION=1.24
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile .
 FROM golang:${GO_VERSION}-alpine as goenv
-RUN go env GOARCH > /goarch && \
-  go env GOARM > /goarm
+RUN go env GOARCH >/goarch \
+    && go env GOARM >/goarm
 
 FROM --platform=linux/amd64 $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
@@ -16,9 +16,9 @@ RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAI
 # Promtail requires debian or ubuntu as the base image to support systemd journal reading
 FROM public.ecr.aws/ubuntu/ubuntu:noble
 # tzdata required for the timestamp stage to work
-RUN apt-get update && \
-  apt-get install -qy tzdata ca-certificates wget libsystemd-dev && \
-  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN apt-get update \
+    && apt-get install -qy tzdata ca-certificates wget libsystemd-dev \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
 COPY clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
 COPY clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml

@@ -4,8 +4,8 @@ ARG GO_VERSION=1.24
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f cmd/promtail/Dockerfile .
 FROM golang:${GO_VERSION} AS goenv
-RUN go env GOARCH > /goarch && \
-  go env GOARM > /goarm
+RUN go env GOARCH >/goarch \
+    && go env GOARM >/goarm
 
 FROM $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
@@ -15,6 +15,6 @@ RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAI
 
 FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/cmd/loki-canary/loki-canary /usr/bin/loki-canary
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
-ENTRYPOINT [ "/usr/bin/loki-canary" ]
+ENTRYPOINT ["/usr/bin/loki-canary"]

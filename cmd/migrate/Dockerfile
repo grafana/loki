@@ -7,6 +7,6 @@ RUN make clean && make BUILD_IN_CONTAINER=false migrate
 FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/migrate/migrate /usr/bin/migrate
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
-ENTRYPOINT [ "/busybox/tail", "-f", "/dev/null" ]
+ENTRYPOINT ["/busybox/tail", "-f", "/dev/null"]

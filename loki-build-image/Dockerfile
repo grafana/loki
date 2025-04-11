@@ -11,39 +11,39 @@ ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-bullseye
 FROM ${GOLANG_BASE_IMAGE} AS helm
 ARG TARGETARCH
 ARG HELM_VER="v3.2.3"
-RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
-    install -t /usr/local/bin "linux-$TARGETARCH/helm"
-RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "helm-docs_Linux_x86_64") &&  \
-    curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
-    install -t /usr/local/bin helm-docs
+RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx \
+    && install -t /usr/local/bin "linux-$TARGETARCH/helm"
+RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "helm-docs_Linux_x86_64") \
+    && curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx \
+    && install -t /usr/local/bin helm-docs
 
 FROM alpine:3.21.3 AS lychee
 ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
-RUN apk add --no-cache curl && \
-    curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz && \
-    tar -xz -C /tmp -f /tmp/lychee-$LYCHEE_VER.tgz && \
-    mv /tmp/lychee /usr/bin/lychee && \
-    rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
+RUN apk add --no-cache curl \
+    && curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz \
+    && tar -xz -C /tmp -f /tmp/lychee-$LYCHEE_VER.tgz \
+    && mv /tmp/lychee /usr/bin/lychee \
+    && rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
 FROM alpine:3.21.3 AS golangci
-RUN apk add --no-cache curl && \
-    cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
+RUN apk add --no-cache curl \
+    && cd / \
+    && curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
 
 FROM alpine:3.21.3 AS buf
 ARG TARGETOS
-RUN apk add --no-cache curl && \
-    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
-    chmod +x "/usr/bin/buf"
+RUN apk add --no-cache curl \
+    && curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" \
+    && chmod +x "/usr/bin/buf"
 
 FROM alpine:3.21.3 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM ${GOLANG_BASE_IMAGE} AS drone
 ARG TARGETARCH
-RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
-    install -t /usr/local/bin drone
+RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx \
+    && install -t /usr/local/bin drone
 
 # Install faillint used to lint go imports in CI.
 # This collisions with the version of go tools used in the base image, thus we install it in its own image and copy it over.
@@ -79,23 +79,22 @@ RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 FROM aquasec/trivy AS trivy
 
 FROM ${GOLANG_BASE_IMAGE}
-RUN apt-get update && \
-    apt-get install -qy \
-    musl gnupg ragel \
-    file zip unzip jq gettext\
-    protobuf-compiler libprotobuf-dev \
-    libsystemd-dev jq && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN apt-get update \
+    && apt-get install -qy \
+        musl gnupg ragel \
+        file zip unzip jq gettext protobuf-compiler libprotobuf-dev \
+        libsystemd-dev jq \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install dependencies to cross build Promtail to ARM and ARM64.
-RUN dpkg --add-architecture armhf && \
-    dpkg --add-architecture arm64 && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    pkg-config \
-    gcc-aarch64-linux-gnu libc6-dev-arm64-cross libsystemd-dev:arm64 \
-    gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libsystemd-dev:armhf && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN dpkg --add-architecture armhf \
+    && dpkg --add-architecture arm64 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        pkg-config \
+        gcc-aarch64-linux-gnu libc6-dev-arm64-cross libsystemd-dev:arm64 \
+        gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libsystemd-dev:armhf \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=docker /usr/libexec/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx

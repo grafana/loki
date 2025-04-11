@@ -10,4 +10,4 @@ RUN make clean && make BUILD_IN_CONTAINER=false helm-test
 
 FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/production/helm/loki/src/helm-test/helm-test /usr/bin/helm-test
-ENTRYPOINT [ "/usr/bin/helm-test" ]
+ENTRYPOINT ["/usr/bin/helm-test"]
