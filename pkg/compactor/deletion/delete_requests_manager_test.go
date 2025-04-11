@@ -1019,10 +1019,6 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 	user2 := []byte("user2")
 	lblFooBar := mustParseLabel(`{foo="bar"}`)
 	lblFizzBuzz := mustParseLabel(`{fizz="buzz"}`)
-	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
-		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
-		{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
-	}}
 	type markSeriesProcessed struct {
 		userID, seriesID []byte
 		lbls             labels.Labels
@@ -1189,6 +1185,11 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			workingDir := t.TempDir()
+			deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+				{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+				{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
+			}}
+
 			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
@@ -1207,6 +1208,7 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
 			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
+			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			// when the mark phase ends, series progress should get cleared
 			mgr.MarkPhaseFinished()
@@ -1214,6 +1216,40 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 		})
 	}
+}
+
+func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
+	workingDir := t.TempDir()
+
+	user1 := []byte("user1")
+	lblFooBar := mustParseLabel(`{foo="bar"}`)
+	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 100, EndTime: 200, Status: StatusReceived},
+	}}
+
+	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+	require.NoError(t, err)
+	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+	require.NoError(t, mgr.MarkSeriesAsProcessed(user1, []byte(lblFooBar.String()), lblFooBar, "t1"))
+
+	// timeout the retention processing
+	mgr.MarkPhaseTimedOut()
+
+	// timeout should not clear the series progress
+	mgr.MarkPhaseFinished()
+	require.Len(t, mgr.processedSeries, 2)
+	require.NoError(t, mgr.storeSeriesProgress())
+	require.FileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+
+	// load the requests again for processing
+	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+	// not hitting the timeout should clear the series progress
+	mgr.MarkPhaseFinished()
+	require.Len(t, mgr.processedSeries, 0)
+	require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 }
 
 type storeAddReqDetails struct {
