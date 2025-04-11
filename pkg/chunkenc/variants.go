@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -12,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func newMultiExtractorSampleIterator(
@@ -69,9 +69,11 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 			for _, sample := range samples {
 				e.currLabels = append(e.currLabels, sample.Labels)
 				e.currBaseLabels = append(e.currBaseLabels, extractor.BaseLabels())
+
+				lblString := sample.Labels.String()
 				e.cur = append(e.cur, logproto.Sample{
 					Value:     sample.Value,
-					Hash:      xxhash.Sum64(e.currLine),
+					Hash:      util.UniqueSampleHash(lblString, e.currLine),
 					Timestamp: e.currTs,
 				})
 			}

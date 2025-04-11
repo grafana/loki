@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
@@ -345,23 +346,26 @@ func newSampleIterator(ctx context.Context,
 				}
 				statistics.AddPostFilterLines(1)
 
-				parsedLabels := samples[0].Labels
-				value := samples[0].Value
+				for _, sample := range samples {
 
-				// Get or create series for the parsed labels
-				labelString := parsedLabels.String()
-				s, exists := series[labelString]
-				if !exists {
-					s = createNewSeries(labelString, streamHash)
-					series[labelString] = s
+					parsedLabels := sample.Labels
+					value := sample.Value
+
+					// Get or create series for the parsed labels
+					labelString := parsedLabels.String()
+					s, exists := series[labelString]
+					if !exists {
+						s = createNewSeries(labelString, streamHash)
+						series[labelString] = s
+					}
+
+					// Add sample to the series
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: timestamp,
+						Value:     value,
+						Hash:      util.UniqueSampleHash(labelString, record.Line),
+					})
 				}
-
-				// Add sample to the series
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: timestamp,
-					Value:     value,
-					Hash:      0,
-				})
 			}
 		}
 	}
