@@ -3726,9 +3726,9 @@ func TestParseSampleExpr_String(t *testing.T) {
 	})
 
 	t.Run("it correctly surrounds regex containing backticks with double quotes", func(t *testing.T) {
-		query := "{foo=\"bar\"} | logfmt | msg=~\"`.`\""
+		query := "{foo=\"bar\"} | logfmt | msg=~\"`.\\\"`\""
 		expr, err := ParseExpr(query)
 		require.NoError(t, err)
-		require.Equal(t, "{foo=\"bar\"} | logfmt | msg=~\"`.`\"", expr.String())
+		require.Equal(t, query, expr.String())
 	})
 }
