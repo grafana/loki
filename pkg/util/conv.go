@@ -41,9 +41,9 @@ func RoundToMilliseconds(from, through time.Time) (model.Time, model.Time) {
 // LabelsToMetric converts a Labels to Metric
 // Don't do this on any performance sensitive paths.
 func LabelsToMetric(ls labels.Labels) model.Metric {
-	m := make(model.Metric, len(ls))
-	for _, l := range ls {
+	m := make(model.Metric, ls.Len())
+	ls.Range(func(l labels.Label) {
 		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
+	})
 	return m
 }

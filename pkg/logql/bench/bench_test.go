@@ -150,8 +150,11 @@ func BenchmarkLogQL(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					_, err := q.Exec(ctx)
+					r, err := q.Exec(ctx)
 					require.NoError(b, err)
+					b.ReportMetric(float64(r.Statistics.TotalDecompressedLines()), "linesScanned")
+					b.ReportMetric(float64(r.Statistics.TotalChunksDownloaded()), "chunks/dataobjSections")
+					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
 				}
 			})
 		}

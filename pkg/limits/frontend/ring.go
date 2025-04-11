@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,15 +29,17 @@ type RingStreamUsageGatherer struct {
 	ring          ring.ReadRing
 	pool          *ring_client.Pool
 	numPartitions int
+	cache         PartitionConsumersCache
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, numPartitions int) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache PartitionConsumersCache, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
 		logger:        logger,
 		ring:          ring,
 		pool:          pool,
 		numPartitions: numPartitions,
+		cache:         cache,
 	}
 }
 
@@ -117,37 +120,53 @@ type getAssignedPartitionsResponse struct {
 }
 
 func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, error) {
+	// Initialize result maps
+	highestTimestamp := make(map[int32]int64)
+	assigned := make(map[int32]string)
+
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
-	// Get the partitions assigned to each instance.
 	for i, instance := range rs.Instances {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
-			if err != nil {
+			errChan := make(chan error, 1)
+			defer close(errChan)
+
+			loaderFunc := ttlcache.LoaderFunc[string, logproto.GetAssignedPartitionsResponse](
+				func(c *ttlcache.Cache[string, logproto.GetAssignedPartitionsResponse], key string) *ttlcache.Item[string, logproto.GetAssignedPartitionsResponse] {
+					client, err := g.pool.GetClientFor(instance.Addr)
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+
+					resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+					return c.Set(key, *resp, ttlcache.DefaultTTL)
+				},
+			)
+
+			cached := g.cache.Get(instance.Addr, ttlcache.WithLoader(loaderFunc))
+
+			select {
+			case err := <-errChan:
 				return err
+			default:
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
-			if err != nil {
-				return err
-			}
-			// No need for a mutex here as responses is a "Structured variable"
-			// as described in https://go.dev/ref/spec#Variables.
-			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
+
+			protoResp := cached.Value()
+			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: &protoResp}
 			return nil
 		})
 	}
+
 	if err := errg.Wait(); err != nil {
 		return nil, err
 	}
 
-	// Deduplicate the partitions. This can happen if the call to
-	// GetAssignedPartitions is interleaved with a partition rebalance, such
-	// that two or more instances claim to be the consumer of the same
-	// partition at the same time. In case of conflicts, choose the instance
-	// with the latest timestamp.
-	highestTimestamp := make(map[int32]int64)
-	assigned := make(map[int32]string)
 	for _, resp := range responses {
 		for partition, assignedAt := range resp.Response.AssignedPartitions {
 			if t := highestTimestamp[partition]; t < assignedAt {

@@ -38,7 +38,9 @@ func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logg
 	metrics := kprom.NewMetrics(
 		"", // No prefix. We expect the input prometheus.Registered to be wrapped with a prefix.
 		kprom.Registerer(reg),
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+		enableKafkaHistogramMetrics(kafkaCfg.EnableKafkaHistograms),
+	)
 
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),

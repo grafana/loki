@@ -334,13 +334,13 @@ func labelSet(keyVals ...string) labels.Labels {
 		panic("not matching key-value pairs")
 	}
 
-	lbls := labels.Labels{}
+	lbls := labels.NewBuilder(labels.EmptyLabels())
 
 	for i := 0; i < len(keyVals)-1; i += 2 {
-		lbls = append(lbls, labels.Label{Name: keyVals[i], Value: keyVals[i+1]})
+		lbls.Set(keyVals[i], keyVals[i+1])
 	}
 
-	return lbls
+	return lbls.Labels()
 }
 
 func testPayload() (time.Time, string) {
