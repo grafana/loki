@@ -169,36 +169,36 @@ message Store {
 
 message Dataobj {
   // Total number of rows decompressed from storage in the primary fill stage.
-  int64 prePredicateDecompressedRows = 1;
+  int64 prePredicateDecompressedRows = 1 [(gogoproto.jsontag) = "prePredicateDecompressedRows"];
   // Total number of bytes decompressed from storage in the primary fill stage.
-  int64 prePredicateDecompressedBytes = 2;
+  int64 prePredicateDecompressedBytes = 2 [(gogoproto.jsontag) = "prePredicateDecompressedBytes"];
   // Total number of bytes decompressed from storage for structured metadata in the primary fill stage.
-  int64 prePredicateDecompressedStructuredMetadataBytes = 3;
+  int64 prePredicateDecompressedStructuredMetadataBytes = 3 [(gogoproto.jsontag) = "prePredicateDecompressedStructuredMetadataBytes"];
 
   // Total number of rows that passed the predicate
-  int64 postPredicateRows = 4;
+  int64 postPredicateRows = 4 [(gogoproto.jsontag) = "postPredicateRows"];
   // Number of additional bytes decompressed from storage in the secondary fill stage.
-  int64 postPredicateDecompressedBytes = 5;
+  int64 postPredicateDecompressedBytes = 5 [(gogoproto.jsontag) = "postPredicateDecompressedBytes"];
   // Total number of structured metadata bytes decompressed from storage in the secondary fill stage.
-  int64 postPredicateStructuredMetadataBytes = 6;
+  int64 postPredicateStructuredMetadataBytes = 6 [(gogoproto.jsontag) = "postPredicateStructuredMetadataBytes"];
 
   // Total rows that passed the pipeline filter
-  int64 postFilterRows = 7;
+  int64 postFilterRows = 7 [(gogoproto.jsontag) = "postFilterRows"];
 
   // Total pages scanned
-  int64 pagesScanned = 8;
+  int64 pagesScanned = 8 [(gogoproto.jsontag) = "pagesScanned"];
 
   // Total pages downloaded
-  int64 pagesDownloaded = 9;
+  int64 pagesDownloaded = 9 [(gogoproto.jsontag) = "pagesDownloaded"];
 
   // Total page bytes downloaded
-  int64 pagesDownloadedBytes = 10;
+  int64 pagesDownloadedBytes = 10 [(gogoproto.jsontag) = "pagesDownloadedBytes"];
 
   // Total requests to storage to fetch desired pages
-  int64 pageBatches = 11;
+  int64 pageBatches = 11 [(gogoproto.jsontag) = "pageBatches"];
 
   // Total possible rows in the data object
-  int64 totalRowsAvailable = 12;
+  int64 totalRowsAvailable = 12 [(gogoproto.jsontag) = "totalRowsAvailable"];
 }
 
 message Chunk {
