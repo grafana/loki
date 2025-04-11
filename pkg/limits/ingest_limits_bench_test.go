@@ -60,7 +60,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 					RateWindow:     rateWindow,
 					BucketDuration: time.Minute,
 				},
-				metadata:         make(map[string]map[int32][]streamMetadata),
+				metadata:         newStripes(bm.numPartitions),
 				metrics:          newMetrics(prometheus.NewRegistry()),
 				partitionManager: NewPartitionManager(log.NewNopLogger()),
 			}
@@ -69,31 +69,39 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 			now := time.Now()
 
 			// Initialize metadata for each tenant
-			for t := 0; t < bm.numTenants; t++ {
+			for t := range bm.numTenants {
 				tenant := fmt.Sprintf("benchmark-tenant-%d", t)
-				s.metadata[tenant] = make(map[int32][]streamMetadata)
 
 				// Create partitions with streams
-				for p := int32(0); p < int32(bm.numPartitions); p++ {
-					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPartition)
-					for i := 0; i < bm.streamsPerPartition; i++ {
+				for p := range bm.numPartitions {
+					i := uint64(p) & uint64(s.metadata.size-1)
+
+					if _, ok := s.metadata.stripes[i][tenant]; !ok {
+						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
+					}
+
+					if _, ok := s.metadata.stripes[i][tenant][int32(p)]; !ok {
+						s.metadata.stripes[i][tenant][int32(p)] = make([]*streamMetadata, bm.streamsPerPartition)
+					}
+
+					for j := range bm.streamsPerPartition {
 						// Create stream with multiple rate buckets
 						stream := streamMetadata{
-							hash:        uint64(i),
-							lastSeenAt:  now.Add(-time.Duration(i) * time.Minute).UnixNano(),
-							totalSize:   uint64(1000 * (i + 1)),
+							hash:        uint64(j),
+							lastSeenAt:  now.Add(-time.Duration(j) * time.Minute).UnixNano(),
+							totalSize:   uint64(1000 * (j + 1)),
 							rateBuckets: make([]rateBucket, rateBuckets),
 						}
 
 						// Add rate buckets with some inside and outside the rate window
-						for j := 0; j < rateBuckets; j++ {
-							bucketTime := now.Add(-time.Duration(j*2) * time.Minute)
-							stream.rateBuckets[j] = rateBucket{
+						for k := range rateBuckets {
+							bucketTime := now.Add(-time.Duration(k*2) * time.Minute)
+							stream.rateBuckets[k] = rateBucket{
 								timestamp: bucketTime.UnixNano(),
-								size:      uint64(500 * (j + 1)),
+								size:      uint64(500 * (k + 1)),
 							}
 						}
-						s.metadata[tenant][p][i] = stream
+						s.metadata.stripes[i][tenant][int32(p)][j] = &stream
 					}
 				}
 			}
@@ -136,35 +144,48 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 					RateWindow:     rateWindow,
 					BucketDuration: time.Minute,
 				},
-				metadata:         make(map[string]map[int32][]streamMetadata),
+				metadata:         newStripes(bm.numPartitions),
 				metrics:          newMetrics(prometheus.NewRegistry()),
 				partitionManager: NewPartitionManager(log.NewNopLogger()),
 			}
 
 			// Initialize metadata for each tenant
 			now := time.Now()
-			for t := 0; t < bm.numTenants; t++ {
-				tenant := fmt.Sprintf("benchmark-tenant-%d", t)
-				s.metadata[tenant] = make(map[int32][]streamMetadata)
 
-				for p := int32(0); p < int32(bm.numPartitions); p++ {
-					s.metadata[tenant][p] = make([]streamMetadata, bm.streamsPerPartition)
-					for i := 0; i < bm.streamsPerPartition; i++ {
+			// Initialize metadata for each tenant
+			for t := range bm.numTenants {
+				tenant := fmt.Sprintf("benchmark-tenant-%d", t)
+
+				// Create partitions with streams
+				for p := range bm.numPartitions {
+					i := uint64(p) & uint64(s.metadata.size-1)
+
+					if _, ok := s.metadata.stripes[i][tenant]; !ok {
+						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
+					}
+
+					if _, ok := s.metadata.stripes[i][tenant][int32(p)]; !ok {
+						s.metadata.stripes[i][tenant][int32(p)] = make([]*streamMetadata, bm.streamsPerPartition)
+					}
+
+					for j := range bm.streamsPerPartition {
+						// Create stream with multiple rate buckets
 						stream := streamMetadata{
-							hash:        uint64(i),
-							lastSeenAt:  now.Add(-time.Duration(i) * time.Minute).UnixNano(),
-							totalSize:   uint64(1000 * (i + 1)),
+							hash:        uint64(j),
+							lastSeenAt:  now.Add(-time.Duration(j) * time.Minute).UnixNano(),
+							totalSize:   uint64(1000 * (j + 1)),
 							rateBuckets: make([]rateBucket, rateBuckets),
 						}
 
-						for j := 0; j < rateBuckets; j++ {
-							bucketTime := now.Add(-time.Duration(j*2) * time.Minute)
-							stream.rateBuckets[j] = rateBucket{
+						// Add rate buckets with some inside and outside the rate window
+						for k := range rateBuckets {
+							bucketTime := now.Add(-time.Duration(k*2) * time.Minute)
+							stream.rateBuckets[k] = rateBucket{
 								timestamp: bucketTime.UnixNano(),
-								size:      uint64(500 * (j + 1)),
+								size:      uint64(500 * (k + 1)),
 							}
 						}
-						s.metadata[tenant][p][i] = stream
+						s.metadata.stripes[i][tenant][int32(p)][j] = &stream
 					}
 				}
 			}
