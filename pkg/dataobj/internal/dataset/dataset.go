@@ -87,3 +87,11 @@ type Row struct {
 	Index  int     // Index of the row in the dataset.
 	Values []Value // Values for the row, one per [Column].
 }
+
+func (r Row) Size() int64 {
+	var size int64
+	for _, v := range r.Values {
+		size += int64(v.Size())
+	}
+	return size
+}

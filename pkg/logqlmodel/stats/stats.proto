@@ -160,6 +160,45 @@ message Store {
 
   // Total number of lines filtered by pipeline wrapper.
   int64 pipelineWrapperFilteredLines = 7 [(gogoproto.jsontag) = "pipelineWrapperFilteredLines"];
+
+  Dataobj dataobj = 8 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "dataobj"
+  ];
+}
+
+message Dataobj {
+  // Total number of rows decompressed from storage in the primary fill stage.
+  int64 prePredicateDecompressedRows = 1;
+  // Total number of bytes decompressed from storage in the primary fill stage.
+  int64 prePredicateDecompressedBytes = 2;
+  // Total number of bytes decompressed from storage for structured metadata in the primary fill stage.
+  int64 prePredicateDecompressedStructuredMetadataBytes = 3;
+
+  // Total number of rows that passed the predicate
+  int64 postPredicateRows = 4;
+  // Number of additional bytes decompressed from storage in the secondary fill stage.
+  int64 postPredicateDecompressedBytes = 5;
+  // Total number of structured metadata bytes decompressed from storage in the secondary fill stage.
+  int64 postPredicateStructuredMetadataBytes = 6;
+
+  // Total rows that passed the pipeline filter
+  int64 postFilterRows = 7;
+
+  // Total pages scanned
+  int64 pagesScanned = 8;
+
+  // Total pages downloaded
+  int64 pagesDownloaded = 9;
+
+  // Total page bytes downloaded
+  int64 pagesDownloadedBytes = 10;
+
+  // Total requests to storage to fetch desired pages
+  int64 pageBatches = 11;
+
+  // Total possible rows in the data object
+  int64 totalRowsAvailable = 12;
 }
 
 message Chunk {
