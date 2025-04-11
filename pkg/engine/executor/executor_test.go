@@ -38,21 +38,8 @@ func TestDataGenerator(t *testing.T) {
 				limit: tt.limit,
 			})
 
-			var (
-				batches int64
-				rows    int64
-			)
-
 			pipeline := Run(context.Background(), Config{BatchSize: tt.batchSize}, b.Plan())
-			for err := pipeline.Read(); err != EOF; err = pipeline.Read() {
-				batch, err := pipeline.Value()
-				if err != nil {
-					t.Fatalf("did not expect error, got %s", err.Error())
-					break
-				}
-				batches++
-				rows += batch.NumRows()
-			}
+			batches, rows := collect(t, pipeline)
 
 			require.Equal(t, tt.expectedBatches, batches)
 			require.Equal(t, tt.expectedRows, rows)
@@ -104,21 +91,8 @@ func TestLimit(t *testing.T) {
 				limit: 100,
 			})
 
-			var (
-				batches int64
-				rows    int64
-			)
-
 			pipeline := Run(context.Background(), Config{BatchSize: tt.batchSize}, b.Plan())
-			for err := pipeline.Read(); err != EOF; err = pipeline.Read() {
-				batch, err := pipeline.Value()
-				if err != nil {
-					t.Fatalf("did not expect error, got %s", err.Error())
-					break
-				}
-				batches++
-				rows += batch.NumRows()
-			}
+			batches, rows := collect(t, pipeline)
 
 			require.Equal(t, tt.expectedBatches, batches)
 			require.Equal(t, tt.expectedRows, rows)
@@ -139,22 +113,27 @@ func TestSortMerge(t *testing.T) {
 		limit: 10,
 	})
 
-	var (
-		batches int64
-		rows    int64
-	)
+	pipeline := Run(context.Background(), Config{BatchSize: 10}, b.Plan())
+	batches, rows := collect(t, pipeline)
 
-	pipeline := Run(context.Background(), Config{BatchSize: 5}, b.Plan())
-	for err := pipeline.Read(); err != EOF; err = pipeline.Read() {
-		batch, err := pipeline.Value()
+	require.Equal(t, int64(3), batches)
+	require.Equal(t, int64(30), rows)
+}
+
+func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
+	for {
+		err := pipeline.Read()
+		if err == EOF {
+			break
+		}
 		if err != nil {
 			t.Fatalf("did not expect error, got %s", err.Error())
 			break
 		}
+		batch, _ := pipeline.Value()
+		t.Log("batch", batch, "err", err)
 		batches++
 		rows += batch.NumRows()
 	}
-
-	require.Equal(t, int64(30), batches)
-	require.Equal(t, int64(30), rows)
+	return batches, rows
 }
