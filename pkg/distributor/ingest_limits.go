@@ -129,9 +129,9 @@ func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams
 	}
 	reasonsForHashes := make(map[uint64][]string)
 	for _, result := range resp.Results {
-		reasons := reasonsForHashes[result.StreamHash]
-		reasons = append(reasons, result.Reason)
-		reasonsForHashes[result.StreamHash] = reasons
+		hashes := reasonsForHashes[result.StreamHash]
+		hashes = append(hashes, result.Reason)
+		reasonsForHashes[result.StreamHash] = hashes
 	}
 	return true, reasonsForHashes, nil
 }
