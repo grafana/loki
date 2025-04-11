@@ -2,8 +2,12 @@ package syntax
 
 import (
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func Test_Extractor(t *testing.T) {
@@ -104,4 +108,325 @@ func Test_Extractor(t *testing.T) {
 			require.Len(t, extractors, 1)
 		})
 	}
+}
+
+func Test_MultiVariantExpr_Extractors(t *testing.T) {
+	t.Parallel()
+
+	type sample struct {
+		value  int
+		labels labels.Labels
+	}
+
+	t.Run("single variant is equivalent to non-variant", func(t *testing.T) {
+		for _, tc := range []struct {
+			query        string
+			variantQuery string
+			testLine     string
+		}{
+			{
+				query:        `count_over_time({app="foo"} | json [5m])`,
+				variantQuery: `variants(count_over_time({app="foo"} | json [5m])) of ({app="foo"} | json [5m])`,
+				testLine:     `{"error": true, "method": "GET", "size": "1024", "latency": "250s"}`,
+			},
+			{
+				query:        `sum by (method) (count_over_time({app="foo"} | json [5m]))`,
+				variantQuery: `variants(sum by (method) (count_over_time({app="foo"} | json [5m]))) of ({app="foo"} | json [5m])`,
+				testLine:     `{"error": true, "method": "GET", "size": "1024", "latency": "250s"}`,
+			},
+			{
+				query:        `sum by (method) (sum_over_time({app="foo"} | logfmt | unwrap duration(latency) [5m]))`,
+				variantQuery: `variants(sum by (method) (sum_over_time({app="foo"} | logfmt | unwrap duration(latency) [5m]))) of ({app="foo"} | json [5m])`,
+				testLine:     `error=true method="GET" size=1024 latency="250s"`,
+			},
+		} {
+			t.Run(tc.query, func(t *testing.T) {
+				now := time.Now()
+				expr, err := ParseSampleExpr(tc.query)
+				require.NoError(t, err)
+
+				extractors, err := expr.Extractors()
+				require.NoError(t, err)
+				require.Len(t, extractors, 1, "should return a single consolidated extractor")
+
+				// Test that the extractor actually works with a mock stream
+				lbls := labels.Labels{
+					{Name: "app", Value: "foo"},
+				}
+
+				streamExtractor := extractors[0].ForStream(lbls)
+				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
+
+				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				require.True(t, ok)
+
+				seen := make(map[string]float64, len(samples))
+				for _, s := range samples {
+					lbls := s.Labels.Labels()
+					seen[lbls.String()] = s.Value
+				}
+
+				mvExpr, err := ParseSampleExpr(tc.variantQuery)
+				require.NoError(t, err)
+
+				extractors, err = mvExpr.Extractors()
+				require.NoError(t, err)
+				require.Len(t, extractors, 1, "should return a single consolidated extractor")
+
+				streamExtractor = extractors[0].ForStream(lbls)
+				require.NotNil(t, streamExtractor, "multi-variant stream extractor should not be nil")
+
+				mvSamples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				require.True(t, ok)
+
+				// remove variant label
+				mvSeen := make(map[string]float64, len(mvSamples))
+				for _, s := range mvSamples {
+					lbls := s.Labels.Labels()
+					newLbls := make(labels.Labels, 0, len(lbls))
+					for _, lbl := range lbls {
+						if lbl.Name == "__variant__" {
+							continue
+						}
+						newLbls = append(newLbls, lbl)
+					}
+					mvSeen[newLbls.String()] = s.Value
+				}
+
+				require.Equal(t, seen, mvSeen)
+			})
+		}
+	})
+
+	t.Run("multiple extractors", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			query    string
+			testLine string
+			expected []sample
+		}{
+			{
+				name: "two logfmt variants with common filter and parser",
+				query: `variants(
+					count_over_time({app="foo"} |= "error" | logfmt [5m]),
+					bytes_over_time({app="foo"} |= "error" | logfmt [5m])
+				) of ({app="foo"} |= "error" | logfmt [5m])`,
+				testLine: "error=true method=GET status=500 size=1024 latency=250ms",
+				expected: []sample{
+					{
+						1,
+						labels.FromStrings(
+							constants.VariantLabel, "0",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"size", "1024",
+							"status", "500",
+						),
+					},
+					{
+						len("error=true method=GET status=500 size=1024 latency=250ms"),
+						labels.FromStrings(
+							constants.VariantLabel, "1",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"size", "1024",
+							"status", "500",
+						),
+					},
+				},
+			},
+			{
+				name: "two variants with different unwraps",
+				query: `variants(
+					sum_over_time({app="foo"} |= "error" | json | unwrap status [5m]),
+					sum_over_time({app="foo"} |= "error" | json | unwrap duration(latency) [5m])
+				) of ({app="foo"} |= "error" | json [5m])`,
+				testLine: `{"error": true, "method": "GET", "status": 500, "latency": "250s"}`,
+				expected: []sample{
+					{
+						500,
+						labels.FromStrings(
+							constants.VariantLabel, "0",
+							"app", "foo",
+							"error", "true",
+							"latency", "250s",
+							"method", "GET",
+						),
+					},
+					{
+						250,
+						labels.FromStrings(
+							constants.VariantLabel, "1",
+							"app", "foo",
+							"error", "true",
+							"method", "GET",
+							"status", "500",
+						),
+					},
+				},
+			},
+			{
+				name: "three json variants with different label extractors",
+				query: `variants(
+					sum_over_time({app="foo"} |= "error" | json | unwrap bytes(size) [5m]),
+					sum_over_time({app="foo"} |= "error" | json | unwrap duration(latency) [5m]),
+					count_over_time({app="foo"} |= "error" | json [5m])
+				) of ({app="foo"} |= "error" | json [5m])`,
+				testLine: `{"error": true, "method": "GET", "size": "1024", "latency": "250s"}`,
+				expected: []sample{
+					{
+						1024,
+						labels.FromStrings(
+							constants.VariantLabel, "0",
+							"app", "foo",
+							"error", "true",
+							"latency", "250s",
+							"method", "GET",
+						),
+					},
+					{
+						250,
+						labels.FromStrings(
+							constants.VariantLabel, "1",
+							"app", "foo",
+							"error", "true",
+							"method", "GET",
+							"size", "1024",
+						),
+					},
+					{
+						1,
+						labels.FromStrings(
+							constants.VariantLabel, "2",
+							"app", "foo",
+							"error", "true",
+							"latency", "250s",
+							"method", "GET",
+							"size", "1024",
+						),
+					},
+				},
+			},
+			{
+				name: "three logfmt variants with different extractors",
+				query: `variants(
+					count_over_time({app="foo"} |= "error" | logfmt [5m]),
+					bytes_over_time({app="foo"} |= "error" | logfmt [5m]),
+					sum_over_time({app="foo"} |= "error" | logfmt | unwrap size [5m])
+				) of ({app="foo"} |= "error" | logfmt [5m])`,
+				testLine: "error=true method=GET status=500 size=1024 latency=250ms",
+				expected: []sample{
+					{
+						1,
+						labels.FromStrings(
+							constants.VariantLabel, "0",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"size", "1024",
+							"status", "500",
+						),
+					},
+					{
+						len("error=true method=GET status=500 size=1024 latency=250ms"),
+						labels.FromStrings(
+							constants.VariantLabel, "1",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"size", "1024",
+							"status", "500",
+						),
+					},
+					{
+						1024,
+						labels.FromStrings(
+							constants.VariantLabel, "2",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"status", "500",
+						),
+					},
+				},
+			},
+			{
+				name: "variants with nested expressions",
+				query: `variants(
+					sum by (status) (count_over_time({app="foo"} |= "error" | logfmt [5m])),
+					bytes_over_time({app="foo"} |= "error" | logfmt [5m]),
+					sum by (method) (sum_over_time({app="foo"} |= "error" | logfmt | unwrap size [5m]))
+				) of ({app="foo"} |= "error" | logfmt [5m])`,
+				testLine: "error=true method=GET status=500 size=1024 latency=250ms",
+				expected: []sample{
+					{
+						1,
+						labels.FromStrings(
+							constants.VariantLabel, "0",
+							"status", "500",
+						),
+					},
+					{
+						len("error=true method=GET status=500 size=1024 latency=250ms"),
+						labels.FromStrings(
+							constants.VariantLabel, "1",
+							"app", "foo",
+							"error", "true",
+							"latency", "250ms",
+							"method", "GET",
+							"size", "1024",
+							"status", "500",
+						),
+					},
+					{
+						1024,
+						labels.FromStrings(
+							constants.VariantLabel, "2",
+							"method", "GET",
+						),
+					},
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				now := time.Now()
+				expr, err := ParseSampleExpr(tc.query)
+				require.NoError(t, err)
+
+				extractors, err := expr.Extractors()
+				require.NoError(t, err)
+				require.Len(t, extractors, 1, "should return a single consolidated extractor")
+
+				// Test that the extractor actually works with a mock stream
+				lbls := labels.Labels{
+					{Name: "app", Value: "foo"},
+				}
+
+				streamExtractor := extractors[0].ForStream(lbls)
+				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
+
+				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				require.True(t, ok)
+
+				expectedSamples := make(map[string]float64, len(tc.expected))
+				for _, s := range tc.expected {
+					expectedSamples[s.labels.String()] = float64(s.value)
+				}
+
+				seenSamples := make(map[string]float64, len(samples))
+				for _, s := range samples {
+					seenSamples[s.Labels.String()] = s.Value
+				}
+
+				require.Equal(t, expectedSamples, seenSamples)
+			})
+		}
+	})
 }
