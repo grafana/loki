@@ -17,7 +17,7 @@ import (
 
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
-	ExceedsLimits(context.Context, *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error)
+	exceedsLimits(context.Context, *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -34,7 +34,7 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -102,12 +102,12 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 // that exceeded the per-tenant limits, and for each stream the reasons it
 // exceeded the limits. This slice can be nil. An error is returned if the
 // limits could not be checked.
-func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, []exceedsIngestLimitsResult, error) {
+func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, []exceedsIngestLimitsResult, error) {
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
 		return false, nil, err
 	}
-	resp, err := l.client.ExceedsLimits(ctx, req)
+	resp, err := l.client.exceedsLimits(ctx, req)
 	if err != nil {
 		return false, nil, err
 	}
