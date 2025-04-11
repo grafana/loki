@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -304,6 +305,8 @@ func NewTenantTopicWriter(
 		return nil, fmt.Errorf("unknown strategy %q", strategy.String())
 	}
 
+	reg = prometheus.WrapRegistererWithPrefix("tenant_topic_tee_", reg)
+
 	t := &TenantTopicWriter{
 		cfg:    cfg,
 		logger: logger,
@@ -314,24 +317,20 @@ func NewTenantTopicWriter(
 			reg,
 		),
 		resolver: resolver,
-		teeBatchSize: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_distributor_tenant_topic_tee_batch_size_bytes",
+		teeBatchSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:    "batch_size_bytes",
 			Help:    "Size in bytes of batches sent to Kafka by the tenant topic tee",
 			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<20, 10),
 		}),
-		teeQueueLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_distributor_tenant_topic_tee_queue_duration_seconds",
+		teeQueueLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:    "queue_duration_seconds",
 			Help:    "Duration in seconds spent waiting in queue by the tenant topic tee",
 			Buckets: prometheus.DefBuckets,
 		}),
-		teeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_distributor_tenant_topic_tee_errors_total",
+		teeErrors: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "errors_total",
 			Help: "Total number of errors encountered by the tenant topic tee",
 		}, []string{"reason"}),
-	}
-
-	if reg != nil {
-		reg.MustRegister(t.teeBatchSize, t.teeQueueLatency, t.teeErrors)
 	}
 
 	return t, nil
