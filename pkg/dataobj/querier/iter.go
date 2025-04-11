@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
@@ -363,7 +362,7 @@ func newSampleIterator(ctx context.Context,
 					s.Samples = append(s.Samples, logproto.Sample{
 						Timestamp: timestamp,
 						Value:     value,
-						Hash:      util.UniqueSampleHash(labelString, record.Line),
+						Hash:      0,
 					})
 				}
 			}
