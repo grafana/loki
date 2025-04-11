@@ -465,7 +465,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 						})
 					}
 
-					if stop := fn(nil, s[0].ref.FingerprintModel(), chks); stop {
+					if stop := fn(labels.EmptyLabels(), s[0].ref.FingerprintModel(), chks); stop {
 						return nil
 					}
 				}
