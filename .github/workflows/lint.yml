@@ -46,4 +46,4 @@ jobs:
       - name: Check drift
         run: |
           git diff
-          git diff-index --quiet --cached HEAD --
+          git diff-index --quiet HEAD --
