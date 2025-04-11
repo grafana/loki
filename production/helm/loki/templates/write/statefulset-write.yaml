@@ -117,7 +117,7 @@ spec:
           lifecycle:
             preStop:
               httpGet:
-                path: "/ingester/shutdown?terminate=false"
+                path: "/ingester/shutdown?terminate=false&flush=true"
                 port: http-metrics
           {{- end }}
           volumeMounts:
