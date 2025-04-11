@@ -9677,6 +9677,7 @@ false
   },
   "legacyReadTarget": false,
   "lifecycle": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -9879,6 +9880,15 @@ false
 			<td>read.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the read container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for read pods. If empty, applies no livenessProbe</td>
 			<td><pre lang="json">
 {}
 </pre>
