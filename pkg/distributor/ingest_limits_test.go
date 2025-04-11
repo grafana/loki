@@ -9,6 +9,7 @@ import (
 	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -16,6 +17,7 @@ import (
 // mockIngestLimitsFrontendClient mocks the RPC calls for tests.
 type mockIngestLimitsFrontendClient struct {
 	t               *testing.T
+	calls           atomic.Uint64
 	expectedRequest *logproto.ExceedsLimitsRequest
 	response        *logproto.ExceedsLimitsResponse
 	responseErr     error
@@ -23,6 +25,7 @@ type mockIngestLimitsFrontendClient struct {
 
 // Implements the ingestLimitsFrontendClient interface.
 func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+	c.calls.Add(1)
 	require.Equal(c.t, c.expectedRequest, r)
 	if c.responseErr != nil {
 		return nil, c.responseErr

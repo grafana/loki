@@ -722,16 +722,39 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, _, err := d.ingestLimits.exceedsLimits(ctx, tenantID, streams)
+		streamsWithinLimits, reasonsForStreams, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if exceedsLimits {
-			if d.cfg.IngestLimitsDryRunEnabled {
-				level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-			} else {
-				// TODO(grobinson): This will be removed, as we only want to fail the request
-				// when specific limits are exceeded.
-				return nil, httpgrpc.Error(http.StatusBadRequest, "request exceeded limits")
+		} else if len(streamsWithinLimits) == 0 {
+			level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
+			// TODO(grobinson): Do we need to create another map for fast lookups?
+			streamsForReasons := make(map[string][]uint64)
+			for streamHash, reasons := range reasonsForStreams {
+				for _, reason := range reasons {
+					tmp := streamsForReasons[reason]
+					tmp = append(tmp, streamHash)
+					streamsForReasons[reason] = tmp
+				}
+			}
+			newStreams := streamsForReasons[limits_frontend.ReasonExceedsMaxStreams]
+			if !d.cfg.IngestLimitsDryRunEnabled {
+				// TODO(grobinson): Return the reasons for each stream, instead of
+				// generic error messages.
+				if len(newStreams) > 0 {
+					return nil, httpgrpc.Error(
+						http.StatusBadRequest,
+						"request exceeded limits: max streams exceeded",
+					)
+				}
+				rateLimitedStreams := streamsForReasons[limits_frontend.ReasonExceedsRateLimit]
+				// If a stream is rate limited, then all streams are rate limited,
+				// and the entire request should be rejected.
+				if len(rateLimitedStreams) > 0 {
+					return nil, httpgrpc.Error(
+						http.StatusBadRequest,
+						"request exceeded limits: rate limit exceeded",
+					)
+				}
 			}
 		}
 	}
