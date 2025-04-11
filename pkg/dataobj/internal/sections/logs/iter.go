@@ -96,10 +96,6 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 // determine the column type. The list of columns must match the columns used
 // to create the row.
 func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
-	if record.Line == nil {
-		record.Line = make([]byte, 0)
-	}
-
 	metadataColumns := metadataColumns(columns)
 	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
 	record.Metadata = record.Metadata[:metadataColumns]

@@ -68,7 +68,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 	n.mu.RUnlock()
 
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h), &sync.Map{}}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -94,7 +94,6 @@ func IsNoopPipeline(p Pipeline) bool {
 
 type noopStreamPipeline struct {
 	builder *LabelsBuilder
-	cache   *sync.Map
 }
 
 func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
@@ -104,12 +103,7 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	for i, lb := range structuredMetadata {
-		if cached, ok := n.cache.Load(lb.Name); ok {
-			structuredMetadata[i].Name = cached.(string)
-		} else {
-			structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
-			n.cache.Store(lb.Name, structuredMetadata[i].Name)
-		}
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
 	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
@@ -188,11 +182,10 @@ func NewPipeline(stages []Stage) Pipeline {
 type streamPipeline struct {
 	stages  []Stage
 	builder *LabelsBuilder
-	cache   *sync.Map
 }
 
 func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
-	return &streamPipeline{stages, labelsBuilder, &sync.Map{}}
+	return &streamPipeline{stages, labelsBuilder}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -233,12 +226,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	p.builder.Reset()
 
 	for i, lb := range structuredMetadata {
-		if cached, ok := p.cache.Load(lb.Name); ok {
-			structuredMetadata[i].Name = cached.(string)
-		} else {
-			structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
-			p.cache.Store(lb.Name, lb.Name)
-		}
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)

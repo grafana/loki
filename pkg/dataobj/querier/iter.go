@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 	"sync"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -118,24 +115,6 @@ func newEntryIterator(ctx context.Context,
 		}
 	}
 	return top.Iterator(), nil
-}
-
-// Copies the label names from src to dst, while re-using the memory for values
-func copyLabelNames(dst labels.Labels, src labels.Labels) labels.Labels {
-	for i, label := range src {
-		dst[i].Name = strings.Clone(label.Name)
-		dst[i].Value = label.Value
-	}
-	return dst
-}
-
-// Copies the label values into a new slice. We re-use the label names as they were previously copied by Process.
-func copyLabelValues(in labels.Labels) labels.Labels {
-	lb := make(labels.Labels, len(in))
-	for i, label := range in {
-		lb[i] = labels.Label{Name: label.Name, Value: strings.Clone(label.Value)}
-	}
-	return lb
 }
 
 // entryHeap implements a min-heap of entries based on a custom less function.

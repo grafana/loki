@@ -224,7 +224,9 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 			columnRead := columnRow - startRow
 			for i := columnRead; i < int64(maxRead); i++ {
-				// Reset values to 0 without discarding any memory they are pointing to
+				// Reset values to 0 without discarding any memory they are pointing to,
+				// rather than setting it to NULL. This prevents the caller from being able
+				// to distinguish between the zero value and a NULL.
 				if !s[n+int(i)].Values[columnIndex].IsNil() {
 					s[n+int(i)].Values[columnIndex].Zero()
 				}
