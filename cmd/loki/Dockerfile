@@ -32,4 +32,4 @@ RUN mkdir -p /loki/rules \
 USER 10001
 EXPOSE 3100
 ENTRYPOINT ["/usr/bin/loki"]
-CMD ["-config.file=/etc/loki/local-config.yaml"]
+CMD [ "-config.file=/etc/loki/local-config.yaml" ]

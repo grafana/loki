@@ -44,4 +44,6 @@ jobs:
       - name: Run dockerfmt
         run: make BUILD_IN_CONTAINER=false fmt-dockerfile
       - name: Check drift
-        run: git diff-index --quiet --cached HEAD --
+        run: |
+          git diff
+          git diff-index --quiet --cached HEAD --
