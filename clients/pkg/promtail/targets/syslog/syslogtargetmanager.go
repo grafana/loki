@@ -40,8 +40,7 @@ func NewSyslogTargetManager(
 		if err != nil {
 			return nil, err
 		}
-
-		t, err := NewSyslogTarget(metrics, logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig)
+		t, err := NewSyslogTarget(metrics, logger, pipeline.Wrap(client), cfg.RelabelConfigs, cfg.SyslogConfig, cfg.Encoding)
 		if err != nil {
 			return nil, err
 		}
