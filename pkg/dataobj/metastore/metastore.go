@@ -9,7 +9,7 @@ import (
 
 type Metastore interface {
 	// Streams returns all streams corresponding to the given matchers between [start,end]
-	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error)
+	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 
 	// DataObjects returns paths to all matching the given matchers between [start,end]
 	// TODO(chaudum); The comment is not correct, because the implementation does not filter by matchers, only by [start, end].
