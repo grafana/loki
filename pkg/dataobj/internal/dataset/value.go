@@ -8,11 +8,11 @@ import (
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Helper types
 type (
-	stringptr *byte
 	bytearray *byte
 )
 
@@ -37,6 +37,9 @@ type Value struct {
 	// num holds the value for numeric types, or the string length for string
 	// types.
 	num uint64
+
+	// cap holds the capacity for byte slice pointed to by any, if applicable.
+	cap uint64
 
 	// If any is of type [datasetmd.ValueType], then the value is in num as
 	// described above.
@@ -63,19 +66,12 @@ func Uint64Value(v uint64) Value {
 	}
 }
 
-// StringValue returns a [Value] for a string.
-func StringValue(v string) Value {
-	return Value{
-		num: uint64(len(v)),
-		any: (stringptr)(unsafe.StringData(v)),
-	}
-}
-
 // ByteArrayValue returns a [Value] for a byte slice representing a string.
 func ByteArrayValue(v []byte) Value {
 	return Value{
 		num: uint64(len(v)),
 		any: (bytearray)(unsafe.SliceData(v)),
+		cap: uint64(cap(v)),
 	}
 }
 
@@ -101,8 +97,6 @@ func (v Value) Type() datasetmd.ValueType {
 	switch v := v.any.(type) {
 	case datasetmd.ValueType:
 		return v
-	case stringptr:
-		return datasetmd.VALUE_TYPE_STRING
 	case bytearray:
 		return datasetmd.VALUE_TYPE_BYTE_ARRAY
 	default:
@@ -112,7 +106,7 @@ func (v Value) Type() datasetmd.ValueType {
 
 // Int64 returns v's value as an int64. It panics if v is not a
 // [datasetmd.VALUE_TYPE_INT64].
-func (v Value) Int64() int64 {
+func (v *Value) Int64() int64 {
 	if expect, actual := datasetmd.VALUE_TYPE_INT64, v.Type(); expect != actual {
 		panic(fmt.Sprintf("dataset.Value type is %s, not %s", actual, expect))
 	}
@@ -121,31 +115,75 @@ func (v Value) Int64() int64 {
 
 // Uint64 returns v's value as a uint64. It panics if v is not a
 // [datasetmd.VALUE_TYPE_UINT64].
-func (v Value) Uint64() uint64 {
+func (v *Value) Uint64() uint64 {
 	if expect, actual := datasetmd.VALUE_TYPE_UINT64, v.Type(); expect != actual {
 		panic(fmt.Sprintf("dataset.Value type is %s, not %s", actual, expect))
 	}
 	return v.num
 }
 
-// String returns v's value as a string. Because of Go's String method
-// convention, if v is not a string, String returns a string of the form
-// "VALUE_TYPE_T", where T is the underlying type of v.
-func (v Value) String() string {
-	if sp, ok := v.any.(stringptr); ok {
-		return unsafe.String(sp, v.num)
-	}
-	return v.Type().String()
-}
-
 // ByteSlice returns v's value as a byte slice. If v is not a string,
 // ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
 // underlying type of v.
-func (v Value) ByteArray() []byte {
+func (v *Value) ByteArray() []byte {
 	if ba, ok := v.any.(bytearray); ok {
 		return unsafe.Slice(ba, v.num)
 	}
 	panic(fmt.Sprintf("dataset.Value type is %s, not %s", v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY))
+}
+
+// Buffer returns a slice with a capacity of at least sz. Existing
+// memory pointed to by Value is reused where possible, either
+// returning the underlying memory or growing it to be at least
+// sz.
+//
+// If Value does not point to any underlying memory, a new slice
+// is allocated.
+//
+// After calling Buffer, Value is updated to store the returned
+// slice.
+func (v *Value) Buffer(sz int) []byte {
+	if v.cap == 0 {
+		dst := make([]byte, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+		return dst
+	}
+
+	var dst []byte
+	// Depending on which type this value was previously used for dictates how we reference the memory.
+	switch v.any.(type) {
+	case bytearray:
+		dst = unsafe.Slice(v.any.(bytearray), int(v.cap))
+	default:
+		panic("unsupported value type for buffer in Value's 'any' field, got " + v.Type().String())
+	}
+
+	// Grow the buffer attached to this Value if necessary.
+	if v.cap < uint64(sz) {
+		dst = slicegrow.GrowToCap(dst, sz)
+		v.any = (bytearray)(unsafe.SliceData(dst))
+		v.cap = uint64(cap(dst))
+	}
+	return dst
+}
+
+// SetByteArrayValue updates the value to point to the provided byte slice.
+// This will overwrite any existing data stored in this Value and update it to be of type [datasetmd.VALUE_TYPE_BYTE_ARRAY].
+func (v *Value) SetByteArrayValue(b []byte) {
+	v.any = (bytearray)(unsafe.SliceData(b))
+	v.num = uint64(len(b))
+	v.cap = uint64(cap(b))
+}
+
+// Zero resets the value to its zero state while retaining pointers to any existing memory.
+// After calling Zero:
+// - The value will report as zero but not nil if it points to underlying memory
+// - The value will also report as nil only if it doesn't point to any underlying memory
+// - Any subsequent operations that read the value will treat it as empty
+// - Any subsequent operations that write to a non-nil zero value will re-use the underlying memory.
+func (v *Value) Zero() {
+	v.num = 0
 }
 
 // MarshalBinary encodes v into a binary representation. Non-NULL values encode
@@ -169,9 +207,6 @@ func (v Value) MarshalBinary() (data []byte, err error) {
 		buf = binary.AppendVarint(buf, v.Int64())
 	case datasetmd.VALUE_TYPE_UINT64:
 		buf = binary.AppendUvarint(buf, v.Uint64())
-	case datasetmd.VALUE_TYPE_STRING:
-		str := v.String()
-		buf = append(buf, unsafe.Slice(unsafe.StringData(str), len(str))...)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		buf = append(buf, v.ByteArray()...)
 	default:
@@ -207,9 +242,6 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid uint64 value")
 		}
 		*v = Uint64Value(val)
-	case datasetmd.VALUE_TYPE_STRING:
-		str := string(data[n:])
-		*v = StringValue(str)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		*v = ByteArrayValue(data[n:])
 	default:
@@ -245,8 +277,6 @@ func CompareValues(a, b Value) int {
 		return cmp.Compare(a.Int64(), b.Int64())
 	case datasetmd.VALUE_TYPE_UINT64:
 		return cmp.Compare(a.Uint64(), b.Uint64())
-	case datasetmd.VALUE_TYPE_STRING:
-		return cmp.Compare(a.String(), b.String())
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		return bytes.Compare(a.ByteArray(), b.ByteArray())
 	default:

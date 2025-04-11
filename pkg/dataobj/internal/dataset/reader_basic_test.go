@@ -112,7 +112,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 			// Verify that read columns match the test data
 			testPerson := basicReaderTestData[row.Index]
 			if testPerson.middleName != "" {
-				require.Equal(t, testPerson.middleName, row.Values[1].String(), "middle_name mismatch")
+				require.Equal(t, testPerson.middleName, string(row.Values[1].ByteArray()), "middle_name mismatch")
 			} else {
 				require.True(t, row.Values[1].IsNil(), "middle_name should be nil")
 			}
@@ -160,7 +160,7 @@ func Test_basicReader_Fill(t *testing.T) {
 
 		// Verify the firstName value
 		expectedPerson := basicReaderTestData[row.Index]
-		require.Equal(t, expectedPerson.firstName, row.Values[0].String(),
+		require.Equal(t, expectedPerson.firstName, string(row.Values[0].ByteArray()),
 			"firstName mismatch at index %d", row.Index)
 	}
 }
@@ -254,9 +254,9 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 
 	// Add data to each column
 	for i, p := range basicReaderTestData {
-		require.NoError(t, firstNameBuilder.Append(i, StringValue(p.firstName)))
-		require.NoError(t, middleNameBuilder.Append(i, StringValue(p.middleName)))
-		require.NoError(t, lastNameBuilder.Append(i, StringValue(p.lastName)))
+		require.NoError(t, firstNameBuilder.Append(i, ByteArrayValue([]byte(p.firstName))))
+		require.NoError(t, middleNameBuilder.Append(i, ByteArrayValue([]byte(p.middleName))))
+		require.NoError(t, lastNameBuilder.Append(i, ByteArrayValue([]byte(p.lastName))))
 		require.NoError(t, birthYearBuilder.Append(i, Int64Value(p.birthYear)))
 	}
 
@@ -283,7 +283,7 @@ func buildStringColumn(t *testing.T, name string) *ColumnBuilder {
 
 	builder, err := NewColumnBuilder(name, BuilderOptions{
 		PageSizeHint: 16, // Small page size to force multiple pages
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 
@@ -343,11 +343,11 @@ func convertToTestPersons(rows []Row) []testPerson {
 	for _, row := range rows {
 		var p testPerson
 
-		p.firstName = row.Values[0].String()
+		p.firstName = string(row.Values[0].ByteArray())
 		if !row.Values[1].IsNil() {
-			p.middleName = row.Values[1].String()
+			p.middleName = string(row.Values[1].ByteArray())
 		}
-		p.lastName = row.Values[2].String()
+		p.lastName = string(row.Values[2].ByteArray())
 		p.birthYear = row.Values[3].Int64()
 
 		out = append(out, p)

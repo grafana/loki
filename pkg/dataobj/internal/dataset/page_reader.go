@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 type pageReader struct {
@@ -29,6 +29,9 @@ type pageReader struct {
 
 	pageRow int64
 	nextRow int64
+
+	presenceReader *bufio.Reader
+	valuesReader   *bufio.Reader
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
@@ -76,7 +79,7 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
-	pr.presenceBuf = slices.Grow(pr.presenceBuf, len(v))
+	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
 	pr.presenceBuf = pr.presenceBuf[:len(v)]
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
@@ -153,15 +156,12 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 //
 // The resulting slice is len(src).
 func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slices.Grow(dst, len(src))
+	dst = slicegrow.GrowToCap(dst, len(src))
 	dst = dst[:0]
 
-	for _, val := range src {
-		if val.IsNil() {
-			continue
-		}
-		dst = append(dst, val)
-	}
+	// We must maintain ordering against the caller slice here.
+	// Otherwise we can move pointers around which can get reused within a read call.
+	dst = append(dst, src...)
 
 	filledLength := len(dst)
 
@@ -193,20 +193,21 @@ func (pr *pageReader) init(ctx context.Context) error {
 		return fmt.Errorf("opening page for reading: %w", err)
 	}
 
-	if pr.presenceDec == nil {
-		pr.presenceDec = newBitmapDecoder(bufio.NewReader(presenceReader))
-	} else {
-		pr.presenceDec.Reset(bufio.NewReader(presenceReader))
-	}
+	pr.presenceReader = pr.getPresenceReader()
+	pr.presenceReader.Reset(presenceReader)
+	pr.presenceDec = pr.getPresenceDecoder()
+	pr.presenceDec.Reset(pr.presenceReader)
 
+	pr.valuesReader = pr.getValuesReader()
+	pr.valuesReader.Reset(valuesReader)
 	if pr.valuesDec == nil || pr.lastValue != pr.value || pr.lastEncoding != memPage.Info.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, bufio.NewReader(valuesReader))
+		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, pr.valuesReader)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.value, memPage.Info.Encoding)
 		}
 	} else {
-		pr.valuesDec.Reset(bufio.NewReader(valuesReader))
+		pr.valuesDec.Reset(pr.valuesReader)
 	}
 
 	pr.ready = true
@@ -296,4 +297,25 @@ func (pr *pageReader) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (pr *pageReader) getPresenceReader() *bufio.Reader {
+	if pr.presenceReader == nil {
+		return bufio.NewReader(nil)
+	}
+	return pr.presenceReader
+}
+
+func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
+	if pr.presenceDec == nil {
+		return newBitmapDecoder(nil)
+	}
+	return pr.presenceDec
+}
+
+func (pr *pageReader) getValuesReader() *bufio.Reader {
+	if pr.valuesReader == nil {
+		return bufio.NewReader(nil)
+	}
+	return pr.valuesReader
 }

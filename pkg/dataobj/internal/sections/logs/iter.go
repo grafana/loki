@@ -1,15 +1,14 @@
 package logs
 
 import (
-	"cmp"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -17,10 +16,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Iter iterates over records in the provided decoder. All logs sections are
 // iterated over in order.
+// Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		sections, err := dec.Sections(ctx)
@@ -72,6 +73,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 		defer r.Close()
 
 		var rows [1]dataset.Row
+		var record Record
 		for {
 			n, err := r.Read(ctx, rows[:])
 			if err != nil && !errors.Is(err, io.EOF) {
@@ -79,9 +81,8 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
-
 			for _, row := range rows[:n] {
-				record, err := Decode(streamsColumns, row)
+				err := Decode(streamsColumns, row, &record)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -93,12 +94,11 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.
 // Decode decodes a record from a [dataset.Row], using the provided columns to
 // determine the column type. The list of columns must match the columns used
 // to create the row.
-func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
-	record := Record{
-		// Preallocate metadata to exact number of metadata columns to avoid
-		// oversizing.
-		Metadata: make(labels.Labels, 0, metadataColumns(columns)),
-	}
+func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
+	metadataColumns := metadataColumns(columns)
+	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
+	record.Metadata = record.Metadata[:metadataColumns]
+	nextMetadataIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
@@ -109,44 +109,51 @@ func Decode(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error) {
 		switch column.Type {
 		case logsmd.COLUMN_TYPE_STREAM_ID:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			record.StreamID = columnValue.Int64()
 
 		case logsmd.COLUMN_TYPE_TIMESTAMP:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			record.Timestamp = time.Unix(0, columnValue.Int64())
 
 		case logsmd.COLUMN_TYPE_METADATA:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
-				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Metadata = append(record.Metadata, labels.Label{
-				Name:  column.Info.Name,
-				Value: columnValue.String(),
-			})
+
+			// Convert the target pointer to a byte slice and grow it if necessary.
+			target := slicegrow.Copy(record.Metadata[nextMetadataIdx].Value, columnValue.ByteArray())
+
+			record.Metadata[nextMetadataIdx].Name = column.Info.Name
+			record.Metadata[nextMetadataIdx].Value = target
+			nextMetadataIdx++
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
-				return Record{}, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			record.Line = columnValue.ByteArray()
+			line := columnValue.ByteArray()
+			record.Line = slicegrow.Copy(record.Line, line)
 		}
 	}
+
+	// Truncate the metadata slice to the number of metadata columns we found.
+	record.Metadata = record.Metadata[:nextMetadataIdx]
 
 	// Metadata is originally sorted in received order; we sort it by key
 	// per-record since it might not be obvious why keys appear in a certain
 	// order.
-	slices.SortFunc(record.Metadata, func(a, b labels.Label) int {
-		if res := cmp.Compare(a.Name, b.Name); res != 0 {
+	slices.SortFunc(record.Metadata, func(a, b RecordMetadata) int {
+		if res := strings.Compare(a.Name, b.Name); res != 0 {
 			return res
 		}
-		return cmp.Compare(a.Value, b.Value)
+		return bytes.Compare(a.Value, b.Value)
 	})
 
-	return record, nil
+	return nil
 }
 
 func metadataColumns(columns []*logsmd.ColumnDesc) int {
