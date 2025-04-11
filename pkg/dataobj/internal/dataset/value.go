@@ -283,3 +283,20 @@ func CompareValues(a, b Value) int {
 		panic(fmt.Sprintf("page.CompareValues: unsupported type %s", a.Type()))
 	}
 }
+
+func (v Value) Size() int {
+	switch v.Type() {
+	case datasetmd.VALUE_TYPE_INT64:
+		return int(unsafe.Sizeof(int64(0)))
+	case datasetmd.VALUE_TYPE_UINT64:
+		return int(unsafe.Sizeof(uint64(0)))
+	case datasetmd.VALUE_TYPE_STRING:
+		return int(v.num)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		return int(v.num)
+	case datasetmd.VALUE_TYPE_UNSPECIFIED:
+		return 0
+	default:
+		panic(fmt.Sprintf("dataset.Value.Size: unsupported type %s", v.Type()))
+	}
+}
