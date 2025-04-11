@@ -698,17 +698,21 @@ lint-jsonnet:
 	exit $$RESULT
 
 fmt-jsonnet:
-	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
-		xargs -n 1 -- jsonnetfmt -i
+	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | xargs -n 1 -- jsonnetfmt -i
+
+fmt-dockerfile:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
+	@find . -name 'vendor' -prune -o -name 'Dockerfile*' -print | xargs -n 1 -- dockerfmt -w
+endif
 
 fmt-proto:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
-	echo '$(PROTO_DEFS)' | \
-		xargs -n 1 -- buf format -w
+	@echo '$(PROTO_DEFS)' | xargs -n 1 -- buf format -w
 endif
-
 
 lint-scripts:
     # Ignore https://github.com/koalaman/shellcheck/wiki/SC2312

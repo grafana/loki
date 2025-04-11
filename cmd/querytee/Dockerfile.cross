@@ -4,8 +4,8 @@ ARG BUILD_IMAGE=grafana/loki-build-image:0.34.0
 # docker build -t grafana/promtail -f cmd/promtail/Dockerfile .
 ARG GO_VERSION=1.24
 FROM golang:${GO_VERSION} AS goenv
-RUN go env GOARCH > /goarch && \
-  go env GOARM > /goarm
+RUN go env GOARCH >/goarch \
+    && go env GOARM >/goarm
 
 FROM $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
@@ -15,6 +15,6 @@ RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAI
 
 FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/cmd/querytee/querytee /usr/bin/querytee
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
-ENTRYPOINT [ "/usr/bin/querytee" ]
+ENTRYPOINT ["/usr/bin/querytee"]

@@ -26,4 +26,4 @@ COPY --from=temp /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=build /src/loki/clients/cmd/docker-driver/docker-driver /bin/docker-driver
 
 WORKDIR /bin/
-ENTRYPOINT [ "/bin/docker-driver" ]
+ENTRYPOINT ["/bin/docker-driver"]
