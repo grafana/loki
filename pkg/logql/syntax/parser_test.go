@@ -357,6 +357,10 @@ var ParseTestCases = []struct {
 		}, nil),
 	},
 	{
+		in:  "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
+		err: logqlmodel.NewParseError("syntax error: unexpected .", 1, 39),
+	},
+	{
 		in:  `unk({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER", 1, 1),
 	},
@@ -3713,5 +3717,12 @@ func TestParseSampleExpr_String(t *testing.T) {
 
 		// escaping is hard: the result is {cluster="beep", namespace="boop"} | msg=~`\w.*` which is equivalent to the original
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
+	})
+
+	t.Run("it correctly surrounds regex containing backticks with double quotes", func(t *testing.T) {
+		query := "{foo=\"bar\"} | logfmt | msg=~\"`.`\""
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		require.Equal(t, "{foo=\"bar\"} | logfmt | msg=~\"`.`\"", expr.String())
 	})
 }
