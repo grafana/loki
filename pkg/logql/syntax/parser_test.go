@@ -357,8 +357,14 @@ var ParseTestCases = []struct {
 		}, nil),
 	},
 	{
-		in:  "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
-		err: logqlmodel.NewParseError("syntax error: unexpected .", 1, 39),
+		in: "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
+		exp: newPipelineExpr(
+			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+			MultiStageExpr{
+				newLogfmtParserExpr(nil),
+				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchRegexp, "msg", "`.`"))),
+			},
+		),
 	},
 	{
 		in:  `unk({ foo = "bar" }[5m])`,
