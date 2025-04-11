@@ -181,12 +181,16 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 // ComputeSummary compute the summary of the statistics.
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
-		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
+		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedBytes + r.Querier.Store.Dataobj.PostPredicateDecompressedBytes
 	r.Summary.TotalStructuredMetadataBytesProcessed = r.Querier.Store.Chunk.DecompressedStructuredMetadataBytes + r.Querier.Store.Chunk.HeadChunkStructuredMetadataBytes +
-		r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.HeadChunkStructuredMetadataBytes
+		r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.HeadChunkStructuredMetadataBytes +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedStructuredMetadataBytes + r.Querier.Store.Dataobj.PostPredicateStructuredMetadataBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
-		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
-	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines
+		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedRows
+	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines +
+		r.Querier.Store.Dataobj.PostFilterRows
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
 		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
@@ -217,6 +221,18 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
 	s.Chunk.PostFilterLines += m.Chunk.PostFilterLines
+	s.Dataobj.PrePredicateDecompressedRows += m.Dataobj.PrePredicateDecompressedRows
+	s.Dataobj.PrePredicateDecompressedBytes += m.Dataobj.PrePredicateDecompressedBytes
+	s.Dataobj.PrePredicateDecompressedStructuredMetadataBytes += m.Dataobj.PrePredicateDecompressedStructuredMetadataBytes
+	s.Dataobj.PostPredicateDecompressedBytes += m.Dataobj.PostPredicateDecompressedBytes
+	s.Dataobj.PostPredicateRows += m.Dataobj.PostPredicateRows
+	s.Dataobj.PostPredicateStructuredMetadataBytes += m.Dataobj.PostPredicateStructuredMetadataBytes
+	s.Dataobj.PostFilterRows += m.Dataobj.PostFilterRows
+	s.Dataobj.PagesScanned += m.Dataobj.PagesScanned
+	s.Dataobj.PagesDownloaded += m.Dataobj.PagesDownloaded
+	s.Dataobj.PagesDownloadedBytes += m.Dataobj.PagesDownloadedBytes
+	s.Dataobj.PageBatches += m.Dataobj.PageBatches
+	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -511,6 +527,50 @@ func (c *Context) AddCacheQueryLengthServed(t CacheType, i time.Duration) {
 
 func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
+}
+
+func (c *Context) AddPrePredicateDecompressedRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
+}
+
+func (c *Context) AddPrePredicateDecompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedBytes, i)
+}
+
+func (c *Context) AddPostPredicateDecompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateDecompressedBytes, i)
+}
+
+func (c *Context) AddPostPredicateRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateRows, i)
+}
+
+func (c *Context) AddPostPredicateStructuredMetadataBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateStructuredMetadataBytes, i)
+}
+
+func (c *Context) AddPostFilterRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostFilterRows, i)
+}
+
+func (c *Context) AddPagesScanned(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesScanned, i)
+}
+
+func (c *Context) AddPagesDownloaded(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesDownloaded, i)
+}
+
+func (c *Context) AddPagesDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesDownloadedBytes, i)
+}
+
+func (c *Context) AddPageBatches(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PageBatches, i)
+}
+
+func (c *Context) AddTotalRowsAvailable(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.TotalRowsAvailable, i)
 }
 
 func (c *Context) SetQueryReferencedStructuredMetadata() {

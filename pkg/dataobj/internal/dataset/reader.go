@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions configures how a [Reader] will read [Row]s.
@@ -130,17 +131,22 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		return 0, io.EOF
 	}
 
+	var totalSizeBefore int64
+	var totalSizePostPredicate int64
+	var totalSizeAfterFill int64
 	var passCount int // passCount tracks how many rows pass the predicate.
 	for i := range count {
+		size := s[i].Size()
+		totalSizeBefore += size
 		if !checkPredicate(r.opts.Predicate, r.origColumnLookup, s[i]) {
 			continue
 		}
-
 		// We move s[i] to s[passCount] by *swapping* the rows. Copying would
 		// result in the Row.Values slice existing in two places in the buffer,
 		// which causes memory corruption when filling in rows.
 		s[passCount], s[i] = s[i], s[passCount]
 		passCount++
+		totalSizePostPredicate += size
 	}
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
@@ -161,9 +167,18 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		} else if count != passCount {
 			return n, fmt.Errorf("failed to fill rows: expected %d, got %d", n, count)
 		}
+		for i := range count {
+			totalSizeAfterFill += s[i].Size()
+		}
 	}
 
 	n += passCount
+
+	statistics := stats.FromContext(ctx)
+	statistics.AddPrePredicateDecompressedRows(int64(count))
+	statistics.AddPrePredicateDecompressedBytes(totalSizeBefore)
+	statistics.AddPostPredicateRows(int64(passCount))
+	statistics.AddPostPredicateDecompressedBytes(totalSizeAfterFill - totalSizePostPredicate)
 
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
@@ -416,6 +431,13 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	}
 	r.dl.SetDatasetRanges(ranges)
 	r.ranges = ranges
+
+	var rowsCount uint64
+	for _, column := range r.dl.AllColumns() {
+		rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+	}
+	statistics := stats.FromContext(ctx)
+	statistics.AddTotalRowsAvailable(int64(rowsCount))
 
 	return nil
 }

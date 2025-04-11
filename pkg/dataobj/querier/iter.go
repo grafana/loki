@@ -71,10 +71,8 @@ func newEntryIterator(ctx context.Context,
 		streamExtractor log.StreamPipeline
 		streamHash      uint64
 		top             = newTopK(int(req.Limit), req.Direction)
+		statistics      = stats.FromContext(ctx)
 	)
-	statistics := stats.FromContext(ctx)
-	// For dataobjs, this maps to sections downloaded
-	statistics.AddChunksDownloaded(1)
 
 	for {
 		n, err := reader.Read(ctx, buf)
@@ -98,12 +96,11 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			statistics.AddDecompressedLines(1)
 			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 			if !ok {
 				continue
 			}
-			statistics.AddPostFilterLines(1)
+			statistics.AddPostFilterRows(1)
 
 			top.Add(entryWithLabels{
 				Labels:     parsedLabels.String(),

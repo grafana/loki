@@ -253,9 +253,9 @@ func BenchmarkLogQL(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					r, err := q.Exec(ctx)
 					require.NoError(b, err)
-					b.ReportMetric(float64(r.Statistics.TotalDecompressedLines()), "linesScanned")
-					b.ReportMetric(float64(r.Statistics.TotalChunksDownloaded()), "chunks/dataobjSections")
+					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
 					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
+					b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
 				}
 			})
 		}
