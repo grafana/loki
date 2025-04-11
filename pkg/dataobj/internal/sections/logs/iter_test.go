@@ -63,6 +63,7 @@ func TestDecode(t *testing.T) {
 			expected: Record{
 				StreamID:  123,
 				Timestamp: time.Unix(0, 1234567890000000000),
+				Metadata:  []RecordMetadata{},
 				Line:      []byte("test message"),
 			},
 		},
