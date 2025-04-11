@@ -44,12 +44,17 @@ type mockIngestLimitsClient struct {
 	// The mocked responses.
 	getAssignedPartitionsResponse *logproto.GetAssignedPartitionsResponse
 	getStreamUsageResponse        *logproto.GetStreamUsageResponse
+
+	// The call count.
+	assignedPartitionsCallCount int
+	streamUsageCallCount        int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
 	if expected := m.expectedAssignedPartitionsRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
+	m.assignedPartitionsCallCount++
 	return m.getAssignedPartitionsResponse, nil
 }
 
@@ -57,6 +62,7 @@ func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.G
 	if expected := m.expectedStreamUsageRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
+	m.streamUsageCallCount++
 	return m.getStreamUsageResponse, nil
 }
 

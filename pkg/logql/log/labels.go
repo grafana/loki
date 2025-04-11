@@ -385,9 +385,15 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder 
 	}
 	b.add[category] = append(b.add[category], labels.Label{Name: n, Value: v})
 
-	// Sometimes labels are set and later modified. Only record
-	// each label once
-	b.parserKeyHints.RecordExtracted(n)
+	if category == ParsedLabel {
+		// We record parsed labels as extracted so that future parse stages can
+		// quickly bypass any existing extracted fields.
+		//
+		// Note that because this is used for bypassing extracted fields, and
+		// because parsed labels always take precedence over structured metadata
+		// and stream labels, we must only call RecordExtracted for parsed labels.
+		b.parserKeyHints.RecordExtracted(n)
+	}
 	return b
 }
 

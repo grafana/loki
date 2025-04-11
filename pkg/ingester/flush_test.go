@@ -444,10 +444,17 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for ix, chunk := range chunks {
-		for _, label := range chunk.Metric {
-			if label.Value == "" {
-				return fmt.Errorf("Chunk has blank label %q", label.Name)
+		var err error
+		chunk.Metric.Range(func(l labels.Label) {
+			if err != nil {
+				return
 			}
+			if l.Value == "" {
+				err = fmt.Errorf("Chunk has blank label %q", l.Name)
+			}
+		})
+		if err != nil {
+			return err
 		}
 
 		// remove __name__ label

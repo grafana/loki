@@ -280,7 +280,11 @@ func markForDelete(
 			empty = false
 			seriesMap.MarkSeriesNotDeleted(s.SeriesID(), s.UserID())
 		}
-		return iterCtx.Err()
+		if err := iterCtx.Err(); err != nil {
+			return err
+		}
+
+		return expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName)
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {

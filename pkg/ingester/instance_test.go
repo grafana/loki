@@ -316,13 +316,13 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
-	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", nil))
+	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", labels.EmptyLabels()))
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -504,7 +504,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
 
 func makeRandomLabels() labels.Labels {
-	ls := labels.NewBuilder(nil)
+	ls := labels.NewBuilder(labels.EmptyLabels())
 	for _, ln := range labelNames {
 		ls.Set(ln, fmt.Sprintf("%d", rand.Int31()))
 	}

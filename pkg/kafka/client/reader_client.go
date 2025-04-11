@@ -43,11 +43,13 @@ func NewReaderClient(kafkaCfg kafka.Config, metrics *kprom.Metrics, logger log.L
 	return client, nil
 }
 
-func NewReaderClientMetrics(component string, reg prometheus.Registerer) *kprom.Metrics {
+func NewReaderClientMetrics(component string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
 	return kprom.NewMetrics("loki_ingest_storage_reader",
 		kprom.Registerer(prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)),
 		// Do not export the client ID, because we use it to specify options to the backend.
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+		enableKafkaHistogramMetrics(enableKafkaHistograms),
+	)
 }
 
 // setDefaultNumberOfPartitionsForAutocreatedTopics tries to set num.partitions config option on brokers.
@@ -74,4 +76,25 @@ func setDefaultNumberOfPartitionsForAutocreatedTopics(cfg kafka.Config, cl *kgo.
 	}
 
 	level.Info(logger).Log("msg", "configured Kafka-wide default number of partitions for auto-created topics (num.partitions)", "value", cfg.AutoCreateTopicDefaultPartitions)
+}
+
+func enableKafkaHistogramMetrics(enable bool) kprom.Opt {
+	histogramOpts := []kprom.HistogramOpts{}
+	if enable {
+		histogramOpts = append(histogramOpts,
+			kprom.HistogramOpts{
+				Enable:  kprom.ReadTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.ReadWait,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteWait,
+				Buckets: prometheus.DefBuckets,
+			})
+	}
+	return kprom.HistogramsFromOpts(histogramOpts...)
 }

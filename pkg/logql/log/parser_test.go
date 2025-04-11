@@ -301,6 +301,10 @@ type fakeParseHints struct {
 	extractAll bool
 }
 
+func (p *fakeParseHints) Extracted(_ string) bool {
+	return false
+}
+
 func (p *fakeParseHints) ShouldExtract(key string) bool {
 	p.checkCount++
 	return key == p.label || p.extractAll
@@ -1149,7 +1153,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			[]byte(`foobar="foo bar" foobar=10ms`),
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"foobar", "10ms",
+				"foobar", "foo bar",
 			),
 			nil,
 			NoParserHints(),
@@ -1340,6 +1344,69 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLogfmtConsistentPrecedence(t *testing.T) {
+	line := `app=lowkey level=error ts=2021-02-12T19:18:10.037940878Z msg="hello world"`
+
+	t.Run("sturctured metadata first", func(t *testing.T) {
+		var (
+			metadataStream = NewBaseLabelsBuilder().
+					ForLabels(labels.FromStrings("foo", "bar"), 0).
+					Set(StructuredMetadataLabel, "app", "loki")
+
+			basicStream = NewBaseLabelsBuilder().
+					ForLabels(labels.FromStrings("foo", "baz"), 0)
+		)
+
+		parser := NewLogfmtParser(true, true)
+
+		_, ok := parser.Process(0, []byte(line), metadataStream)
+		require.True(t, ok)
+
+		_, ok = parser.Process(0, []byte(line), basicStream)
+		require.True(t, ok)
+
+		res, cat, ok := metadataStream.GetWithCategory("app")
+		require.Equal(t, "lowkey", res)
+		require.Equal(t, ParsedLabel, cat)
+		require.True(t, ok)
+
+		res, cat, ok = basicStream.GetWithCategory("app")
+		require.Equal(t, "lowkey", res)
+		require.Equal(t, ParsedLabel, cat)
+		require.True(t, ok)
+	})
+
+	t.Run("parsed labels first", func(t *testing.T) {
+		var (
+			metadataStream = NewBaseLabelsBuilder().
+					ForLabels(labels.FromStrings("foo", "bar"), 0).
+					Set(StructuredMetadataLabel, "app", "loki")
+
+			basicStream = NewBaseLabelsBuilder().
+					ForLabels(labels.FromStrings("foo", "baz"), 0)
+		)
+
+		parser := NewLogfmtParser(true, true)
+
+		_, ok := parser.Process(0, []byte(line), basicStream)
+		require.True(t, ok)
+
+		_, ok = parser.Process(0, []byte(line), metadataStream)
+		require.True(t, ok)
+
+		res, cat, ok := metadataStream.GetWithCategory("app")
+		require.Equal(t, "lowkey", res)
+		require.Equal(t, ParsedLabel, cat)
+		require.True(t, ok)
+
+		res, cat, ok = basicStream.GetWithCategory("app")
+		require.Equal(t, "lowkey", res)
+		require.Equal(t, ParsedLabel, cat)
+		require.True(t, ok)
+	})
+
 }
 
 func TestLogfmtExpressionParser(t *testing.T) {

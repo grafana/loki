@@ -147,7 +147,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			}
 			return field, true
 		})
-		if !ok {
+		if !ok || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
 			return nil
 		}
 		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
@@ -188,7 +188,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// reset the prefix position
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
-	if !ok {
+	if !ok || j.lbs.ParserLabelHints().Extracted(keyString) {
 		return nil
 	}
 
@@ -321,7 +321,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 				return sanitize, true
 			})
-			if !ok {
+			if !ok || parserHints.Extracted(key) {
 				continue
 			}
 
@@ -387,7 +387,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 			return sanitized, true
 		})
-		if !ok {
+		if !ok || parserHints.Extracted(key) {
 			continue
 		}
 
@@ -459,7 +459,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			name = name + duplicateSuffix
 		}
 
-		if !parserHints.ShouldExtract(name) {
+		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
 			continue
 		}
 
@@ -526,6 +526,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 	}
 
+	// alwaysExtract checks whether a key should be extracted regardless of other
+	// conditions.
+	alwaysExtract := func(key string) bool {
+		// Any key in the expression list should always be extracted.
+		_, ok := keys[key]
+		return ok
+	}
+
 	l.dec.Reset(line)
 	var current []byte
 	for !l.dec.EOL() {
@@ -546,14 +554,12 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			_, alwaysExtract := keys[sanitized]
-			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			if !alwaysExtract(sanitized) && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
-
-		if !ok {
+		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
 			continue
 		}
 
@@ -572,7 +578,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) {
 				key = key + duplicateSuffix
-				if !lbs.ParserLabelHints().ShouldExtract(key) {
+				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
 				}
@@ -784,7 +790,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				}
 				return field, true
 			})
-			if !ok {
+			if !ok || lbs.ParserLabelHints().Extracted(key) {
 				return nil
 			}
 

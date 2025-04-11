@@ -305,11 +305,12 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				ingestionRate:    test.ingestionRate,
 			}
 			rl := limiter.NewRateLimiter(newRateLimitsAdapter(l), 10*time.Second)
+			cache := NewPartitionConsumerCache(1 * time.Millisecond)
 
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), 2),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, 2),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 

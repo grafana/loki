@@ -139,7 +139,8 @@ func NewBlockBuilder(
 	logger log.Logger,
 	registerer prometheus.Registerer,
 ) (*BlockBuilder,
-	error) {
+	error,
+) {
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		return nil, err
@@ -176,7 +177,7 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		errgrp.Go(func() error {
 			c, err := client.NewReaderClient(
 				i.kafkaCfg,
-				client.NewReaderClientMetrics(workerID, i.registerer),
+				client.NewReaderClientMetrics(workerID, i.registerer, false),
 				log.With(i.logger, "component", workerID),
 			)
 			if err != nil {
@@ -202,7 +203,6 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 					}
 				}
 			}
-
 		})
 	}
 
@@ -351,7 +351,6 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		"appender",
 		i.cfg.ConcurrentWriters,
 		func(ctx context.Context) error {
-
 			for {
 				select {
 				case <-ctx.Done():

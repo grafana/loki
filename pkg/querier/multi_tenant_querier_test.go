@@ -245,7 +245,7 @@ type mockEntryIterator struct {
 }
 
 func newMockEntryIterator(numLabels int) mockEntryIterator {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}

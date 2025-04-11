@@ -73,9 +73,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				limiter.rateLimitStrategy,
 				"fake",
 				model.Fingerprint(0),
-				labels.Labels{
-					{Name: "foo", Value: "bar"},
-				},
+				labels.FromStrings("foo", "bar"),
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
@@ -128,9 +126,7 @@ func TestPushDeduplication(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -189,9 +185,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		metrics,
@@ -236,9 +230,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -345,9 +337,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -385,9 +375,7 @@ func TestUnorderedPush(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -489,9 +477,7 @@ func TestPushRateLimit(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -531,9 +517,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -572,9 +556,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
@@ -619,12 +601,12 @@ func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 }
 
 func Benchmark_PushStream(b *testing.B) {
-	ls := labels.Labels{
-		labels.Label{Name: "namespace", Value: "loki-dev"},
-		labels.Label{Name: "cluster", Value: "dev-us-central1"},
-		labels.Label{Name: "job", Value: "loki-dev/ingester"},
-		labels.Label{Name: "container", Value: "ingester"},
-	}
+	ls := labels.FromStrings(
+		"namespace", "loki-dev",
+		"cluster", "dev-us-central1",
+		"job", "loki-dev/ingester",
+		"container", "ingester",
+	)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)

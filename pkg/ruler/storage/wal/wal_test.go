@@ -42,28 +42,28 @@ func TestStorage_InvalidSeries(t *testing.T) {
 	_, err = app.Append(0, labels.Labels{}, 0, 0)
 	require.Error(t, err, "should reject empty labels")
 
-	_, err = app.Append(0, labels.Labels{{Name: "a", Value: "1"}, {Name: "a", Value: "2"}}, 0, 0)
+	_, err = app.Append(0, labels.FromStrings("a", "1", "a", "2"), 0, 0)
 	require.Error(t, err, "should reject duplicate labels")
 
 	// Sanity check: valid series
-	sRef, err := app.Append(0, labels.Labels{{Name: "a", Value: "1"}}, 0, 0)
+	sRef, err := app.Append(0, labels.FromStrings("a", "1"), 0, 0)
 	require.NoError(t, err, "should not reject valid series")
 
 	// Exemplars
-	_, err = app.AppendExemplar(0, nil, exemplar.Exemplar{})
+	_, err = app.AppendExemplar(0, labels.EmptyLabels(), exemplar.Exemplar{})
 	require.Error(t, err, "should reject unknown series ref")
 
-	e := exemplar.Exemplar{Labels: labels.Labels{{Name: "a", Value: "1"}, {Name: "a", Value: "2"}}}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e := exemplar.Exemplar{Labels: labels.FromStrings("a", "1", "a", "2")}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.ErrorIs(t, err, tsdb.ErrInvalidExemplar, "should reject duplicate labels")
 
-	e = exemplar.Exemplar{Labels: labels.Labels{{Name: "a_somewhat_long_trace_id", Value: "nYJSNtFrFTY37VR7mHzEE/LIDt7cdAQcuOzFajgmLDAdBSRHYPDzrxhMA4zz7el8naI/AoXFv9/e/G0vcETcIoNUi3OieeLfaIRQci2oa"}}}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e = exemplar.Exemplar{Labels: labels.FromStrings("a_somewhat_long_trace_id", "nYJSNtFrFTY37VR7mHzEE/LIDt7cdAQcuOzFajgmLDAdBSRHYPDzrxhMA4zz7el8naI/AoXFv9/e/G0vcETcIoNUi3OieeLfaIRQci2oa")}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.ErrorIs(t, err, storage.ErrExemplarLabelLength, "should reject too long label length")
 
 	// Sanity check: valid exemplars
-	e = exemplar.Exemplar{Labels: labels.Labels{{Name: "a", Value: "1"}}, Value: 20, Ts: 10, HasTs: true}
-	_, err = app.AppendExemplar(sRef, nil, e)
+	e = exemplar.Exemplar{Labels: labels.FromStrings("a", "1"), Value: 20, Ts: 10, HasTs: true}
+	_, err = app.AppendExemplar(sRef, labels.EmptyLabels(), e)
 	require.NoError(t, err, "should not reject valid exemplars")
 }
 
@@ -386,7 +386,7 @@ type series struct {
 func (s *series) Write(t *testing.T, app storage.Appender) {
 	t.Helper()
 
-	lbls := labels.FromMap(map[string]string{"__name__": s.name})
+	lbls := labels.FromStrings("__name__", s.name)
 
 	offset := 0
 	if s.ref == nil {
@@ -407,7 +407,7 @@ func (s *series) Write(t *testing.T, app storage.Appender) {
 	sRef := *s.ref
 	for _, exemplar := range s.exemplars {
 		var err error
-		sRef, err = app.AppendExemplar(sRef, nil, exemplar)
+		sRef, err = app.AppendExemplar(sRef, labels.EmptyLabels(), exemplar)
 		require.NoError(t, err)
 	}
 }
@@ -499,8 +499,8 @@ func buildSeries(nameSlice []string) seriesList {
 			name:    n,
 			samples: []sample{{int64(i), float64(i * 10.0)}, {int64(i * 10), float64(i * 100.0)}},
 			exemplars: []exemplar.Exemplar{
-				{Labels: labels.Labels{{Name: "foobar", Value: "barfoo"}}, Value: float64(i * 10.0), Ts: int64(i), HasTs: true},
-				{Labels: labels.Labels{{Name: "lorem", Value: "ipsum"}}, Value: float64(i * 100.0), Ts: int64(i * 10), HasTs: true},
+				{Labels: labels.FromStrings("foobar", "barfoo"), Value: float64(i * 10.0), Ts: int64(i), HasTs: true},
+				{Labels: labels.FromStrings("lorem", "ipsum"), Value: float64(i * 100.0), Ts: int64(i * 10), HasTs: true},
 			},
 		})
 	}

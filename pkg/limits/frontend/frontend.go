@@ -58,10 +58,11 @@ type Frontend struct {
 	cfg    Config
 	logger log.Logger
 
-	limits      Limits
-	rateLimiter *limiter.RateLimiter
-	streamUsage StreamUsageGatherer
-	metrics     *metrics
+	limits           Limits
+	rateLimiter      *limiter.RateLimiter
+	streamUsage      StreamUsageGatherer
+	partitionIDCache PartitionConsumersCache
+	metrics          *metrics
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -84,15 +85,17 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	)
 
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, cfg.NumPartitions)
+	partitionIDCache := NewPartitionConsumerCache(cfg.PartitionIDCacheTTL)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, partitionIDCache, cfg.NumPartitions)
 
 	f := &Frontend{
-		cfg:         cfg,
-		logger:      logger,
-		limits:      limits,
-		rateLimiter: rateLimiter,
-		streamUsage: streamUsage,
-		metrics:     newMetrics(reg),
+		cfg:              cfg,
+		logger:           logger,
+		limits:           limits,
+		rateLimiter:      rateLimiter,
+		streamUsage:      streamUsage,
+		partitionIDCache: partitionIDCache,
+		metrics:          newMetrics(reg),
 	}
 
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
@@ -135,6 +138,8 @@ func (f *Frontend) starting(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to start subservices: %w", err)
 	}
 
+	go f.partitionIDCache.Start()
+
 	return nil
 }
 
@@ -150,6 +155,7 @@ func (f *Frontend) running(ctx context.Context) error {
 
 // stopping implements services.Service.
 func (f *Frontend) stopping(_ error) error {
+	f.partitionIDCache.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 

@@ -92,7 +92,7 @@ func NewKafkaOffsetManager(
 	reg prometheus.Registerer,
 ) (*KafkaOffsetManager, error) {
 	// Create a new Kafka client for the partition manager.
-	clientMetrics := client.NewReaderClientMetrics("partition-manager", reg)
+	clientMetrics := client.NewReaderClientMetrics("partition-manager", reg, cfg.EnableKafkaHistograms)
 	c, err := client.NewReaderClient(
 		cfg,
 		clientMetrics,

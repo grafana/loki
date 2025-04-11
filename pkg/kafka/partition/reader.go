@@ -55,7 +55,7 @@ type ReaderMetrics struct {
 	kprom             *kprom.Metrics
 }
 
-func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
+func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *ReaderMetrics {
 	return &ReaderMetrics{
 		consumptionLag: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_kafka_reader_consumption_lag_seconds",
@@ -84,7 +84,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		kprom: client.NewReaderClientMetrics("partition-reader", r),
+		kprom: client.NewReaderClientMetrics("partition-reader", r, enableKafkaHistograms),
 	}
 }
 

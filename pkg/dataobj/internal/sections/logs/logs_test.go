@@ -17,19 +17,19 @@ func Test(t *testing.T) {
 	records := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
+			Timestamp: time.Unix(10, 0),
 			Metadata:  nil,
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
+			Timestamp: time.Unix(100, 0),
 			Metadata:  labels.FromStrings("cluster", "test", "app", "bar"),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
+			Timestamp: time.Unix(5, 0),
 			Metadata:  labels.FromStrings("cluster", "test", "app", "foo"),
 			Line:      []byte("foo bar"),
 		},
@@ -55,7 +55,7 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
+			Timestamp: time.Unix(5, 0),
 			Metadata: labels.FromStrings(
 				"app", "foo",
 				"cluster", "test",
@@ -64,13 +64,13 @@ func Test(t *testing.T) {
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
+			Timestamp: time.Unix(10, 0),
 			Metadata:  labels.FromStrings(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
+			Timestamp: time.Unix(100, 0),
 			Metadata:  labels.FromStrings("app", "bar", "cluster", "test"),
 			Line:      []byte("goodbye world"),
 		},

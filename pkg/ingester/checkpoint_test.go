@@ -421,7 +421,7 @@ func buildStreams() []logproto.Stream {
 
 var (
 	stream1 = logproto.Stream{
-		Labels: labels.Labels{labels.Label{Name: "stream", Value: "1"}}.String(),
+		Labels: labels.FromStrings("stream", "1").String(),
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -434,7 +434,7 @@ var (
 		},
 	}
 	stream2 = logproto.Stream{
-		Labels: labels.Labels{labels.Label{Name: "stream", Value: "2"}}.String(),
+		Labels: labels.FromStrings("stream", "2").String(),
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1),
@@ -482,7 +482,7 @@ func Test_SeriesIterator(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
 			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
 			require.NoError(t, err)
-			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels: logproto.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
@@ -550,7 +550,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 		metrics:       NilMetrics,
 		checkpointWAL: noOpWalLogger{},
 	}
-	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	lbs := labels.FromStrings("foo", "bar")
 	chunks := buildChunks(b, 10)
 	b.ReportAllocs()
 	b.ResetTimer()
