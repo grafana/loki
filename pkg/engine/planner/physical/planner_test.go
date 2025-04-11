@@ -14,14 +14,14 @@ type catalog struct {
 }
 
 // ResolveDataObj implements Catalog.
-func (t *catalog) ResolveDataObj(Expression) ([]DataObjLocation, [][]int64) {
+func (t *catalog) ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, error) {
 	objects := make([]DataObjLocation, 0, len(t.streamsByObject))
 	streams := make([][]int64, 0, len(t.streamsByObject))
 	for o, s := range t.streamsByObject {
 		objects = append(objects, DataObjLocation(o))
 		streams = append(streams, s)
 	}
-	return objects, streams
+	return objects, streams, nil
 }
 
 var _ Catalog = (*catalog)(nil)

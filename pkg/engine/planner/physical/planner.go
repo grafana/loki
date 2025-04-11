@@ -60,7 +60,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 			Op:    inst.Op,
 		}
 	case *logical.ColumnRef:
-		return &ColumnExpr{ref: inst.Ref()}
+		return &ColumnExpr{Ref: inst.Ref}
 	case *logical.Literal:
 		return NewLiteral(inst.Value())
 	default:
@@ -85,7 +85,10 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	if err != nil {
+		return nil, err
+	}
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
@@ -123,7 +126,7 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 		order = DESC
 	}
 	node := &SortMerge{
-		Column: &ColumnExpr{ref: lp.Column.Ref()},
+		Column: &ColumnExpr{Ref: lp.Column.Ref},
 		Order:  order,
 	}
 	p.plan.addNode(node)
@@ -175,7 +178,7 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		optimizer := newOptimizer(plan, optimizations)
 		optimizer.optimize(root)
 		if i == 1 {
-			return nil, errors.New("physcial plan must only have exactly one root node")
+			return nil, errors.New("physical plan must only have exactly one root node")
 		}
 	}
 	return plan, nil

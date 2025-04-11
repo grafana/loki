@@ -444,10 +444,17 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for ix, chunk := range chunks {
-		for _, label := range chunk.Metric {
-			if label.Value == "" {
-				return fmt.Errorf("Chunk has blank label %q", label.Name)
+		var err error
+		chunk.Metric.Range(func(l labels.Label) {
+			if err != nil {
+				return
 			}
+			if l.Value == "" {
+				err = fmt.Errorf("Chunk has blank label %q", l.Name)
+			}
+		})
+		if err != nil {
+			return err
 		}
 
 		// remove __name__ label
@@ -507,6 +514,10 @@ func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 
 func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{}, nil
+}
+
+func (s *testStore) Series(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
 }
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {

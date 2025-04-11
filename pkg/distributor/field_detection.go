@@ -94,6 +94,11 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 }
 
 func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+	// If the level is already set in the structured metadata, we don't need to do anything.
+	if structuredMetadata.Has(constants.LevelLabel) {
+		return logproto.LabelAdapter{}, false
+	}
+
 	levelFromLabel, hasLevelLabel := labelsContainAny(labels, l.allowedLevelLabels)
 	var logLevel string
 	if hasLevelLabel {
