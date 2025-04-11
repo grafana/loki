@@ -3,6 +3,7 @@ package otgrpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync/atomic"
@@ -193,39 +194,42 @@ func (cs *openTracingClientStream) Header() (metadata.MD, error) {
 	md, err := cs.ClientStream.Header()
 	if err != nil {
 		cs.finishFunc(err)
+		return md, fmt.Errorf("failed to get header: %w", err)
 	}
-	return md, err
+	return md, nil
 }
 
 func (cs *openTracingClientStream) SendMsg(m interface{}) error {
 	err := cs.ClientStream.SendMsg(m)
 	if err != nil {
 		cs.finishFunc(err)
+		return fmt.Errorf("failed to send message: %w", err)
 	}
-	return err
+	return nil
 }
 
 func (cs *openTracingClientStream) RecvMsg(m interface{}) error {
 	err := cs.ClientStream.RecvMsg(m)
 	if errors.Is(err, io.EOF) {
 		cs.finishFunc(nil)
-		return err
+		return err //nolint:wrapcheck
 	} else if err != nil {
 		cs.finishFunc(err)
-		return err
+		return fmt.Errorf("failed to receive message: %w", err)
 	}
 	if !cs.desc.ServerStreams {
 		cs.finishFunc(nil)
 	}
-	return err
+	return nil
 }
 
 func (cs *openTracingClientStream) CloseSend() error {
 	err := cs.ClientStream.CloseSend()
 	if err != nil {
 		cs.finishFunc(err)
+		return fmt.Errorf("failed to close send: %w", err)
 	}
-	return err
+	return nil
 }
 
 func injectSpanContext(ctx context.Context, tracer opentracing.Tracer, clientSpan opentracing.Span) context.Context {
