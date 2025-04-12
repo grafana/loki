@@ -119,7 +119,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.2
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/buger/jsonparser v1.1.1
-	github.com/charmbracelet/bubbles v0.20.0
+	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/coder/quartz v0.1.3
