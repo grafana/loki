@@ -270,6 +270,9 @@
         "migrationcenter": {
             "component": "migrationcenter"
         },
+        "modelarmor": {
+            "component": "modelarmor"
+        },
         "monitoring": {
             "component": "monitoring"
         },

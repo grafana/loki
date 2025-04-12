@@ -1,5 +1,39 @@
 # Changes
 
+## [1.36.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.35.0...bigtable/v1.36.0) (2025-03-31)
+
+
+### Features
+
+* **bigtable/admin:** Add MaterializedViews and LogicalViews APIs ([b323f88](https://github.com/googleapis/google-cloud-go/commit/b323f888e349168b4e30a9edb4630dfb6060ed4d))
+* **bigtable/admin:** Add MaterializedViews and LogicalViews APIs ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable/admin:** Publish row_key_schema fields in table proto and relevant admin APIs to setup a table with a row_key_schema ([3f23a91](https://github.com/googleapis/google-cloud-go/commit/3f23a9176f29a0a69b9d57b16f44b72eb3096d0c))
+* **bigtable:** Add Bind function to bind query params ([#11862](https://github.com/googleapis/google-cloud-go/issues/11862)) ([24c5ae0](https://github.com/googleapis/google-cloud-go/commit/24c5ae0ab119b2b7ba54ba0ea9c5432cdc5ec28f))
+* **bigtable:** Add datatypes for GoogleSQL ([#11816](https://github.com/googleapis/google-cloud-go/issues/11816)) ([5a9eb10](https://github.com/googleapis/google-cloud-go/commit/5a9eb101b691e79a2dae68be6a7dcae152d42868))
+* **bigtable:** Add Execute method to execute GoogleSQL queries ([#11883](https://github.com/googleapis/google-cloud-go/issues/11883)) ([0e53dcd](https://github.com/googleapis/google-cloud-go/commit/0e53dcd0005e7cecba4c7f6ef97645dbc7ce8d16))
+* **bigtable:** Add MaterializedViewName to ReadRows and SampleRowKeys ([b323f88](https://github.com/googleapis/google-cloud-go/commit/b323f888e349168b4e30a9edb4630dfb6060ed4d))
+* **bigtable:** Add methods to read ResultRow ([#11924](https://github.com/googleapis/google-cloud-go/issues/11924)) ([8b8ca9e](https://github.com/googleapis/google-cloud-go/commit/8b8ca9eefcfdbfb3f7cd4b991cd98808cfc03293))
+* **bigtable:** Add PrepareQuery api and update ExecuteQuery to support it ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable:** Add PrepareStatement to run GoogleSQL queries ([#11829](https://github.com/googleapis/google-cloud-go/issues/11829)) ([ea00b17](https://github.com/googleapis/google-cloud-go/commit/ea00b177060351e695fdc657bd711c136c25212b))
+* **bigtable:** Add support for data APIs for Materialized Views ([#11796](https://github.com/googleapis/google-cloud-go/issues/11796)) ([f5ae93b](https://github.com/googleapis/google-cloud-go/commit/f5ae93b9869d1d9de0d62dfcb8dd4ebb48056b57))
+* **bigtable:** Add support for logical views ([#11792](https://github.com/googleapis/google-cloud-go/issues/11792)) ([630d751](https://github.com/googleapis/google-cloud-go/commit/630d751397a84d06d54add63464d5ad5993768ef))
+* **bigtable:** Add support for materialized views for admin client ([#11793](https://github.com/googleapis/google-cloud-go/issues/11793)) ([640be05](https://github.com/googleapis/google-cloud-go/commit/640be05c744a8bd8f1a3e4ee0673409d707aa098))
+* **bigtable:** Adding node scaling factor ([b680164](https://github.com/googleapis/google-cloud-go/commit/b6801649768f9c94f97c5eaa913d2e1f43e07641))
+* **bigtable:** Disable MV and LV tests ([#11827](https://github.com/googleapis/google-cloud-go/issues/11827)) ([42dca03](https://github.com/googleapis/google-cloud-go/commit/42dca0388c2a2b90206b81f2b7e9deec9deeabbc))
+* **bigtable:** Row key schema support in admin client ([#11777](https://github.com/googleapis/google-cloud-go/issues/11777)) ([4158bac](https://github.com/googleapis/google-cloud-go/commit/4158bac23b8b234e02ab9dcb488ac1523612a3a8))
+
+
+### Bug Fixes
+
+* **bigtable:** Allow GC updates on emulated aggregate column family ([#11499](https://github.com/googleapis/google-cloud-go/issues/11499)) ([0682bfa](https://github.com/googleapis/google-cloud-go/commit/0682bfa5563ec81e2cf3fa9138142ebe482fb6fd))
+* **bigtable:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
+
+### Documentation
+
+* **bigtable/admin:** Fixed formatting of resource path strings ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable:** Update ExecuteQuery API docs to reflect changes ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+
 ## [1.35.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.34.0...bigtable/v1.35.0) (2025-01-22)
 
 
