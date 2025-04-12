@@ -12,11 +12,14 @@ README.md: lexers/*/*.go
 tokentype_string.go: types.go
 	go generate
 
-chromad:
+.PHONY: chromad
+chromad: build/chromad
+
+build/chromad: $(find . -name '*.go' -o -name '*.html' -o '*.css' -o '*.js')
 	rm -rf build
 	esbuild --bundle cmd/chromad/static/index.js --minify --outfile=cmd/chromad/static/index.min.js
 	esbuild --bundle cmd/chromad/static/index.css --minify --outfile=cmd/chromad/static/index.min.css
-	(export CGOENABLED=0 ; cd ./cmd/chromad && go build -ldflags="-X 'main.version=$(VERSION)'" -o ../../build/chromad .)
+	(export CGOENABLED=0 ; go build -C cmd/chromad -ldflags="-X 'main.version=$(VERSION)'" -o ../../build/chromad .)
 
 upload: build/chromad
 	scp build/chromad root@swapoff.org: && \

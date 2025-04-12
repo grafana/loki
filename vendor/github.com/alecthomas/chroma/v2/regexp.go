@@ -349,7 +349,7 @@ func (r *RegexLexer) maybeCompile() (err error) {
 restart:
 	seen := map[LexerMutator]bool{}
 	for state := range r.rules {
-		for i := 0; i < len(r.rules[state]); i++ {
+		for i := range len(r.rules[state]) {
 			rule := r.rules[state][i]
 			if compile, ok := rule.Mutator.(LexerMutator); ok {
 				if seen[compile] {
@@ -474,7 +474,7 @@ func matchRules(text []rune, pos int, rules []*CompiledRule) (int, *CompiledRule
 func ensureLF(text string) string {
 	buf := make([]byte, len(text))
 	var j int
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		c := text[i]
 		if c == '\r' {
 			if i < len(text)-1 && text[i+1] == '\n' {

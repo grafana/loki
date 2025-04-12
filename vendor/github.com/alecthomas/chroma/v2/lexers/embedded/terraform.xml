@@ -3,7 +3,9 @@
     <name>Terraform</name>
     <alias>terraform</alias>
     <alias>tf</alias>
+    <alias>hcl</alias>
     <filename>*.tf</filename>
+    <filename>*.hcl</filename>
     <mime_type>application/x-tf</mime_type>
     <mime_type>application/x-terraform</mime_type>
   </config>
@@ -13,21 +15,18 @@
         <token type="LiteralStringDouble"/>
         <pop depth="1"/>
       </rule>
-      <rule pattern="\\\\">
+      <rule pattern="\\\\&#34;">
         <token type="LiteralStringDouble"/>
       </rule>
-      <rule pattern="\\\\&#34;">
+      <rule pattern="[^&#34;\\\\$]+">
+        <token type="LiteralStringDouble"/>
+      </rule>
+      <rule pattern="[^\\\\&#34;$]+">
         <token type="LiteralStringDouble"/>
       </rule>
       <rule pattern="\$\{">
         <token type="LiteralStringInterpol"/>
         <push state="interp-inside"/>
-      </rule>
-      <rule pattern="\$">
-        <token type="LiteralStringDouble"/>
-      </rule>
-      <rule pattern="[^&#34;\\\\$]+">
-        <token type="LiteralStringDouble"/>
       </rule>
     </state>
     <state name="interp-inside">
@@ -42,6 +41,10 @@
     <state name="root">
       <rule pattern="[\[\](),.{}]">
         <token type="Punctuation"/>
+      </rule>
+      <rule pattern="&#34;">
+        <token type="LiteralStringDouble"/>
+        <push state="string"/>
       </rule>
       <rule pattern="-?[0-9]+">
         <token type="LiteralNumber"/>
@@ -58,14 +61,14 @@
       <rule pattern="\s*(#|//).*\n">
         <token type="CommentSingle"/>
       </rule>
-      <rule pattern="([a-zA-Z]\w*)(\s*)(=(?!&gt;))">
+      <rule pattern="(?!\s*)(variable)(\s*)">
         <bygroups>
-          <token type="NameAttribute"/>
+          <token type="Name"/>
           <token type="Text"/>
           <token type="Text"/>
         </bygroups>
       </rule>
-      <rule pattern="^\s*(provisioner|variable|resource|provider|module|output|data)\b">
+      <rule pattern="^(provisioner|variable|resource|provider|module|output|data)(?!\.)\b">
         <token type="KeywordReserved"/>
       </rule>
       <rule pattern="(for|in)\b">
@@ -101,6 +104,9 @@
       <rule pattern="(tostring|tonumber|tobool|tolist|tomap|toset|can|try)\b">
         <token type="NameBuiltin"/>
       </rule>
+      <rule pattern="(name|x|default|type|description|value)">
+        <token type="NameAttribute"/>
+      </rule>
       <rule pattern="=(?!&gt;)|\+|-|\*|\/|:|!|%|&gt;|&lt;(?!&lt;)|&gt;=|&lt;=|==|!=|&amp;&amp;|\||\?">
         <token type="Operator"/>
       </rule>
@@ -109,10 +115,6 @@
       </rule>
       <rule pattern="[a-zA-Z]\w*">
         <token type="NameOther"/>
-      </rule>
-      <rule pattern="&#34;">
-        <token type="LiteralStringDouble"/>
-        <push state="string"/>
       </rule>
       <rule pattern="(?s)(&lt;&lt;-?)(\w+)(\n\s*(?:(?!\2).)*\s*\n\s*)(\2)">
         <bygroups>
@@ -127,7 +129,7 @@
       <rule pattern="(\s*)(&#34;(?:\\\\|\\&#34;|[^&#34;])*&#34;)(\s*)">
         <bygroups>
           <token type="Text"/>
-          <token type="NameVariable"/>
+          <token type="NameAttribute"/>
           <token type="Text"/>
         </bygroups>
       </rule>

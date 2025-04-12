@@ -51,6 +51,20 @@
         <rule pattern = "\#[a-zA-Z_]+\b">
             <token type = "NameDecorator"/>
         </rule>
+        <rule pattern = "^\#\+\w+\s*$">
+            <token type = "NameAttribute"/>
+        </rule>
+        <rule pattern = "^(\#\+\w+)(\s+)(\!)?([A-Za-z0-9-_!]+)(?:(,)(\!)?([A-Za-z0-9-_!]+))*\s*$">
+            <bygroups>
+                <token type = "NameAttribute"/>
+                <token type = "TextWhitespace"/>
+                <token type = "Operator"/>
+                <token type = "Name"/>
+                <token type = "Punctuation"/>
+                <token type = "Operator"/>
+                <token type = "Name"/>
+            </bygroups>
+        </rule>
         <rule pattern = "\@(\([a-zA-Z_]+\b\s*.*\)|\(?[a-zA-Z_]+\)?)">
             <token type = "NameAttribute"/>
         </rule>
