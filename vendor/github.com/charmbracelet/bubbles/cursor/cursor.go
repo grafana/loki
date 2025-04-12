@@ -1,3 +1,4 @@
+// Package cursor provides cursor functionality for Bubble Tea applications.
 package cursor
 
 import (
