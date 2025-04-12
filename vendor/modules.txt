@@ -1544,8 +1544,8 @@ github.com/power-devops/perfstat
 ## explicit; go 1.22.0
 github.com/prometheus/alertmanager/api/v2/models
 github.com/prometheus/alertmanager/pkg/modtimevfs
-# github.com/prometheus/client_golang v1.21.1
-## explicit; go 1.21
+# github.com/prometheus/client_golang v1.22.0
+## explicit; go 1.22
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil
@@ -1556,6 +1556,7 @@ github.com/prometheus/client_golang/prometheus/collectors/version
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promauto
 github.com/prometheus/client_golang/prometheus/promhttp
+github.com/prometheus/client_golang/prometheus/promhttp/internal
 github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
