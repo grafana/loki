@@ -111,9 +111,10 @@ func (c *Context) executeSortMerge(ctx context.Context, n *physical.SortMerge, i
 	heap.Init(mh)
 
 	return &HeapSortMerge{
-		inputs:    inputs,
-		heap:      mh,
-		batchSize: c.batchSize,
+		inputs:     inputs,
+		heap:       mh,
+		batchSize:  c.batchSize,
+		columnEval: n.Column.Evaluate,
 	}
 }
 

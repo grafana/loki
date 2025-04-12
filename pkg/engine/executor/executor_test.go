@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/stretchr/testify/require"
 )
@@ -102,7 +103,14 @@ func TestLimit(t *testing.T) {
 
 func TestSortMerge(t *testing.T) {
 	b := physical.NewBuilder()
-	b = b.Add(&physical.SortMerge{})
+	b = b.Add(&physical.SortMerge{
+		Column: &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "timestamp",
+				Type:   types.ColumnTypeBuiltin,
+			},
+		},
+	})
 	_ = b.Add(&dataGenerator{
 		limit: 10,
 	})

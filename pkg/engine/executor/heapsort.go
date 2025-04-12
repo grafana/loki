@@ -6,6 +6,7 @@ import (
 
 	"github.com/apache/arrow/go/v18/arrow"
 	"github.com/apache/arrow/go/v18/arrow/array"
+	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func MinHeap() heap.Interface {
@@ -67,6 +68,7 @@ type HeapSortMerge struct {
 	active      []bool
 	rows        []int64
 	batchSize   int64
+	columnEval  physical.EvaluateFunc
 }
 
 var _ Pipeline = (*HeapSortMerge)(nil)
@@ -137,8 +139,11 @@ func (p *HeapSortMerge) init() error {
 		batch, _ := input.Value()
 		p.batches[i] = batch
 		p.rows[i] = batch.NumRows()
-		col := batch.Column(2) // assuming timestamp column is at index 2
-		tsCol, ok := col.(*array.Uint64)
+		col, err := p.columnEval(batch)
+		if err != nil {
+			return err
+		}
+		tsCol, ok := col.ToArray().(*array.Uint64)
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}
@@ -199,8 +204,11 @@ func (p *HeapSortMerge) collectBatch(buffer *[]arrow.Record) error {
 
 				p.batches[i] = batch
 				p.rows[i] = batch.NumRows()
-				col := batch.Column(2) // assuming timestamp column is at index 2
-				tsCol, ok := col.(*array.Uint64)
+				col, err := p.columnEval(batch)
+				if err != nil {
+					return err
+				}
+				tsCol, ok := col.ToArray().(*array.Uint64)
 				if !ok {
 					return errors.New("column is not a timestamp column")
 				}

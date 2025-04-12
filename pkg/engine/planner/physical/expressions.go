@@ -3,6 +3,9 @@ package physical
 import (
 	"fmt"
 
+	"github.com/apache/arrow/go/v18/arrow"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -34,9 +37,23 @@ func (t ExpressionType) String() string {
 	}
 }
 
+// Evaluator denotes an object that can evaluate an input in form of an [arrow.Record] and return a [ColumnVector] as result.
+type Evaluator interface {
+	Evaluate(input arrow.Record) (ColumnVector, error)
+}
+
+// EvaluateFunc is a function that can be used as [Evaluator].
+type EvaluateFunc func(input arrow.Record) (ColumnVector, error)
+
+// Evaluate implements Evaluator.
+func (e EvaluateFunc) Evaluate(input arrow.Record) (ColumnVector, error) {
+	return e(input)
+}
+
 // Expression is the common interface for all expressions in a physical plan.
 type Expression interface {
 	fmt.Stringer
+	Evaluator
 	Type() ExpressionType
 	isExpr()
 }
@@ -90,6 +107,15 @@ func (*UnaryExpr) Type() ExpressionType {
 	return ExprTypeUnary
 }
 
+func (e *UnaryExpr) Evaluate(input arrow.Record) (ColumnVector, error) {
+	left, err := e.Left.Evaluate(input)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("evaluated *UnaryExpr", e.Op, left)
+	return nil, errors.ErrNotImplemented
+}
+
 // BinaryExpr is an expression that implements the [BinaryExpression] interface.
 type BinaryExpr struct {
 	Left, Right Expression
@@ -106,6 +132,19 @@ func (e *BinaryExpr) String() string {
 // ID returns the type of the [BinaryExpr].
 func (*BinaryExpr) Type() ExpressionType {
 	return ExprTypeBinary
+}
+
+func (e *BinaryExpr) Evaluate(input arrow.Record) (ColumnVector, error) {
+	left, err := e.Left.Evaluate(input)
+	if err != nil {
+		return nil, err
+	}
+	right, err := e.Right.Evaluate(input)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("evaluated *BinaryExpr", e.Op, left, right)
+	return nil, errors.ErrNotImplemented
 }
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
@@ -129,6 +168,13 @@ func (*LiteralExpr) Type() ExpressionType {
 // ValueType returns the kind of value represented by the literal.
 func (e *LiteralExpr) ValueType() types.ValueType {
 	return e.Value.ValueType()
+}
+
+func (e *LiteralExpr) Evaluate(input arrow.Record) (ColumnVector, error) {
+	return &Scalar{
+		value: e.Value,
+		rows:  input.NumRows(),
+	}, nil
 }
 
 func NewLiteral(value any) *LiteralExpr {
@@ -164,3 +210,84 @@ func (e *ColumnExpr) String() string {
 func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
 }
+
+func (e *ColumnExpr) Evaluate(input arrow.Record) (ColumnVector, error) {
+	for i := range input.NumCols() {
+		if input.ColumnName(int(i)) == e.Ref.Column {
+			return &Array{
+				array: input.Column(int(i)),
+				rows:  input.NumRows(),
+			}, nil
+		}
+	}
+	return nil, errors.ErrKey
+}
+
+// ColumnVector represents columnar values from evaluated expressions.
+type ColumnVector interface {
+	// ToArray returns the underlying Arrow array representation of the column vector.
+	ToArray() arrow.Array
+	// Value returns the value at the specified index position in the column vector.
+	Value(i int64) any
+	// Type returns the Arrow data type of the column vector.
+	Type() arrow.Type
+}
+
+// Scalar represents a single value repeated any number of times.
+type Scalar struct {
+	value types.Literal
+	rows  int64
+}
+
+var _ ColumnVector = (*Scalar)(nil)
+
+// ToArray implements ColumnVector.
+func (v *Scalar) ToArray() arrow.Array {
+	return nil
+}
+
+// Value implements ColumnVector.
+func (v *Scalar) Value(i int64) any {
+	return v.value.Value
+}
+
+// Type implements ColumnVector.
+func (v Scalar) Type() arrow.Type {
+	switch v.value.ValueType() {
+	case types.ValueTypeBool:
+		return arrow.BOOL
+	case types.ValueTypeStr:
+		return arrow.STRING
+	case types.ValueTypeInt:
+		return arrow.INT64
+	case types.ValueTypeFloat:
+		return arrow.FLOAT64
+	case types.ValueTypeTimestamp:
+		return arrow.UINT64
+	default:
+		return arrow.NULL
+	}
+}
+
+// Array represents a column of data, stored as an [arrow.Array].
+type Array struct {
+	array arrow.Array
+	rows  int64
+}
+
+// ToArray implements ColumnVector.
+func (a *Array) ToArray() arrow.Array {
+	return a.array
+}
+
+// Value implements ColumnVector.
+func (a *Array) Value(i int64) any {
+	return a.array.ValueStr(int(i))
+}
+
+// Type implements ColumnVector.
+func (a *Array) Type() arrow.Type {
+	return a.array.DataType().ID()
+}
+
+var _ ColumnVector = (*Array)(nil)
