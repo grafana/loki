@@ -1217,8 +1217,8 @@ github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037 h1:M4Zj79q
 github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037/go.mod h1:nkBI/wGFp7t1NJnnCeJdS4sX5atPAqwCPpDXKuI7SC8=
 github.com/twmb/franz-go/pkg/kmsg v1.11.1 h1:cuW0wIrdZJQ8NZ5ba+jq0OIOdpP0yuRjPeuE8eYodZw=
 github.com/twmb/franz-go/pkg/kmsg v1.11.1/go.mod h1:CFfkkLysDNmukPYhGzuUcDtf46gQSqCZHMW1T4Z+wDE=
-github.com/twmb/franz-go/plugin/kotel v1.5.0 h1:TiPfGUbQK384OO7ZYGdo7JuPCbJn+/8njQ/D9Je9CDE=
-github.com/twmb/franz-go/plugin/kotel v1.5.0/go.mod h1:wRXzRo76x1myOUMaVHAyraXoGBdEcvlLChGTVv5+DWU=
+github.com/twmb/franz-go/plugin/kotel v1.6.0 h1:hmvLn/cVw/Hn56H3aJVJu/a/fh6m8J6Ajwp0IcEHbH8=
+github.com/twmb/franz-go/plugin/kotel v1.6.0/go.mod h1:ADmLuCa/NzHdXdWfl22FsIlGCack+YrHjivirHCBJaY=
 github.com/twmb/franz-go/plugin/kprom v1.1.0 h1:grGeIJbm4llUBF8jkDjTb/b8rKllWSXjMwIqeCCcNYQ=
 github.com/twmb/franz-go/plugin/kprom v1.1.0/go.mod h1:cTDrPMSkyrO99LyGx3AtiwF9W6+THHjZrkDE2+TEBIU=
 github.com/uber/jaeger-client-go v2.30.0+incompatible h1:D6wyKGCecFaSRUpo8lCVbaOOb6ThwMmTEbhRwtKR97o=
