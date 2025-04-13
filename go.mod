@@ -145,7 +145,7 @@ require (
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.18.1
-	github.com/twmb/franz-go/pkg/kadm v1.15.0
+	github.com/twmb/franz-go/pkg/kadm v1.16.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
 	github.com/twmb/franz-go/pkg/kmsg v1.11.1
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
