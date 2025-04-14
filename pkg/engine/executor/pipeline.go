@@ -80,12 +80,12 @@ func (p *GenericPipeline) Inputs() []Pipeline {
 	return p.inputs
 }
 
-// Value implements Pipe.
+// Value implements Pipeline.
 func (p *GenericPipeline) Value() (arrow.Record, error) {
 	return p.state.Value()
 }
 
-// Read implements Pipe.
+// Read implements Pipeline.
 func (p *GenericPipeline) Read() error {
 	if p.read == nil {
 		return EOF
@@ -94,15 +94,14 @@ func (p *GenericPipeline) Read() error {
 	return p.state.err
 }
 
-// Close implements Pipe.
+// Close implements Pipeline.
 func (p *GenericPipeline) Close() {
-	// TODO
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
 }
 
-// Transport implements Pipe.
+// Transport implements Pipeline.
 func (p *GenericPipeline) Transport() Transport {
 	return p.t
 }

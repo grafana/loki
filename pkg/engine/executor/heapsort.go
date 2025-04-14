@@ -172,6 +172,7 @@ func (p *HeapSortMerge) read() error {
 		return p.state.err
 	}
 
+	// NOTE(chaudum): Should a coalesce operator combine the rows and the merge operator yield single row batches?
 	buffer := make([]arrow.Record, 0, p.batchSize)
 	if err := p.collectBatch(&buffer); err != nil {
 		return err
