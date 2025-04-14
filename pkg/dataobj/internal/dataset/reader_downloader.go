@@ -182,7 +182,7 @@ func (dl *readerDownloader) PrimaryColumns() []Column { return dl.primary }
 func (dl *readerDownloader) SecondaryColumns() []Column { return dl.secondary }
 
 // DownloadStats returns the statistics about the page downloads.
-func (d *readerDownloader) DownloadStats() DownloadStats {
+func (dl *readerDownloader) DownloadStats() DownloadStats {
 	return d.stats
 }
 
