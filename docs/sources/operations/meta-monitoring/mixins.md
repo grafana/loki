@@ -11,7 +11,7 @@ Loki is instrumented to expose metrics about itself via the `/metrics` endpoint,
 To set up monitoring using the mixin, you need to:
 
 1. Deploy the Kubernetes Monitoring Helm chart. Follow the instructions in the [Deploy Loki Meta-monitoring](https://grafana.com/docs/loki/latest/operations/meta-monitoring/deploy) documentation.
-1. Actively storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
+1. Be actively storing metrics from your Loki cluster in Grafana Cloud or a separate LGTM stack.
 
 This procedure assumes that you have set up Loki using the Helm chart.
 
@@ -152,6 +152,6 @@ Refer to the [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimi
 After you have installed the Loki mixin dashboards, alerts, and recording rules, you can now monitor your production Loki cluster using Grafana. Make sure you review the mixins when you upgrade Loki to make sure you are using the latest version of the mixin.
 
 You can now move onto:
-* **Send Logs:** Ready to start sending your own logs to Loki, there a several methods you can use. Checkout [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/) for more information.
+* **Send Logs:** Ready to start sending your own logs to Loki, there a several methods you can use. For more information, refer to [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
 * **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
-* **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information see [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).
+* **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information refer to [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).

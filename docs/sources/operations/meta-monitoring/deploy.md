@@ -1,7 +1,7 @@
 ---
 title: Deploy Loki meta-monitoring
 menuTitle: Deploy Loki Meta Monitoring
-description: Describes how to deploy Meta Monitoring for Loki.
+description: Describes how to deploy Meta Monitoring for Loki using the Kubernetes Monitoring Helm chart.
 weight: 100
 ---
 
@@ -13,7 +13,7 @@ The primary method for collecting and monitoring a Loki cluster is to use the [K
 We recommend running a production cluster of Loki in distributed mode using Kubernetes. This tutorial assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this tutorial.
 {{< /admonition >}}
 
-## Before you begin
+## Prerequisites
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/)
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).

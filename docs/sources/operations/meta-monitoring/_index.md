@@ -13,15 +13,15 @@ As a best practice, you should collect data about Loki in a separate instance of
 
 Loki exposes the following observability data about itself:
 
-- **Metrics**: Loki provides a `/metrics` endpoint that sends information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component sends its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster see [metrics](#loki-metrics). This important to keep in mind when running a large distributed Loki cluster, see [metrics cardinality](#metrics-cardinality). 
+- **Metrics**: Loki provides a `/metrics` endpoint that sends information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc. Each Loki component sends its own metrics, allowing for fine-grained monitoring of the health of your Loki cluster. For more information about the metrics Loki exposes, refer to [metrics](#loki-metrics). It is important to keep [metrics cardinality](#metrics-cardinality) in mind when running a large distributed Loki cluster.
   
 - **Logs**: Loki emits a detailed log line `metrics.go` for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance. You can also collect pod logs from your Loki components to monitor and drill down into specific issues.
 
 ## Monitoring Loki
 
-There three primary components to monitoring Loki:
+There are three primary components to monitoring Loki:
 
-1. [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/): The Kubernetes Monitoring Helm chart provides a comprehensive monitoring solution for Kubernetes clusters. It also provides direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo and Mimir) stack. To learn how to deploy the Kubernetes Monitoring Helm chart, see [deploy meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy).
+1. [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/): The Kubernetes Monitoring Helm chart provides a comprehensive monitoring solution for Kubernetes clusters. It also provides direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo and Mimir) stack. To learn how to deploy the Kubernetes Monitoring Helm chart, refer to [deploy meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy).
 
 1. [Grafana Cloud account](https://grafana.com/products/cloud/) or a seperate LGTM stack: The data collected from the Loki cluster can be sent to a Grafana Cloud account or a separate LGTM stack. We recommend using Grafana Cloud since it is Grafana Lab's responsiblity to maintain the availability and performance of the Grafana Cloud services. 
 
@@ -32,7 +32,7 @@ You should also plan separately for infrastructure-level monitoring, to monitor 
 - [MinIO](https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html)
 - [Kubernetes](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
 
-The Kubernetes Monitoring Helm chart Grafana Labs uses to monitor Loki also provides these features out of the box with Kubernetes monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you can afford to collect.
+The Kubernetes Monitoring Helm chart Grafana Labs uses to monitor Loki also provides these features out of the box with Kubernetes monitoring enabled by default. You can choose which of these features to enable or disable based on how much data you want to collect and your meta-monitoring budget.
 
 ## Loki Metrics
 
