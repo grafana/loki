@@ -360,7 +360,7 @@ type Builder struct {
 func (b *Builder) Add(node Node) *Builder {
 	b.plan.addNode(node)
 	if b.node != nil {
-		b.plan.addEdge(Edge{Parent: b.node, Child: node})
+		_ = b.plan.addEdge(Edge{Parent: b.node, Child: node})
 	}
 	return &Builder{
 		plan: b.plan,

@@ -72,9 +72,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 }
 
-func (c *Context) executeDataGenerator(ctx context.Context, n *dataGenerator) Pipeline {
+func (c *Context) executeDataGenerator(_ context.Context, n *dataGenerator) Pipeline {
 	rows := int64(0)
-	limit := int64(n.limit)
+	limit := n.limit
 
 	return newGenericPipeline(Local, func(_ []Pipeline) State {
 		// Stop once we reached the limit
@@ -98,11 +98,11 @@ func (c *Context) executeDataGenerator(ctx context.Context, n *dataGenerator) Pi
 	})
 }
 
-func (c *Context) executeDataObjScan(ctx context.Context, n *physical.DataObjScan) Pipeline {
+func (c *Context) executeDataObjScan(_ context.Context, _ *physical.DataObjScan) Pipeline {
 	return errorPipeline(errNotImplemented)
 }
 
-func (c *Context) executeSortMerge(ctx context.Context, n *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(_ context.Context, n *physical.SortMerge, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -118,7 +118,7 @@ func (c *Context) executeSortMerge(ctx context.Context, n *physical.SortMerge, i
 	}
 }
 
-func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []Pipeline) Pipeline {
+func (c *Context) executeLimit(_ context.Context, n *physical.Limit, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -139,7 +139,7 @@ func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []
 			return Exhausted
 		}
 
-		// TODO(chaudum): Skip yielding zero-lenght batches while offset > 0
+		// TODO(chaudum): Skip yielding zero-length batches while offset > 0
 
 		// Pull the next item from downstream
 		input := inputs[0]
@@ -170,7 +170,7 @@ func (c *Context) executeLimit(ctx context.Context, n *physical.Limit, inputs []
 	}, inputs...)
 }
 
-func (c *Context) executeFilter(ctx context.Context, n *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -180,7 +180,7 @@ func (c *Context) executeFilter(ctx context.Context, n *physical.Filter, inputs 
 	return inputs[0]
 }
 
-func (c *Context) executeProjection(ctx context.Context, n *physical.Projection, inputs []Pipeline) Pipeline {
+func (c *Context) executeProjection(_ context.Context, _ *physical.Projection, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}

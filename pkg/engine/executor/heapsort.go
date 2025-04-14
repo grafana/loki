@@ -131,9 +131,8 @@ func (p *HeapSortMerge) init() error {
 		if err != nil {
 			if err == EOF {
 				continue
-			} else {
-				return err
 			}
+			return err
 		}
 		p.active[i] = true
 

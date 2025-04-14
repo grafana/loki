@@ -87,9 +87,13 @@ func mergeRecords(records []arrow.Record) (arrow.Record, error) {
 	}
 
 	// Create the record batch
+	var err error
 	mergedRecord := array.NewRecord(mergedSchema, columns, rowCount)
 	for i, col := range columns {
-		mergedRecord.SetColumn(i, col)
+		mergedRecord, err = mergedRecord.SetColumn(i, col)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return mergedRecord, nil

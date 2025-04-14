@@ -33,7 +33,7 @@ type Pipeline interface {
 }
 
 var (
-	EOF       = errors.New("pipeline exhausted")
+	EOF       = errors.New("pipeline exhausted") // nolint:revive
 	Exhausted = failure(EOF)
 )
 

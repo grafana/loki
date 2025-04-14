@@ -137,7 +137,6 @@ func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 		}
 		if err != nil {
 			t.Fatalf("did not expect error, got %s", err.Error())
-			break
 		}
 		batch, _ := pipeline.Value()
 		t.Log("batch", batch, "err", err)

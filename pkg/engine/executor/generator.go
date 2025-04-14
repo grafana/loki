@@ -88,7 +88,7 @@ func createBatch(idx int64, n int64) arrow.Record {
 	ts := make([]uint64, n)
 
 	for i := range n {
-		ids[i] = idx + int64(i)
+		ids[i] = idx + i
 		logs[i] = randomWords(10)
 		ts[i] = uint64(time.Now().UnixNano())
 	}
