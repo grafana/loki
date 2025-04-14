@@ -722,16 +722,20 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, _, err := d.ingestLimits.exceedsLimits(ctx, tenantID, streams)
+		streamsAfterLimits, reasonsForHashes, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
 		if err != nil {
 			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if exceedsLimits {
-			if d.cfg.IngestLimitsDryRunEnabled {
-				level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-			} else {
-				// TODO(grobinson): This will be removed, as we only want to fail the request
-				// when specific limits are exceeded.
-				return nil, httpgrpc.Error(http.StatusBadRequest, "request exceeded limits")
+		} else if len(streamsAfterLimits) == 0 {
+			// All streams have been dropped.
+			level.Debug(d.logger).Log("msg", "request exceeded limits, all streams will be dropped", "tenant", tenantID)
+			if !d.cfg.IngestLimitsDryRunEnabled {
+				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits: "+firstReasonForHashes(reasonsForHashes))
+			}
+		} else if len(streamsAfterLimits) < len(streams) {
+			// Some streams have been dropped.
+			level.Debug(d.logger).Log("msg", "request exceeded limits, some streams will be dropped", "tenant", tenantID)
+			if !d.cfg.IngestLimitsDryRunEnabled {
+				streams = streamsAfterLimits
 			}
 		}
 	}

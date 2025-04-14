@@ -2,6 +2,18 @@
 
 
 
+## [0.120.0](https://github.com/googleapis/google-cloud-go/compare/v0.119.0...v0.120.0) (2025-03-20)
+
+
+### Features
+
+* **civil:** Implement database/sql.Scanner|Valuer ([#1145](https://github.com/googleapis/google-cloud-go/issues/1145)) ([#11808](https://github.com/googleapis/google-cloud-go/issues/11808)) ([cbe4419](https://github.com/googleapis/google-cloud-go/commit/cbe4419c17f677c05f3f52c2080861adce705db4))
+
+
+### Bug Fixes
+
+* **third_party/pkgsite:** Increase comment size limit ([#11877](https://github.com/googleapis/google-cloud-go/issues/11877)) ([587b5cc](https://github.com/googleapis/google-cloud-go/commit/587b5ccc684ad99cb9eeba897304b7143564d423))
+
 ## [0.119.0](https://github.com/googleapis/google-cloud-go/compare/v0.118.3...v0.119.0) (2025-03-11)
 
 

@@ -20,10 +20,12 @@ import (
 	"context"
 	"strings"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 	otelinternaltracing "google.golang.org/grpc/stats/opentelemetry/internal/tracing"
 )
+
+const tracerName = "grpc-go"
 
 // traceTagRPC populates provided context with a new span using the
 // TextMapPropagator supplied in trace options and internal itracing.carrier.
@@ -32,10 +34,10 @@ import (
 // options. if TextMapPropagator is not provided, it returns the context as is.
 func (h *clientStatsHandler) traceTagRPC(ctx context.Context, ai *attemptInfo) (context.Context, *attemptInfo) {
 	mn := "Attempt." + strings.Replace(ai.method, "/", ".", -1)
-	tracer := otel.Tracer("grpc-open-telemetry")
+	tracer := h.options.TraceOptions.TracerProvider.Tracer(tracerName, trace.WithInstrumentationVersion(grpc.Version))
 	ctx, span := tracer.Start(ctx, mn)
 	carrier := otelinternaltracing.NewOutgoingCarrier(ctx)
-	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	h.options.TraceOptions.TextMapPropagator.Inject(ctx, carrier)
 	ai.traceSpan = span
 	return carrier.Context(), ai
 }
@@ -48,7 +50,7 @@ func (h *clientStatsHandler) createCallTraceSpan(ctx context.Context, method str
 		return ctx, nil
 	}
 	mn := strings.Replace(removeLeadingSlash(method), "/", ".", -1)
-	tracer := otel.Tracer("grpc-open-telemetry")
+	tracer := h.options.TraceOptions.TracerProvider.Tracer(tracerName, trace.WithInstrumentationVersion(grpc.Version))
 	ctx, span := tracer.Start(ctx, mn, trace.WithSpanKind(trace.SpanKindClient))
 	return ctx, span
 }
