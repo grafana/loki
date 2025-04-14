@@ -740,14 +740,14 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 		}
 
-		if d.cfg.IngestLimitsDryRunEnabled && reasonsForHashes != nil {
+		if len(reasonsForHashes) > 0 && d.cfg.IngestLimitsDryRunEnabled {
 			// When IngestLimitsDryRunEnabled is true, we need to stop stream hashes
 			// that exceed the stream limit from being written to the metadata topic.
 			// If we don't do this, the stream hashes that should have been rejected
 			// will instead being counted as a known stream, causing a disagreement
 			// in metrics between the limits service and ingesters.
 			skipMetadataHashes = make(map[uint64]struct{})
-			for streamHash, _ := range reasonsForHashes {
+			for streamHash := range reasonsForHashes {
 				skipMetadataHashes[streamHash] = struct{}{}
 			}
 		}
