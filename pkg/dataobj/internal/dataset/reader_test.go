@@ -66,7 +66,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		// which is out of range of at least one page.
 		Predicate: EqualPredicate{
 			Column: columns[0], // first_name column
-			Value:  StringValue("Henry"),
+			Value:  ByteArrayValue([]byte("Henry")),
 		},
 	})
 	defer r.Close()
