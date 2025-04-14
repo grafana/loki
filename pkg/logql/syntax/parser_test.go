@@ -3715,3 +3715,67 @@ func TestParseSampleExpr_String(t *testing.T) {
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
 	})
 }
+
+func newMustLineFormatter(tmpl string) *log.LineFormatter {
+	l, err := log.NewFormatter(tmpl)
+	if err != nil {
+		panic(err)
+	}
+	return l
+}
+
+// ensure we can properly sanitize structured metadata from a pipeline that has added the SM as labels
+func TestParseLabels_StructuredMetadata(t *testing.T) {
+	lbs := labels.FromStrings("foo", "bar")
+	structuredMetadata := labels.FromStrings("user", "asdf bob�")
+	expectedLabelsResults := append(lbs, labels.FromStrings("user", "asdf bob ")...)
+
+	// regex check for the test near the invalid character
+	p := log.NewPipeline([]log.Stage{
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchRegexp, "user", "bob.*")),
+		newMustLineFormatter("lbs {{.foo}} {{.user}}"),
+	})
+
+	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata...)
+	require.Equal(t, []byte("lbs bar asdf bob "), l)
+	require.Equal(t, log.NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+	_, err := ParseLabels(lbr.String())
+	require.NoError(t, err)
+
+	// equal check for the whole contents
+	p = log.NewPipeline([]log.Stage{
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "asdf bob ")),
+		newMustLineFormatter("lbs {{.foo}} {{.user}}"),
+	})
+	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata...)
+	require.Equal(t, []byte("lbs bar asdf bob "), l)
+	require.Equal(t, log.NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+	_, err = ParseLabels(lbr.String())
+	require.NoError(t, err)
+
+	// check that it works for line filter
+	f, err := log.NewFilter("asdf bob ", log.LineMatchEqual)
+	require.NoError(t, err)
+	equalLineFilterStage := f.ToStage()
+	p = log.NewPipeline([]log.Stage{
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+		newMustLineFormatter("lbs {{.foo}} {{.user}}"),
+		equalLineFilterStage,
+	})
+	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata...)
+	require.Equal(t, []byte("lbs bar asdf bob "), l)
+	require.Equal(t, log.NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+	_, err = ParseLabels(lbr.String())
+	require.NoError(t, err)
+}
