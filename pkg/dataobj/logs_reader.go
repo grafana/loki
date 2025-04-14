@@ -165,10 +165,6 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
 	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
-	if predicate == nil {
-		fmt.Println(">> no matching streams in section")
-	}
-
 	if r.predicate != nil {
 		predicate = dataset.AndPredicate{
 			Left:  predicate,
