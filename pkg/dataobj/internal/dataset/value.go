@@ -290,8 +290,6 @@ func (v Value) Size() int {
 		return int(unsafe.Sizeof(int64(0)))
 	case datasetmd.VALUE_TYPE_UINT64:
 		return int(unsafe.Sizeof(uint64(0)))
-	case datasetmd.VALUE_TYPE_STRING:
-		return int(v.num)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		return int(v.num)
 	case datasetmd.VALUE_TYPE_UNSPECIFIED:
