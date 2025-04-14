@@ -3,7 +3,6 @@ package executor
 import (
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -26,11 +25,11 @@ var words = []string{
 	"officia", "deserunt", "mollit", "anim", "id", "est", "laborum",
 }
 
-func randomWords(i int) string {
-	result := make([]string, i)
-	for j := 0; j < i; j++ {
-		// Pick a random word from the list
-		idx := rand.IntN(len(words))
+func randomWords(seed, wordCount int) string {
+	result := make([]string, wordCount)
+	for j := 0; j < wordCount; j++ {
+		// Use deterministic selection based on seed and position
+		idx := (seed + j) % len(words)
 		result[j] = words[idx]
 	}
 
@@ -87,10 +86,13 @@ func createBatch(idx int64, n int64) arrow.Record {
 	logs := make([]string, n)
 	ts := make([]uint64, n)
 
-	for i := range n {
+	// Use a fixed base timestamp plus idx for deterministic values
+	baseTimestamp := uint64(time.Unix(0, 0).UnixNano())
+
+	for i := int64(0); i < n; i++ {
 		ids[i] = idx + i
-		logs[i] = randomWords(10)
-		ts[i] = uint64(time.Now().UnixNano())
+		logs[i] = randomWords(int(idx+i), 10)
+		ts[i] = baseTimestamp + uint64(idx+i) // Use deterministic timestamp
 	}
 
 	timestampBuilder.AppendValues(ts, nil)
