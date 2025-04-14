@@ -1159,7 +1159,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
 			continue
 		}
 		if _, err := newChunk.Append(&entry); err != nil {
