@@ -325,8 +325,6 @@ github.com/aliyun/aliyun-oss-go-sdk/oss
 ## explicit; go 1.13
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/apache/arrow-go/v18 v18.1.0
-## explicit; go 1.22.7
 # github.com/apache/arrow/go/v18 v18.0.0-20241007013041-ab95a4d25142
 ## explicit; go 1.22
 github.com/apache/arrow/go/v18/arrow
