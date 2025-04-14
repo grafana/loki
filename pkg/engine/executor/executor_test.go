@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDataGenerator(t *testing.T) {
