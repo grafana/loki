@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/apache/arrow/go/v18/arrow"
+	"github.com/apache/arrow/go/v18/arrow/array"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -180,12 +182,68 @@ func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []
 	return inputs[0]
 }
 
-func (c *Context) executeProjection(_ context.Context, _ *physical.Projection, inputs []Pipeline) Pipeline {
+func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 	if len(inputs) > 1 {
 		return errorPipeline(fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
-	return inputs[0]
+
+	// If no columns are specified, pass through the input pipeline
+	if len(proj.Columns) == 0 {
+		return errorPipeline(fmt.Errorf("projection expects at least one column, got 0"))
+	}
+
+	// Get the column names from the projection expressions
+	columnNames := make([]string, len(proj.Columns))
+	for i, col := range proj.Columns {
+		if colExpr, ok := col.(*physical.ColumnExpr); ok {
+			columnNames[i] = colExpr.Ref.Column
+		} else {
+			return errorPipeline(fmt.Errorf("projection column %d is not a column expression", i))
+		}
+	}
+
+	return newGenericPipeline(Local, func(inputs []Pipeline) State {
+		// Pull the next item from the input pipeline
+		input := inputs[0]
+		err := input.Read()
+		if err != nil {
+			return state(nil, err)
+		}
+
+		batch, err := input.Value()
+		if err != nil {
+			return state(nil, err)
+		}
+
+		// Project the columns
+		indices := make([]int, 0, len(columnNames))
+		projectedColumns := make([]arrow.Array, 0, len(columnNames))
+		projectedNames := make([]string, 0, len(columnNames))
+
+		// Find the index of each projected column in the input batch
+		for _, name := range columnNames {
+			for i := 0; i < int(batch.NumCols()); i++ {
+				if batch.ColumnName(i) == name {
+					indices = append(indices, i)
+					projectedColumns = append(projectedColumns, batch.Column(i))
+					projectedNames = append(projectedNames, name)
+					break
+				}
+			}
+		}
+
+		// Create a new schema with only the projected columns
+		fields := make([]arrow.Field, len(projectedColumns))
+		for i, name := range projectedNames {
+			fields[i] = arrow.Field{Name: name, Type: projectedColumns[i].DataType()}
+		}
+		schema := arrow.NewSchema(fields, nil)
+
+		// Create a new record with only the projected columns
+		projected := array.NewRecord(schema, projectedColumns, batch.NumRows())
+		return success(projected)
+	}, inputs...)
 }
