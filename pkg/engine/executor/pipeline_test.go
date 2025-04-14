@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/apache/arrow/go/v18/arrow"
+	"github.com/apache/arrow/go/v18/arrow/array"
+	"github.com/apache/arrow/go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,6 +119,60 @@ func checkSchema(t *testing.T, a, b arrow.Record) {
 	}
 }
 
+type fakePipelineGen struct {
+	schema *arrow.Schema
+	batch  func(offset, sz int64, schema *arrow.Schema) arrow.Record
+}
+
+func newFakePipelineGen(schema *arrow.Schema, batch func(offset, sz int64, schema *arrow.Schema) arrow.Record) *fakePipelineGen {
+	return &fakePipelineGen{
+		schema: schema,
+		batch:  batch,
+	}
+}
+
+func (p *fakePipelineGen) Pipeline(batchSize int64, rows int64) Pipeline {
+	var pos int64
+
+	return newGenericPipeline(
+		Local,
+		func(_ []Pipeline) State {
+			if pos >= rows {
+				return Exhausted
+			}
+
+			batch := p.batch(pos, batchSize, p.schema)
+			pos += batch.NumRows()
+
+			return success(batch)
+		},
+		nil,
+	)
+}
+
+var (
+	autoIncrementingIntPipeline = newFakePipelineGen(
+		arrow.NewSchema([]arrow.Field{
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		}, nil),
+		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+			mem := memory.NewGoAllocator()
+			builder := array.NewInt64Builder(mem)
+			defer builder.Release()
+
+			for i := int64(0); i < sz; i++ {
+				builder.Append(offset + i)
+			}
+
+			data := builder.NewArray()
+			defer data.Release()
+
+			columns := []arrow.Array{data}
+			return array.NewRecord(schema, columns, sz)
+		},
+	)
+)
+
 func TestDataGenEquality(t *testing.T) {
 	// Create two different contexts with different batch sizes
 	c1 := &Context{
@@ -136,5 +192,12 @@ func TestDataGenEquality(t *testing.T) {
 	p2 := c2.executeDataGenerator(context.Background(), gen)
 
 	// Compare the pipelines - should pass even with different batch sizes
+	equalPipelines(t, p1, p2)
+}
+
+func TestFakePipelineGenEquality(t *testing.T) {
+	p1 := autoIncrementingIntPipeline.Pipeline(10, 100)
+	p2 := autoIncrementingIntPipeline.Pipeline(25, 100)
+
 	equalPipelines(t, p1, p2)
 }
