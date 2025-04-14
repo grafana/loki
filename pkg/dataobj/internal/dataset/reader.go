@@ -398,6 +398,12 @@ func (r *Reader) validatePredicate() error {
 }
 
 func (r *Reader) initDownloader(ctx context.Context) error {
+	// The downloader is initialized in three steps:
+	//
+	//   1. Give it the inner dataset.
+	//   2. Add columns with a flag of whether a column is primary or secondary.
+	//   3. Provide the overall dataset row ranges that will be valid to read.
+
 	if r.dl == nil {
 		r.dl = newReaderDownloader(r.opts.Dataset, r.opts.TargetCacheSize)
 	} else {
