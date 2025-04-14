@@ -51,9 +51,6 @@ type Reader struct {
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
 
-	primaryColumns       map[Column]int      // Columns used in the predicate.
-	primaryColumnsPruned map[Column]struct{} // Columns pruned by the predicate.
-
 	stats ReadStats // Statistics about the reading operation
 }
 
