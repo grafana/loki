@@ -73,13 +73,13 @@ Some of the Loki observability metrics are emitted per tracked file (active), wi
 
 ## Example Loki log line: metrics.go
 
-Loki emits a "metrics.go" log line from the Querier, Query frontend and Ruler components, which lets you inspect query and recording rule performance. This is an example of a detailed log line "metrics.go" for a query.
+Loki emits a `metrics.go` log line from the Querier, Query frontend and Ruler components, which lets you inspect query and recording rule performance. This is an example of a detailed log line `metrics.go` for a query.
 
 Example log
 
 `level=info ts=2024-03-11T13:44:10.322919331Z caller=metrics.go:143 component=frontend org_id=mycompany latency=fast query="sum(count_over_time({kind=\"auditing\"} | json | user_userId =`` [1m]))" query_type=metric range_type=range length=10m0s start_delta=10m10.322900424s end_delta=10.322900663s step=1s duration=47.61044ms status=200 limit=100 returned_lines=0 throughput=9.8MB total_bytes=467kB total_entries=1 queue_time=0s subqueries=2 cache_chunk_req=1 cache_chunk_hit=1 cache_chunk_bytes_stored=0 cache_chunk_bytes_fetched=14394 cache_index_req=19 cache_index_hit=19 cache_result_req=1 cache_result_hit=1`
 
-You can use the query-frontend `metrics.go` lines to understand a query’s overall performance. The “metrics.go” line output by the Queriers contains the same information as the Query frontend but is often more helpful in understanding and troubleshooting query performance. This is largely because it can tell you how the querier spent its time executing the subquery. Here are the most useful stats:
+You can use the query-frontend `metrics.go` lines to understand a query’s overall performance. The `metrics.go` line output by the Queriers contains the same information as the Query frontend but is often more helpful in understanding and troubleshooting query performance. This is largely because it can tell you how the querier spent its time executing the subquery. Here are the most useful stats:
 
 - **total_bytes**: how many total bytes the query processed
 - **duration**: how long the query took to execute

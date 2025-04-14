@@ -7,10 +7,10 @@ weight: 100
 
 # Deploy Loki meta-monitoring
 
-The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This tutorial will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
+The primary method for collecting and monitoring a Loki cluster is to use the [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/) chart. This chart provides a comprehensive monitoring solution for Kubernetes clusters and includes direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo, and Mimir) stack. This procedure will walk you through deploying the Kubernetes Monitoring Helm chart to monitor your Loki cluster.
 
 {{< admonition type="note" >}}
-We recommend running a production cluster of Loki in distributed mode using Kubernetes. This tutorial assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this tutorial.
+We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -44,7 +44,7 @@ Before deploying the Kubernetes Monitoring Helm chart, you need to set up severa
 
 ### Authentication
 
-The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separate LGTM stack for monitoring. You will need to provide the necessary credentials to the Helm chart to authenticate with your Grafana Cloud account or LGTM stack. In this tutorial, we will use Grafana Cloud as an example.
+The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separate LGTM stack for monitoring. You will need to provide the necessary credentials to the Helm chart to authenticate with your Grafana Cloud account or LGTM stack. In this procedure, we will use Grafana Cloud as an example.
 
 1. Create a new Cloud Access Policy in Grafana Cloud.     
     1. Sign into [Grafana Cloud](https://grafana.com/auth/sign-in/).
