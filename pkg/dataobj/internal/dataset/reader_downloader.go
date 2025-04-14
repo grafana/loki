@@ -183,7 +183,7 @@ func (dl *readerDownloader) SecondaryColumns() []Column { return dl.secondary }
 
 // DownloadStats returns the statistics about the page downloads.
 func (dl *readerDownloader) DownloadStats() DownloadStats {
-	return d.stats
+	return dl.stats
 }
 
 // downloadBatch downloads the requested pages for the given columns.
