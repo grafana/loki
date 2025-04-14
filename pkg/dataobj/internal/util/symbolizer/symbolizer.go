@@ -48,8 +48,9 @@ func (s *Symbolizer) Get(name string) string {
 			i++
 		}
 	}
-	s.symbols[name] = strings.Clone(name)
-	return s.symbols[name]
+	newString := strings.Clone(name)
+	s.symbols[newString] = newString
+	return newString
 }
 
 // Reset clears the cache and resets the Symbolizer to its initial state,
