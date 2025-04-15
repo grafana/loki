@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+	otlptranslate "github.com/prometheus/otlptranslator"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

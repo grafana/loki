@@ -234,7 +234,7 @@ func Test_ParserHints(t *testing.T) {
 			require.NoError(t, err)
 
 			for i, ex := range exs {
-				v, lbsRes, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...))
+				v, lbsRes, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
 				var lbsResString string
 				if lbsRes != nil {
 					lbsResString = lbsRes.String()
