@@ -1918,7 +1918,7 @@ go.opentelemetry.io/collector/config/configtelemetry
 ## explicit; go 1.22.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/pdata v1.29.0
+# go.opentelemetry.io/collector/pdata v1.30.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
