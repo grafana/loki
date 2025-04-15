@@ -1109,7 +1109,7 @@ github.com/grafana/gomemcache/memcache
 ## explicit; go 1.13
 github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f => ./pkg/push
-## explicit; go 1.23.0
+## explicit; go 1.22.7
 github.com/grafana/loki/pkg/push
 # github.com/grafana/pyroscope-go/godeltaprof v0.1.8
 ## explicit; go 1.18
