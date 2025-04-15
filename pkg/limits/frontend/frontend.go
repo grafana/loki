@@ -191,25 +191,12 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 	// Check if max streams limit would be exceeded.
 	maxGlobalStreams := f.limits.MaxGlobalStreamsPerUser(req.Tenant)
 	if activeStreamsTotal >= uint64(maxGlobalStreams) {
-		// Take the intersection of unknown streams from all responses by counting
-		// the number of occurrences. If the number of occurrences matches the
-		// number of responses, we know the stream was unknown to all instances.
-		unknownStreams := make(map[uint64]int)
 		for _, resp := range resps {
 			for _, unknownStream := range resp.Response.UnknownStreams {
-				unknownStreams[unknownStream]++
-			}
-		}
-		for _, resp := range resps {
-			for _, unknownStream := range resp.Response.UnknownStreams {
-				// If the stream is unknown to all instances, it must be a new
-				// stream.
-				if unknownStreams[unknownStream] == len(resps) {
-					results = append(results, &logproto.ExceedsLimitsResult{
-						StreamHash: unknownStream,
-						Reason:     ReasonExceedsMaxStreams,
-					})
-				}
+				results = append(results, &logproto.ExceedsLimitsResult{
+					StreamHash: unknownStream,
+					Reason:     ReasonExceedsMaxStreams,
+				})
 			}
 		}
 	}
