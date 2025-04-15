@@ -152,9 +152,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 	}, {
 		// This test checks the case where a tenant's streams are sharded over
 		// two instances, each holding one each stream. Each instance will
-		// return an response stating that it doesn't know about the other
-		// stream. The frontend is responsible for taking the intersection of
-		// the two responses and calculating the actual set of unknown streams.
+		// receive a request for just the streams in its assigned partitions.
+		// The frontend is responsible for taking the union of the two responses
+		// and calculating the actual set of unknown streams.
 		name: "exceeds max streams limit, streams sharded over two instances",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
@@ -182,14 +182,16 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
 		}},
-		// Each instance will respond stating that it doesn't know about the
-		// other stream.
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:         "test",
 			ActiveStreams:  1,
 			Rate:           5,
-			UnknownStreams: []uint64{0x2},
+			UnknownStreams: nil,
 		}, {
+			// Instance 1 responds that it does not know about stream
+			// 0x1. Since 0x1 shards to partition 1, and partition 1
+			// is consumed by instance 1, the frontend knows that 0x1
+			// is an unknown stream.
 			Tenant:         "test",
 			ActiveStreams:  1,
 			Rate:           5,
@@ -197,8 +199,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}},
 		maxGlobalStreams: 1,
 		ingestionRate:    100,
-		// No streams should be returned.
-		expected: nil,
+		expected: []*logproto.ExceedsLimitsResult{
+			{StreamHash: 0x1, Reason: ReasonExceedsMaxStreams},
+		},
 	}, {
 		name: "exceeds rate limits, returns all streams",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
