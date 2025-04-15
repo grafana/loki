@@ -1,7 +1,6 @@
 module github.com/grafana/loki/pkg/push
 
 go 1.22.7
-
 toolchain go1.23.3
 
 require (
