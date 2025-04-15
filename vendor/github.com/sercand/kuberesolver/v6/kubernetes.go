@@ -152,31 +152,31 @@ func NewInsecureK8sClient(apiURL string) K8sClient {
 	}
 }
 
-func getEndpoints(client K8sClient, namespace, targetName string) (Endpoints, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/api/v1/namespaces/%s/endpoints/%s",
+func getEndpointSliceList(client K8sClient, namespace, targetName string) (EndpointSliceList, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/apis/discovery.k8s.io/v1/namespaces/%s/endpointslices?labelSelector=kubernetes.io/service-name=%s",
 		client.Host(), namespace, targetName))
 	if err != nil {
-		return Endpoints{}, err
+		return EndpointSliceList{}, err
 	}
 	req, err := client.GetRequest(u.String())
 	if err != nil {
-		return Endpoints{}, err
+		return EndpointSliceList{}, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return Endpoints{}, err
+		return EndpointSliceList{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Endpoints{}, fmt.Errorf("invalid response code %d for service %s in namespace %s", resp.StatusCode, targetName, namespace)
+		return EndpointSliceList{}, fmt.Errorf("invalid response code %d for service %s in namespace %s", resp.StatusCode, targetName, namespace)
 	}
-	result := Endpoints{}
+	result := EndpointSliceList{}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	return result, err
 }
 
-func watchEndpoints(ctx context.Context, client K8sClient, namespace, targetName string) (watchInterface, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/api/v1/watch/namespaces/%s/endpoints/%s",
+func watchEndpointSlice(ctx context.Context, client K8sClient, namespace, targetName string) (watchInterface, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/apis/discovery.k8s.io/v1/watch/namespaces/%s/endpointslices?labelSelector=kubernetes.io/service-name=%s",
 		client.Host(), namespace, targetName))
 	if err != nil {
 		return nil, err
