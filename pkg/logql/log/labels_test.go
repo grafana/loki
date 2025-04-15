@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -502,3 +503,30 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 		_, _, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
 	}
 }
+
+func BenchmarkLabelsBuilder_Add(b *testing.B) {
+	sizes := []int{10, 100, 1000, 10000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			// Pre-generate labels that should be added
+			newB := labels.NewScratchBuilder(size)
+			for i := 0; i < size; i++ {
+				newB.Add(fmt.Sprintf("label_%d", i), fmt.Sprintf("value_%d", i))
+			}
+			newLabels := newB.Labels()
+
+			lbs := labels.FromStrings("already", "in")
+			builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				builder.Reset()
+				builder.Add(StructuredMetadataLabel, newLabels)
+			}
+		})
+	}
+}
+
