@@ -9,7 +9,7 @@ It comes with a small ~250 LOC kubernetes client to find service endpoints. Ther
 ```go
 
 // Import the module
-import "github.com/sercand/kuberesolver/v5"
+import "github.com/sercand/kuberesolver/v6"
 	
 // Register kuberesolver to grpc before calling grpc.Dial
 kuberesolver.RegisterInCluster()
@@ -60,7 +60,7 @@ Since it provides and updates all available service endpoints, together with a c
 
 ### RBAC
 
-You need give `GET` and `WATCH` access to the `endpoints` if you are using RBAC in your cluster.
+You need give `GET` and `WATCH` access to the `endpointslices` if you are using RBAC in your cluster.
 
 
 ### Using With TLS
