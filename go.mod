@@ -104,7 +104,7 @@ require (
 	golang.org/x/sync v0.13.0
 	golang.org/x/sys v0.32.0
 	golang.org/x/time v0.11.0
-	google.golang.org/api v0.228.0
+	google.golang.org/api v0.229.0
 	google.golang.org/grpc v1.71.1
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -138,6 +138,7 @@ require (
 	github.com/parquet-go/parquet-go v0.25.0
 	github.com/prometheus/alertmanager v0.28.1
 	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/prometheus/otlptranslator v0.0.0-20250414121140-35db323fe9fb
 	github.com/prometheus/sigv4 v0.1.2
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
@@ -151,7 +152,7 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.29.0
+	go.opentelemetry.io/collector/pdata v1.30.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.29.0
 	golang.org/x/text v0.24.0
@@ -164,7 +165,7 @@ require (
 
 require (
 	cel.dev/expr v0.19.2 // indirect
-	cloud.google.com/go/auth v0.15.0 // indirect
+	cloud.google.com/go/auth v0.16.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.1 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.25.0 // indirect
@@ -399,8 +400,8 @@ require (
 	go.mongodb.org/mongo-driver v1.17.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.118.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.59.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.59.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0
@@ -411,7 +412,7 @@ require (
 	golang.org/x/tools v0.29.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250313205543-e70fdf4c4cb4 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250313205543-e70fdf4c4cb4
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250414145226-207652e42e2e
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect

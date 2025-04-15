@@ -61,7 +61,7 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 
 		for _, extractor := range e.extractors {
-			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 			if !ok {
 				continue
 			}

@@ -96,7 +96,7 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 			if !ok {
 				continue
 			}
@@ -335,7 +335,7 @@ func newSampleIterator(ctx context.Context,
 				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
-				value, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+				value, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 				if !ok {
 					continue
 				}
