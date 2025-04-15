@@ -10507,6 +10507,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "sidecar": false,
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -10783,6 +10784,15 @@ null
 			<td>Labels for ruler service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.sidecar</td>
+			<td>bool</td>
+			<td>Whether to enable the rules sidecar</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
