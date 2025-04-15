@@ -8,6 +8,8 @@ import (
 
 	"github.com/apache/arrow/go/v18/arrow"
 	"github.com/apache/arrow/go/v18/arrow/array"
+	"github.com/apache/arrow/go/v18/arrow/memory"
+
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -172,14 +174,68 @@ func (c *Context) executeLimit(_ context.Context, n *physical.Limit, inputs []Pi
 	}, inputs...)
 }
 
-func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
+// TODO(owen-d): There's a choice here around whether we should force predicates
+// to evaluate to booleans or a bitmask, possibly via Nulls
+// (so we can take advantage of arrow's `Array.NullBitmapBytes`).
+//
+// I've decided here to evaluate to booleans, as it's more likely to work initially
+// without additional complexity.
+func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 	if len(inputs) > 1 {
 		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
-	return inputs[0]
+
+	return newGenericPipeline(Local, func(inputs []Pipeline) State {
+		// Pull the next item from the input pipeline
+		input := inputs[0]
+		err := input.Read()
+		if err != nil {
+			return state(nil, err)
+		}
+
+		batch, err := input.Value()
+		if err != nil {
+			return state(nil, err)
+		}
+
+		cols := make([]*array.Boolean, 0, len(filter.Predicates))
+		defer func() {
+			for _, col := range cols {
+				col.Release() // I think this is right, but not sure
+			}
+		}()
+
+		for i, pred := range filter.Predicates {
+			res, err := pred.Evaluate(batch)
+			if err != nil {
+				return state(nil, err)
+			}
+			data := res.ToArray()
+			if data.DataType().ID() != arrow.BOOL {
+				return state(
+					nil,
+					fmt.Errorf("predicate %d returned non-boolean type %s", i, data.DataType()),
+				)
+			}
+			casted := data.(*array.Boolean)
+			cols = append(cols, casted)
+		}
+
+		filtered := filterBatch(batch, func(i int) bool {
+			for _, p := range cols {
+				if !p.IsValid(i) || !p.Value(i) {
+					return false
+				}
+			}
+			return true
+		})
+
+		return success(filtered)
+
+	}, inputs...)
 }
 
 func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
@@ -246,4 +302,91 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 		projected := array.NewRecord(schema, projectedColumns, batch.NumRows())
 		return success(projected)
 	}, inputs...)
+}
+
+// This is a very inefficient approach which creates a new filtered batch from a
+// pre-existing batch. Additionally, there is not plumbing in the arrow library
+// to do this efficiently, meaning we have to do a lot of roundabout type coercion
+// to ensure we can use the arrow builders.
+//
+// We should re-think this approach.
+func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
+	mem := memory.NewGoAllocator()
+	fields := batch.Schema().Fields()
+
+	builders := make([]array.Builder, len(fields))
+	defer func() {
+		for _, b := range builders {
+			if b != nil {
+				b.Release()
+			}
+		}
+	}()
+
+	additions := make([]func(int), len(fields))
+
+	for i, field := range fields {
+		switch field.Type.ID() {
+		case arrow.BOOL:
+			builder := array.NewBooleanBuilder(mem)
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.Boolean)
+				builder.Append(src.Value(offset))
+			}
+
+		case arrow.STRING:
+			builder := array.NewStringBuilder(mem)
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.String)
+				builder.Append(src.Value(offset))
+			}
+
+		case arrow.UINT64:
+			builder := array.NewUint64Builder(mem)
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.Uint64)
+				builder.Append(src.Value(offset))
+			}
+
+		case arrow.INT64:
+			builder := array.NewInt64Builder(mem)
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.Int64)
+				builder.Append(src.Value(offset))
+			}
+
+		case arrow.FLOAT64:
+			builder := array.NewFloat64Builder(mem)
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.Float64)
+				builder.Append(src.Value(offset))
+			}
+
+		default:
+			panic(fmt.Sprintf("unsupported type in filterBatch: %s", field.Type))
+		}
+	}
+
+	var ct int64
+	for i := 0; i < int(batch.NumRows()); i++ {
+		if include(i) {
+			for _, add := range additions {
+				add(i)
+			}
+			ct++
+		}
+	}
+
+	schema := arrow.NewSchema(fields, nil)
+	arrays := make([]arrow.Array, len(fields))
+	for i, builder := range builders {
+		arrays[i] = builder.NewArray()
+	}
+
+	return array.NewRecord(schema, arrays, ct)
 }
