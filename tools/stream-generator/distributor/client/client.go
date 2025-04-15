@@ -60,8 +60,8 @@ type Client struct {
 	io.Closer
 }
 
-// NewClient returns a new Client for the specified ingest-limits.
-func NewClient(cfg Config) (*Client, error) {
+// New returns a new Client for the specified ingest-limits.
+func New(cfg Config) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}

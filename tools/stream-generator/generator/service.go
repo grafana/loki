@@ -115,7 +115,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Generator, 
 	case PushStream:
 		// Do nothing here as per distributor clients are not
 		// discovered through the ring.
-		s.distributorClient, err = distributor_client.NewClient(cfg.DistributorClientConfig)
+		s.distributorClient, err = distributor_client.New(cfg.DistributorClientConfig)
 		if err != nil {
 			return nil, fmt.Errorf("error creating distributor client: %w", err)
 		}

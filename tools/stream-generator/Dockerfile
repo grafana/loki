@@ -13,9 +13,9 @@ COPY --from=build /src/loki/stream-generator /usr/bin/stream-generator
 
 SHELL [ "/busybox/sh", "-c" ]
 
-RUN addgroup -g 10001 -S streammetagen && \
-    adduser -u 10001 -S streammetagen -G streammetagen && \
-    chown -R streammetagen:streammetagen /usr/bin/stream-generator && \
+RUN addgroup -g 10001 -S streamgenerator && \
+    adduser -u 10001 -S streamgenerator -G streamgenerator && \
+    chown -R streamgenerator:streamgenerator /usr/bin/stream-generator && \
     ln -s /busybox/sh /bin/sh
 
 USER 10001
