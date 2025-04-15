@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -17,20 +16,20 @@ func Test(t *testing.T) {
 	records := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
+			Timestamp: time.Unix(10, 0),
 			Metadata:  nil,
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
-			Metadata:  labels.FromStrings("cluster", "test", "app", "bar"),
+			Timestamp: time.Unix(100, 0),
+			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("bar")}},
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
-			Metadata:  labels.FromStrings("cluster", "test", "app", "foo"),
+			Timestamp: time.Unix(5, 0),
+			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("foo")}},
 			Line:      []byte("foo bar"),
 		},
 	}
@@ -55,37 +54,33 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0).UTC(),
-			Metadata: labels.FromStrings(
-				"app", "foo",
-				"cluster", "test",
-			),
-			Line: []byte("foo bar"),
+			Timestamp: time.Unix(5, 0),
+			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("foo")}, {Name: "cluster", Value: []byte("test")}},
+			Line:      []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0).UTC(),
-			Metadata:  labels.FromStrings(),
+			Timestamp: time.Unix(10, 0),
+			Metadata:  []logs.RecordMetadata{},
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0).UTC(),
-			Metadata:  labels.FromStrings("app", "bar", "cluster", "test"),
+			Timestamp: time.Unix(100, 0),
+			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("bar")}, {Name: "cluster", Value: []byte("test")}},
 			Line:      []byte("goodbye world"),
 		},
 	}
 
 	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
 
-	var actual []logs.Record
+	i := 0
 	for result := range logs.Iter(context.Background(), dec) {
 		record, err := result.Value()
 		require.NoError(t, err)
-		actual = append(actual, record)
+		require.Equal(t, expect[i], record)
+		i++
 	}
-
-	require.Equal(t, expect, actual)
 }
 
 func buildObject(lt *logs.Logs) ([]byte, error) {

@@ -52,13 +52,6 @@ var (
 		[]string{"tenant"},
 		nil,
 	)
-
-	tenantIngestedBytesTotal = prometheus.NewDesc(
-		constants.Loki+"_ingest_limits_ingested_bytes_total",
-		"The total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
-		[]string{"tenant"},
-		nil,
-	)
 )
 
 type metrics struct {
@@ -66,6 +59,8 @@ type metrics struct {
 
 	kafkaConsumptionLag prometheus.Histogram
 	kafkaReadBytesTotal prometheus.Counter
+
+	tenantIngestedBytesTotal *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -88,6 +83,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_kafka_read_bytes_total",
 			Help:      "Total number of bytes read from Kafka.",
 		}),
+		tenantIngestedBytesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_tenant_ingested_bytes_total",
+			Help:      "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
 	}
 }
 
@@ -162,7 +162,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s.lifecyclerWatcher = services.NewFailureWatcher()
 	s.lifecyclerWatcher.WatchService(s.lifecycler)
 
-	metrics := client.NewReaderClientMetrics("ingest-limits", reg)
+	metrics := client.NewReaderClientMetrics("ingest-limits", reg, cfg.KafkaConfig.EnableKafkaHistograms)
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
@@ -173,7 +173,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
-		kgo.Balancers(kgo.StickyBalancer()),
+		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
@@ -191,7 +191,6 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 	descs <- tenantPartitionDesc
 	descs <- tenantRecordedStreamsDesc
 	descs <- tenantActiveStreamsDesc
-	descs <- tenantIngestedBytesTotal
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
@@ -202,9 +201,8 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 
 	for tenant, partitions := range s.metadata {
 		var (
-			recorded   int
-			active     int
-			totalBytes uint64
+			recorded int
+			active   int
 		)
 
 		for partitionID, partition := range partitions {
@@ -217,7 +215,6 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 			for _, stream := range partition {
 				if stream.lastSeenAt >= cutoff {
 					active++
-					totalBytes += stream.totalSize
 				}
 			}
 		}
@@ -225,7 +222,6 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
 		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
 		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
-		m <- prometheus.MustNewConstMetric(tenantIngestedBytesTotal, prometheus.CounterValue, float64(totalBytes), tenant)
 	}
 }
 
@@ -439,6 +435,8 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	recordTime := lastSeenAt.UnixNano()
 	recTotalSize := rec.EntriesSize + rec.StructuredMetadataSize
 
+	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(recTotalSize))
+
 	// Get the bucket for this timestamp using the configured interval duration
 	bucketStart := lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 
@@ -562,25 +560,11 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 		totalSize     uint64
 	)
 
-	for _, requestedID := range req.Partitions {
-		// Consider the recorded stream if it's partition
-		// is one of the partitions we are still assigned to.
-		assigned := false
-		for assignedID := range partitions {
-			if requestedID == assignedID {
-				assigned = true
-				break
-			}
-		}
-
-		if !assigned {
-			continue
-		}
-
-		// If the stream is written into a partition we are
-		// assigned to and has been seen within the window,
-		// it is an active stream.
-		for _, stream := range partitions[requestedID] {
+	// If the stream is written into a partition we are
+	// assigned to and has been seen within the window,
+	// it is an active stream.
+	for _, streams := range partitions {
+		for _, stream := range streams {
 			if stream.lastSeenAt < cutoff {
 				continue
 			}
@@ -620,20 +604,10 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// Calculate rate using only data from within the rate window
 	rate := float64(totalSize) / s.cfg.RateWindow.Seconds()
 
-	// Debug logging to help diagnose rate calculation issues
-	level.Debug(s.logger).Log(
-		"msg", "calculated stream usage",
-		"tenant", req.Tenant,
-		"active_streams", activeStreams,
-		"total_size", util.HumanizeBytes(totalSize),
-		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", util.HumanizeBytes(uint64(rate)),
-	)
-
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,
 		ActiveStreams:  activeStreams,
 		UnknownStreams: unknownStreams,
-		Rate:           int64(rate),
+		Rate:           uint64(rate),
 	}, nil
 }

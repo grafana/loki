@@ -22,7 +22,7 @@ import (
 var (
 	tenantID  = "foo"
 	streamBar = logproto.Stream{
-		Labels: labels.Labels{labels.Label{Name: "stream", Value: "1"}}.String(),
+		Labels: labels.FromStrings("stream", "1").String(),
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1).UTC(),
@@ -35,7 +35,7 @@ var (
 		},
 	}
 	streamFoo = logproto.Stream{
-		Labels: labels.Labels{labels.Label{Name: "stream", Value: "2"}}.String(),
+		Labels: labels.FromStrings("stream", "2").String(),
 		Entries: []logproto.Entry{
 			{
 				Timestamp: time.Unix(0, 1).UTC(),

@@ -66,7 +66,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		// which is out of range of at least one page.
 		Predicate: EqualPredicate{
 			Column: columns[0], // first_name column
-			Value:  StringValue("Henry"),
+			Value:  ByteArrayValue([]byte("Henry")),
 		},
 	})
 	defer r.Close()
@@ -279,6 +279,33 @@ func Test_BuildPredicateRanges(t *testing.T) {
 				Right: GreaterThanPredicate{Column: cols[1], Value: Int64Value(800)}, // Rows 750 - 999 of timestamp column
 			},
 			want: rowRanges{{Start: 0, End: 299}, {Start: 750, End: 999}}, // Rows 0 - 299, 750 - 999
+		},
+		{
+			name: "InPredicate with values inside and outside page ranges",
+			predicate: InPredicate{
+				Column: cols[1], // timestamp column
+				Values: []Value{
+					Int64Value(50),  // Inside page 1 (0-100)
+					Int64Value(300), // Inside page 2 (200-500)
+					Int64Value(150), // Outside all pages
+					Int64Value(600), // Outside all pages
+				},
+			},
+			want: rowRanges{
+				{Start: 0, End: 249},   // Page 1: contains 50
+				{Start: 250, End: 749}, // Page 2: contains 300
+			},
+		},
+		{
+			name: "InPredicate with values all outside page ranges",
+			predicate: InPredicate{
+				Column: cols[1], // timestamp column
+				Values: []Value{
+					Int64Value(150), // Outside all pages
+					Int64Value(600), // Outside all pages
+				},
+			},
+			want: nil, // No pages should be included
 		},
 	}
 

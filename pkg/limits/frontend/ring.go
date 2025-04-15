@@ -2,11 +2,12 @@ package frontend
 
 import (
 	"context"
-	"slices"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -24,17 +25,21 @@ var (
 // RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
 // limits instances.
 type RingStreamUsageGatherer struct {
-	logger log.Logger
-	ring   ring.ReadRing
-	pool   *ring_client.Pool
+	logger        log.Logger
+	ring          ring.ReadRing
+	pool          *ring_client.Pool
+	numPartitions int
+	cache         PartitionConsumersCache
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache PartitionConsumersCache, numPartitions int) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
-		logger: logger,
-		ring:   ring,
-		pool:   pool,
+		logger:        logger,
+		ring:          ring,
+		pool:          pool,
+		numPartitions: numPartitions,
+		cache:         cache,
 	}
 }
 
@@ -56,32 +61,48 @@ func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStrea
 }
 
 func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitions, err := g.getPartitionConsumers(ctx, rs)
+	partitionConsumers, err := g.getPartitionConsumers(ctx, rs)
 	if err != nil {
 		return nil, err
 	}
 
-	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(rs.Instances))
+	instancesToQuery := make(map[string][]uint64)
+	for _, hash := range r.StreamHashes {
+		partitionID := int32(hash % uint64(g.numPartitions))
+		addr, ok := partitionConsumers[partitionID]
+		if !ok {
+			// TODO Replace with a metric for partitions missing owners.
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
+			continue
+		}
+		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
+	}
 
-	// TODO: We shouldn't query all instances since we know which instance holds which stream.
-	for i, instance := range rs.Instances {
+	errg, ctx := errgroup.WithContext(ctx)
+	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
+
+	// Query each instance for stream usage
+	i := 0
+	for addr, hashes := range instancesToQuery {
+		j := i
+		i++
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
+			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
 				return err
 			}
+
 			protoReq := &logproto.GetStreamUsageRequest{
 				Tenant:       r.Tenant,
-				StreamHashes: r.StreamHashes,
-				Partitions:   partitions[instance.Addr],
+				StreamHashes: hashes,
 			}
 
 			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
 				return err
 			}
-			responses[i] = GetStreamUsageResponse{Addr: instance.Addr, Response: resp}
+
+			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
 			return nil
 		})
 	}
@@ -98,38 +119,54 @@ type getAssignedPartitionsResponse struct {
 	Response *logproto.GetAssignedPartitionsResponse
 }
 
-func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[string][]int32, error) {
+func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs ring.ReplicationSet) (map[int32]string, error) {
+	// Initialize result maps
+	highestTimestamp := make(map[int32]int64)
+	assigned := make(map[int32]string)
+
 	errg, ctx := errgroup.WithContext(ctx)
 	responses := make([]getAssignedPartitionsResponse, len(rs.Instances))
 
-	// Get the partitions assigned to each instance.
 	for i, instance := range rs.Instances {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(instance.Addr)
-			if err != nil {
+			errChan := make(chan error, 1)
+			defer close(errChan)
+
+			loaderFunc := ttlcache.LoaderFunc[string, logproto.GetAssignedPartitionsResponse](
+				func(c *ttlcache.Cache[string, logproto.GetAssignedPartitionsResponse], key string) *ttlcache.Item[string, logproto.GetAssignedPartitionsResponse] {
+					client, err := g.pool.GetClientFor(instance.Addr)
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+
+					resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+					if err != nil {
+						errChan <- err
+						return nil
+					}
+					return c.Set(key, *resp, ttlcache.DefaultTTL)
+				},
+			)
+
+			cached := g.cache.Get(instance.Addr, ttlcache.WithLoader(loaderFunc))
+
+			select {
+			case err := <-errChan:
 				return err
+			default:
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
-			if err != nil {
-				return err
-			}
-			// No need for a mutex here as responses is a "Structured variable"
-			// as described in https://go.dev/ref/spec#Variables.
-			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
+
+			protoResp := cached.Value()
+			responses[i] = getAssignedPartitionsResponse{Addr: instance.Addr, Response: &protoResp}
 			return nil
 		})
 	}
+
 	if err := errg.Wait(); err != nil {
 		return nil, err
 	}
 
-	// Deduplicate the partitions. This can happen if the call to
-	// GetAssignedPartitions is interleaved with a partition rebalance, such
-	// that two or more instances claim to be the consumer of the same
-	// partition at the same time. In case of conflicts, choose the instance
-	// with the latest timestamp.
-	highestTimestamp := make(map[int32]int64)
-	assigned := make(map[int32]string)
 	for _, resp := range responses {
 		for partition, assignedAt := range resp.Response.AssignedPartitions {
 			if t := highestTimestamp[partition]; t < assignedAt {
@@ -139,16 +176,5 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, rs 
 		}
 	}
 
-	// Return a slice of partition IDs for each instance.
-	result := make(map[string][]int32)
-	for partition, addr := range assigned {
-		result[addr] = append(result[addr], partition)
-	}
-
-	// Sort the partition IDs.
-	for instance := range result {
-		slices.Sort(result[instance])
-	}
-
-	return result, nil
+	return assigned, nil
 }

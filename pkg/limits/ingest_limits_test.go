@@ -33,7 +33,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 
 		// Expectations.
 		expectedActive         uint64
-		expectedRate           int64
+		expectedRate           uint64
 		expectedUnknownStreams []uint64
 	}{
 		{
@@ -79,7 +79,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			streamHashes: []uint64{1, 2, 3, 4},
 			// expectations
 			expectedActive: 4,
-			expectedRate:   int64(10000) / int64(5*60), // 10000 bytes / 5 minutes in seconds
+			expectedRate:   uint64(10000) / uint64(5*60), // 10000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "mixed active and expired streams",
@@ -105,7 +105,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			streamHashes: []uint64{1, 3, 5},
 			// expectations
 			expectedActive: 3,
-			expectedRate:   int64(9000) / int64(5*60), // 9000 bytes / 5 minutes in seconds
+			expectedRate:   uint64(9000) / uint64(5*60), // 9000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "all streams expired",
@@ -149,7 +149,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			streamHashes: []uint64{},
 			//expectations
 			expectedActive: 2,
-			expectedRate:   int64(3000) / int64(5*60), // 3000 bytes / 5 minutes in seconds
+			expectedRate:   uint64(3000) / uint64(5*60), // 3000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "unknown streams requested",
@@ -176,7 +176,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// expecations
 			expectedActive:         5,
 			expectedUnknownStreams: []uint64{6, 7, 8},
-			expectedRate:           int64(15000) / int64(5*60), // 15000 bytes / 5 minutes in seconds
+			expectedRate:           uint64(15000) / uint64(5*60), // 15000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "multiple assigned partitions",
@@ -204,7 +204,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			streamHashes: []uint64{1, 2, 3, 4, 5},
 			// expectations
 			expectedActive: 5,
-			expectedRate:   int64(15000) / int64(5*60), // 15000 bytes / 5 minutes in seconds
+			expectedRate:   uint64(15000) / uint64(5*60), // 15000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "multiple partitions with unasigned partitions",
@@ -228,7 +228,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// expectations
 			expectedActive:         2,
 			expectedUnknownStreams: []uint64{3, 4, 5},
-			expectedRate:           int64(3000) / int64(5*60), // 3000 bytes / 5 minutes in seconds
+			expectedRate:           uint64(3000) / uint64(5*60), // 3000 bytes / 5 minutes in seconds
 		},
 		{
 			name: "mixed buckets within and outside rate window",
@@ -271,7 +271,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// expectations
 			expectedActive: 2,
 			// Only count size from buckets within rate window: 1000 + 1500 + 1500 + 1500 = 5500
-			expectedRate: int64(5500) / int64(5*60), // 5500 bytes / 5 minutes in seconds = 18.33, truncated to 18
+			expectedRate: uint64(5500) / uint64(5*60), // 5500 bytes / 5 minutes in seconds = 18.33, truncated to 18
 		},
 	}
 
@@ -312,7 +312,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// Call GetStreamUsage.
 			req := &logproto.GetStreamUsageRequest{
 				Tenant:       tt.tenantID,
-				Partitions:   tt.partitionIDs,
 				StreamHashes: tt.streamHashes,
 			}
 
@@ -376,7 +375,6 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 
 			req := &logproto.GetStreamUsageRequest{
 				Tenant:       "tenant1",
-				Partitions:   []int32{0},
 				StreamHashes: []uint64{1, 2, 3, 4, 5},
 			}
 
@@ -386,7 +384,7 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 			require.Equal(t, "tenant1", resp.Tenant)
 			require.Equal(t, uint64(3), resp.ActiveStreams) // Should count only the 3 active streams
 
-			expectedRate := int64(7000) / int64(5*60)
+			expectedRate := uint64(7000) / uint64(5*60)
 			require.Equal(t, expectedRate, resp.Rate)
 		}()
 	}

@@ -13,6 +13,8 @@ import (
 
 	"go.uber.org/atomic"
 
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -28,7 +30,6 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
@@ -421,7 +422,7 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	partitionRingWatcher      *ring.PartitionRingWatcher
+	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler

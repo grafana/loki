@@ -338,6 +338,29 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 	return &req
 }
 
+// UnsignedTrailer will do chunked encoding with a custom trailer.
+func UnsignedTrailer(req http.Request, trailer http.Header) *http.Request {
+	if len(trailer) == 0 {
+		return &req
+	}
+	// Initial time.
+	t := time.Now().UTC()
+
+	// Set x-amz-date.
+	req.Header.Set("X-Amz-Date", t.Format(iso8601DateFormat))
+
+	for k := range trailer {
+		req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
+	}
+
+	req.Header.Set("Content-Encoding", "aws-chunked")
+	req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
+
+	// Use custom chunked encoding.
+	req.Trailer = trailer
+	return StreamingUnsignedV4(&req, "", req.ContentLength, t)
+}
+
 // SignV4 sign the request before Do(), in accordance with
 // http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html.
 func SignV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string) *http.Request {

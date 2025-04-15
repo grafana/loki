@@ -109,7 +109,7 @@ func logsTestPage(t testing.TB) *MemPage {
 
 	opts := BuilderOptions{
 		PageSizeHint: sb.Len() * 2,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -117,7 +117,7 @@ func logsTestPage(t testing.TB) *MemPage {
 	require.NoError(t, err)
 
 	for line := range strings.Lines(sb.String()) {
-		require.True(t, builder.Append(StringValue(line)))
+		require.True(t, builder.Append(ByteArrayValue([]byte(line))))
 	}
 
 	page, err := builder.Flush()
@@ -141,7 +141,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -149,7 +149,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, s := range in {
-		require.True(t, b.Append(StringValue(s)))
+		require.True(t, b.Append(ByteArrayValue([]byte(s))))
 	}
 
 	page, err := b.Flush()
@@ -178,8 +178,8 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, "")
 		} else {
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, val.Type())
-			actual = append(actual, val.String())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, val.Type())
+			actual = append(actual, string(val.ByteArray()))
 		}
 	}
 	require.Equal(t, in, actual)

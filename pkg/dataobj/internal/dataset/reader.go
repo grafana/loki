@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions configures how a [Reader] will read [Row]s.
@@ -130,17 +131,22 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		return 0, io.EOF
 	}
 
+	var totalSizeBefore int64
+	var totalSizePostPredicate int64
+	var totalSizeAfterFill int64
 	var passCount int // passCount tracks how many rows pass the predicate.
 	for i := range count {
+		size := s[i].Size()
+		totalSizeBefore += size
 		if !checkPredicate(r.opts.Predicate, r.origColumnLookup, s[i]) {
 			continue
 		}
-
 		// We move s[i] to s[passCount] by *swapping* the rows. Copying would
 		// result in the Row.Values slice existing in two places in the buffer,
 		// which causes memory corruption when filling in rows.
 		s[passCount], s[i] = s[i], s[passCount]
 		passCount++
+		totalSizePostPredicate += size
 	}
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
@@ -161,9 +167,18 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		} else if count != passCount {
 			return n, fmt.Errorf("failed to fill rows: expected %d, got %d", n, count)
 		}
+		for i := range count {
+			totalSizeAfterFill += s[i].Size()
+		}
 	}
 
 	n += passCount
+
+	statistics := stats.FromContext(ctx)
+	statistics.AddPrePredicateDecompressedRows(int64(count))
+	statistics.AddPrePredicateDecompressedBytes(totalSizeBefore)
+	statistics.AddPostPredicateRows(int64(passCount))
+	statistics.AddPostPredicateDecompressedBytes(totalSizeAfterFill - totalSizePostPredicate)
 
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
@@ -210,6 +225,22 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 			panic("checkPredicate: column not found")
 		}
 		return CompareValues(row.Values[columnIndex], p.Value) == 0
+
+	case InPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+
+		found := false
+		for _, v := range p.Values {
+			if CompareValues(row.Values[columnIndex], v) == 0 {
+				found = true
+				break
+			}
+		}
+
+		return found
 
 	case GreaterThanPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -354,6 +385,8 @@ func (r *Reader) validatePredicate() error {
 		switch p := p.(type) {
 		case EqualPredicate:
 			err = process(p.Column)
+		case InPredicate:
+			err = process(p.Column)
 		case GreaterThanPredicate:
 			err = process(p.Column)
 		case LessThanPredicate:
@@ -399,6 +432,13 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	r.dl.SetDatasetRanges(ranges)
 	r.ranges = ranges
 
+	var rowsCount uint64
+	for _, column := range r.dl.AllColumns() {
+		rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+	}
+	statistics := stats.FromContext(ctx)
+	statistics.AddTotalRowsAvailable(int64(rowsCount))
+
 	return nil
 }
 
@@ -425,6 +465,8 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 	WalkPredicate(r.opts.Predicate, func(p Predicate) bool {
 		switch p := p.(type) {
 		case EqualPredicate:
+			process(p.Column)
+		case InPredicate:
 			process(p.Column)
 		case GreaterThanPredicate:
 			process(p.Column)
@@ -493,6 +535,9 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		return nil, nil // No valid ranges.
 
 	case EqualPredicate:
+		return r.buildColumnPredicateRanges(ctx, p.Column, p)
+
+	case InPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
 	case GreaterThanPredicate:
@@ -571,6 +616,10 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 			Right: GreaterThanPredicate(inner),
 		}, nil
 
+	case InPredicate:
+		// TODO: can be supported when we introduce NotInPredicate.
+		return nil, fmt.Errorf("can't simplify InPredicate")
+
 	case FuncPredicate:
 		return nil, fmt.Errorf("can't simplify FuncPredicate")
 
@@ -580,7 +629,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 }
 
 // buildColumnPredicateRanges returns a set of rowRanges that are valid based
-// on whether EqualPredicate, GreaterThanPredicate, or LessThanPredicate may be
+// on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
 // true for each page in a column.
 func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rowRanges, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
@@ -630,6 +679,14 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 			include = CompareValues(maxValue, p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
 			include = CompareValues(minValue, p.Value) < 0
+		case InPredicate:
+			// Check if any value falls within the page's range
+			for _, v := range p.Values {
+				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+					include = true
+					break
+				}
+			}
 		default:
 			panic(fmt.Sprintf("unsupported predicate type %T", p))
 		}

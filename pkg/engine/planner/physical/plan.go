@@ -198,6 +198,31 @@ func (p *Plan) addEdge(e Edge) error {
 	return nil
 }
 
+// eliminateNode removes a node from the plan and reconnects its parents to its children.
+// This maintains the graph's connectivity by creating direct edges from each parent
+// to each child of the removed node. The function also cleans up all references to
+// the node in the plan's internal data structures.
+func (p *Plan) eliminateNode(node Node) {
+	for _, parent := range p.Parents(node) {
+		for _, child := range p.Children(node) {
+			_ = p.addEdge(Edge{Parent: parent, Child: child})
+		}
+	}
+
+	for _, parent := range p.Parents(node) {
+		p.children[parent].remove(node)
+		p.parents[node].remove(parent)
+	}
+
+	for _, child := range p.Children(node) {
+		p.parents[child].remove(node)
+		p.children[node].remove(child)
+	}
+
+	p.nodes.remove(node)
+	delete(p.nodesByID, node.ID())
+}
+
 // Len returns the number of nodes in the graph
 func (p *Plan) Len() int {
 	return len(p.nodes)

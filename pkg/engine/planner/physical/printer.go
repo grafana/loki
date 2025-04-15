@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"fmt"
+	"io"
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
@@ -34,9 +36,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("limit", false, node.Limit),
 		}
 		for i := range node.Predicates {
-			treeNode.AddComment("Predicate", "", []tree.Property{
-				tree.NewProperty("expr", false, node.Predicates[i].String()),
-			})
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 	case *SortMerge:
 		treeNode.Properties = []tree.Property{
@@ -49,14 +49,12 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Filter:
 		for i := range node.Predicates {
-			treeNode.AddComment("Predicate", "", []tree.Property{
-				tree.NewProperty("expr", false, node.Predicates[i].String()),
-			})
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 	case *Limit:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("offset", false, node.Offset),
-			tree.NewProperty("limit", false, node.Limit),
+			tree.NewProperty("offset", false, node.Skip),
+			tree.NewProperty("limit", false, node.Fetch),
 		}
 	}
 	return treeNode
@@ -85,4 +83,14 @@ func PrintAsTree(p *Plan) string {
 	}
 
 	return strings.Join(results, "\n")
+}
+
+func WriteMermaidFormat(w io.Writer, p *Plan) {
+	for _, root := range p.Roots() {
+		node := BuildTree(p, root)
+		printer := tree.NewMermaid(w)
+		_ = printer.Write(node)
+
+		fmt.Fprint(w, "\n\n")
+	}
 }

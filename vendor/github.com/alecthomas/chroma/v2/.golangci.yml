@@ -1,7 +1,5 @@
 run:
   tests: true
-  skip-dirs:
-    - _examples
 
 output:
   print-issued-lines: false
@@ -9,8 +7,6 @@ output:
 linters:
   enable-all: true
   disable:
-    - maligned
-    - megacheck
     - lll
     - gocyclo
     - dupl
@@ -18,9 +14,7 @@ linters:
     - funlen
     - godox
     - wsl
-    - gomnd
     - gocognit
-    - goerr113
     - nolintlint
     - testpackage
     - godot
@@ -28,12 +22,10 @@ linters:
     - paralleltest
     - nlreturn
     - cyclop
-    - exhaustivestruct
     - gci
     - gofumpt
     - errorlint
     - exhaustive
-    - ifshort
     - wrapcheck
     - stylecheck
     - thelper
@@ -46,7 +38,6 @@ linters:
     - ireturn
     - maintidx
     - govet
-    - nosnakecase
     - testableexamples
     - musttag
     - depguard
@@ -54,10 +45,11 @@ linters:
     - perfsprint
     - mnd
     - predeclared
+    - recvcheck
+    - tenv
+    - err113
 
 linters-settings:
-  govet:
-    check-shadowing: true
   gocyclo:
     min-complexity: 10
   dupl:
@@ -72,6 +64,8 @@ linters-settings:
 
 
 issues:
+  exclude-dirs:
+    - _examples
   max-per-linter: 0
   max-same: 0
   exclude-use-default: false

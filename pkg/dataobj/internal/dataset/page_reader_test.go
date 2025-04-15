@@ -27,7 +27,7 @@ var pageReaderTestStrings = []string{
 func Test_pageReader(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -50,7 +50,7 @@ func Test_pageReader(t *testing.T) {
 func Test_pageReader_SeekToStart(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -80,7 +80,7 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 func Test_pageReader_Reset(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -109,7 +109,7 @@ func Test_pageReader_Reset(t *testing.T) {
 func Test_pageReader_SkipRows(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -140,7 +140,7 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	require.NoError(t, err)
 
 	for _, s := range in {
-		require.True(t, b.Append(StringValue(s)))
+		require.True(t, b.Append(ByteArrayValue([]byte(s))))
 	}
 
 	page, err := b.Flush()
@@ -186,8 +186,8 @@ func convertToStrings(t *testing.T, values []Value) []string {
 		if v.IsNil() {
 			out = append(out, "")
 		} else {
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, v.Type())
-			out = append(out, v.String())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, v.Type())
+			out = append(out, string(v.ByteArray()))
 		}
 	}
 
