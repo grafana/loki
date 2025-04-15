@@ -962,11 +962,11 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(_ int64, line []byte, _ labels.Labels) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
-func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(_ int64, line string, _ labels.Labels) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
@@ -1031,11 +1031,11 @@ func BenchmarkRead(b *testing.B) {
 type noopTestPipeline struct{}
 
 func (noopTestPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (noopTestPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (noopTestPipeline) Process(_ int64, line []byte, _ labels.Labels) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
-func (noopTestPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+func (noopTestPipeline) ProcessString(_ int64, line string, _ labels.Labels) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
