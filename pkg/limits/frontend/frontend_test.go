@@ -152,9 +152,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 	}, {
 		// This test checks the case where a tenant's streams are sharded over
 		// two instances, each holding one each stream. Each instance will
-		// return an response stating that it doesn't know about the other
-		// stream. The frontend is responsible for taking the intersection of
-		// the two responses and calculating the actual set of unknown streams.
+		// receive a request for just the streams in its assigned partitions.
+		// The frontend is responsible for taking the union of the two responses
+		// and calculating the actual set of unknown streams.
 		name: "exceeds max streams limit, streams sharded over two instances",
 		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
 			Tenant: "test",
