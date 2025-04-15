@@ -529,4 +529,3 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 		})
 	}
 }
-
