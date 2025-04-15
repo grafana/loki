@@ -572,7 +572,7 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetA
 
 // GetStreamUsage implements the logproto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
+func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
 	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
@@ -592,7 +592,7 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// assigned to and has been seen within the window,
 	// it is an active stream.
 	unknownStreams := req.StreamHashes
-	for stream := range s.streams(req.Tenant) {
+	for stream := range s.streams(ctx, req.Tenant) {
 		if stream.lastSeenAt < cutoff {
 			continue
 		}
@@ -625,32 +625,54 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	}, nil
 }
 
-func (s *IngestLimits) streams(tenant string) <-chan *streamMetadata {
-	ch := make(chan *streamMetadata)
+func (s *IngestLimits) streams(ctx context.Context, tenant string) <-chan *streamMetadata {
+	// Buffer the channel to prevent blocking on sends
+	ch := make(chan *streamMetadata, 100)
 
 	go func() {
+		defer close(ch)
+
 		for i := range s.metadata.size {
+			// Check context before acquiring each stripe lock
+			if ctx.Err() != nil {
+				return
+			}
+
 			s.metadata.locks[i].RLock()
+			// Ensure lock is released even if context is cancelled
+			func() {
+				defer s.metadata.locks[i].RUnlock()
 
-			if s.metadata.stripes[i][tenant] == nil {
-				s.metadata.locks[i].RUnlock()
-				continue
-			}
-
-			for partitionID, streams := range s.metadata.stripes[i][tenant] {
-				if assigned := s.partitionManager.Has(partitionID); !assigned {
-					continue
+				if s.metadata.stripes[i][tenant] == nil {
+					return
 				}
 
-				for _, stream := range streams {
-					ch <- stream
-				}
-			}
+				for partitionID, streams := range s.metadata.stripes[i][tenant] {
+					if ctx.Err() != nil {
+						return
+					}
 
-			s.metadata.locks[i].RUnlock()
+					if assigned := s.partitionManager.Has(partitionID); !assigned {
+						continue
+					}
+
+					for _, stream := range streams {
+						// Use select to handle context cancellation during channel sends
+						select {
+						case <-ctx.Done():
+							return
+						case ch <- stream:
+							// Successfully sent stream
+						}
+					}
+				}
+			}()
+
+			// Check if we need to abort after processing a stripe
+			if ctx.Err() != nil {
+				return
+			}
 		}
-
-		close(ch)
 	}()
 
 	return ch
