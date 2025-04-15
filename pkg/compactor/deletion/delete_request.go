@@ -87,7 +87,7 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 			return false
 		}
 
-		result, _, skip := f(0, s, labels.Labels(structuredMetadata)) // TODO: is this a copy?
+		result, _, skip := f(0, s, labels.Labels(structuredMetadata))
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
