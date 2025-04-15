@@ -208,7 +208,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 			StreamID:  streamID,
 			Timestamp: entry.Timestamp,
 			Metadata:  convertMetadata(entry.StructuredMetadata),
-			Line:      []byte(entry.Line),
+			Line:      unsafeSlice(entry.Line, len(entry.Line)),
 		})
 	}
 
