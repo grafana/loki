@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/dustin/go-humanize"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -53,6 +54,9 @@ type partitionProcessor struct {
 	wg     sync.WaitGroup
 	reg    prometheus.Registerer
 	logger log.Logger
+
+	estimatedSize int64
+	threshold     int
 }
 
 func newPartitionProcessor(
@@ -170,22 +174,18 @@ func (p *partitionProcessor) Append(records []*kgo.Record) bool {
 	return true
 }
 
-func (p *partitionProcessor) initBuilder() error {
-	var initErr error
+func (p *partitionProcessor) mustInitBuilder() {
 	p.builderOnce.Do(func() {
 		// Dataobj builder
 		builder, err := dataobj.NewBuilder(p.builderCfg)
 		if err != nil {
-			initErr = err
-			return
+			panic(err)
 		}
 		if err := builder.RegisterMetrics(p.reg); err != nil {
-			initErr = err
-			return
+			panic(err)
 		}
 		p.builder = builder
 	})
-	return initErr
 }
 
 func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
@@ -219,16 +219,20 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	p.metrics.observeProcessingDelay(record.Timestamp)
 
 	// Initialize builder if this is the first record
-	if err := p.initBuilder(); err != nil {
-		level.Error(p.logger).Log("msg", "failed to initialize builder", "err", err)
-		return
-	}
+	p.mustInitBuilder()
 
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, p.tenantID) {
 		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
 		return
 	}
+
+	p.estimatedSize += int64(len(record.Value))
+	if p.estimatedSize > int64(p.threshold*100*1024*1024) {
+		level.Info(p.logger).Log("msg", "object builder reached checkpoint", "size", humanize.Bytes(uint64(p.estimatedSize)))
+		p.threshold++
+	}
+
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
@@ -252,6 +256,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 				level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 				return
 			}
+
+			level.Info(p.logger).Log("msg", "successfully flushed new object", "size", humanize.Bytes(uint64(flushBuffer.Len())))
 		}()
 
 		if err := p.commitRecords(record); err != nil {
