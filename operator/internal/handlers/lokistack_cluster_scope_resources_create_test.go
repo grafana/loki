@@ -53,7 +53,7 @@ func TestCreateDashboards_ReturnsResourcesInManagedNamespaces(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateClusterScopedResources(context.TODO(), logger, true, "test", k, scheme, lokiv1.LokiStackList{Items: []lokiv1.LokiStack{stack}})
+	err := CreateClusterScopedResources(context.Background(), logger, true, "test", k, scheme, []lokiv1.LokiStack{stack})
 	require.NoError(t, err)
 
 	// make sure create was called

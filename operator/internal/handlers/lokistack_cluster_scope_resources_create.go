@@ -20,10 +20,10 @@ import (
 )
 
 // CreateClusterScopedResources handles the LokiStack cluster scoped create events.
-func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboards bool, operatorNs string, k k8s.Client, s *runtime.Scheme, stacks lokiv1.LokiStackList) error {
+func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboards bool, operatorNs string, k k8s.Client, s *runtime.Scheme, stacks []lokiv1.LokiStack) error {
 	// This has to be done here as to not introduce a circular dependency.
-	rulerSubjects := make([]rbacv1.Subject, 0, len(stacks.Items))
-	for _, stack := range stacks.Items {
+	rulerSubjects := make([]rbacv1.Subject, 0, len(stacks))
+	for _, stack := range stacks {
 		rulerSubjects = append(rulerSubjects, rbacv1.Subject{
 			Kind:      "ServiceAccount",
 			Name:      manifests.RulerName(stack.Name),
@@ -34,7 +34,7 @@ func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboar
 
 	objs := openshift.BuildRBAC(opts)
 	if dashboards {
-		objs = append(objs, openshift.BuildDashboards(opts)...)
+		objs = append(objs, openshift.BuildDashboards(opts.OperatorNs)...)
 	}
 
 	var errCount int32
@@ -66,7 +66,7 @@ func CreateClusterScopedResources(ctx context.Context, log logr.Logger, dashboar
 	// This needs to live here and not in DeleteClusterScopedResources as we want to
 	// delete the legacy RBAC resources when LokiStack is reconciled and not on delete.
 	var legacyObjs []client.Object
-	for _, stack := range stacks.Items {
+	for _, stack := range stacks {
 		// This name would clash with the new cluster-scoped resources. Skip it.
 		if stack.Name == "lokistack" {
 			continue

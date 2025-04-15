@@ -48,7 +48,7 @@ func (r *ClusterScopeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if len(stacks.Items) == 0 {
 		// Removes all LokiStack dashboard resources on OpenShift clusters when
 		// the last LokiStack custom resource is deleted.
-		if err := handlers.DeleteClusterScopedResources(ctx, r.Client, r.OperatorNs, stacks); err != nil {
+		if err := handlers.DeleteClusterScopedResources(ctx, r.Client, r.OperatorNs); err != nil {
 			return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard resources")
 		}
 		return ctrl.Result{}, nil
@@ -56,7 +56,7 @@ func (r *ClusterScopeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Creates all LokiStack dashboard resources on OpenShift clusters when
 	// the first LokiStack custom resource is created.
-	if err := handlers.CreateClusterScopedResources(ctx, r.Log, r.Dashboards, r.OperatorNs, r.Client, r.Scheme, stacks); err != nil {
+	if err := handlers.CreateClusterScopedResources(ctx, r.Log, r.Dashboards, r.OperatorNs, r.Client, r.Scheme, stacks.Items); err != nil {
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to create dashboard resources", "req", req)
 	}
 	return ctrl.Result{}, nil
