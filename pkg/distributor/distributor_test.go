@@ -16,7 +16,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+	otlptranslate "github.com/prometheus/otlptranslator"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"

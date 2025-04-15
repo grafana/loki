@@ -15,8 +15,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
@@ -486,7 +486,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = prometheus.NormalizeLabel(keyWithPrefix)
+	keyWithPrefix = otlptranslator.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

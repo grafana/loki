@@ -2,12 +2,12 @@ package log
 
 import (
 	"context"
+
+	"github.com/prometheus/otlptranslator"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"sync"
 	"unsafe"
-
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
-
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -103,7 +103,7 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+		structuredMetadata[i].Name = otlptranslator.NormalizeLabel(lb.Name)
 	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
@@ -226,7 +226,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	p.builder.Reset()
 
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+		structuredMetadata[i].Name = otlptranslator.NormalizeLabel(lb.Name)
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)

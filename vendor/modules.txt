@@ -1109,7 +1109,7 @@ github.com/grafana/gomemcache/memcache
 ## explicit; go 1.13
 github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f => ./pkg/push
-## explicit; go 1.22.7
+## explicit; go 1.23.0
 github.com/grafana/loki/pkg/push
 # github.com/grafana/pyroscope-go/godeltaprof v0.1.8
 ## explicit; go 1.18
@@ -1579,6 +1579,9 @@ github.com/prometheus/common/sigv4
 # github.com/prometheus/exporter-toolkit v0.13.2
 ## explicit; go 1.22
 github.com/prometheus/exporter-toolkit/web
+# github.com/prometheus/otlptranslator v0.0.0-20250414121140-35db323fe9fb
+## explicit; go 1.23.0
+github.com/prometheus/otlptranslator
 # github.com/prometheus/procfs v0.15.1
 ## explicit; go 1.20
 github.com/prometheus/procfs
