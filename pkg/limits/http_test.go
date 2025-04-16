@@ -21,7 +21,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			BucketDuration: 30 * time.Second,
 		},
 		metadata: &streamMetadataStripes{
-			stripes: []map[string]map[int32][]*streamMetadata{
+			stripes: []map[string]map[int32][]streamMetadata{
 				{
 					"tenant": {
 						0: {{

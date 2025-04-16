@@ -98,18 +98,18 @@ type stripeLock struct {
 }
 
 type streamMetadataStripes struct {
-	stripes []map[string]map[int32][]*streamMetadata // stripe -> tenant -> partitionID -> streamMetadata
+	stripes []map[string]map[int32][]streamMetadata // stripe -> tenant -> partitionID -> streamMetadata
 	locks   []stripeLock
 }
 
 func newStripes(size int) *streamMetadataStripes {
 	s := &streamMetadataStripes{
-		stripes: make([]map[string]map[int32][]*streamMetadata, size),
+		stripes: make([]map[string]map[int32][]streamMetadata, size),
 		locks:   make([]stripeLock, size),
 	}
 
 	for i := range s.stripes {
-		s.stripes[i] = make(map[string]map[int32][]*streamMetadata)
+		s.stripes[i] = make(map[string]map[int32][]streamMetadata)
 	}
 
 	return s
@@ -400,7 +400,7 @@ func (s *IngestLimits) evictOldStreams(_ context.Context) {
 		for tenant, streams := range s.metadata.stripes[i] {
 			evicted := 0
 			for partitionID, partition := range streams {
-				activeStreams := make([]*streamMetadata, 0)
+				activeStreams := make([]streamMetadata, 0)
 				for _, stream := range partition {
 					if stream.lastSeenAt >= cutoff {
 						activeStreams = append(activeStreams, stream)
@@ -442,16 +442,16 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 
 	// Initialize stripe map if it doesn't exist
 	if s.metadata.stripes[i] == nil {
-		s.metadata.stripes[i] = make(map[string]map[int32][]*streamMetadata)
+		s.metadata.stripes[i] = make(map[string]map[int32][]streamMetadata)
 	}
 
 	// Initialize tenant map if it doesn't exist
 	if _, ok := s.metadata.stripes[i][tenant]; !ok {
-		s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
+		s.metadata.stripes[i][tenant] = make(map[int32][]streamMetadata)
 	}
 
 	if s.metadata.stripes[i][tenant][partition] == nil {
-		s.metadata.stripes[i][tenant][partition] = make([]*streamMetadata, 0)
+		s.metadata.stripes[i][tenant][partition] = make([]streamMetadata, 0)
 	}
 
 	// Partition not assigned to this instance, evict stream
@@ -515,7 +515,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 				})
 			}
 
-			s.metadata.stripes[i][tenant][partition][j] = &streamMetadata{
+			s.metadata.stripes[i][tenant][partition][j] = streamMetadata{
 				hash:        stream.hash,
 				lastSeenAt:  recordTime,
 				totalSize:   totalSize,
@@ -526,7 +526,7 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 	}
 
 	// Create new stream metadata with the initial interval
-	s.metadata.stripes[i][tenant][partition] = append(s.metadata.stripes[i][tenant][partition], &streamMetadata{
+	s.metadata.stripes[i][tenant][partition] = append(s.metadata.stripes[i][tenant][partition], streamMetadata{
 		hash:        rec.StreamHash,
 		lastSeenAt:  recordTime,
 		totalSize:   recTotalSize,
@@ -617,8 +617,8 @@ func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStre
 	}, nil
 }
 
-func (s *IngestLimits) streams(ctx context.Context, tenant string) <-chan *streamMetadata {
-	ch := make(chan *streamMetadata)
+func (s *IngestLimits) streams(ctx context.Context, tenant string) <-chan streamMetadata {
+	ch := make(chan streamMetadata)
 
 	go func() {
 		defer close(ch)

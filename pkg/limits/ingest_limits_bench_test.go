@@ -77,11 +77,11 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 					i := uint64(p) & uint64(len(s.metadata.locks)-1)
 
 					if _, ok := s.metadata.stripes[i][tenant]; !ok {
-						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
+						s.metadata.stripes[i][tenant] = make(map[int32][]streamMetadata)
 					}
 
 					if _, ok := s.metadata.stripes[i][tenant][int32(p)]; !ok {
-						s.metadata.stripes[i][tenant][int32(p)] = make([]*streamMetadata, bm.streamsPerPartition)
+						s.metadata.stripes[i][tenant][int32(p)] = make([]streamMetadata, bm.streamsPerPartition)
 					}
 
 					for j := range bm.streamsPerPartition {
@@ -101,7 +101,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 								size:      uint64(500 * (k + 1)),
 							}
 						}
-						s.metadata.stripes[i][tenant][int32(p)][j] = &stream
+						s.metadata.stripes[i][tenant][int32(p)][j] = stream
 					}
 				}
 			}
@@ -161,11 +161,11 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 					i := uint64(p) & uint64(len(s.metadata.locks)-1)
 
 					if _, ok := s.metadata.stripes[i][tenant]; !ok {
-						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
+						s.metadata.stripes[i][tenant] = make(map[int32][]streamMetadata)
 					}
 
 					if _, ok := s.metadata.stripes[i][tenant][int32(p)]; !ok {
-						s.metadata.stripes[i][tenant][int32(p)] = make([]*streamMetadata, bm.streamsPerPartition)
+						s.metadata.stripes[i][tenant][int32(p)] = make([]streamMetadata, bm.streamsPerPartition)
 					}
 
 					for j := range bm.streamsPerPartition {
@@ -185,7 +185,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 								size:      uint64(500 * (k + 1)),
 							}
 						}
-						s.metadata.stripes[i][tenant][int32(p)][j] = &stream
+						s.metadata.stripes[i][tenant][int32(p)][j] = stream
 					}
 				}
 			}
