@@ -71,7 +71,7 @@ A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits
 
 The `splits` parameter optionally defines the number of desired splits. The API is allowed to return fewer splits than requested.
 
-The `limit` parameter has extended semantics. Setting it to `-1` for a log stream query indicates to query all logs.
+The `limit` parameter has extended semantics. Setting it to `0` for a log stream query indicates to query all logs.
 
 The response body is JSON encoded:
 
