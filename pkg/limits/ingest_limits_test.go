@@ -1240,3 +1240,161 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		})
 	}
 }
+
+func TestIngestLimits_streams_Cancellation(t *testing.T) {
+	tests := []struct {
+		name                 string
+		metadata             *streamMetadataStripes
+		assignedPartitionIDs []int32
+		tenant               string
+		cancelAfterStreams   int // Number of streams to receive before cancelling context
+	}{
+		{
+			name: "cancel immediately",
+			metadata: &streamMetadataStripes{
+				size: 2,
+				stripes: []map[string]map[int32][]*streamMetadata{
+					{
+						"tenant1": {
+							0: []*streamMetadata{
+								{hash: 1, lastSeenAt: time.Now().UnixNano()},
+								{hash: 2, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+					{
+						"tenant1": {
+							1: []*streamMetadata{
+								{hash: 3, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+				},
+				locks: make([]stripeLock, 2),
+			},
+			assignedPartitionIDs: []int32{0, 1},
+			tenant:               "tenant1",
+			cancelAfterStreams:   0,
+		},
+		{
+			name: "cancel after partial read",
+			metadata: &streamMetadataStripes{
+				size: 2,
+				stripes: []map[string]map[int32][]*streamMetadata{
+					{
+						"tenant1": {
+							0: []*streamMetadata{
+								{hash: 1, lastSeenAt: time.Now().UnixNano()},
+								{hash: 2, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+					{
+						"tenant1": {
+							1: []*streamMetadata{
+								{hash: 3, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+				},
+				locks: make([]stripeLock, 2),
+			},
+			assignedPartitionIDs: []int32{0, 1},
+			tenant:               "tenant1",
+			cancelAfterStreams:   2,
+		},
+		{
+			name: "cancel with unassigned partitions",
+			metadata: &streamMetadataStripes{
+				size: 2,
+				stripes: []map[string]map[int32][]*streamMetadata{
+					{
+						"tenant1": {
+							0: []*streamMetadata{
+								{hash: 1, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+					{
+						"tenant1": {
+							1: []*streamMetadata{
+								{hash: 2, lastSeenAt: time.Now().UnixNano()},
+							},
+						},
+					},
+				},
+				locks: make([]stripeLock, 2),
+			},
+			assignedPartitionIDs: []int32{0}, // Only partition 0 is assigned
+			tenant:               "tenant1",
+			cancelAfterStreams:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &IngestLimits{
+				metadata:         tt.metadata,
+				partitionManager: NewPartitionManager(log.NewNopLogger()),
+			}
+
+			// Assign the partitions
+			partitions := map[string][]int32{"test": tt.assignedPartitionIDs}
+			s.partitionManager.Assign(context.Background(), nil, partitions)
+
+			// Create a context we can cancel
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Create a channel to track received streams
+			received := make(chan *streamMetadata, 100)
+			done := make(chan struct{})
+
+			// Start a goroutine to read from streams
+			go func() {
+				defer close(done)
+				count := 0
+				for stream := range s.streams(ctx, tt.tenant) {
+					received <- stream
+					count++
+					if count == tt.cancelAfterStreams {
+						cancel()
+					}
+				}
+			}()
+
+			// Wait for either completion or timeout
+			select {
+			case <-done:
+				// Success - goroutine completed
+			case <-time.After(2 * time.Second):
+				t.Fatal("test timed out - possible goroutine leak or deadlock")
+			}
+
+			// Verify locks are released
+			for i := range tt.metadata.size {
+				// Try to acquire each lock - this should not block if locks were properly released
+				acquired := make(chan struct{})
+				go func(idx int) {
+					tt.metadata.locks[idx].Lock()
+					tt.metadata.locks[idx].Unlock()
+					close(acquired)
+				}(i)
+
+				select {
+				case <-acquired:
+					// Success - lock was available
+				case <-time.After(100 * time.Millisecond):
+					t.Errorf("lock %d was not released", i)
+				}
+			}
+
+			// Verify we received the expected number of streams before cancellation
+			close(received)
+			streamCount := len(received)
+			if streamCount < tt.cancelAfterStreams {
+				t.Errorf("expected at least %d streams before cancellation, got %d", tt.cancelAfterStreams, streamCount)
+			}
+		})
+	}
+}
