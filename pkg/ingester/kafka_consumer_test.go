@@ -80,12 +80,14 @@ func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
 	var (
-		toPush []partition.Record
-		offset = int64(0)
-		pusher = &fakePusher{t: t}
+		toPush     []partition.Record
+		offset     = int64(0)
+		pusher     = &fakePusher{t: t}
+		numWorkers = 1
 	)
 
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry())(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	// Set the number of workers to 1 to test the consumer
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	records, err := kafka.Encode(0, tenantID, streamBar, 10000)
@@ -117,8 +119,7 @@ func TestConsumer(t *testing.T) {
 	wait := consumer.Start(ctx, recordChan)
 
 	// Send records in separate batches
-	recordChan <- []partition.Record{toPush[0]} // Send streamBar record
-	recordChan <- []partition.Record{toPush[1]} // Send streamFoo record
+	recordChan <- toPush // Send streamBar record
 
 	cancel()
 	wait()

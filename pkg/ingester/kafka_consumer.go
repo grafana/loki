@@ -45,7 +45,7 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 	}
 }
 
-func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer) partition.ConsumerFactory {
+func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	return func(committer partition.Committer, logger log.Logger) (partition.Consumer, error) {
 		decoder, err := kafka.NewDecoder()
@@ -53,22 +53,23 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 			return nil, err
 		}
 		return &kafkaConsumer{
-			pusher:    pusher,
-			logger:    logger,
-			decoder:   decoder,
-			metrics:   metrics,
-			committer: committer,
+			pusher:             pusher,
+			logger:             logger,
+			decoder:            decoder,
+			metrics:            metrics,
+			committer:          committer,
+			maxConsumerWorkers: maxConsumerWorkers,
 		}, nil
 	}
 }
 
 type kafkaConsumer struct {
-	pusher    logproto.PusherServer
-	logger    log.Logger
-	decoder   *kafka.Decoder
-	committer partition.Committer
-
-	metrics *consumerMetrics
+	pusher             logproto.PusherServer
+	logger             log.Logger
+	decoder            *kafka.Decoder
+	committer          partition.Committer
+	maxConsumerWorkers int
+	metrics            *consumerMetrics
 }
 
 func (kc *kafkaConsumer) Start(ctx context.Context, recordsChan <-chan []partition.Record) func() {
@@ -101,10 +102,8 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		minOffset    = int64(math.MaxInt64)
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
-		limitWorkers = 100 // TODO(fcjack): make this configurable
+		limitWorkers = kc.maxConsumerWorkers
 		wg           sync.WaitGroup
-		mu           sync.Mutex
-		lastOffset   = int64(0)
 	)
 
 	// Find min/max offsets
@@ -117,8 +116,12 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 	numWorkers := min(limitWorkers, len(records))
 	workChan := make(chan partition.Record, numWorkers)
+	// success keeps track of the records that were processed. It is expected to
+	// be sorted in ascending order of offset since the records themselves are
+	// ordered.
+	success := make([]int64, len(records))
 
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -153,12 +156,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 					continue
 				}
 
-				mu.Lock()
-				if record.Offset > lastOffset {
-					lastOffset = record.Offset
-					kc.committer.EnqueueOffset(lastOffset)
-				}
-				mu.Unlock()
+				success[i] = record.Offset
 			}
 		}()
 	}
@@ -169,6 +167,18 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	close(workChan)
 
 	wg.Wait()
+
+	// Find the highest offset before a gap, and commit that.
+	var highestOffset int64
+	for _, offset := range success {
+		if offset == 0 {
+			break
+		}
+		highestOffset = offset
+	}
+	if highestOffset > 0 {
+		kc.committer.EnqueueOffset(highestOffset)
+	}
 
 	kc.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 	kc.metrics.currentOffset.Set(float64(maxOffset))
