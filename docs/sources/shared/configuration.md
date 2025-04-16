@@ -830,6 +830,11 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # The maximum number of workers to use for consuming from Kafka. This is used
+  # to limit the number of concurrent requests to Kafka.
+  # CLI flag: -kafka.max-consumer-workers
+  [max_consumer_workers: <int> | default = 100]
+
   # Enable collection of the following kafka latency histograms: read-wait,
   # read-timing, write-wait, write-timing
   # CLI flag: -kafka.enable-kafka-histograms
