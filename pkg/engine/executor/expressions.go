@@ -3,7 +3,7 @@ package executor
 import (
 	"fmt"
 
-	"github.com/apache/arrow/go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"

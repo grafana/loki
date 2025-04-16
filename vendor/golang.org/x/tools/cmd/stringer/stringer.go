@@ -244,10 +244,10 @@ type Generator struct {
 	buf bytes.Buffer // Accumulated output.
 	pkg *Package     // Package we are scanning.
 
-	logf func(format string, args ...interface{}) // test logging hook; nil when not testing
+	logf func(format string, args ...any) // test logging hook; nil when not testing
 }
 
-func (g *Generator) Printf(format string, args ...interface{}) {
+func (g *Generator) Printf(format string, args ...any) {
 	fmt.Fprintf(&g.buf, format, args...)
 }
 
@@ -279,7 +279,7 @@ type Package struct {
 func loadPackages(
 	patterns, tags []string,
 	trimPrefix string, lineComment bool,
-	logf func(format string, args ...interface{}),
+	logf func(format string, args ...any),
 ) []*Package {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax | packages.NeedFiles,

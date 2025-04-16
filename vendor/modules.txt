@@ -325,25 +325,26 @@ github.com/aliyun/aliyun-oss-go-sdk/oss
 ## explicit; go 1.13
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/apache/arrow/go/v18 v18.0.0-20241007013041-ab95a4d25142
-## explicit; go 1.22
-github.com/apache/arrow/go/v18/arrow
-github.com/apache/arrow/go/v18/arrow/array
-github.com/apache/arrow/go/v18/arrow/bitutil
-github.com/apache/arrow/go/v18/arrow/decimal128
-github.com/apache/arrow/go/v18/arrow/decimal256
-github.com/apache/arrow/go/v18/arrow/encoded
-github.com/apache/arrow/go/v18/arrow/endian
-github.com/apache/arrow/go/v18/arrow/float16
-github.com/apache/arrow/go/v18/arrow/internal/debug
-github.com/apache/arrow/go/v18/arrow/internal/flatbuf
-github.com/apache/arrow/go/v18/arrow/memory
-github.com/apache/arrow/go/v18/arrow/memory/internal/cgoalloc
-github.com/apache/arrow/go/v18/arrow/memory/mallocator
-github.com/apache/arrow/go/v18/internal/bitutils
-github.com/apache/arrow/go/v18/internal/hashing
-github.com/apache/arrow/go/v18/internal/json
-github.com/apache/arrow/go/v18/internal/utils
+# github.com/apache/arrow-go/v18 v18.2.0
+## explicit; go 1.23.0
+github.com/apache/arrow-go/v18/arrow
+github.com/apache/arrow-go/v18/arrow/array
+github.com/apache/arrow-go/v18/arrow/bitutil
+github.com/apache/arrow-go/v18/arrow/decimal
+github.com/apache/arrow-go/v18/arrow/decimal128
+github.com/apache/arrow-go/v18/arrow/decimal256
+github.com/apache/arrow-go/v18/arrow/encoded
+github.com/apache/arrow-go/v18/arrow/endian
+github.com/apache/arrow-go/v18/arrow/float16
+github.com/apache/arrow-go/v18/arrow/internal/debug
+github.com/apache/arrow-go/v18/arrow/internal/flatbuf
+github.com/apache/arrow-go/v18/arrow/memory
+github.com/apache/arrow-go/v18/arrow/memory/internal/cgoalloc
+github.com/apache/arrow-go/v18/arrow/memory/mallocator
+github.com/apache/arrow-go/v18/internal/bitutils
+github.com/apache/arrow-go/v18/internal/hashing
+github.com/apache/arrow-go/v18/internal/json
+github.com/apache/arrow-go/v18/internal/utils
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
 github.com/armon/go-metrics
@@ -961,7 +962,7 @@ github.com/golang/snappy
 # github.com/google/btree v1.1.3
 ## explicit; go 1.18
 github.com/google/btree
-# github.com/google/flatbuffers v24.12.23+incompatible
+# github.com/google/flatbuffers v25.2.10+incompatible
 ## explicit
 github.com/google/flatbuffers/go
 # github.com/google/gnostic-models v0.6.8
@@ -2084,7 +2085,7 @@ golang.org/x/crypto/sha3
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.22.0
+# golang.org/x/mod v0.23.0
 ## explicit; go 1.22.0
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
@@ -2169,7 +2170,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.11.0
 ## explicit; go 1.23.0
 golang.org/x/time/rate
-# golang.org/x/tools v0.29.0
+# golang.org/x/tools v0.30.0
 ## explicit; go 1.22.0
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/cmd/stringer
