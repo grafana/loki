@@ -78,6 +78,7 @@ func (c *Client) checkTopicThroughputAndSubscribe(wg *sync.WaitGroup, groupName 
 }
 
 func (c *Client) checkTopicLag(groupName string, codec distributor.TenantPrefixCodec) {
+	level.Info(c.logger).Log("msg", "checking topic lag")
 	topics := listRelevantTopics(c, codec)
 	if topics == nil {
 		return
@@ -143,8 +144,9 @@ func listRelevantTopics(c *Client, codec distributor.TenantPrefixCodec) map[stri
 		}
 		_, _, err := codec.Decode(*topic.Topic)
 		if err != nil {
-			topics[*topic.Topic] = &topicOffsets{}
+			continue
 		}
+		topics[*topic.Topic] = &topicOffsets{}
 	}
 	return topics
 }
