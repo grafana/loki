@@ -74,7 +74,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 
 				// Create partitions with streams
 				for p := range bm.numPartitions {
-					i := uint64(p) & uint64(s.metadata.size-1)
+					i := uint64(p) & uint64(len(s.metadata.locks)-1)
 
 					if _, ok := s.metadata.stripes[i][tenant]; !ok {
 						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)
@@ -158,7 +158,7 @@ func BenchmarkIngestLimits_updateMetadata(b *testing.B) {
 
 				// Create partitions with streams
 				for p := range bm.numPartitions {
-					i := uint64(p) & uint64(s.metadata.size-1)
+					i := uint64(p) & uint64(len(s.metadata.locks)-1)
 
 					if _, ok := s.metadata.stripes[i][tenant]; !ok {
 						s.metadata.stripes[i][tenant] = make(map[int32][]*streamMetadata)

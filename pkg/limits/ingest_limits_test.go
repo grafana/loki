@@ -41,7 +41,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant2": {
@@ -68,7 +67,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -99,7 +97,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -131,7 +128,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -158,7 +154,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -187,7 +182,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -220,7 +214,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0, 1},
 			metadata: &streamMetadataStripes{
-				size: 2,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -258,7 +251,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -288,7 +280,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -390,7 +381,6 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 
 	// Setup test data with a mix of active and expired streams>
 	metadata := &streamMetadataStripes{
-		size: 1,
 		stripes: []map[string]map[int32][]*streamMetadata{
 			{
 				"tenant1": {
@@ -521,7 +511,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			name:                 "existing tenant, new partition",
 			assignedPartitionIDs: []int32{0, 1},
 			metadata: &streamMetadataStripes{
-				size: 2,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -580,7 +569,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			name:                 "update existing stream",
 			assignedPartitionIDs: []int32{0},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -630,7 +618,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			name:                 "evict stream from partition",
 			assignedPartitionIDs: []int32{1},
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -695,7 +682,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			lastSeenAt:           time.Unix(852, 0),
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -742,7 +728,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			lastSeenAt:           time.Unix(1000, 0), // Current time reference
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -792,7 +777,6 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			lastSeenAt:           time.Unix(1100, 0),
 			metadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -852,7 +836,7 @@ func TestIngestLimits_UpdateMetadata(t *testing.T) {
 			if len(tt.expected) > 0 {
 				for tenant, partitions := range tt.expected {
 					for partition, streams := range partitions {
-						i := uint64(partition) & uint64(s.metadata.size-1)
+						i := uint64(partition) & uint64(len(s.metadata.locks)-1)
 
 						require.Equal(t, streams, s.metadata.stripes[i][tenant][partition])
 
@@ -919,7 +903,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		{
 			name: "all streams active",
 			initialMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -935,7 +918,7 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0},
 			expectedMetadata: &streamMetadataStripes{
-				size: 1,
+
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -955,7 +938,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		{
 			name: "all streams expired",
 			initialMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -971,7 +953,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0},
 			expectedMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{},
 				},
@@ -984,7 +965,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		{
 			name: "mixed active and expired streams",
 			initialMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1001,7 +981,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0},
 			expectedMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1021,7 +1000,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		{
 			name: "multiple tenants with mixed streams",
 			initialMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1048,7 +1026,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0},
 			expectedMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1075,7 +1052,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			name: "multiple partitions with some empty after eviction",
 
 			initialMetadata: &streamMetadataStripes{
-				size: 3,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1105,7 +1081,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0, 1, 2},
 			expectedMetadata: &streamMetadataStripes{
-				size: 3,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1131,7 +1106,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 		{
 			name: "unassigned partitions should still be evicted",
 			initialMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1153,7 +1127,6 @@ func TestIngestLimits_evictOldStreams(t *testing.T) {
 			windowSize:           time.Hour,
 			assignedPartitionIDs: []int32{0},
 			expectedMetadata: &streamMetadataStripes{
-				size: 1,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1252,7 +1225,6 @@ func TestIngestLimits_streams_Cancellation(t *testing.T) {
 		{
 			name: "cancel immediately",
 			metadata: &streamMetadataStripes{
-				size: 2,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1279,7 +1251,6 @@ func TestIngestLimits_streams_Cancellation(t *testing.T) {
 		{
 			name: "cancel after partial read",
 			metadata: &streamMetadataStripes{
-				size: 2,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1306,7 +1277,6 @@ func TestIngestLimits_streams_Cancellation(t *testing.T) {
 		{
 			name: "cancel with unassigned partitions",
 			metadata: &streamMetadataStripes{
-				size: 2,
 				stripes: []map[string]map[int32][]*streamMetadata{
 					{
 						"tenant1": {
@@ -1372,7 +1342,7 @@ func TestIngestLimits_streams_Cancellation(t *testing.T) {
 			}
 
 			// Verify locks are released
-			for i := range tt.metadata.size {
+			for i := range tt.metadata.locks {
 				// Try to acquire each lock - this should not block if locks were properly released
 				acquired := make(chan struct{})
 				go func(idx int) {

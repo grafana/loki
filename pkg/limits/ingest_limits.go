@@ -98,24 +98,18 @@ type stripeLock struct {
 }
 
 type streamMetadataStripes struct {
-	size    int
 	stripes []map[string]map[int32][]*streamMetadata // stripe -> tenant -> partitionID -> streamMetadata
 	locks   []stripeLock
 }
 
 func newStripes(size int) *streamMetadataStripes {
 	s := &streamMetadataStripes{
-		size:    size,
 		stripes: make([]map[string]map[int32][]*streamMetadata, size),
 		locks:   make([]stripeLock, size),
 	}
 
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]map[int32][]*streamMetadata)
-
-		for j := range s.stripes[i] {
-			s.stripes[i][j] = make(map[int32][]*streamMetadata)
-		}
 	}
 
 	return s
@@ -229,7 +223,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		partitionsPerTenant = make(map[string]map[int32]struct{})
 	)
 
-	for i := range s.metadata.size {
+	for i := range s.metadata.locks {
 		s.metadata.locks[i].RLock()
 
 		for tenant, partitions := range s.metadata.stripes[i] {
@@ -289,7 +283,7 @@ func (s *IngestLimits) onPartitionsLost(ctx context.Context, client *kgo.Client,
 }
 
 func (s *IngestLimits) removePartitions(ids []int32) {
-	for i := range s.metadata.size {
+	for i := range s.metadata.locks {
 		s.metadata.locks[i].Lock()
 
 		for _, id := range ids {
@@ -400,7 +394,7 @@ func (s *IngestLimits) running(ctx context.Context) error {
 // been seen within the window size.
 func (s *IngestLimits) evictOldStreams(_ context.Context) {
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-	for i := range s.metadata.size {
+	for i := range s.metadata.locks {
 		s.metadata.locks[i].Lock()
 
 		for tenant, streams := range s.metadata.stripes[i] {
@@ -441,7 +435,7 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
 func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	i := uint64(partition) & uint64(s.metadata.size-1)
+	i := uint64(partition) & uint64(len(s.metadata.locks)-1)
 
 	s.metadata.locks[i].Lock()
 	defer s.metadata.locks[i].Unlock()
@@ -629,7 +623,7 @@ func (s *IngestLimits) streams(ctx context.Context, tenant string) <-chan *strea
 	go func() {
 		defer close(ch)
 
-		for i := range s.metadata.size {
+		for i := range s.metadata.locks {
 			if ctx.Err() != nil {
 				return
 			}
