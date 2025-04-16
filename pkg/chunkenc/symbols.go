@@ -63,7 +63,7 @@ func (s *symbolizer) Add(lbls labels.Labels) symbols {
 		return nil
 	}
 
-	syms := make([]symbol,0, lbls.Len())
+	syms := make([]symbol, 0, lbls.Len())
 
 	lbls.Range(func(label labels.Label) {
 		syms = append(syms, symbol{

@@ -22,11 +22,15 @@ import (
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, logproto.Entry{
+		expected := logproto.Entry{
 			Timestamp:          time.Unix(0, exp[i].t),
 			Line:               exp[i].s,
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
-		}, got.At())
+		}
+		if exp[i].structuredMetadata.IsEmpty() {
+			expected.StructuredMetadata = nil
+		}
+		require.Equal(t, expected, got.At())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
 		i++
 	}
