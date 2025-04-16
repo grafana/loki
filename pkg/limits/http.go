@@ -38,7 +38,11 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	for stream := range s.streams(r.Context(), tenant) {
+	s.metadata.All(func(stream streamMetadata, tenantID string, partitionID int32) {
+		if tenantID != tenant {
+			return
+		}
+
 		if stream.lastSeenAt >= cutoff {
 			activeStreams++
 
@@ -49,7 +53,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	}
+	})
 
 	// Calculate rate using only data from within the rate window
 	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()

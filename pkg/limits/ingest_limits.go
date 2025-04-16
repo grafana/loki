@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -91,44 +90,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
-type stripeLock struct {
-	sync.RWMutex
-	// Padding to avoid multiple locks being on the same cache line.
-	_ [40]byte
-}
-
-type streamMetadataStripes struct {
-	stripes []map[string]map[int32][]streamMetadata // stripe -> tenant -> partitionID -> streamMetadata
-	locks   []stripeLock
-}
-
-func newStripes(size int) *streamMetadataStripes {
-	s := &streamMetadataStripes{
-		stripes: make([]map[string]map[int32][]streamMetadata, size),
-		locks:   make([]stripeLock, size),
-	}
-
-	for i := range s.stripes {
-		s.stripes[i] = make(map[string]map[int32][]streamMetadata)
-	}
-
-	return s
-}
-
-type streamMetadata struct {
-	hash       uint64
-	lastSeenAt int64
-	totalSize  uint64
-	// Add a slice to track bytes per time interval for sliding window rate calculation
-	rateBuckets []rateBucket
-}
-
-// rateBucket represents the bytes received during a specific time interval
-type rateBucket struct {
-	timestamp int64  // start of the interval
-	size      uint64 // bytes received during this interval
-}
-
 // IngestLimits is a service that manages stream metadata limits.
 type IngestLimits struct {
 	services.Service
@@ -144,7 +105,7 @@ type IngestLimits struct {
 	metrics *metrics
 
 	// Track stream metadata
-	metadata *streamMetadataStripes
+	metadata StreamMetadata
 
 	// Track partition assignments
 	partitionManager *PartitionManager
@@ -165,7 +126,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		metadata:         newStripes(cfg.NumPartitions),
+		metadata:         NewStreamMetadata(cfg.NumPartitions),
 		metrics:          newMetrics(reg),
 		partitionManager: NewPartitionManager(logger),
 	}
@@ -223,31 +184,25 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		partitionsPerTenant = make(map[string]map[int32]struct{})
 	)
 
-	for i := range s.metadata.locks {
-		s.metadata.locks[i].RLock()
-
-		for tenant, partitions := range s.metadata.stripes[i] {
-			recorded[tenant] += len(partitions)
-
-			for partitionID, partition := range partitions {
-				for _, stream := range partition {
-					if stream.lastSeenAt >= cutoff {
-						active[tenant]++
-					}
-				}
-
-				if _, ok := partitionsPerTenant[tenant]; !ok {
-					partitionsPerTenant[tenant] = make(map[int32]struct{})
-				}
-
-				if _, ok := partitionsPerTenant[tenant][partitionID]; !ok {
-					partitionsPerTenant[tenant][partitionID] = struct{}{}
-				}
-			}
+	s.metadata.All(func(stream streamMetadata, tenant string, partitionID int32) {
+		if assigned := s.partitionManager.Has(partitionID); !assigned {
+			return
 		}
 
-		s.metadata.locks[i].RUnlock()
-	}
+		if stream.lastSeenAt < cutoff {
+			return
+		}
+
+		active[tenant]++
+
+		if _, ok := partitionsPerTenant[tenant]; !ok {
+			partitionsPerTenant[tenant] = make(map[int32]struct{})
+		}
+
+		if _, ok := partitionsPerTenant[tenant][partitionID]; !ok {
+			partitionsPerTenant[tenant][partitionID] = struct{}{}
+		}
+	})
 
 	for tenant, partitions := range partitionsPerTenant {
 		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
@@ -269,8 +224,8 @@ func (s *IngestLimits) onPartitionsAssigned(ctx context.Context, client *kgo.Cli
 func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
 	s.partitionManager.Remove(ctx, client, partitions)
 
-	for _, partitionIDs := range partitions {
-		s.removePartitions(partitionIDs)
+	for _, ids := range partitions {
+		s.metadata.EvictPartitions(ids)
 	}
 }
 
@@ -278,24 +233,7 @@ func (s *IngestLimits) onPartitionsLost(ctx context.Context, client *kgo.Client,
 	s.partitionManager.Remove(ctx, client, partitions)
 
 	for _, partitionIDs := range partitions {
-		s.removePartitions(partitionIDs)
-	}
-}
-
-func (s *IngestLimits) removePartitions(ids []int32) {
-	for i := range s.metadata.locks {
-		s.metadata.locks[i].Lock()
-
-		for _, id := range ids {
-			for tenant, partitions := range s.metadata.stripes[i] {
-				delete(partitions, id)
-				if len(partitions) == 0 {
-					delete(s.metadata.stripes[i], tenant)
-				}
-			}
-		}
-
-		s.metadata.locks[i].Unlock()
+		s.metadata.EvictPartitions(partitionIDs)
 	}
 }
 
@@ -390,33 +328,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 	}
 }
 
-// evictOldStreams evicts old streams. A stream is evicted if it has not
-// been seen within the window size.
-func (s *IngestLimits) evictOldStreams(_ context.Context) {
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-	for i := range s.metadata.locks {
-		s.metadata.locks[i].Lock()
-
-		for tenant, streams := range s.metadata.stripes[i] {
-			evicted := 0
-			for partitionID, partition := range streams {
-				activeStreams := make([]streamMetadata, 0)
-				for _, stream := range partition {
-					if stream.lastSeenAt >= cutoff {
-						activeStreams = append(activeStreams, stream)
-					} else {
-						evicted++
-					}
-				}
-				s.metadata.stripes[i][tenant][partitionID] = activeStreams
-			}
-
-			s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evicted))
-		}
-		s.metadata.locks[i].Unlock()
-	}
-}
-
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
 // It runs two evictions per window size.
 func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
@@ -427,7 +338,8 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.evictOldStreams(ctx)
+			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+			s.metadata.Evict(cutoff)
 		}
 	}
 }
@@ -435,103 +347,25 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
 func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	i := uint64(partition) & uint64(len(s.metadata.locks)-1)
+	var (
+		// Use the provided lastSeenAt timestamp as the last seen time
+		recordTime = lastSeenAt.UnixNano()
+		// Get the bucket for this timestamp using the configured interval duration
+		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		// Calculate the rate window cutoff for cleaning up old buckets
+		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+		// Calculate the total size of the stream
+		recTotalSize = rec.EntriesSize + rec.StructuredMetadataSize
+	)
 
-	s.metadata.locks[i].Lock()
-	defer s.metadata.locks[i].Unlock()
-
-	// Initialize stripe map if it doesn't exist
-	if s.metadata.stripes[i] == nil {
-		s.metadata.stripes[i] = make(map[string]map[int32][]streamMetadata)
-	}
-
-	// Initialize tenant map if it doesn't exist
-	if _, ok := s.metadata.stripes[i][tenant]; !ok {
-		s.metadata.stripes[i][tenant] = make(map[int32][]streamMetadata)
-	}
-
-	if s.metadata.stripes[i][tenant][partition] == nil {
-		s.metadata.stripes[i][tenant][partition] = make([]streamMetadata, 0)
-	}
-
-	// Partition not assigned to this instance, evict stream
 	if assigned := s.partitionManager.Has(partition); !assigned {
-		for j, stream := range s.metadata.stripes[i][tenant][partition] {
-			if stream.hash == rec.StreamHash {
-				s.metadata.stripes[i][tenant][partition] = append(s.metadata.stripes[i][tenant][partition][:j], s.metadata.stripes[i][tenant][partition][j+1:]...)
-				break
-			}
-		}
-
+		s.metadata.EvictPartitions([]int32{partition})
 		return
 	}
 
-	// Use the provided lastSeenAt timestamp as the last seen time
-	recordTime := lastSeenAt.UnixNano()
-	recTotalSize := rec.EntriesSize + rec.StructuredMetadataSize
+	s.metadata.Upsert(tenant, partition, rec.StreamHash, recordTime, recTotalSize, bucketStart, rateWindowCutoff)
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(recTotalSize))
-
-	// Get the bucket for this timestamp using the configured interval duration
-	bucketStart := lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-
-	// Calculate the rate window cutoff for cleaning up old buckets
-	rateWindowCutoff := lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-
-	for j, stream := range s.metadata.stripes[i][tenant][partition] {
-		if stream.hash == rec.StreamHash {
-			// Update total size
-			totalSize := stream.totalSize + recTotalSize
-
-			// Update or add size for the current bucket
-			updated := false
-			sb := make([]rateBucket, 0, len(stream.rateBuckets)+1)
-
-			// Only keep buckets within the rate window and update the current bucket
-			for _, bucket := range stream.rateBuckets {
-				// Clean up buckets outside the rate window
-				if bucket.timestamp < rateWindowCutoff {
-					continue
-				}
-
-				if bucket.timestamp == bucketStart {
-					// Update existing bucket
-					sb = append(sb, rateBucket{
-						timestamp: bucketStart,
-						size:      bucket.size + recTotalSize,
-					})
-					updated = true
-				} else {
-					// Keep other buckets within the rate window as is
-					sb = append(sb, bucket)
-				}
-			}
-
-			// Add new bucket if it wasn't updated
-			if !updated {
-				sb = append(sb, rateBucket{
-					timestamp: bucketStart,
-					size:      recTotalSize,
-				})
-			}
-
-			s.metadata.stripes[i][tenant][partition][j] = streamMetadata{
-				hash:        stream.hash,
-				lastSeenAt:  recordTime,
-				totalSize:   totalSize,
-				rateBuckets: sb,
-			}
-			return
-		}
-	}
-
-	// Create new stream metadata with the initial interval
-	s.metadata.stripes[i][tenant][partition] = append(s.metadata.stripes[i][tenant][partition], streamMetadata{
-		hash:        rec.StreamHash,
-		lastSeenAt:  recordTime,
-		totalSize:   recTotalSize,
-		rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
-	})
 }
 
 // stopping implements the Service interface's stopping method.
@@ -584,9 +418,14 @@ func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStre
 	// assigned to and has been seen within the window,
 	// it is an active stream.
 	unknownStreams := req.StreamHashes
-	for stream := range s.streams(ctx, req.Tenant) {
+
+	s.metadata.Collect(req.Tenant, func(stream streamMetadata, partitionID int32) {
+		if assigned := s.partitionManager.Has(partitionID); !assigned {
+			return
+		}
+
 		if stream.lastSeenAt < cutoff {
-			continue
+			return
 		}
 
 		activeStreams++
@@ -604,7 +443,7 @@ func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStre
 				break
 			}
 		}
-	}
+	})
 
 	// Calculate rate using only data from within the rate window
 	rate := float64(totalSize) / s.cfg.RateWindow.Seconds()
@@ -615,51 +454,4 @@ func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStre
 		UnknownStreams: unknownStreams,
 		Rate:           uint64(rate),
 	}, nil
-}
-
-func (s *IngestLimits) streams(ctx context.Context, tenant string) <-chan streamMetadata {
-	ch := make(chan streamMetadata)
-
-	go func() {
-		defer close(ch)
-
-		for i := range s.metadata.locks {
-			if ctx.Err() != nil {
-				return
-			}
-
-			s.metadata.locks[i].RLock()
-			func() {
-				defer s.metadata.locks[i].RUnlock()
-
-				if s.metadata.stripes[i][tenant] == nil {
-					return
-				}
-
-				for partitionID, streams := range s.metadata.stripes[i][tenant] {
-					if ctx.Err() != nil {
-						return
-					}
-
-					if assigned := s.partitionManager.Has(partitionID); !assigned {
-						continue
-					}
-
-					for _, stream := range streams {
-						select {
-						case <-ctx.Done():
-							return
-						case ch <- stream:
-						}
-					}
-				}
-			}()
-
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}()
-
-	return ch
 }
