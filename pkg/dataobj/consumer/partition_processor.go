@@ -138,6 +138,7 @@ func (p *partitionProcessor) start() {
 			case record, ok := <-p.records:
 				if !ok {
 					// Channel was closed
+					level.Warn(p.logger).Log("msg", "channel closed, stopping partition processor")
 					return
 				}
 				p.processRecord(record)
@@ -179,10 +180,10 @@ func (p *partitionProcessor) mustInitBuilder() {
 		// Dataobj builder
 		builder, err := dataobj.NewBuilder(p.builderCfg)
 		if err != nil {
-			panic(err)
+			panic("could not create builder: " + err.Error())
 		}
 		if err := builder.RegisterMetrics(p.reg); err != nil {
-			panic(err)
+			panic("could not register builder metrics: " + err.Error())
 		}
 		p.builder = builder
 	})
@@ -207,6 +208,9 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 	}
 
 	p.lastFlush = time.Now()
+	level.Info(p.logger).Log("msg", "successfully flushed new object", "size", humanize.Bytes(uint64(flushBuffer.Len())))
+	p.estimatedSize = 0
+	p.threshold = 0
 
 	return nil
 }
@@ -229,7 +233,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	p.estimatedSize += int64(len(record.Value))
 	if p.estimatedSize > int64(p.threshold*100*1024*1024) {
-		level.Info(p.logger).Log("msg", "object builder reached checkpoint", "size", humanize.Bytes(uint64(p.estimatedSize)))
+		level.Debug(p.logger).Log("msg", "object builder reached checkpoint", "size", humanize.Bytes(uint64(p.estimatedSize)))
 		p.threshold++
 	}
 
@@ -256,8 +260,6 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 				level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 				return
 			}
-
-			level.Info(p.logger).Log("msg", "successfully flushed new object", "size", humanize.Bytes(uint64(flushBuffer.Len())))
 		}()
 
 		if err := p.commitRecords(record); err != nil {

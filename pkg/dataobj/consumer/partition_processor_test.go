@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -101,6 +103,24 @@ var testBuilderConfig = dataobj.BuilderConfig{
 	SectionStripeMergeLimit: 2,
 }
 
+func TestCounter(t *testing.T) {
+	counter := 0
+	inc := 133
+	times := 10
+	mult := 1
+	for {
+		counter += inc
+		if counter > 100*1000*1000*mult {
+			fmt.Println("object builder reached checkpoint", "size", humanize.Bytes(uint64(counter)))
+			times--
+			if times == 0 {
+				break
+			}
+			mult++
+		}
+	}
+}
+
 // TestIdleFlush tests the idle flush behavior of the partition processor
 // under different timeout and initialization conditions.
 func TestIdleFlush(t *testing.T) {
@@ -169,7 +189,7 @@ func TestIdleFlush(t *testing.T) {
 			)
 
 			if tc.initBuilder {
-				require.NoError(t, p.initBuilder())
+				p.mustInitBuilder()
 				p.start()
 				defer p.stop()
 			}
@@ -237,7 +257,7 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 		200*time.Millisecond,
 	)
 
-	require.NoError(t, p.initBuilder())
+	p.mustInitBuilder()
 
 	// Start the processor
 	p.start()
@@ -298,7 +318,7 @@ func TestIdleFlushWithEmptyData(t *testing.T) {
 		200*time.Millisecond,
 	)
 
-	require.NoError(t, p.initBuilder())
+	p.mustInitBuilder()
 
 	// Start the processor
 	p.start()
