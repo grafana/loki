@@ -18,7 +18,7 @@ import (
 
 var structuredMetadataPool = sync.Pool{
 	New: func() interface{} {
-		return make(labels.Labels, 0, 8)
+		return labels.NewScratchBuilder(8)
 	},
 }
 
@@ -58,16 +58,19 @@ func (s *symbolizer) Reset() {
 
 // Add adds new labels pairs to the collection and returns back a symbol for each existing and new label pair
 func (s *symbolizer) Add(lbls labels.Labels) symbols {
-	if len(lbls) == 0 {
+	if lbls.IsEmpty() {
 		return nil
 	}
 
-	syms := make([]symbol, len(lbls))
+	syms := make([]symbol, lbls.Len())
 
-	for i, label := range lbls {
+	// TODO: https://github.com/prometheus/prometheus/pull/16326
+	i := 0
+	lbls.Range(func(label labels.Label) {
 		syms[i].Name = s.add(label.Name)
 		syms[i].Value = s.add(label.Value)
-	}
+		i++
+	})
 
 	return syms
 }
@@ -97,20 +100,16 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) labels.Labels {
 	if len(syms) == 0 {
-		return nil
+		return labels.EmptyLabels()
 	}
-	if buf == nil {
-		buf = structuredMetadataPool.Get().(labels.Labels)
-	}
-	buf = buf[:0]
 
 	for _, symbol := range syms {
-		buf = append(buf, labels.Label{Name: s.lookup(symbol.Name), Value: s.lookup(symbol.Value)})
+		buf.Add(s.lookup(symbol.Name), s.lookup(symbol.Value))
 	}
 
-	return buf
+	return buf.Labels()
 }
 
 func (s *symbolizer) lookup(idx uint32) string {
