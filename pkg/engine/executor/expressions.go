@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -62,7 +64,7 @@ type ColumnVector interface {
 	// Value returns the value at the specified index position in the column vector.
 	Value(i int64) any
 	// Type returns the Arrow data type of the column vector.
-	Type() arrow.Type
+	Type() arrow.DataType
 }
 
 // Scalar represents a single value repeated any number of times.
@@ -75,7 +77,28 @@ var _ ColumnVector = (*Scalar)(nil)
 
 // ToArray implements ColumnVector.
 func (v *Scalar) ToArray() arrow.Array {
-	return nil
+	mem := memory.NewGoAllocator()
+	builder := array.NewBuilder(mem, v.Type())
+	defer builder.Release()
+
+	for i := int64(0); i < v.rows; i++ {
+		switch v.value.ValueType() {
+		case types.ValueTypeBool:
+			builder.(*array.BooleanBuilder).Append(v.value.Value.(bool))
+		case types.ValueTypeStr:
+			builder.(*array.StringBuilder).Append(v.value.Value.(string))
+		case types.ValueTypeInt:
+			builder.(*array.Int64Builder).Append(v.value.Value.(int64))
+		case types.ValueTypeFloat:
+			builder.(*array.Float64Builder).Append(v.value.Value.(float64))
+		case types.ValueTypeTimestamp:
+			builder.(*array.Uint64Builder).Append(v.value.Value.(uint64))
+		default:
+			builder.AppendNull()
+		}
+	}
+
+	return builder.NewArray()
 }
 
 // Value implements ColumnVector.
@@ -84,20 +107,20 @@ func (v *Scalar) Value(i int64) any {
 }
 
 // Type implements ColumnVector.
-func (v Scalar) Type() arrow.Type {
+func (v Scalar) Type() arrow.DataType {
 	switch v.value.ValueType() {
 	case types.ValueTypeBool:
-		return arrow.BOOL
+		return arrow.FixedWidthTypes.Boolean
 	case types.ValueTypeStr:
-		return arrow.STRING
+		return arrow.BinaryTypes.String
 	case types.ValueTypeInt:
-		return arrow.INT64
+		return arrow.PrimitiveTypes.Int64
 	case types.ValueTypeFloat:
-		return arrow.FLOAT64
+		return arrow.PrimitiveTypes.Float64
 	case types.ValueTypeTimestamp:
-		return arrow.UINT64
+		return arrow.PrimitiveTypes.Uint64
 	default:
-		return arrow.NULL
+		return arrow.Null
 	}
 }
 
@@ -118,8 +141,8 @@ func (a *Array) Value(i int64) any {
 }
 
 // Type implements ColumnVector.
-func (a *Array) Type() arrow.Type {
-	return a.array.DataType().ID()
+func (a *Array) Type() arrow.DataType {
+	return a.array.DataType()
 }
 
 var _ ColumnVector = (*Array)(nil)
