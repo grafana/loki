@@ -102,7 +102,7 @@ func (v *Scalar) ToArray() arrow.Array {
 }
 
 // Value implements ColumnVector.
-func (v *Scalar) Value(i int64) any {
+func (v *Scalar) Value(_ int64) any {
 	return v.value.Value
 }
 
