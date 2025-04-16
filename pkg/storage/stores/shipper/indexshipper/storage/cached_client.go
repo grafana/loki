@@ -95,6 +95,7 @@ func (c *cachedObjectClient) List(ctx context.Context, prefix, objectDelimiter s
 
 	prefix = strings.TrimSuffix(prefix, delimiter)
 	ss := strings.Split(prefix, delimiter)
+	// should only accept something like: table or table/userid
 	if len(ss) > 2 {
 		return nil, nil, fmt.Errorf("invalid prefix %s", prefix)
 	}
@@ -304,19 +305,29 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		}
 
 		ss := strings.Split(object.Key, delimiter)
-		if len(ss) < 2 || len(ss) > 3 {
-			return fmt.Errorf("invalid key: %s", object.Key)
+
+		// db.gz
+		if len(ss) < 2 {
+			return fmt.Errorf("bare key without context: %s", object.Key)
 		}
 
-		if len(ss) == 2 {
+		// table/db.gz
+		if len(ss) < 3 {
 			t.commonObjects = append(t.commonObjects, object)
-		} else {
+			continue
+		}
+
+		// table/userid/db.gz
+		if len(ss) < 4 {
 			userID := ss[1]
 			if len(t.userObjects[userID]) == 0 {
 				t.userIDs = append(t.userIDs, client.StorageCommonPrefix(path.Join(t.name, userID)))
 			}
 			t.userObjects[userID] = append(t.userObjects[userID], object)
+			continue
 		}
+
+		return fmt.Errorf("key too long: %s", object.Key)
 	}
 
 	t.cacheBuiltAt = time.Now()

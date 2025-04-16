@@ -39,6 +39,7 @@ var (
 	errInvalidSchemaVersion     = errors.New("invalid schema version")
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 	errInvalidTableName         = errors.New("invalid table name")
+	errInvalidTablePrefixValue  = errors.New("table prefix can not contain a path delimiter")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
 	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
@@ -579,15 +580,15 @@ func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 
 func ValidatePathPrefix(prefix string) error {
 	if prefix == "" {
-		return errors.New("prefix must be set")
+		return errors.New("path prefix must be set")
 	} else if strings.Contains(prefix, "\\") {
 		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
 		// We just need to always use `/` as a path separator.
-		return fmt.Errorf("prefix should only have '%s' as a path separator", pathPrefixDelimiter)
+		return fmt.Errorf("path prefix should only have '%s' as a path separator", pathPrefixDelimiter)
 	} else if strings.HasPrefix(prefix, pathPrefixDelimiter) {
-		return errors.New("prefix should never start with a path separator i.e '/'")
+		return errors.New("path prefix should never start with a path separator i.e '/'")
 	} else if !strings.HasSuffix(prefix, pathPrefixDelimiter) {
-		return errors.New("prefix should end with a path separator i.e '/'")
+		return errors.New("path prefix should end with a path separator i.e '/'")
 	}
 
 	return nil
@@ -637,6 +638,10 @@ func (cfg PeriodicTableConfig) Validate() error {
 	// Ensure the tables period is a multiple of the bucket period
 	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
 		return errInvalidTablePeriod
+	}
+
+	if strings.Index(cfg.Prefix, pathPrefixDelimiter) > -1 {
+		return errInvalidTablePrefixValue
 	}
 
 	return nil
