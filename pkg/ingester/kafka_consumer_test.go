@@ -100,7 +100,7 @@ func TestConsumer(t *testing.T) {
 		})
 		offset++
 	}
-	records, err = kafka.Encode(0, "foo", streamFoo, 10000)
+	records, err = kafka.Encode(0, tenantID, streamFoo, 10000)
 	require.NoError(t, err)
 	for _, record := range records {
 		toPush = append(toPush, partition.Record{
@@ -116,7 +116,9 @@ func TestConsumer(t *testing.T) {
 	recordChan := make(chan []partition.Record)
 	wait := consumer.Start(ctx, recordChan)
 
-	recordChan <- toPush
+	// Send records in separate batches
+	recordChan <- []partition.Record{toPush[0]} // Send streamBar record
+	recordChan <- []partition.Record{toPush[1]} // Send streamFoo record
 
 	cancel()
 	wait()

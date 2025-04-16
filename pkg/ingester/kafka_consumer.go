@@ -101,40 +101,74 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		minOffset    = int64(math.MaxInt64)
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
+		limitWorkers = 100 // TODO(fcjack): make this configurable
+		wg           sync.WaitGroup
+		mu           sync.Mutex
+		lastOffset   = int64(0)
 	)
 
+	// Find min/max offsets
 	for _, record := range records {
 		minOffset = min(minOffset, record.Offset)
 		maxOffset = max(maxOffset, record.Offset)
 	}
 
-	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
-	for _, record := range records {
-		stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
-		if err != nil {
-			level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
-			continue
-		}
-		recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
-		req := &logproto.PushRequest{
-			Streams: []logproto.Stream{stream},
-		}
-		if err := retryWithBackoff(ctx, func(attempts int) error {
-			pushTime := time.Now()
-			_, err := kc.pusher.Push(recordCtx, req)
+	// Create a buffered channel for work distribution
+	numWorkers := min(limitWorkers, len(records))         // Calculate number of workers based on limit and number of records
+	workChan := make(chan partition.Record, len(records)) // Channel to distribute work
+	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset, "workers", numWorkers)
 
-			kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+	// Start worker pool
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for record := range workChan {
+				stream, _, err := kc.decoder.Decode(record.Content)
+				if err != nil {
+					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
+					continue
+				}
 
-			if err != nil {
-				level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
-				return err
+				recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
+				req := &logproto.PushRequest{
+					Streams: []logproto.Stream{stream},
+				}
+
+				if err := retryWithBackoff(ctx, func(attempts int) error {
+					pushTime := time.Now()
+					_, err := kc.pusher.Push(recordCtx, req)
+
+					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+
+					if err != nil {
+						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
+						return err
+					}
+					return nil
+				}); err != nil {
+					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
+					continue
+				}
+
+				mu.Lock()
+				if record.Offset > lastOffset {
+					lastOffset = record.Offset
+					kc.committer.EnqueueOffset(lastOffset)
+				}
+				mu.Unlock()
 			}
-			return nil
-		}); err != nil {
-			level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
-		}
-		kc.committer.EnqueueOffset(record.Offset)
+		}()
 	}
+
+	// Distribute work to workers
+	for _, record := range records {
+		workChan <- record
+	}
+	close(workChan)
+
+	wg.Wait()
+
 	kc.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 	kc.metrics.currentOffset.Set(float64(maxOffset))
 }
