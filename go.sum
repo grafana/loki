@@ -1217,8 +1217,8 @@ github.com/twmb/franz-go/pkg/kadm v1.16.0 h1:STMs1t5lYR5mR974PSiwNzE5TvsosByTp+r
 github.com/twmb/franz-go/pkg/kadm v1.16.0/go.mod h1:MUdcUtnf9ph4SFBLLA/XxE29rvLhWYLM9Ygb8dfSCvw=
 github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037 h1:M4Zj79q1OdZusy/Q8TOTttvx/oHkDVY7sc0xDyRnwWs=
 github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037/go.mod h1:nkBI/wGFp7t1NJnnCeJdS4sX5atPAqwCPpDXKuI7SC8=
-github.com/twmb/franz-go/pkg/kmsg v1.11.1 h1:cuW0wIrdZJQ8NZ5ba+jq0OIOdpP0yuRjPeuE8eYodZw=
-github.com/twmb/franz-go/pkg/kmsg v1.11.1/go.mod h1:CFfkkLysDNmukPYhGzuUcDtf46gQSqCZHMW1T4Z+wDE=
+github.com/twmb/franz-go/pkg/kmsg v1.11.2 h1:hIw75FpwcAjgeyfIGFqivAvwC5uNIOWRGvQgZhH4mhg=
+github.com/twmb/franz-go/pkg/kmsg v1.11.2/go.mod h1:CFfkkLysDNmukPYhGzuUcDtf46gQSqCZHMW1T4Z+wDE=
 github.com/twmb/franz-go/plugin/kotel v1.6.0 h1:hmvLn/cVw/Hn56H3aJVJu/a/fh6m8J6Ajwp0IcEHbH8=
 github.com/twmb/franz-go/plugin/kotel v1.6.0/go.mod h1:ADmLuCa/NzHdXdWfl22FsIlGCack+YrHjivirHCBJaY=
 github.com/twmb/franz-go/plugin/kprom v1.2.0 h1:BCl9Uj46cpniMfuqKA0IIHPgcx6syqEZ+H6MaQNSD4U=
