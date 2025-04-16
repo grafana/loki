@@ -120,31 +120,36 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
 
+	type recordWithIndex struct {
+		record partition.Record
+		index  int
+	}
+
 	numWorkers := min(limitWorkers, len(records))
-	workChan := make(chan partition.Record, numWorkers)
+	workChan := make(chan recordWithIndex, numWorkers)
 	// success keeps track of the records that were processed. It is expected to
 	// be sorted in ascending order of offset since the records themselves are
 	// ordered.
 	success := make([]int64, len(records))
 
-	for i := range numWorkers {
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for record := range workChan {
-				level.Debug(kc.logger).Log("msg", "record", record)
-				stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
+			for recordWithIndex := range workChan {
+				level.Debug(kc.logger).Log("msg", "record", recordWithIndex)
+				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
 				if err != nil {
 					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
 					continue
 				}
 
-				recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
+				recordCtx := user.InjectOrgID(recordWithIndex.record.Ctx, recordWithIndex.record.TenantID)
 				req := &logproto.PushRequest{
 					Streams: []logproto.Stream{stream},
 				}
 
-				level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
+				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
 
 				if err := retryWithBackoff(ctx, func(attempts int) error {
 					pushTime := time.Now()
@@ -153,22 +158,23 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
 
 					if err != nil {
-						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
+						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", recordWithIndex.record.Offset, "attempts", attempts)
 						return err
 					}
+
 					return nil
 				}); err != nil {
-					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
+					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", recordWithIndex.record.Offset)
 					continue
 				}
 
-				success[i] = record.Offset
+				success[recordWithIndex.index] = recordWithIndex.record.Offset
 			}
 		}()
 	}
 
-	for _, record := range records {
-		workChan <- record
+	for i, record := range records {
+		workChan <- recordWithIndex{record: record, index: i}
 	}
 	close(workChan)
 
