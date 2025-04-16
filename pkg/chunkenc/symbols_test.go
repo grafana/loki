@@ -83,12 +83,12 @@ func TestSymbolizer(t *testing.T) {
 				},
 				{
 					symbol{
-						Name:  0,
-						Value: 1,
-					},
-					symbol{
 						Name:  2,
 						Value: 3,
+					},
+					symbol{
+						Name:  1,
+						Value: 0,
 					},
 					symbol{
 						Name:  4,
@@ -118,7 +118,7 @@ func TestSymbolizer(t *testing.T) {
 							Value: 0,
 						},
 					}, nil)
-					require.True(t, ret.IsEmpty())
+					require.Equal(t, `{""=""}`, ret.String())
 				}
 
 				require.Equal(t, tc.expectedNumLabels, len(s.labels))

@@ -848,6 +848,6 @@ func (b *BufferedLabelsBuilder) Add(name, value string) {
 }
 
 func (b *BufferedLabelsBuilder) Labels() labels.Labels {
-	sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	return b.buf
 }

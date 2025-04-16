@@ -63,14 +63,13 @@ func (s *symbolizer) Add(lbls labels.Labels) symbols {
 		return nil
 	}
 
-	syms := make([]symbol, lbls.Len())
+	syms := make([]symbol,0, lbls.Len())
 
-	// TODO: https://github.com/prometheus/prometheus/pull/16326
-	i := 0
 	lbls.Range(func(label labels.Label) {
-		syms[i].Name = s.add(label.Name)
-		syms[i].Value = s.add(label.Value)
-		i++
+		syms = append(syms, symbol{
+			Name:  s.add(label.Name),
+			Value: s.add(label.Value),
+		})
 	})
 
 	return syms
