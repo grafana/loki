@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -193,10 +194,11 @@ type Producer struct {
 	maxBufferedBytes int64
 
 	// Custom metrics.
-	bufferedProduceBytes      prometheus.Summary
-	bufferedProduceBytesLimit prometheus.Gauge
-	produceRequestsTotal      prometheus.Counter
-	produceFailuresTotal      *prometheus.CounterVec
+	bufferedProduceBytes          prometheus.Summary
+	bufferedProduceBytesLimit     prometheus.Gauge
+	produceRequestsTotal          prometheus.Counter
+	produceFailuresTotal          *prometheus.CounterVec
+	latestProduceTimestampSeconds *prometheus.GaugeVec
 }
 
 // NewProducer returns a new KafkaProducer.
@@ -237,6 +239,11 @@ func NewProducer(client *kgo.Client, maxBufferedBytes int64, reg prometheus.Regi
 			Name:      "produce_failures_total",
 			Help:      "Total number of failed produce requests issued to Kafka.",
 		}, []string{"reason"}),
+		latestProduceTimestampSeconds: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "kafka",
+			Name:      "latest_produce_timestamp_seconds",
+			Help:      "The unix timestamp of the latest record produced to each topic-partition.",
+		}, []string{"topic", "partition"}),
 	}
 
 	producer.bufferedProduceBytesLimit.Set(float64(maxBufferedBytes))
@@ -297,6 +304,8 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		if err != nil {
 			c.produceFailuresTotal.WithLabelValues(produceErrReason(err)).Inc()
 		}
+
+		c.latestProduceTimestampSeconds.WithLabelValues(r.Topic, strconv.Itoa(int(r.Partition))).Set(float64(r.Timestamp.Unix()))
 
 		// In case of error we'll wait for all responses anyway before returning from produceSync().
 		// It allows us to keep code easier, given we don't expect this function to be frequently
