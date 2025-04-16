@@ -181,15 +181,9 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 		return logproto.Stream{}, fmt.Errorf("empty data received")
 	}
 
-	// Create a new stream instance to avoid modifying the shared one
 	stream := &logproto.Stream{}
 	if err := stream.Unmarshal(data); err != nil {
 		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
-	}
-
-	// Validate the unmarshaled stream
-	if stream == nil {
-		return logproto.Stream{}, fmt.Errorf("unmarshaled stream is nil")
 	}
 
 	return *stream, nil
