@@ -13,6 +13,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -37,7 +38,6 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 
 	// Create mock ring with initial active partitions
 	mockRing := &mockPartitionRing{partitionIDs: []int32{0, 1}}
-	mockReader := &mockPartitionRingReader{ring: mockRing}
 
 	// Track processed records to verify continuity
 	type recordKey struct {
@@ -58,7 +58,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		var assignedPartitions sync.Map
 		var partitionsLock sync.Mutex
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
+		client, err := NewGroupClient(cfg, "test-group", distributor.TenantPrefixCodec("test-prefix"), kprom.NewMetrics("foo"), log.NewNopLogger(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				partitionsLock.Lock()
@@ -213,7 +213,6 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 	// Create mock ring with initial active partitions
 	mockRing := &mockPartitionRing{partitionIDs: []int32{0, 1}}
-	mockReader := &mockPartitionRingReader{ring: mockRing}
 
 	// Track offsets for partition 0 to verify continuous reading
 	var lastOffset int64
@@ -225,7 +224,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 			Topic:   "test-topic",
 		}
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
+		client, err := NewGroupClient(cfg, "test-group", distributor.TenantPrefixCodec("test-prefix"), kprom.NewMetrics("foo"), log.NewNopLogger(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])

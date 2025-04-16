@@ -61,29 +61,34 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 
 	client, err := consumer.NewGroupClient(
 		kafkaCfg,
-		partitionRing,
 		groupName,
+		s.codec,
 		client.NewReaderClientMetrics(groupName, reg, kafkaCfg.EnableKafkaHistograms),
 		logger,
 		kgo.InstanceID(instanceID),
+		kgo.HeartbeatInterval(20*time.Second),
 		kgo.SessionTimeout(3*time.Minute),
-		kgo.RebalanceTimeout(5*time.Minute),
+		kgo.RebalanceTimeout(10*time.Minute),
 		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
 		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
 			s.handlePartitionsRevoked(m)
+		}),
+		kgo.OnPartitionsLost(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
+			level.Error(s.logger).Log("msg", "partitions lost", "partitions", formatPartitionsMap(m))
 		}),
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create consumer", "err", err)
 		return nil
 	}
+
 	s.client = client
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
 
 func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
+	level.Info(s.logger).Log("msg", "partitions assigned", "topic_count", len(partitions), "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
 
@@ -100,6 +105,11 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
+			_, ok := s.partitionHandlers[topic][partition]
+			if ok {
+				level.Warn(s.logger).Log("msg", "partition processor already exists", "topic", topic, "partition", partition)
+				continue
+			}
 			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
@@ -135,6 +145,7 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 		}
 	}
 	wg.Wait()
+	level.Info(s.logger).Log("msg", "finished revoking partitions")
 }
 
 func (s *Service) run(ctx context.Context) error {
