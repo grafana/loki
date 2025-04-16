@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,8 @@ type topicOffsets struct {
 func (c *Client) checkTopicThroughputAndSubscribe(wg *sync.WaitGroup, groupName string, codec distributor.TenantPrefixCodec) {
 	defer wg.Done()
 
+	c.checkTopicLag(groupName, codec)
+
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
@@ -80,7 +83,8 @@ func (c *Client) checkTopicThroughputAndSubscribe(wg *sync.WaitGroup, groupName 
 func (c *Client) checkTopicLag(groupName string, codec distributor.TenantPrefixCodec) {
 	level.Info(c.logger).Log("msg", "checking topic lag")
 	topics := listRelevantTopics(c, codec)
-	if topics == nil {
+	if topics == nil || len(topics) == 0 {
+		level.Info(c.logger).Log("msg", "no topics found")
 		return
 	}
 
@@ -97,7 +101,7 @@ func (c *Client) checkTopicLag(groupName string, codec distributor.TenantPrefixC
 	toAdd := []string{}
 	toRemove := []string{}
 	for topic, offsets := range topics {
-		level.Info(c.logger).Log("msg", "topic lag determined", "topic", topic, "currentOffset", offsets.currentOffset, "lastCommittedOffset", offsets.lastCommittedOffset)
+		level.Info(c.logger).Log("msg", "topic lag determined", "topic", topic, "currentOffset", offsets.currentOffset, "lastCommittedOffset", offsets.lastCommittedOffset, "lag", offsets.currentOffset-offsets.lastCommittedOffset)
 		diff := offsets.currentOffset - offsets.lastCommittedOffset
 		if diff < 0 {
 			// We fell off the end, so consume the topic
@@ -105,7 +109,7 @@ func (c *Client) checkTopicLag(groupName string, codec distributor.TenantPrefixC
 				level.Info(c.logger).Log("msg", "adding topic to consume because we last push was less than our current offset, so probably we're behind", "topic", topic)
 				toAdd = append(toAdd, topic)
 			}
-		} else if diff > 100_000 {
+		} else if diff > 10_000_000 {
 			// We have ~100k records to consume; hopefully that is almost enough to fill an object so start consuming.
 			if _, ok := consumedTopicsMap[topic]; !ok {
 				level.Info(c.logger).Log("msg", "adding topic to consume because there are 100k records since last commit", "topic", topic)
@@ -119,14 +123,17 @@ func (c *Client) checkTopicLag(groupName string, codec distributor.TenantPrefixC
 		}
 	}
 
+	level.Info(c.logger).Log("msg", "adding topics to consume", "topics", strings.Join(toAdd, ", "))
+	level.Info(c.logger).Log("msg", "removing topics from consume", "topics", strings.Join(toRemove, ", "))
 	c.Client.AddConsumeTopics(toAdd...)
 	c.Client.PurgeTopicsFromConsuming(toRemove...)
+	level.Info(c.logger).Log("msg", "now consuming topics", "topics", strings.Join(c.Client.GetConsumeTopics(), ", "))
 }
 
 func listRelevantTopics(c *Client, codec distributor.TenantPrefixCodec) map[string]*topicOffsets {
 	topics := map[string]*topicOffsets{}
 	req := kmsg.NewPtrMetadataRequest()
-	req.Topics = []kmsg.MetadataRequestTopic{} // Empty list to fetch all topics
+	req.Topics = nil // Nil to fetch all topics
 
 	response, err := c.Client.Request(context.Background(), req)
 	if err != nil {
@@ -159,8 +166,9 @@ func listLatestOffsets(c *Client, topics map[string]*topicOffsets) {
 			Topic: topic,
 			Partitions: []kmsg.ListOffsetsRequestTopicPartition{
 				{
-					Partition: 0,
-					Timestamp: -1, // Latest offset
+					Partition:          0,
+					Timestamp:          -1, // Latest offset
+					CurrentLeaderEpoch: -1,
 				},
 			},
 		})
@@ -177,6 +185,10 @@ func listLatestOffsets(c *Client, topics map[string]*topicOffsets) {
 			continue
 		}
 		for _, topic := range offsetResp.Topics {
+			if topic.Partitions[0].ErrorCode != 0 {
+				level.Error(c.logger).Log("msg", "error fetching list offsets", "err", topic.Partitions[0].ErrorCode)
+				continue
+			}
 			topics[topic.Topic].currentOffset = topic.Partitions[0].Offset
 		}
 	}
@@ -185,7 +197,10 @@ func listLatestOffsets(c *Client, topics map[string]*topicOffsets) {
 func listCommittedOffsets(c *Client, topics map[string]*topicOffsets, groupName string) {
 	offsetReq := kmsg.NewPtrOffsetFetchRequest()
 	for topic := range topics {
-		offsetReq.Topics = append(offsetReq.Topics, kmsg.OffsetFetchRequestTopic{Topic: topic})
+		offsetReq.Topics = append(offsetReq.Topics, kmsg.OffsetFetchRequestTopic{
+			Topic:      topic,
+			Partitions: []int32{0},
+		})
 	}
 	offsetReq.Group = groupName
 
@@ -205,6 +220,10 @@ func listCommittedOffsets(c *Client, topics map[string]*topicOffsets, groupName 
 				level.Warn(c.logger).Log("msg", "multiple partitions found for topic", "topic", topic.Topic)
 			}
 			for _, partition := range topic.Partitions {
+				if partition.ErrorCode != 0 {
+					level.Error(c.logger).Log("msg", "error fetching offset fetch", "err", partition.ErrorCode)
+					continue
+				}
 				topics[topic.Topic].lastCommittedOffset = partition.Offset
 			}
 		}

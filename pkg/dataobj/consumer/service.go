@@ -150,14 +150,11 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 
 func (s *Service) run(ctx context.Context) error {
 	for {
-		timedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		fetches := s.client.PollRecords(timedCtx, -1)
-		if fetches.IsClientClosed() || timedCtx.Err() != nil {
-			cancel()
-			level.Error(s.logger).Log("msg", "consumer client closed or context timed out", "client_closed", fetches.IsClientClosed(), "err", timedCtx.Err())
+		fetches := s.client.PollRecords(ctx, -1)
+		if fetches.IsClientClosed() || ctx.Err() != nil {
+			level.Error(s.logger).Log("msg", "consumer client closed or context cancelled", "client_closed", fetches.IsClientClosed(), "err", ctx.Err())
 			return nil
 		}
-		cancel()
 		if errs := fetches.Errors(); len(errs) > 0 {
 			var multiErr error
 			for _, err := range errs {
