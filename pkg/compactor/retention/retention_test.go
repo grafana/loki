@@ -415,7 +415,7 @@ func TestChunkRewriter(t *testing.T) {
 			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
 			filterFunc: func(ts time.Time, _ string, structuredMetadata labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
-				if labels.Labels(structuredMetadata).Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
+				if structuredMetadata.Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
 					todaysTableInterval.Start.UnixNano() <= tsUnixNano &&
 					tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true

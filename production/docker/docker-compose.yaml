@@ -38,7 +38,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v3.2.1
+    image: prom/prometheus:v3.3.0
     ports:
       - 9090
     volumes:
