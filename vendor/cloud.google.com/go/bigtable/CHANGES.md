@@ -1,5 +1,19 @@
 # Changes
 
+## [1.37.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.36.0...bigtable/v1.37.0) (2025-04-15)
+
+
+### Features
+
+* **bigtable:** Allow configuring multicluster routing and isolation ([#11980](https://github.com/googleapis/google-cloud-go/issues/11980)) ([19e2837](https://github.com/googleapis/google-cloud-go/commit/19e2837cd314b6909fd632ca3594eff7b606bb19))
+
+
+### Bug Fixes
+
+* **bigtable:** Correct the retry condition of QueryExpiredViolation ([#11984](https://github.com/googleapis/google-cloud-go/issues/11984)) ([44d8b86](https://github.com/googleapis/google-cloud-go/commit/44d8b86587f82721af99709ed89b7e9e5792e2ff))
+* **bigtable:** Update google.golang.org/api to 0.229.0 ([3319672](https://github.com/googleapis/google-cloud-go/commit/3319672f3dba84a7150772ccb5433e02dab7e201))
+* **bigtable:** Use the same Backoff for idempotent and internal errors ([#11985](https://github.com/googleapis/google-cloud-go/issues/11985)) ([8d1d015](https://github.com/googleapis/google-cloud-go/commit/8d1d0152cf8b96f5cc99a032f558114bb5cbe9f2))
+
 ## [1.36.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.35.0...bigtable/v1.36.0) (2025-03-31)
 
 
