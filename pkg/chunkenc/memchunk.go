@@ -1387,7 +1387,6 @@ type bufferedIterator struct {
 
 	symbolsBuf             []symbol      // The buffer for a single entry's symbols.
 	currStructuredMetadata labels.Labels // The current labels.
-	labelsBuilder          *labels.ScratchBuilder
 
 	closed bool
 }
@@ -1616,7 +1615,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.labelsBuilder), true
+	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }

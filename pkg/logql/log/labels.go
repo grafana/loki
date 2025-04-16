@@ -831,3 +831,23 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 	}{s: newStr, ok: ok}
 	return newStr, ok
 }
+
+// BufferedLabelsBuilder is a simple builder that uses a label buffer passed in.
+// It is used to avoid allocations when building labels.
+type BufferedLabelsBuilder struct {
+	buf labels.Labels
+}
+
+func NewBufferedLabelsBuilder(labels labels.Labels) *BufferedLabelsBuilder {
+	labels = labels[:0]
+	return &BufferedLabelsBuilder{buf: labels}
+}
+
+func (b *BufferedLabelsBuilder) Add(name, value string) {
+	b.buf = append(b.buf, labels.Label{Name: name, Value: value})
+}
+
+func (b *BufferedLabelsBuilder) Labels() labels.Labels {
+	sort.Sort(b.buf)
+	return b.buf
+}

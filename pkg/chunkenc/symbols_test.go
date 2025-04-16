@@ -103,13 +103,11 @@ func TestSymbolizer(t *testing.T) {
 	} {
 		for _, encoding := range testEncodings {
 			t.Run(fmt.Sprintf("%s - %s", tc.name, encoding), func(t *testing.T) {
-				labelsBuilder := labels.NewScratchBuilder(0)
-
 				s := newSymbolizer()
 				for i, lbls := range tc.labelsToAdd {
 					symbols := s.Add(lbls)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
-					require.Equal(t, lbls, s.Lookup(symbols, &labelsBuilder))
+					require.Equal(t, lbls, s.Lookup(symbols, nil))
 				}
 
 				// Test that Lookup returns empty labels if no symbols are provided.
@@ -119,7 +117,7 @@ func TestSymbolizer(t *testing.T) {
 							Name:  0,
 							Value: 0,
 						},
-					}, &labelsBuilder)
+					}, nil)
 					require.True(t, ret.IsEmpty())
 				}
 

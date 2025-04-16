@@ -252,14 +252,15 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
-	labelsBuilder := structuredMetadataPool.Get().(*labels.ScratchBuilder)
+	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
@@ -298,8 +299,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	}
 
 	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
-		labelsBuilder.Reset()
-		structuredMetadataPool.Put(labelsBuilder) // nolint:staticcheck
+		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
 		return nil
 	})
 }
@@ -312,14 +312,15 @@ func (hb *unorderedHeadBlock) SampleIterator(
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	setQueryReferencedStructuredMetadata := false
-	labelsBuilder := structuredMetadataPool.Get().(*labels.ScratchBuilder)
+	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 
 			for _, extractor := range extractor {
 				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata)
@@ -371,8 +372,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
-		labelsBuilder.Reset()
-		structuredMetadataPool.Put(labelsBuilder) // nolint:staticcheck
+		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
 		return nil
 	})
 }
@@ -463,9 +463,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			labelsBuilder := structuredMetadataPool.Get().(*labels.ScratchBuilder)
-			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder))
-			structuredMetadataPool.Put(labelsBuilder) // nolint:staticcheck
+			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
 			return err
 		},
 	)
@@ -605,10 +603,7 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 				}
 			}
 		}
-		labelsBuilder := structuredMetadataPool.Get().(*labels.ScratchBuilder)
-		_, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder))
-		structuredMetadataPool.Put(labelsBuilder) // nolint:staticcheck
-		if err != nil {
+		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
 			return err
 		}
 	}
