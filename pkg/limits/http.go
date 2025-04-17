@@ -38,18 +38,18 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	s.metadata.All(func(stream streamMetadata, tenantID string, partitionID int32) {
+	s.metadata.All(func(tenantID string, partitionID int32, stream Stream) {
 		if tenantID != tenant {
 			return
 		}
 
-		if stream.lastSeenAt >= cutoff {
+		if stream.LastSeenAt >= cutoff {
 			activeStreams++
 
 			// Calculate size only within the rate window
-			for _, bucket := range stream.rateBuckets {
-				if bucket.timestamp >= rateWindowCutoff {
-					totalSize += bucket.size
+			for _, bucket := range stream.RateBuckets {
+				if bucket.Timestamp >= rateWindowCutoff {
+					totalSize += bucket.Size
 				}
 			}
 		}

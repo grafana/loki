@@ -184,12 +184,12 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		partitionsPerTenant = make(map[string]map[int32]struct{})
 	)
 
-	s.metadata.All(func(stream streamMetadata, tenant string, partitionID int32) {
+	s.metadata.All(func(tenant string, partitionID int32, stream Stream) {
 		if assigned := s.partitionManager.Has(partitionID); !assigned {
 			return
 		}
 
-		if stream.lastSeenAt < cutoff {
+		if stream.LastSeenAt < cutoff {
 			return
 		}
 
@@ -355,17 +355,17 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 		// Calculate the rate window cutoff for cleaning up old buckets
 		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		// Calculate the total size of the stream
-		recTotalSize = rec.EntriesSize + rec.StructuredMetadataSize
+		totalSize = rec.EntriesSize + rec.StructuredMetadataSize
 	)
 
+	evict := false
 	if assigned := s.partitionManager.Has(partition); !assigned {
-		s.metadata.EvictPartitions([]int32{partition})
-		return
+		evict = true
 	}
 
-	s.metadata.Upsert(tenant, partition, rec.StreamHash, recordTime, recTotalSize, bucketStart, rateWindowCutoff)
+	s.metadata.Store(tenant, partition, rec.StreamHash, totalSize, recordTime, bucketStart, rateWindowCutoff, evict)
 
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(recTotalSize))
+	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(totalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -419,26 +419,26 @@ func (s *IngestLimits) GetStreamUsage(ctx context.Context, req *logproto.GetStre
 	// it is an active stream.
 	unknownStreams := req.StreamHashes
 
-	s.metadata.Collect(req.Tenant, func(stream streamMetadata, partitionID int32) {
+	s.metadata.Usage(req.Tenant, func(partitionID int32, stream Stream) {
 		if assigned := s.partitionManager.Has(partitionID); !assigned {
 			return
 		}
 
-		if stream.lastSeenAt < cutoff {
+		if stream.LastSeenAt < cutoff {
 			return
 		}
 
 		activeStreams++
 
 		// Calculate size only within the rate window
-		for _, bucket := range stream.rateBuckets {
-			if bucket.timestamp >= rateWindowCutoff {
-				totalSize += bucket.size
+		for _, bucket := range stream.RateBuckets {
+			if bucket.Timestamp >= rateWindowCutoff {
+				totalSize += bucket.Size
 			}
 		}
 
 		for i, streamHash := range unknownStreams {
-			if stream.hash == streamHash {
+			if stream.Hash == streamHash {
 				unknownStreams = append(unknownStreams[:i], unknownStreams[i+1:]...)
 				break
 			}

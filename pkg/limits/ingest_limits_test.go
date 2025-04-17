@@ -21,7 +21,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 
 		// Setup data.
 		assignedPartitionIDs []int32
-		metadata             *streamMetadataStripes
+		metadata             *streamMetadata
 		windowSize           time.Duration
 		rateWindow           time.Duration
 		bucketDuration       time.Duration
@@ -40,13 +40,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "tenant not found",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant2": {
-							0: []streamMetadata{
-								{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+							0: []Stream{
+								{Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 5, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
 							},
 						},
 					},
@@ -66,15 +66,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "all streams active",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
-								{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-								{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
+								{Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
+								{Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},
 							},
 						},
 					},
@@ -96,16 +96,16 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "mixed active and expired streams",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000}, // expired
-								{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-								{hash: 4, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 4000}, // expired
-								{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), TotalSize: 2000}, // expired
+								{Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
+								{Hash: 4, LastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), TotalSize: 4000}, // expired
+								{Hash: 5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -127,13 +127,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "all streams expired",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 1000},
-								{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), totalSize: 2000},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), TotalSize: 1000},
+								{Hash: 2, LastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano(), TotalSize: 2000},
 							},
 						},
 					},
@@ -153,13 +153,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "empty stream hashes",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
 							},
 						},
 					},
@@ -181,16 +181,16 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "unknown streams requested",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
-								{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-								{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
-								{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
+								{Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
+								{Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},
+								{Hash: 5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -213,22 +213,22 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "multiple assigned partitions",
 			// setup data
 			assignedPartitionIDs: []int32{0, 1},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
 							},
 						},
 					},
 					{
 						"tenant1": {
-							1: []streamMetadata{
-								{hash: 3, lastSeenAt: time.Now().UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 3000}}},
-								{hash: 4, lastSeenAt: time.Now().UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 4000}}},
-								{hash: 5, lastSeenAt: time.Now().UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 5000}}},
+							1: []Stream{
+								{Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
+								{Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},
+								{Hash: 5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -250,13 +250,13 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "multiple partitions with unassigned partitions",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
-								{hash: 1, lastSeenAt: time.Now().UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 1000}}},
-								{hash: 2, lastSeenAt: time.Now().UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: time.Now().UnixNano(), size: 2000}}},
+							0: []Stream{
+								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
+								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
 							},
 						},
 					},
@@ -279,30 +279,30 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name: "mixed buckets within and outside rate window",
 			// setup data
 			assignedPartitionIDs: []int32{0},
-			metadata: &streamMetadataStripes{
-				stripes: []map[string]map[int32][]streamMetadata{
+			metadata: &streamMetadata{
+				stripes: []map[string]map[int32][]Stream{
 					{
 						"tenant1": {
-							0: []streamMetadata{
+							0: []Stream{
 								{
-									hash:       1,
-									lastSeenAt: time.Now().UnixNano(),
-									totalSize:  5000, // Total size includes all buckets
-									rateBuckets: []rateBucket{
-										{timestamp: time.Now().Add(-10 * time.Minute).UnixNano(), size: 1000}, // Outside rate window
-										{timestamp: time.Now().Add(-6 * time.Minute).UnixNano(), size: 1500},  // Outside rate window
-										{timestamp: time.Now().Add(-4 * time.Minute).UnixNano(), size: 1000},  // Inside rate window
-										{timestamp: time.Now().Add(-2 * time.Minute).UnixNano(), size: 1500},  // Inside rate window
+									Hash:       1,
+									LastSeenAt: time.Now().UnixNano(),
+									TotalSize:  5000, // Total size includes all buckets
+									RateBuckets: []RateBucket{
+										{Timestamp: time.Now().Add(-10 * time.Minute).UnixNano(), Size: 1000}, // Outside rate window
+										{Timestamp: time.Now().Add(-6 * time.Minute).UnixNano(), Size: 1500},  // Outside rate window
+										{Timestamp: time.Now().Add(-4 * time.Minute).UnixNano(), Size: 1000},  // Inside rate window
+										{Timestamp: time.Now().Add(-2 * time.Minute).UnixNano(), Size: 1500},  // Inside rate window
 									},
 								},
 								{
-									hash:       2,
-									lastSeenAt: time.Now().UnixNano(),
-									totalSize:  4000, // Total size includes all buckets
-									rateBuckets: []rateBucket{
-										{timestamp: time.Now().Add(-8 * time.Minute).UnixNano(), size: 1000}, // Outside rate window
-										{timestamp: time.Now().Add(-3 * time.Minute).UnixNano(), size: 1500}, // Inside rate window
-										{timestamp: time.Now().Add(-1 * time.Minute).UnixNano(), size: 1500}, // Inside rate window
+									Hash:       2,
+									LastSeenAt: time.Now().UnixNano(),
+									TotalSize:  4000, // Total size includes all buckets
+									RateBuckets: []RateBucket{
+										{Timestamp: time.Now().Add(-8 * time.Minute).UnixNano(), Size: 1000}, // Outside rate window
+										{Timestamp: time.Now().Add(-3 * time.Minute).UnixNano(), Size: 1500}, // Inside rate window
+										{Timestamp: time.Now().Add(-1 * time.Minute).UnixNano(), Size: 1500}, // Inside rate window
 									},
 								},
 							},
@@ -380,16 +380,16 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	now := time.Now()
 
 	// Setup test data with a mix of active and expired streams>
-	metadata := &streamMetadataStripes{
-		stripes: []map[string]map[int32][]streamMetadata{
+	metadata := &streamMetadata{
+		stripes: []map[string]map[int32][]Stream{
 			{
 				"tenant1": {
-					0: []streamMetadata{
-						{hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
-						{hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
-						{hash: 3, lastSeenAt: now.Add(-2 * time.Hour).UnixNano(), totalSize: 3000},                                                                        // expired
-						{hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
-						{hash: 5, lastSeenAt: now.Add(-3 * time.Hour).UnixNano(), totalSize: 5000},                                                                        // expired
+					0: []Stream{
+						{Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},                        // active
+						{Hash: 2, LastSeenAt: now.Add(-30 * time.Minute).UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 2000}}}, // active
+						{Hash: 3, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 3000},                                                                        // expired
+						{Hash: 4, LastSeenAt: now.Add(-45 * time.Minute).UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 4000}}}, // active
+						{Hash: 5, LastSeenAt: now.Add(-3 * time.Hour).UnixNano(), TotalSize: 5000},                                                                        // expired
 					},
 				},
 			},
@@ -460,25 +460,25 @@ func TestIngestLimits_UpdateMetadata_EvictUnassignedPartition(t *testing.T) {
 	var (
 		assignedPartitionIDs = []int32{1}
 
-		metadata = &streamMetadataStripes{
-			stripes: []map[string]map[int32][]streamMetadata{
+		metadata = &streamMetadata{
+			stripes: []map[string]map[int32][]Stream{
 				{
 					"tenant1": {
 						0: {
 							{
-								hash:       123,
-								lastSeenAt: time.Unix(100, 0).UnixNano(),
-								totalSize:  1000,
-								rateBuckets: []rateBucket{
-									{timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), size: 1000},
+								Hash:       123,
+								LastSeenAt: time.Unix(100, 0).UnixNano(),
+								TotalSize:  1000,
+								RateBuckets: []RateBucket{
+									{Timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), Size: 1000},
 								},
 							},
 							{
-								hash:       456,
-								lastSeenAt: time.Unix(200, 0).UnixNano(),
-								totalSize:  3000,
-								rateBuckets: []rateBucket{
-									{timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), size: 3000},
+								Hash:       456,
+								LastSeenAt: time.Unix(200, 0).UnixNano(),
+								TotalSize:  3000,
+								RateBuckets: []RateBucket{
+									{Timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), Size: 3000},
 								},
 							},
 						},
@@ -517,13 +517,13 @@ func TestIngestLimits_UpdateMetadata_EvictUnassignedPartition(t *testing.T) {
 
 	s.updateMetadata(updateMetadata, tenantID, int32(partitionID), lastSeenAt)
 
-	actual := make(map[string]map[int32][]streamMetadata)
-	s.metadata.All(func(stream streamMetadata, tenant string, partitionID int32) {
+	actual := make(map[string]map[int32][]Stream)
+	s.metadata.All(func(tenant string, partitionID int32, stream Stream) {
 		if actual[tenant] == nil {
-			actual[tenant] = make(map[int32][]streamMetadata)
+			actual[tenant] = make(map[int32][]Stream)
 		}
 		if actual[tenant][partitionID] == nil {
-			actual[tenant][partitionID] = make([]streamMetadata, 0)
+			actual[tenant][partitionID] = make([]Stream, 0)
 		}
 		actual[tenant][partitionID] = append(actual[tenant][partitionID], stream)
 	})
