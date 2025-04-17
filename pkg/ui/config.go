@@ -14,7 +14,7 @@ import (
 )
 
 type Config struct {
-	Enabled             bool          `yaml:"enabled"`                // Whether to enable the UI.
+	Enabled             bool          `yaml:"enabled"`                            // Whether to enable the UI.
 	NodeName            string        `yaml:"node_name" doc:"default=<hostname>"` // Name to use for this node in the cluster.
 	AdvertiseAddr       string        `yaml:"advertise_addr"`
 	InfNames            []string      `yaml:"interface_names" doc:"default=[<private network interfaces>]"`
@@ -58,7 +58,7 @@ func (cfg Config) Validate() error {
 	if !cfg.Enabled {
 		return nil
 	}
-	
+
 	// Perform normal validation for enabled UI
 	if cfg.NodeName == "" {
 		return errors.New("node name is required")
