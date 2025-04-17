@@ -181,12 +181,12 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 		return logproto.Stream{}, errors.New("empty data received")
 	}
 
-	stream := &logproto.Stream{}
+	stream := logproto.Stream{}
 	if err := stream.Unmarshal(data); err != nil {
 		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
 
-	return *stream, nil
+	return stream, nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.
