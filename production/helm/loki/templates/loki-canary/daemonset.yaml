@@ -2,7 +2,7 @@
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: {{ .kind }}
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
   namespace: {{ $.Release.Namespace }}
@@ -12,9 +12,18 @@ spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+  
+  {{- if eq .kind "Deployment" }}
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  {{- else }}
   {{- with .updateStrategy }}
   updateStrategy:
     {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   template:
     metadata:
