@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 
@@ -52,7 +51,6 @@ type ReaderMetrics struct {
 	fetchesErrors     prometheus.Counter
 	fetchesTotal      prometheus.Counter
 	fetchWaitDuration prometheus.Histogram
-	kprom             *kprom.Metrics
 }
 
 func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *ReaderMetrics {
@@ -84,7 +82,6 @@ func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *Read
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		kprom: client.NewClientMetrics("partition-reader", "reader", r, enableKafkaHistograms),
 	}
 }
 
