@@ -129,7 +129,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	var primaryColumnBytes int64
 	var primaryColumnPostFilterBytes int64
 	var totalBytesAfterFill int64
-	var rowsRead int  // rowsRead tracks how many rows were read from the dataset.
+	var rowsRead int
 	var passCount int // passCount tracks how many rows pass the predicate.
 
 	// If there are no predicates, read all columns in the dataset
@@ -491,7 +491,7 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 
 	var ranges rowRanges
 	var err error
-	if len(r.opts.Predicates) == 0 {
+	if len(r.opts.Predicates) == 0 { // no predicates, build full range
 		ranges, err = r.buildPredicateRanges(ctx, nil)
 		if err != nil {
 			return err
@@ -503,11 +503,10 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 				return err
 			}
 
-			if len(ranges) == 0 {
+			if ranges == nil {
 				ranges = rr
 			} else {
-				tmp := intersectRanges(nil, ranges, rr)
-				ranges = tmp
+				ranges = intersectRanges(nil, ranges, rr)
 			}
 		}
 	}
@@ -817,6 +816,12 @@ func (r *Reader) predicateColumns(p Predicate) ([]Column, []int, error) {
 			columns[p.Column] = struct{}{}
 		case LessThanPredicate:
 			columns[p.Column] = struct{}{}
+		case FuncPredicate:
+			columns[p.Column] = struct{}{}
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			// No columns to process.
+		default:
+			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
 		}
 		return true
 	})
@@ -824,14 +829,13 @@ func (r *Reader) predicateColumns(p Predicate) ([]Column, []int, error) {
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
-		if idx, ok := r.origColumnLookup[c]; ok {
-			idxs = append(idxs, idx)
-			c = r.dl.AllColumns()[idx]
-		} else {
-			return nil, nil, fmt.Errorf("column %v not found in Reader columns", c)
+		idx, ok := r.origColumnLookup[c]
+		if !ok {
+			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
 		}
 
-		ret = append(ret, c)
+		idxs = append(idxs, idx)
+		ret = append(ret, r.dl.AllColumns()[idx])
 	}
 
 	return ret, idxs, nil
