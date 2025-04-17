@@ -53,7 +53,7 @@ type ReaderMetrics struct {
 	fetchWaitDuration prometheus.Histogram
 }
 
-func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *ReaderMetrics {
+func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
 		consumptionLag: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_kafka_reader_consumption_lag_seconds",

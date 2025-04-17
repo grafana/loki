@@ -96,10 +96,10 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 }
 
 func NewClientMetrics(component string, serviceRole string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
-	metric_labels := prometheus.Labels{"component": component, "service_role": serviceRole}
+	metricLabels := prometheus.Labels{"component": component, "service_role": serviceRole}
 
 	return kprom.NewMetrics("loki_kafka_client",
-		kprom.Registerer(prometheus.WrapRegistererWith(metric_labels, reg)),
+		kprom.Registerer(prometheus.WrapRegistererWith(metricLabels, reg)),
 		// Do not export the client ID, because we use it to specify options to the backend.
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
 		enableKafkaHistogramMetrics(enableKafkaHistograms),
