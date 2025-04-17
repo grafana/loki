@@ -31,9 +31,11 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 	r := NewReader(ReaderOptions{
 		Dataset: dset,
 		Columns: columns,
-		Predicate: GreaterThanPredicate{
-			Column: columns[3], // birth_year column
-			Value:  Int64Value(1985),
+		Predicates: []Predicate{
+			GreaterThanPredicate{
+				Column: columns[3], // birth_year column
+				Value:  Int64Value(1985),
+			},
 		},
 	})
 	defer r.Close()
@@ -65,9 +67,11 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		//
 		// TODO(rfratto): make it easier to prove that a predicate includes a value
 		// which is out of range of at least one page.
-		Predicate: EqualPredicate{
-			Column: columns[0], // first_name column
-			Value:  ByteArrayValue([]byte("Henry")),
+		Predicates: []Predicate{
+			EqualPredicate{
+				Column: columns[0], // first_name column
+				Value:  ByteArrayValue([]byte("Henry")),
+			},
 		},
 	})
 	defer r.Close()
@@ -92,9 +96,11 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	r := NewReader(ReaderOptions{
 		Dataset: dset,
 		Columns: []Column{columns[3]},
-		Predicate: GreaterThanPredicate{
-			Column: columns[3], // birth_year column
-			Value:  Int64Value(1985),
+		Predicates: []Predicate{
+			GreaterThanPredicate{
+				Column: columns[3], // birth_year column
+				Value:  Int64Value(1985),
+			},
 		},
 	})
 	defer r.Close()
@@ -361,9 +367,9 @@ func Test_BuildPredicateRanges(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			r := NewReader(ReaderOptions{
-				Dataset:   ds,
-				Columns:   cols,
-				Predicate: tc.predicate,
+				Dataset:    ds,
+				Columns:    cols,
+				Predicates: []Predicate{tc.predicate},
 			})
 			defer r.Close()
 
