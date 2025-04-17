@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/grafana/loki/compare/v3.0.1...v3.0.2) (2025-04-17)
+
+
+### Bug Fixes
+
+* correct typo in architecture name (amr64 -&gt; arm64) (backport release-3.0.x) ([#15714](https://github.com/grafana/loki/issues/15714)) ([dfc0c1b](https://github.com/grafana/loki/commit/dfc0c1b5f0fee84f33c9fa4436c937250547f75f))
+
 ## [3.0.1](https://github.com/grafana/loki/compare/v3.0.0...v3.0.1) (2024-08-09)
 
 
