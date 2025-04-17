@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.3](https://github.com/grafana/loki/compare/v3.1.2...v3.1.3) (2025-04-17)
+
+
+### Bug Fixes
+
+* **ci:** updated release workflow to use github app token ([#14527](https://github.com/grafana/loki/issues/14527)) ([be131eb](https://github.com/grafana/loki/commit/be131eb0ddb44578c2a532c70af73395c0713821))
+* correct typo in architecture name (amr64 -&gt; arm64) (backport release-3.1.x) ([#15717](https://github.com/grafana/loki/issues/15717)) ([4e9ff1e](https://github.com/grafana/loki/commit/4e9ff1e87db1a884f0cd181f272f32056b0f3825))
+
 ## [3.1.2](https://github.com/grafana/loki/compare/v3.1.1...v3.1.2) (2024-10-17)
 
 
