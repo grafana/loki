@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.3](https://github.com/grafana/loki/compare/v3.2.2...v3.2.3) (2025-04-17)
+
+
+### Bug Fixes
+
+* correct typo in architecture name (amr64 -&gt; arm64) (backport release-3.2.x) ([#15716](https://github.com/grafana/loki/issues/15716)) ([d066bbb](https://github.com/grafana/loki/commit/d066bbb7408aed56537b282e1e4f89d272f22815))
+* **deps:** backport update module golang.org/x/crypto to v0.31.0 ([#15395](https://github.com/grafana/loki/issues/15395)) ([a81159e](https://github.com/grafana/loki/commit/a81159e8b373f151a489342f347046f7f730f986))
+* **deps:** CVE updates for Loki 3.2.2 ([#15646](https://github.com/grafana/loki/issues/15646)) ([bd3a65a](https://github.com/grafana/loki/commit/bd3a65ad7a443f21568fe8931413c8f9acb99e9a))
+* **deps:** Update Go for Loki 3.2 ([#15712](https://github.com/grafana/loki/issues/15712)) ([0d67891](https://github.com/grafana/loki/commit/0d67891cb814efcb37c36d9d362dc0b1aca0bb38))
+* **docs:** add a note on docker configuration.md doc to explain accep… (backport release-3.2.x) ([#16744](https://github.com/grafana/loki/issues/16744)) ([342fce5](https://github.com/grafana/loki/commit/342fce590a89a233e82f3474c93eb1f69268898e))
+* **docs:** Update configuration.md (backport release-3.2.x) ([#17297](https://github.com/grafana/loki/issues/17297)) ([439f53f](https://github.com/grafana/loki/commit/439f53fdd5f16882661bf12e8d1feeb9db267c14))
+
 ## [3.2.2](https://github.com/grafana/loki/compare/v3.2.1...v3.2.2) (2024-12-04)
 
 
