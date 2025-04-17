@@ -839,8 +839,7 @@ type BufferedLabelsBuilder struct {
 }
 
 func NewBufferedLabelsBuilder(labels labels.Labels) *BufferedLabelsBuilder {
-	labels = labels[:0]
-	return &BufferedLabelsBuilder{buf: labels}
+	return &BufferedLabelsBuilder{buf: labels[:0]}
 }
 
 func (b *BufferedLabelsBuilder) Add(label labels.Label) {

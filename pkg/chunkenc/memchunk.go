@@ -1401,6 +1401,7 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 		pool:       pool,
 		format:     format,
 		symbolizer: symbolizer,
+		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }
 
