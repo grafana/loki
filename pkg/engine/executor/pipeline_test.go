@@ -16,11 +16,15 @@ import (
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
 // It supports int64, float64, and boolean types for now.
 func CSVToArrow(fields []arrow.Field, csvData string) (arrow.Record, error) {
+	return CSVToArrowWithAllocator(memory.NewGoAllocator(), fields, csvData)
+}
+
+// CSVToArrowWithAllocator converts a CSV string to an Arrow record based on the provided schema
+// using the specified memory allocator.
+// It supports int64, float64, boolean, int32, and float32 types.
+func CSVToArrowWithAllocator(mem memory.Allocator, fields []arrow.Field, csvData string) (arrow.Record, error) {
 	// Create schema
 	schema := arrow.NewSchema(fields, nil)
-
-	// Prepare memory allocator
-	mem := memory.NewGoAllocator()
 
 	// Create record builder
 	builder := array.NewRecordBuilder(mem, schema)
@@ -120,6 +124,12 @@ type CSVPipeline struct {
 // NewCSVPipeline creates a new Pipeline from CSV data with a specified batch size.
 // It pre-builds all batches during initialization to ensure schema compatibility.
 func NewCSVPipeline(batchSize int, fields []arrow.Field, csvData string) (*CSVPipeline, error) {
+	return NewCSVPipelineWithAllocator(memory.NewGoAllocator(), batchSize, fields, csvData)
+}
+
+// NewCSVPipelineWithAllocator creates a new Pipeline from CSV data with a specified batch size and memory allocator.
+// It pre-builds all batches during initialization to ensure schema compatibility.
+func NewCSVPipelineWithAllocator(mem memory.Allocator, batchSize int, fields []arrow.Field, csvData string) (*CSVPipeline, error) {
 	if batchSize <= 0 {
 		return nil, fmt.Errorf("batch size must be positive, got %d", batchSize)
 	}
@@ -159,7 +169,7 @@ func NewCSVPipeline(batchSize int, fields []arrow.Field, csvData string) (*CSVPi
 		batchCSV := strings.Join(validLines[start:end], "\n")
 
 		// Create arrow record from the batch
-		rec, err := CSVToArrow(fields, batchCSV)
+		rec, err := CSVToArrowWithAllocator(mem, fields, batchCSV)
 		if err != nil {
 			// Clean up any previously created batches
 			for _, batch := range batches {
@@ -490,5 +500,71 @@ func TestCSVToArrow(t *testing.T) {
 		_, err := CSVToArrow(fields, csvData)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to parse bool value")
+	})
+
+	t.Run("with_custom_allocator", func(t *testing.T) {
+		fields := []arrow.Field{
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+			{Name: "value", Type: arrow.PrimitiveTypes.Int64},
+		}
+
+		csvData := `1,10
+2,20
+3,30`
+
+		// Using a checked allocator to verify proper memory management
+		checkedAllocator := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		record, err := CSVToArrowWithAllocator(checkedAllocator, fields, csvData)
+		require.NoError(t, err)
+
+		// Check record contents
+		require.Equal(t, int64(3), record.NumRows())
+		require.Equal(t, int64(2), record.NumCols())
+
+		// Release the record
+		record.Release()
+
+		// Verify all memory has been released
+		require.Zero(t, checkedAllocator.CurrentAlloc())
+	})
+}
+
+func TestCSVPipelineWithAllocator(t *testing.T) {
+	fields := []arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "value", Type: arrow.PrimitiveTypes.Int64},
+	}
+
+	csvData := `1,10
+2,20
+3,30
+4,40
+5,50`
+
+	t.Run("with_checked_allocator", func(t *testing.T) {
+		// Using a checked allocator to verify proper memory management
+		checkedAllocator := memory.NewCheckedAllocator(memory.NewGoAllocator())
+
+		pipeline, err := NewCSVPipelineWithAllocator(checkedAllocator, 2, fields, csvData)
+		require.NoError(t, err)
+
+		// Process all batches
+		for {
+			err := pipeline.Read()
+			if err == EOF {
+				break
+			}
+			require.NoError(t, err)
+
+			rec, err := pipeline.Value()
+			require.NoError(t, err)
+			require.NotNil(t, rec)
+		}
+
+		// Close the pipeline
+		pipeline.Close()
+
+		// Verify all memory has been released
+		require.Zero(t, checkedAllocator.CurrentAlloc())
 	})
 }
