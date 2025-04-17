@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -61,12 +62,28 @@ func (c *Context) executeDataObjScan(_ context.Context, _ *physical.DataObjScan)
 	return errorPipeline(errNotImplemented)
 }
 
-func (c *Context) executeSortMerge(_ context.Context, _ *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
-	return errorPipeline(errNotImplemented)
+	var mh heap.Interface
+	switch sortmerge.Order {
+	case physical.ASC:
+		mh = MinHeap()
+	case physical.DESC:
+		mh = MaxHeap()
+	default:
+		return errorPipeline(fmt.Errorf("invalid sort order %v", sortmerge.Order))
+	}
+	heap.Init(mh)
+
+	return &HeapSortMerge{
+		inputs:     inputs,
+		heap:       mh,
+		batchSize:  c.batchSize,
+		columnEval: c.evaluator.newEval(sortmerge.Column),
+	}
 }
 
 func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {

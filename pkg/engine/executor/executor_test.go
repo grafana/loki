@@ -39,13 +39,6 @@ func TestExecutor_SortMerge(t *testing.T) {
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
 	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeSortMerge(context.TODO(), &physical.SortMerge{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
 }
 
 func TestExecutor_Limit(t *testing.T) {

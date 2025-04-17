@@ -53,7 +53,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
-			e := &expressionEvaluator{}
+			e := expressionEvaluator{}
 
 			n := len(words)
 			rec := batch(n, time.Now())
@@ -70,7 +70,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 }
 
 func TestEvaluateColumnExpression(t *testing.T) {
-	e := &expressionEvaluator{}
+	e := expressionEvaluator{}
 
 	t.Run("invalid", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
