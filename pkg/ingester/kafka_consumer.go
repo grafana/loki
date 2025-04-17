@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"runtime"
 	"sync"
 	"time"
 
@@ -106,11 +105,6 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		limitWorkers = kc.maxConsumerWorkers
 		wg           sync.WaitGroup
 	)
-
-	// If the number of workers is set to 0, use the number of available CPUs
-	if limitWorkers == 0 {
-		limitWorkers = runtime.GOMAXPROCS(0)
-	}
 
 	// Find min/max offsets
 	for _, record := range records {

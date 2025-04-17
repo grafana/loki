@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -91,6 +92,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
 	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for consuming from Kafka. This is used to limit the number of concurrent requests to Kafka.")
+
+	// If the number of workers is set to 0, use the number of available CPUs
+	if cfg.MaxConsumerWorkers == 0 {
+		cfg.MaxConsumerWorkers = runtime.GOMAXPROCS(0)
+	}
 }
 
 func (cfg *Config) Validate() error {
