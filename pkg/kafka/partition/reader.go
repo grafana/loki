@@ -56,7 +56,7 @@ type ReaderMetrics struct {
 func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
 		consumptionLag: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_kafka_reader_consumption_lag_seconds",
+			Name:                            "loki_kafka_partition_reader_consumption_lag_seconds",
 			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
 			NativeHistogramZeroThreshold:    math.Pow(2, -10),
 			NativeHistogramBucketFactor:     1.2,
@@ -65,21 +65,21 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
 		}, []string{"phase"}),
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
+			Name:                        "loki_kafka_partition_reader_fetch_wait_duration_seconds",
 			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
 			NativeHistogramBucketFactor: 1.1,
 		}),
 		recordsPerFetch: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_kafka_reader_records_per_fetch",
+			Name:    "loki_kafka_partition_reader_records_per_fetch",
 			Help:    "The number of records received in a single fetch operation.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 15),
 		}),
 		fetchesErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_kafka_reader_fetch_errors_total",
+			Name: "loki_kafka_partition_reader_fetch_errors_total",
 			Help: "The number of fetch errors encountered.",
 		}),
 		fetchesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_kafka_reader_fetches_total",
+			Name: "loki_kafka_partition_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
 	}
