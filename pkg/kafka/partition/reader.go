@@ -84,7 +84,7 @@ func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *Read
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		kprom: client.NewReaderClientMetrics("partition-reader", r, enableKafkaHistograms),
+		kprom: client.NewClientMetrics("partition-reader", "reader", r, enableKafkaHistograms),
 	}
 }
 
@@ -104,13 +104,10 @@ func NewKafkaReader(
 	partitionID int32,
 	logger log.Logger,
 	metrics *ReaderMetrics,
+	reg prometheus.Registerer,
 ) (*KafkaReader, error) {
 	// Create a new Kafka client for this reader
-	c, err := client.NewReaderClient(
-		cfg,
-		metrics.kprom,
-		log.With(logger, "component", "kafka-client"),
-	)
+	c, err := client.NewReaderClient("partition-reader", cfg, log.With(logger, "component", "kafka-client"), reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}

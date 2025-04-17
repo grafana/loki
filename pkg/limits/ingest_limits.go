@@ -162,15 +162,13 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s.lifecyclerWatcher = services.NewFailureWatcher()
 	s.lifecyclerWatcher.WatchService(s.lifecycler)
 
-	metrics := client.NewReaderClientMetrics("ingest-limits", reg, cfg.KafkaConfig.EnableKafkaHistograms)
-
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
 	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
-	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
+	s.client, err = client.NewReaderClient("ingest-limits", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),

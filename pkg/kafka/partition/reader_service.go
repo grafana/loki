@@ -76,12 +76,7 @@ func NewReaderService(
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg, kafkaCfg.EnableKafkaHistograms)
-	reader, err := NewKafkaReader(
-		kafkaCfg,
-		partitionID,
-		logger,
-		readerMetrics,
-	)
+	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}

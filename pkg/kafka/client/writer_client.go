@@ -33,14 +33,9 @@ var writerRequestTimeoutOverhead = 2 * time.Second
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
+func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
-	metrics := kprom.NewMetrics(
-		"", // No prefix. We expect the input prometheus.Registered to be wrapped with a prefix.
-		kprom.Registerer(reg),
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
-		enableKafkaHistogramMetrics(kafkaCfg.EnableKafkaHistograms),
-	)
+	metrics := NewClientMetrics(component, "writer", reg, kafkaCfg.EnableKafkaHistograms)
 
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),
@@ -98,6 +93,38 @@ func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logg
 		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)
 	}
 	return client, nil
+}
+
+func NewClientMetrics(component string, serviceRole string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
+	metric_labels := prometheus.Labels{"component": component, "service_role": serviceRole}
+
+	return kprom.NewMetrics("loki_kafka_client",
+		kprom.Registerer(prometheus.WrapRegistererWith(metric_labels, reg)),
+		// Do not export the client ID, because we use it to specify options to the backend.
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+		enableKafkaHistogramMetrics(enableKafkaHistograms),
+	)
+}
+
+func enableKafkaHistogramMetrics(enable bool) kprom.Opt {
+	histogramOpts := []kprom.HistogramOpts{}
+	if enable {
+		histogramOpts = append(histogramOpts,
+			kprom.HistogramOpts{
+				Enable:  kprom.ReadTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.ReadWait,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteWait,
+				Buckets: prometheus.DefBuckets,
+			})
+	}
+	return kprom.HistogramsFromOpts(histogramOpts...)
 }
 
 type onlySampledTraces struct {
