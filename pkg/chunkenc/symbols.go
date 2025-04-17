@@ -110,7 +110,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
 	}
 	for _, symbol := range syms {
-		buf.Add(s.lookup(symbol.Name), s.lookup(symbol.Value))
+		buf.Add(labels.Label{Name: s.lookup(symbol.Name), Value: s.lookup(symbol.Value)})
 	}
 
 	return buf.Labels()

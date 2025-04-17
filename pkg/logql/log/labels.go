@@ -843,11 +843,11 @@ func NewBufferedLabelsBuilder(labels labels.Labels) *BufferedLabelsBuilder {
 	return &BufferedLabelsBuilder{buf: labels}
 }
 
-func (b *BufferedLabelsBuilder) Add(name, value string) {
-	b.buf = append(b.buf, labels.Label{Name: name, Value: value})
+func (b *BufferedLabelsBuilder) Add(label labels.Label) {
+	b.buf = append(b.buf, label)
 }
 
 func (b *BufferedLabelsBuilder) Labels() labels.Labels {
-	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+	//slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	return b.buf
 }
