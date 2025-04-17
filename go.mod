@@ -29,7 +29,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/cristalhq/hedgedhttp v0.9.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-	github.com/docker/docker v28.0.4+incompatible
+	github.com/docker/docker v28.1.0+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20240701071450-45e2431495c8
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.1
@@ -205,6 +205,8 @@ require (
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/minio/crc64nvme v1.0.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
+	github.com/moby/sys/atomicwriter v0.1.0 // indirect
+	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect

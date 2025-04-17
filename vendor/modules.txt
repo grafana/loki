@@ -644,7 +644,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v28.0.4+incompatible
+# github.com/docker/docker v28.1.0+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -677,7 +677,6 @@ github.com/docker/docker/daemon/logger/templates
 github.com/docker/docker/errdefs
 github.com/docker/docker/internal/lazyregexp
 github.com/docker/docker/internal/multierror
-github.com/docker/docker/pkg/atomicwriter
 github.com/docker/docker/pkg/homedir
 github.com/docker/docker/pkg/ioutils
 github.com/docker/docker/pkg/jsonmessage
@@ -1406,6 +1405,12 @@ github.com/mitchellh/reflectwalk
 # github.com/moby/docker-image-spec v1.3.1
 ## explicit; go 1.18
 github.com/moby/docker-image-spec/specs-go/v1
+# github.com/moby/sys/atomicwriter v0.1.0
+## explicit; go 1.18
+github.com/moby/sys/atomicwriter
+# github.com/moby/sys/sequential v0.6.0
+## explicit; go 1.17
+github.com/moby/sys/sequential
 # github.com/moby/sys/userns v0.1.0
 ## explicit; go 1.21
 github.com/moby/sys/userns
