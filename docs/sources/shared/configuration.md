@@ -110,6 +110,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [server: <server>]
 
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
   [node_name: <string> | default = "<hostname>"]
