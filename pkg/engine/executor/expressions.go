@@ -14,7 +14,7 @@ import (
 
 type expressionEvaluator struct{}
 
-func (e *expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
@@ -56,6 +56,15 @@ func (e *expressionEvaluator) eval(expr physical.Expression, input arrow.Record)
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
 }
+
+// newFunc returns a new function that can evaluate an input against a binded expression.
+func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+	return func(input arrow.Record) (ColumnVector, error) {
+		return e.eval(expr, input)
+	}
+}
+
+type evalFunc func(input arrow.Record) (ColumnVector, error)
 
 // ColumnVector represents columnar values from evaluated expressions.
 type ColumnVector interface {
