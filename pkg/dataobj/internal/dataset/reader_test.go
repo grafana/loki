@@ -147,10 +147,10 @@ func Test_Reader_Stats(t *testing.T) {
 	r := NewReader(ReaderOptions{
 		Dataset: dset,
 		Columns: columns,
-		Predicate: GreaterThanPredicate{
+		Predicates: []Predicate{GreaterThanPredicate{
 			Column: columns[3], // birth_year column
 			Value:  Int64Value(1985),
-		},
+		}},
 	})
 	defer r.Close()
 
