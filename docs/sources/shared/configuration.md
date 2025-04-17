@@ -833,7 +833,7 @@ kafka_config:
   # The maximum number of workers to use for consuming from Kafka. This is used
   # to limit the number of concurrent requests to Kafka.
   # CLI flag: -kafka.max-consumer-workers
-  [max_consumer_workers: <int> | default = 100]
+  [max_consumer_workers: <int> | default = 1]
 
   # Enable collection of the following kafka latency histograms: read-wait,
   # read-timing, write-wait, write-timing
