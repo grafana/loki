@@ -178,7 +178,7 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 // DecodeWithoutLabels converts a Kafka record's byte data back into a logproto.Stream without parsing labels.
 func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 	if len(data) == 0 {
-		return logproto.Stream{}, fmt.Errorf("empty data received")
+		return logproto.Stream{}, errors.New("empty data received")
 	}
 
 	stream := &logproto.Stream{}
