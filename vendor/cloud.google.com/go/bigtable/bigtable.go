@@ -186,7 +186,6 @@ var (
 				Multiplier: 1.2,
 			}
 			return &bigtableRetryer{
-				Retryer: gax.OnCodes(idempotentRetryCodes, backoff),
 				Backoff: backoff,
 			}
 		}),
@@ -204,7 +203,6 @@ var (
 			}
 			return &bigtableRetryer{
 				alternateRetryCondition: isQueryExpiredViolation,
-				Retryer:                 gax.OnCodes(idempotentRetryCodes, backoff),
 				Backoff:                 backoff,
 			}
 		}),
@@ -213,7 +211,7 @@ var (
 
 func isQueryExpiredViolation(err error) bool {
 	apiErr, ok := apierror.FromError(err)
-	if ok && apiErr != nil && apiErr.Details().PreconditionFailure != nil {
+	if ok && apiErr != nil && apiErr.Details().PreconditionFailure != nil && status.Code(err) == codes.FailedPrecondition {
 		for _, violation := range apiErr.Details().PreconditionFailure.GetViolations() {
 			if violation != nil && violation.GetType() == queryExpiredViolationType {
 				return true
@@ -232,7 +230,6 @@ func isQueryExpiredViolation(err error) bool {
 // - alternateRetryCondition returns true.
 type bigtableRetryer struct {
 	alternateRetryCondition func(error) bool
-	gax.Retryer
 	gax.Backoff
 }
 
@@ -246,17 +243,20 @@ func containsAny(str string, substrs []string) bool {
 }
 
 func (r *bigtableRetryer) Retry(err error) (time.Duration, bool) {
-	if (status.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs)) ||
-		(r.alternateRetryCondition != nil && r.alternateRetryCondition(err)) {
-		return r.Backoff.Pause(), true
-	}
-
-	delay, shouldRetry := r.Retryer.Retry(err)
-	if !shouldRetry {
+	// Similar to gax.OnCodes but shares the backoff with INTERNAL retry messages check
+	st, ok := status.FromError(err)
+	if !ok {
 		return 0, false
 	}
-
-	return delay, true
+	c := st.Code()
+	_, isIdempotent := isIdempotentRetryCode[c]
+	if isIdempotent ||
+		(status.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs)) ||
+		(r.alternateRetryCondition != nil && r.alternateRetryCondition(err)) {
+		pause := r.Backoff.Pause()
+		return pause, true
+	}
+	return 0, false
 }
 
 func init() {

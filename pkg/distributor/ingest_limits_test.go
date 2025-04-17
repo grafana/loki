@@ -26,7 +26,9 @@ type mockIngestLimitsFrontendClient struct {
 // Implements the ingestLimitsFrontendClient interface.
 func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	c.calls.Add(1)
-	require.Equal(c.t, c.expectedRequest, r)
+	if c.expectedRequest != nil {
+		require.Equal(c.t, c.expectedRequest, r)
+	}
 	if c.responseErr != nil {
 		return nil, c.responseErr
 	}

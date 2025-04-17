@@ -173,15 +173,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
-		// TODO(periklis): Remove the sticky balancer once we rolled out
-		// the cooperative sticky balancer. According to KIP-429, once a
-		// group is using cooperative sticky balancing, it is unsafe to have
-		// a member join the group that does not support cooperative balancing.
-		// See group_balancer.go:CooperativeStickyBalancer() for more details.
-		kgo.Balancers(
-			kgo.StickyBalancer(),
-			kgo.CooperativeStickyBalancer(),
-		),
+		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
