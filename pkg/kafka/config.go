@@ -90,7 +90,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxConsumerLagAtStartup, prefix+".max-consumer-lag-at-startup", 15*time.Second, "The guaranteed maximum lag before a consumer is considered to have caught up reading from a partition at startup, becomes ACTIVE in the hash ring and passes the readiness check. "+consumerLagUsage)
 
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
-	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 100, "The maximum number of workers to use for consuming from Kafka. This is used to limit the number of concurrent requests to Kafka.")
+	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for consuming from Kafka. This is used to limit the number of concurrent requests to Kafka.")
 }
 
 func (cfg *Config) Validate() error {
