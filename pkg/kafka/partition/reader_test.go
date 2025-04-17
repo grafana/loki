@@ -288,7 +288,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 
 	// Set our offset part way through the records we just produced
 	offset := int64(1)
-	kafkaClient, err := client.NewReaderClient("test-tenant", kafkaCfg, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	kafkaClient, err := client.NewReaderClient("test-tenant", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -350,7 +350,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 
 	// Set our offset to the last record produced
 	offset := int64(4)
-	kafkaClient, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	kafkaClient, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}

@@ -57,7 +57,7 @@ func TestNewReaderClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewReaderClient("test-client", tt.config, nil, prometheus.NewPedanticRegistry())
+			client, err := NewReaderClient("test-client", tt.config, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			err = client.Ping(context.Background())

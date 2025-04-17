@@ -24,7 +24,7 @@ func TestPartitionCommitter(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
 	kafkaCfg.ConsumerGroup = "test-group"
 
-	client, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	client, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Create a Kafka admin client
