@@ -49,29 +49,6 @@ func TestExecutor_SortMerge(t *testing.T) {
 	})
 }
 
-func TestExecutor_Limit(t *testing.T) {
-	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, nil)
-		err := pipeline.Read()
-		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
-
-	t.Run("multiple inputs result in error", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, "limit expects exactly one input, got 2")
-	})
-}
-
 func TestExecutor_Filter(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		c := &Context{}

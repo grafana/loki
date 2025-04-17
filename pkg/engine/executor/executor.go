@@ -68,7 +68,7 @@ func (c *Context) executeSortMerge(_ context.Context, _ *physical.SortMerge, inp
 	return errorPipeline(errNotImplemented)
 }
 
-func (c *Context) executeLimit(_ context.Context, _ *physical.Limit, inputs []Pipeline) Pipeline {
+func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -77,7 +77,7 @@ func (c *Context) executeLimit(_ context.Context, _ *physical.Limit, inputs []Pi
 		return errorPipeline(fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
 	}
 
-	return errorPipeline(errNotImplemented)
+	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
 func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
