@@ -335,7 +335,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 	s := symbolizer{
 		symbolsMap: make(map[string]uint32, numLabels),
 		labels:     make([]string, 0, numLabels),
-		// If labels are pairs, preallocate to half the number to store just the keys,
+		// Labels are key-value pairs, preallocate to half the number to store just the keys,
 		// likely less memory than the exponential growth Go will do.
 		normalizedNames: make(map[uint32]string, numLabels/2),
 	}
