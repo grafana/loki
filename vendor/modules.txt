@@ -219,7 +219,7 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.51.0
 ## explicit; go 1.22
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
-# github.com/IBM/go-sdk-core/v5 v5.19.0
+# github.com/IBM/go-sdk-core/v5 v5.19.1
 ## explicit; go 1.23.0
 github.com/IBM/go-sdk-core/v5/core
 # github.com/IBM/ibm-cos-sdk-go v1.12.2
@@ -330,6 +330,7 @@ github.com/andybalholm/brotli/matchfinder
 github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
 github.com/apache/arrow-go/v18/arrow/bitutil
+github.com/apache/arrow-go/v18/arrow/csv
 github.com/apache/arrow-go/v18/arrow/decimal
 github.com/apache/arrow-go/v18/arrow/decimal128
 github.com/apache/arrow-go/v18/arrow/decimal256
@@ -644,7 +645,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v28.1.0+incompatible
+# github.com/docker/docker v28.1.1+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -895,7 +896,7 @@ github.com/go-playground/locales/currency
 # github.com/go-playground/universal-translator v0.18.1
 ## explicit; go 1.18
 github.com/go-playground/universal-translator
-# github.com/go-playground/validator/v10 v10.24.0
+# github.com/go-playground/validator/v10 v10.26.0
 ## explicit; go 1.20
 github.com/go-playground/validator/v10
 # github.com/go-redsync/redsync/v4 v4.13.0

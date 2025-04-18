@@ -57,13 +57,6 @@ func TestExecutor_Limit(t *testing.T) {
 		require.ErrorContains(t, err, EOF.Error())
 	})
 
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
-
 	t.Run("multiple inputs result in error", func(t *testing.T) {
 		c := &Context{}
 		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
