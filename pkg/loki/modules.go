@@ -519,10 +519,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	// streams are rejected.
 	t.Server.HTTP.Path("/ingest-limits/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
 
-	// Register HTTP handler to display the stream usage partition consumers cache
-	t.Server.HTTP.Path("/ingest-limits/stream-usage-cache").Methods("GET").HandlerFunc(ingestLimitsFrontend.PartitionConsumersCacheHandler)
-	t.Server.HTTP.Path("/ingest-limits/stream-usage-cache").Methods("POST").HandlerFunc(ingestLimitsFrontend.PartitionConsumersCacheEvictHandler)
-
 	return ingestLimitsFrontend, nil
 }
 

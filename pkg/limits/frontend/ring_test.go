@@ -162,9 +162,9 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
-			cache := NewPartitionConsumerCache(1 * time.Millisecond)
+			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
 
-			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, numPartitions)
+			g := NewRingStreamUsageGatherer(readRing, clientPool, numPartitions, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -281,7 +281,9 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 			}
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
-			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), NewPartitionConsumerCache(time.Second), 2)
+			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+
+			g := NewRingStreamUsageGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -322,8 +324,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *tes
 
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
-	cache := NewPartitionConsumerCache(time.Minute)
-	g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, 2)
+	cache := NewTTLCache[string, *logproto.GetAssignedPartitionsResponse](time.Minute)
+	g := NewRingStreamUsageGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 	// Set a maximum upper bound on the test execution time.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -351,7 +353,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *tes
 	require.Equal(t, 1, client2.assignedPartitionsCallCount)
 
 	// Expire the cache, it should be a cache miss.
-	cache.DeleteAll()
+	cache.Reset()
 
 	// The third call should be a cache miss.
 	actual, err = g.getPartitionConsumers(ctx, instances)

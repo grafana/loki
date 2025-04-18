@@ -7,7 +7,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
-	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -29,17 +28,23 @@ type RingStreamUsageGatherer struct {
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
 	numPartitions           int
-	partitionConsumersCache *PartitionConsumersCache
+	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(ring ring.ReadRing, pool *ring_client.Pool, logger log.Logger, cache *PartitionConsumersCache, numPartitions int) *RingStreamUsageGatherer {
+func NewRingStreamUsageGatherer(
+	ring ring.ReadRing,
+	pool *ring_client.Pool,
+	numPartitions int,
+	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse],
+	logger log.Logger,
+) *RingStreamUsageGatherer {
 	return &RingStreamUsageGatherer{
 		logger:                  logger,
 		ring:                    ring,
 		pool:                    pool,
 		numPartitions:           numPartitions,
-		partitionConsumersCache: cache,
+		assignedPartitionsCache: assignedPartitionsCache,
 	}
 }
 
@@ -127,10 +132,10 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, ins
 			// We use a cache to eliminate redundant gRPC requests for
 			// GetAssignedPartitions as the set of assigned partitions is
 			// expected to be stable outside consumer rebalances.
-			if resp := g.partitionConsumersCache.Get(instance.Addr); resp != nil {
+			if resp, ok := g.assignedPartitionsCache.Get(instance.Addr); ok {
 				responses <- getAssignedPartitionsResponse{
 					Addr:     instance.Addr,
-					Response: resp.Value(),
+					Response: resp,
 				}
 				return nil
 			}
@@ -144,7 +149,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, ins
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			g.partitionConsumersCache.Set(instance.Addr, resp, ttlcache.DefaultTTL)
+			g.assignedPartitionsCache.Set(instance.Addr, resp)
 			responses <- getAssignedPartitionsResponse{
 				Addr:     instance.Addr,
 				Response: resp,
