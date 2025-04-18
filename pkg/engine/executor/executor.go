@@ -81,16 +81,17 @@ func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs 
 	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
-func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
+	// TODO: support multiple inputs
 	if len(inputs) > 1 {
 		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return errorPipeline(errNotImplemented)
+	return NewFilterPipeline(filter, inputs[0], &c.evaluator)
 }
 
 func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
