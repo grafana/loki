@@ -58,11 +58,11 @@ type Frontend struct {
 	cfg    Config
 	logger log.Logger
 
-	limits           Limits
-	rateLimiter      *limiter.RateLimiter
-	streamUsage      StreamUsageGatherer
-	partitionIDCache *PartitionConsumersCache
-	metrics          *metrics
+	limits                  Limits
+	rateLimiter             *limiter.RateLimiter
+	streamUsage             StreamUsageGatherer
+	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	metrics                 *metrics
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -84,18 +84,25 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 		logger,
 	)
 
+	var assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	if cfg.AssignedPartitionsCacheTTL == 0 {
+		// When the TTL is 0, the cache is disabled.
+		assignedPartitionsCache = NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+	} else {
+		assignedPartitionsCache = NewTTLCache[string, *logproto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	}
+
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	partitionIDCache := NewPartitionConsumerCache(cfg.PartitionIDCacheTTL)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, partitionIDCache, cfg.NumPartitions)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
 
 	f := &Frontend{
-		cfg:              cfg,
-		logger:           logger,
-		limits:           limits,
-		rateLimiter:      rateLimiter,
-		streamUsage:      streamUsage,
-		partitionIDCache: partitionIDCache,
-		metrics:          newMetrics(reg),
+		cfg:                     cfg,
+		logger:                  logger,
+		limits:                  limits,
+		rateLimiter:             rateLimiter,
+		streamUsage:             streamUsage,
+		assignedPartitionsCache: assignedPartitionsCache,
+		metrics:                 newMetrics(reg),
 	}
 
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
@@ -138,8 +145,6 @@ func (f *Frontend) starting(ctx context.Context) (err error) {
 		return fmt.Errorf("failed to start subservices: %w", err)
 	}
 
-	go f.partitionIDCache.Start()
-
 	return nil
 }
 
@@ -155,7 +160,6 @@ func (f *Frontend) running(ctx context.Context) error {
 
 // stopping implements services.Service.
 func (f *Frontend) stopping(_ error) error {
-	f.partitionIDCache.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 

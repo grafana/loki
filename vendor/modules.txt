@@ -1264,9 +1264,6 @@ github.com/jcmturner/gokrb5/v8/types
 ## explicit; go 1.13
 github.com/jcmturner/rpc/v2/mstypes
 github.com/jcmturner/rpc/v2/ndr
-# github.com/jellydator/ttlcache/v3 v3.3.0
-## explicit; go 1.18
-github.com/jellydator/ttlcache/v3
 # github.com/jmespath/go-jmespath v0.4.0
 ## explicit; go 1.14
 github.com/jmespath/go-jmespath
