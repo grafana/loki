@@ -106,25 +106,90 @@ func TestTTLCache_Reset(t *testing.T) {
 	require.Equal(t, "qux", value)
 }
 
-func TestTTLCache_RemoveExpiredItems(t *testing.T) {
+func TestTTLCache_EvictExpired(t *testing.T) {
 	c := NewTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	c.Set("foo", "bar")
 	_, ok := c.items["foo"]
 	require.True(t, ok)
-	// Advance the clock and update foo, it should not be removed.
+	// Advance the clock and update foo, it should not be evicted as its
+	// expiration time should be refreshed.
 	clock.Advance(time.Minute)
 	c.Set("foo", "bar")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
-	// Advance the clock again but this time set bar, foo should be removed.
-	clock.Advance(time.Minute)
+	eviction1 := clock.Now()
+	require.Equal(t, eviction1, c.lastEvictedAt)
+	// Advance the clock 15 seconds. Since 15 seconds is less than half
+	// the TTL (30 seconds) since the last eviction, no eviction should
+	// be run.
+	clock.Advance(15 * time.Second)
 	c.Set("bar", "baz")
+	_, ok = c.items["foo"]
+	require.True(t, ok)
+	_, ok = c.items["bar"]
+	require.True(t, ok)
+	require.Equal(t, eviction1, c.lastEvictedAt)
+	// Advance the clock 16 seconds. Since 31 seconds is more than half the TTL
+	// since the last eviction, an eviction should be run, but no items should
+	// be evicted.
+	clock.Advance(16 * time.Second)
+	c.Set("baz", "qux")
+	_, ok = c.items["foo"]
+	require.True(t, ok)
+	_, ok = c.items["bar"]
+	require.True(t, ok)
+	_, ok = c.items["baz"]
+	require.True(t, ok)
+	eviction2 := clock.Now()
+	require.Equal(t, eviction2, c.lastEvictedAt)
+	// Advance the clock another 15 seconds. Again, since 15 seconds is less
+	// than half the TTL (seconds) since the last eviction, no eviction should
+	// be run.
+	clock.Advance(15 * time.Second)
+	c.Set("qux", "corge")
+	_, ok = c.items["foo"]
+	require.True(t, ok)
+	_, ok = c.items["bar"]
+	require.True(t, ok)
+	_, ok = c.items["baz"]
+	require.True(t, ok)
+	_, ok = c.items["qux"]
+	require.True(t, ok)
+	require.Equal(t, eviction2, c.lastEvictedAt)
+	// Advance the clock another 16 seconds. Since 31 seconds is more than
+	// half the TTL since the last eviction, an eviction should be run and
+	// this time foo should be evicted as it has expired.
+	clock.Advance(16 * time.Second)
+	c.Set("corge", "jorge")
 	_, ok = c.items["foo"]
 	require.False(t, ok)
 	_, ok = c.items["bar"]
 	require.True(t, ok)
+	_, ok = c.items["baz"]
+	require.True(t, ok)
+	_, ok = c.items["qux"]
+	require.True(t, ok)
+	_, ok = c.items["corge"]
+	require.True(t, ok)
+	eviction3 := clock.Now()
+	require.Equal(t, eviction3, c.lastEvictedAt)
+	// Advance the clock one whole minute. All items should be expired.
+	clock.Advance(time.Minute)
+	c.Set("foo", "bar")
+	_, ok = c.items["foo"]
+	require.True(t, ok)
+	_, ok = c.items["bar"]
+	require.False(t, ok)
+	_, ok = c.items["baz"]
+	require.False(t, ok)
+	_, ok = c.items["qux"]
+	require.False(t, ok)
+	_, ok = c.items["qux"]
+	require.False(t, ok)
+	eviction4 := clock.Now()
+	require.Equal(t, eviction4, c.lastEvictedAt)
 }
 
 func TestNopCache(t *testing.T) {
