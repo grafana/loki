@@ -19,7 +19,7 @@ import (
 // NewReaderClient returns the kgo.Client that should be used by the Reader.  The returned `kprom.Client`
 // struct will have the default set of `kprom.Metrics` initialized.
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
-	metrics := NewClientMetrics(component, "reader", reg, kafkaCfg.EnableKafkaHistograms)
+	metrics := NewClientMetrics(component, ReaderRole, reg, kafkaCfg.EnableKafkaHistograms)
 	const fetchMaxBytes = 100_000_000
 
 	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)

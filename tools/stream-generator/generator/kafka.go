@@ -160,6 +160,6 @@ func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Register
 	}
 
 	// Create a producer with 100MB buffer limit
-	producer := client.NewProducer(kafkaClient, cfg.ProducerMaxBufferedBytes, reg)
+	producer := client.NewProducer("stream-generator", kafkaClient, cfg.ProducerMaxBufferedBytes, reg)
 	return producer, nil
 }

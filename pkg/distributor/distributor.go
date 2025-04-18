@@ -287,7 +287,7 @@ func New(
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
-		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
+		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
 		// TODO: cleanup/make independent of whether we write kafka as primary?
