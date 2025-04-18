@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"testing"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -215,26 +216,6 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			},
 			description: "only normalize when string is used as a name, not as a value",
 		},
-		{
-			name: "reused normalized names",
-			labelsToAdd: []labels.Labels{
-				{
-					{Name: "foo-bar", Value: "value1"},
-				},
-				{
-					{Name: "foo-bar", Value: "value2"},
-				},
-			},
-			expectedLabels: []labels.Labels{
-				{
-					{Name: "foo_bar", Value: "value1"},
-				},
-				{
-					{Name: "foo_bar", Value: "value2"},
-				},
-			},
-			description: "normalized names should be cached and reused",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Test direct addition
@@ -292,8 +273,11 @@ func TestSymbolizerNormalizationCache(t *testing.T) {
 	symbols2 := s.Add(labels2)
 
 	// The normalized name should be reused
-	result := s.Lookup(symbols2, nil)
-	require.Equal(t, "foo_bar", result[0].Name, "normalized name should be reused")
+	result := s.Lookup(symbols1, nil)
+	firstPtr := unsafe.StringData(result[0].Name)
+	result = s.Lookup(symbols2, nil)
+	secondPtr := unsafe.StringData(result[0].Name)
+	require.Equal(t, firstPtr, secondPtr, "normalized name string data pointers should be identical")
 	require.Equal(t, "value2", result[0].Value, "new value should be used")
 
 	// Check that we have only one entry in normalizedNames for this label name

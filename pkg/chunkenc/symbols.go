@@ -70,15 +70,7 @@ func (s *symbolizer) Add(lbls labels.Labels) symbols {
 	syms := make([]symbol, len(lbls))
 
 	for i, label := range lbls {
-		nameIdx := s.add(label.Name)
-		// Track that this symbol is a label name and store its normalized form
-		s.mtx.Lock()
-		if _, exists := s.normalizedNames[nameIdx]; !exists {
-			s.normalizedNames[nameIdx] = otlptranslator.NormalizeLabel(label.Name)
-		}
-		s.mtx.Unlock()
-
-		syms[i].Name = nameIdx
+		syms[i].Name = s.add(label.Name)
 		syms[i].Value = s.add(label.Value)
 	}
 
@@ -341,16 +333,17 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 	db := decbuf{b: b}
 	numLabels := db.uvarint()
 	s := symbolizer{
-		symbolsMap:      make(map[string]uint32, numLabels),
-		labels:          make([]string, 0, numLabels),
-		normalizedNames: make(map[uint32]string),
+		symbolsMap: make(map[string]uint32, numLabels),
+		labels:     make([]string, 0, numLabels),
+		// If labels are pairs, preallocate to half the number to store just the keys,
+		// likely less memory than the exponential growth Go will do.
+		normalizedNames: make(map[uint32]string, numLabels/2),
 	}
 
 	for i := 0; i < numLabels; i++ {
 		label := string(db.bytes(db.uvarint()))
 		s.labels = append(s.labels, label)
-		idx := uint32(i)
-		s.symbolsMap[label] = idx
+		s.symbolsMap[label] = uint32(i)
 		s.size += len(label)
 	}
 
@@ -436,9 +429,8 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 			}
 		}
 		label := string(buf)
-		idx := uint32(i)
 		s.labels = append(s.labels, label)
-		s.symbolsMap[label] = idx
+		s.symbolsMap[label] = uint32(i)
 		s.size += len(buf)
 	}
 
