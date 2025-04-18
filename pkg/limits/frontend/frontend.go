@@ -61,7 +61,7 @@ type Frontend struct {
 	limits           Limits
 	rateLimiter      *limiter.RateLimiter
 	streamUsage      StreamUsageGatherer
-	partitionIDCache PartitionConsumersCache
+	partitionIDCache *PartitionConsumersCache
 	metrics          *metrics
 
 	subservices        *services.Manager
