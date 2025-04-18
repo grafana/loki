@@ -31,6 +31,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 type Context struct {
 	batchSize int64
 	plan      *physical.Plan
+	evaluator expressionEvaluator
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -98,6 +99,7 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 	}
 
 	if len(inputs) > 1 {
+		// unsupported for now
 		return errorPipeline(fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
 
@@ -105,5 +107,9 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 		return errorPipeline(fmt.Errorf("projection expects at least one column, got 0"))
 	}
 
-	return errorPipeline(errNotImplemented)
+	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
+	if err != nil {
+		return errorPipeline(err)
+	}
+	return p
 }

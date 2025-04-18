@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -109,21 +108,6 @@ func TestExecutor_Projection(t *testing.T) {
 		pipeline := c.executeProjection(context.TODO(), &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
 		err := pipeline.Read()
 		require.ErrorContains(t, err, "projection expects at least one column, got 0")
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		cols := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "a",
-					Type:   types.ColumnTypeBuiltin,
-				},
-			},
-		}
-		c := &Context{}
-		pipeline := c.executeProjection(context.TODO(), &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {
