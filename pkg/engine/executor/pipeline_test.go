@@ -33,7 +33,6 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 		csv.WithComma(','),
 		csv.WithChunk(-1), // Read all rows
 	)
-	defer reader.Release()
 
 	if !reader.Next() {
 		return nil, errors.New("failed to read CSV data")
