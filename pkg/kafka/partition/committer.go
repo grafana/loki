@@ -8,10 +8,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 // Committer defines an interface for committing offsets
