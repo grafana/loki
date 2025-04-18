@@ -176,91 +176,74 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 	}
 }
 
-func TestRingStreamUsageGatherer_GetStreamUsage_Cache(t *testing.T) {
-	const numPartitions = 2 // Using 2 partitions for simplicity in tests
-	const cacheTTL = 1 * time.Second
-
+func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 	tests := []struct {
-		name                                string
-		getStreamUsageRequest               GetStreamUsageRequest
-		expectedAssignedPartitionsRequest   []*logproto.GetAssignedPartitionsRequest
-		getAssignedPartitionsResponses      []*logproto.GetAssignedPartitionsResponse
-		expectedStreamUsageRequest          []*logproto.GetStreamUsageRequest
-		getStreamUsageResponses             []*logproto.GetStreamUsageResponse
-		expectedResponses                   []GetStreamUsageResponse
-		expectedAssignedPartitionsCallCount int
-		waitBetweenCalls                    time.Duration
+		name                              string
+		instances                         []ring.InstanceDesc
+		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
+		expected                          map[int32]string
 	}{{
-		name: "cache hit - second call within TTL should not make partition request",
-		getStreamUsageRequest: GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
-		},
+		name: "single instance returns its partitions",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-1",
+		}},
 		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{1},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 1,
-			Rate:          10,
-		}},
-		expectedResponses: []GetStreamUsageResponse{{
-			Addr: "instance-0",
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 1,
-				Rate:          10,
-			},
-		}},
-		expectedAssignedPartitionsCallCount: 1,
-		waitBetweenCalls:                    500 * time.Millisecond, // Wait less than TTL
+		expected: map[int32]string{
+			1: "instance-1",
+		},
 	}, {
-		name: "cache miss - second call after TTL should make new partition request",
-		getStreamUsageRequest: GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
-		},
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}},
+		name: "two instances return their separate partitions",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-1",
+		}, {
+			Addr: "instance-2",
+		}},
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
-		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{1},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 1,
-			Rate:          10,
-		}},
-		expectedResponses: []GetStreamUsageResponse{{
-			Addr: "instance-0",
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 1,
-				Rate:          10,
+		}, {
+			AssignedPartitions: map[int32]int64{
+				2: time.Now().UnixNano(),
 			},
 		}},
-		expectedAssignedPartitionsCallCount: 2,
-		waitBetweenCalls:                    2 * time.Second, // Wait longer than TTL
+		expected: map[int32]string{
+			1: "instance-1",
+			2: "instance-2",
+		},
+	}, {
+		name: "two instances claim the same partition, latest timestamp wins",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-1",
+		}, {
+			Addr: "instance-2",
+		}},
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().Add(-time.Second).UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().UnixNano(),
+			},
+		}},
+		expected: map[int32]string{
+			1: "instance-2",
+		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Set up the mock clients for the first call
+			// Set up the mock clients, one for each pair of mock RPC responses.
 			clients := make([]logproto.IngestLimitsClient, len(test.expectedAssignedPartitionsRequest))
-			instances := make([]ring.InstanceDesc, len(clients))
-
-			// Set up the mock clients for the assigned partitions requests
 			for i := range test.expectedAssignedPartitionsRequest {
 				clients[i] = &mockIngestLimitsClient{
 					t:                                 t,
@@ -268,52 +251,84 @@ func TestRingStreamUsageGatherer_GetStreamUsage_Cache(t *testing.T) {
 					getAssignedPartitionsResponse:     test.getAssignedPartitionsResponses[i],
 				}
 			}
+			// Set up the mocked ring and client pool for the tests.
+			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
+			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), NewPartitionConsumerCache(time.Second), 2)
 
-			// Set up the mock clients for the stream usage requests
-			for i := range test.expectedStreamUsageRequest {
-				clients[i].(*mockIngestLimitsClient).expectedStreamUsageRequest = test.expectedStreamUsageRequest[i]
-				clients[i].(*mockIngestLimitsClient).getStreamUsageResponse = test.getStreamUsageResponses[i]
-			}
-
-			// Set up the instances for the ring
-			for i := range len(clients) {
-				instances[i] = ring.InstanceDesc{
-					Addr: fmt.Sprintf("instance-%d", i),
-				}
-			}
-
-			// Set up the mocked ring and client pool for the tests
-			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
-
-			// Create cache with TTL
-			cache := NewPartitionConsumerCache(cacheTTL)
-			g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, numPartitions)
-
-			// First call
+			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			resps, err := g.GetStreamUsage(ctx, test.getStreamUsageRequest)
+			result, err := g.getPartitionConsumers(ctx, test.instances)
 			require.NoError(t, err)
-			require.Equal(t, test.expectedResponses, resps)
-
-			// Wait between calls
-			time.Sleep(test.waitBetweenCalls)
-
-			if test.waitBetweenCalls > cacheTTL {
-				for i := range len(clients) {
-					clients[i].(*mockIngestLimitsClient).expectedAssignedPartitionsRequest = &logproto.GetAssignedPartitionsRequest{}
-				}
-			}
-
-			// Second call
-			resps, err = g.GetStreamUsage(ctx, test.getStreamUsageRequest)
-			require.NoError(t, err)
-			require.Equal(t, test.expectedResponses, resps)
-
-			for i := range len(clients) {
-				require.Equal(t, test.expectedAssignedPartitionsCallCount, clients[i].(*mockIngestLimitsClient).assignedPartitionsCallCount)
-			}
+			require.Equal(t, test.expected, result)
 		})
 	}
+}
+
+func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *testing.T) {
+	// Set up the mock clients, one for each pair of mock RPC responses.
+	client1 := mockIngestLimitsClient{
+		t:                                 t,
+		expectedAssignedPartitionsRequest: &logproto.GetAssignedPartitionsRequest{},
+		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().UnixNano(),
+			},
+		},
+	}
+	client2 := mockIngestLimitsClient{
+		t:                                 t,
+		expectedAssignedPartitionsRequest: &logproto.GetAssignedPartitionsRequest{},
+		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
+			AssignedPartitions: map[int32]int64{
+				2: time.Now().UnixNano(),
+			},
+		},
+	}
+	clients := []logproto.IngestLimitsClient{&client1, &client2}
+	instances := []ring.InstanceDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}
+
+	// Set up the mocked ring and client pool for the tests.
+	readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
+
+	// Set the cache TTL large enough that entries cannot expire (flake)
+	// during slow test runs.
+	cache := NewPartitionConsumerCache(time.Minute)
+	g := NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, 2)
+
+	// Set a maximum upper bound on the test execution time.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	require.Equal(t, 0, client1.assignedPartitionsCallCount)
+	require.Equal(t, 0, client2.assignedPartitionsCallCount)
+
+	expected := map[int32]string{
+		1: "instance-1",
+		2: "instance-2",
+	}
+
+	// The first call should be a cache miss.
+	actual, err := g.getPartitionConsumers(ctx, instances)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+	require.Equal(t, 1, client1.assignedPartitionsCallCount)
+	require.Equal(t, 1, client2.assignedPartitionsCallCount)
+
+	// The second call should be a cache hit.
+	actual, err = g.getPartitionConsumers(ctx, instances)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+	require.Equal(t, 1, client1.assignedPartitionsCallCount)
+	require.Equal(t, 1, client2.assignedPartitionsCallCount)
+
+	// Expire the cache, it should be a cache miss.
+	cache.DeleteAll()
+
+	// The third call should be a cache miss.
+	actual, err = g.getPartitionConsumers(ctx, instances)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+	require.Equal(t, 2, client1.assignedPartitionsCallCount)
+	require.Equal(t, 2, client2.assignedPartitionsCallCount)
 }
