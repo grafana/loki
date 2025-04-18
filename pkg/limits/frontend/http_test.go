@@ -111,20 +111,20 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 func TestRingStreamUsageGatherer_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
-		initialCache   map[string]logproto.GetAssignedPartitionsResponse
-		expectedCache  map[string]logproto.GetAssignedPartitionsResponse
+		initialCache   map[string]*logproto.GetAssignedPartitionsResponse
+		expectedCache  map[string]*logproto.GetAssignedPartitionsResponse
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name:           "GET with empty cache",
-			initialCache:   map[string]logproto.GetAssignedPartitionsResponse{},
+			initialCache:   map[string]*logproto.GetAssignedPartitionsResponse{},
 			expectedStatus: http.StatusOK,
 			expectedBody:   "Ring Stream Usage Cache",
 		},
 		{
 			name: "GET with populated cache",
-			initialCache: map[string]logproto.GetAssignedPartitionsResponse{
+			initialCache: map[string]*logproto.GetAssignedPartitionsResponse{
 				"instance1:8080": {
 					AssignedPartitions: map[int32]int64{
 						1: time.Now().Unix(),
@@ -178,8 +178,8 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 	tests := []struct {
 		name           string
 		formData       map[string]string
-		initialCache   map[string]logproto.GetAssignedPartitionsResponse
-		expectedCache  map[string]logproto.GetAssignedPartitionsResponse
+		initialCache   map[string]*logproto.GetAssignedPartitionsResponse
+		expectedCache  map[string]*logproto.GetAssignedPartitionsResponse
 		expectedStatus int
 		expectedBody   string
 	}{
@@ -188,7 +188,7 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 			formData: map[string]string{
 				"instance": "instance1:8080",
 			},
-			initialCache: map[string]logproto.GetAssignedPartitionsResponse{
+			initialCache: map[string]*logproto.GetAssignedPartitionsResponse{
 				"instance1:8080": {
 					AssignedPartitions: map[int32]int64{
 						1: time.Now().Unix(),
@@ -204,7 +204,7 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 					},
 				},
 			},
-			expectedCache: map[string]logproto.GetAssignedPartitionsResponse{
+			expectedCache: map[string]*logproto.GetAssignedPartitionsResponse{
 				"instance2:8080": {
 					AssignedPartitions: map[int32]int64{
 						4: time.Now().Unix(),
@@ -217,7 +217,7 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 		},
 		{
 			name: "POST clear all cache",
-			initialCache: map[string]logproto.GetAssignedPartitionsResponse{
+			initialCache: map[string]*logproto.GetAssignedPartitionsResponse{
 				"instance1:8080": {
 					AssignedPartitions: map[int32]int64{
 						1: time.Now().Unix(),
@@ -233,7 +233,7 @@ func TestRingStreamUsageGatherer_PartitionConsumerCacheEvictHandler(t *testing.T
 					},
 				},
 			},
-			expectedCache:  map[string]logproto.GetAssignedPartitionsResponse{},
+			expectedCache:  map[string]*logproto.GetAssignedPartitionsResponse{},
 			expectedStatus: http.StatusSeeOther,
 		},
 	}

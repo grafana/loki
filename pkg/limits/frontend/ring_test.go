@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -182,6 +183,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		instances                         []ring.InstanceDesc
 		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
 		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs []error
 		expected                          map[int32]string
 	}{{
 		name: "single instance returns its partitions",
@@ -194,6 +196,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil},
 		expected: map[int32]string{
 			1: "instance-1",
 		},
@@ -214,6 +217,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 				2: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expected: map[int32]string{
 			1: "instance-1",
 			2: "instance-2",
@@ -235,8 +239,31 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expected: map[int32]string{
 			1: "instance-2",
+		},
+	}, {
+		// This test asserts that even when one instance returns an error,
+		// we can still get the assigned partitions for all remaining instances.
+		name: "two instances, one returns error",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-1",
+		}, {
+			Addr: "instance-2",
+		}},
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().Add(-time.Second).UnixNano(),
+			},
+		}, {nil}},
+		getAssignedPartitionsResponseErrs: []error{
+			nil,
+			errors.New("an unexpected error occurred"),
+		},
+		expected: map[int32]string{
+			1: "instance-1",
 		},
 	}}
 
@@ -249,6 +276,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 					t:                                 t,
 					expectedAssignedPartitionsRequest: test.expectedAssignedPartitionsRequest[i],
 					getAssignedPartitionsResponse:     test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:  test.getAssignedPartitionsResponseErrs[i],
 				}
 			}
 			// Set up the mocked ring and client pool for the tests.
