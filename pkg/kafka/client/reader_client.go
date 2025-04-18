@@ -16,8 +16,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-// NewReaderClient returns the kgo.Client that should be used by the Reader.  The returned `kprom.Client`
-// struct will have the default set of `kprom.Metrics` initialized.
+// NewReaderClient returns the kgo.Client that should be used by the Reader.
+//
+// The returned Client utilizes the standard set of *kprom.Metrics, which are prefixed with
+// the MetricsPrefix and wrapped w/labels identifying the component/role to which these
+// metrics pertain
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, ReaderRole, reg, kafkaCfg.EnableKafkaHistograms)
 	const fetchMaxBytes = 100_000_000

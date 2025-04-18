@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 const (
@@ -35,12 +36,12 @@ type serviceMetrics struct {
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 	return &serviceMetrics{
 		partition: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "loki_kafka_client",
+			Namespace: client.MetricsPrefix,
 			Name:      "partition_reader_partition",
 			Help:      "The partition ID assigned to this reader.",
 		}, []string{"id"}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "loki_kafka_client",
+			Namespace: client.MetricsPrefix,
 			Name:      "partition_reader_phase",
 			Help:      "The current phase of the consumer.",
 		}, []string{"phase"}),
