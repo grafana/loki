@@ -367,6 +367,7 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 		labels: make([]string, 0, numLabels),
 		// Same as symbolizerFromCheckpoint
 		normalizedNames: make(map[uint32]string, numLabels/2),
+		symbolsMap:      make(map[string]uint32, numLabels),
 		compressedSize:  len(b),
 	}
 
@@ -428,7 +429,9 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 				return nil, err
 			}
 		}
-		s.labels = append(s.labels, string(buf))
+		label := string(buf)
+		s.symbolsMap[label] = uint32(len(s.labels))
+		s.labels = append(s.labels, label)
 		s.size += len(buf)
 	}
 
