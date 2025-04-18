@@ -35,12 +35,14 @@ type serviceMetrics struct {
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 	return &serviceMetrics{
 		partition: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_kafka_partition_reader_partition",
-			Help: "The partition ID assigned to this reader.",
+			Namespace: "loki_kafka_client",
+			Name:      "partition_reader_partition",
+			Help:      "The partition ID assigned to this reader.",
 		}, []string{"id"}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_kafka_partition_reader_phase",
-			Help: "The current phase of the consumer.",
+			Namespace: "loki_kafka_client",
+			Name:      "partition_reader_phase",
+			Help:      "The current phase of the consumer.",
 		}, []string{"phase"}),
 	}
 }
