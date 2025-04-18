@@ -20,6 +20,9 @@ func CSVToArrow(fields []arrow.Field, csvData string) (arrow.Record, error) {
 // CSVToArrowWithAllocator converts a CSV string to an Arrow record based on the provided schema
 // using the specified memory allocator. It reads all rows from the CSV into a single record.
 func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, csvData string) (arrow.Record, error) {
+	// first, trim the csvData to remove any preceding and trailing whitespace/line breaks
+	csvData = strings.TrimSpace(csvData)
+
 	// Create schema
 	schema := arrow.NewSchema(fields, nil)
 
