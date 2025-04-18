@@ -59,7 +59,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		var partitionsLock sync.Mutex
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
-			prometheus.NewPedanticRegistry(),
+			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				partitionsLock.Lock()
@@ -227,7 +227,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 		}
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
-			prometheus.NewPedanticRegistry(),
+			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])
