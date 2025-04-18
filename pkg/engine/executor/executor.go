@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/arrow-go/v18/arrow"
-
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -33,6 +31,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 type Context struct {
 	batchSize int64
 	plan      *physical.Plan
+	evaluator expressionEvaluator
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -79,51 +78,7 @@ func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs 
 		return errorPipeline(fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
 	}
 
-	// We gradually reduce offsetRemaining and limitRemaining as we process more records, as the
-	// offsetRemaining and limitRemaining may cross record boundaries.
-	var (
-		offsetRemaining = int64(limit.Skip)
-		limitRemaining  = int64(limit.Fetch)
-	)
-
-	return newGenericPipeline(Local, func(inputs []Pipeline) state {
-		var length int64
-		var start, end int64
-		var batch arrow.Record
-
-		// We skip yielding zero-length batches while offsetRemainig > 0
-		for length == 0 {
-			// Stop once we reached the limit
-			if limitRemaining <= 0 {
-				return Exhausted
-			}
-
-			// Pull the next item from downstream
-			input := inputs[0]
-			err := input.Read()
-			if err != nil {
-				return newState(input.Value())
-			}
-			batch, _ = input.Value()
-
-			// We want to slice batch so it only contains the rows we're looking for
-			// accounting for both the limit and offset.
-			// We constrain the start and end to be within the bounds of the record.
-			start = min(offsetRemaining, batch.NumRows())
-			end = min(start+limitRemaining, batch.NumRows())
-			length = end - start
-
-			offsetRemaining -= start
-			limitRemaining -= length
-		}
-
-		if length <= 0 && offsetRemaining <= 0 {
-			return Exhausted
-		}
-
-		rec := batch.NewSlice(start, end)
-		return successState(rec)
-	}, inputs...)
+	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
 func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
@@ -144,6 +99,7 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 	}
 
 	if len(inputs) > 1 {
+		// unsupported for now
 		return errorPipeline(fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
 
@@ -151,5 +107,9 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 		return errorPipeline(fmt.Errorf("projection expects at least one column, got 0"))
 	}
 
-	return errorPipeline(errNotImplemented)
+	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
+	if err != nil {
+		return errorPipeline(err)
+	}
+	return p
 }
