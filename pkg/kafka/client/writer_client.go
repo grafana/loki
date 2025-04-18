@@ -30,6 +30,10 @@ import (
 var writerRequestTimeoutOverhead = 2 * time.Second
 
 const (
+	// Role constants are applied to common Kafka metrics as the `service_role` label.  These allow
+	// users to identify the intended use of a Kafka client.  Some clients are used for reading, some
+	// for writing.  Rather than hard-coding this distinction in the metric name (e.g., `client_writer_read_bytes`
+	// or `client_reader_write_bytes`), we use labels to provide the distinction (e.g., `client_read_bytes{service_role='reader'}`)
 	WriterRole    = "writer"
 	ReaderRole    = "reader"
 	MetricsPrefix = "loki_kafka_client"
@@ -37,7 +41,7 @@ const (
 
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
-// The returned Client utilizes the standard set of *kprom.Metrics, which are prefixed with
+// The returned Client collects the standard set of *kprom.Metrics, which are prefixed with
 // the MetricsPrefix and wrapped w/labels identifying the component/role to which these
 // metrics pertain
 func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
@@ -106,9 +110,8 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 //
 // Users of the `kafka` package will get this set of metrics for free, wrapped with two labels for
 // better identification of the service using these Kafka clients:
-//   - component: a string identifying the service which is utilizing the client
-//   - service_role: the intended role of the calling service: "reader" indicates the caller is consuming from Kafka,
-//     "writer" indicates the caller is producing to Kafka
+//   - component: identifies the service utilizing the client
+//   - service_role: the role of the client user
 func NewClientMetrics(component string, serviceRole string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
 	return kprom.NewMetrics(MetricsPrefix,
 		kprom.Registerer(WrapPrometheusRegisterer(component, serviceRole, reg)),
@@ -118,10 +121,10 @@ func NewClientMetrics(component string, serviceRole string, reg prometheus.Regis
 	)
 }
 
-// WrapPrometheusRegisterer returns a new prometheus.Registerer with two labels applied: component, service_role
+// WrapPrometheusRegisterer returns a prometheus.Registerer with two labels applied: component, service_role
 //
-// This Registerer is used internally to the reader/writer Kafka clients to collect *kprom.Metrics (or any custom metrics
-// passed by a calling service.)
+// This Registerer is used internally by the reader/writer Kafka clients to collect *kprom.Metrics (or any custom metrics
+// passed by a calling service)
 func WrapPrometheusRegisterer(component string, serviceRole string, reg prometheus.Registerer) prometheus.Registerer {
 	return prometheus.WrapRegistererWith(prometheus.Labels{
 		"component":    component,
