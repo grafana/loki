@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	Enabled             bool          `yaml:"enabled"`                            // Whether to enable the UI.
 	NodeName            string        `yaml:"node_name" doc:"default=<hostname>"` // Name to use for this node in the cluster.
 	AdvertiseAddr       string        `yaml:"advertise_addr"`
 	InfNames            []string      `yaml:"interface_names" doc:"default=[<private network interfaces>]"`
@@ -40,6 +41,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		panic(fmt.Errorf("failed to get hostname %s", err))
 	}
 	cfg.InfNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
+	f.BoolVar(&cfg.Enabled, "ui.enabled", false, "Enable the experimental Loki UI.")
 	f.Var((*flagext.StringSlice)(&cfg.InfNames), "ui.interface", "Name of network interface to read address from.")
 	f.StringVar(&cfg.NodeName, "ui.node-name", hostname, "Name to use for this node in the cluster.")
 	f.StringVar(&cfg.AdvertiseAddr, "ui.advertise-addr", "", "IP address to advertise in the cluster.")
@@ -52,6 +54,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg Config) Validate() error {
+	// Skip validation if UI is disabled
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// Perform normal validation for enabled UI
 	if cfg.NodeName == "" {
 		return errors.New("node name is required")
 	}

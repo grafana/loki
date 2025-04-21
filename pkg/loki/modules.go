@@ -519,10 +519,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	// streams are rejected.
 	t.Server.HTTP.Path("/ingest-limits/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
 
-	// Register HTTP handler to display the stream usage partition consumers cache
-	t.Server.HTTP.Path("/ingest-limits/stream-usage-cache").Methods("GET").HandlerFunc(ingestLimitsFrontend.PartitionConsumersCacheHandler)
-	t.Server.HTTP.Path("/ingest-limits/stream-usage-cache").Methods("POST").HandlerFunc(ingestLimitsFrontend.PartitionConsumersCacheEvictHandler)
-
 	return ingestLimitsFrontend, nil
 }
 
@@ -2125,6 +2121,10 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 }
 
 func (t *Loki) initUI() (services.Service, error) {
+	if !t.Cfg.UI.Enabled {
+		// UI is disabled, return nil to skip initialization
+		return nil, nil
+	}
 	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
 	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
 	if err != nil {
