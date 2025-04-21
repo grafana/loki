@@ -176,9 +176,10 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		workerID := fmt.Sprintf("block-builder-worker-%d", j)
 		errgrp.Go(func() error {
 			c, err := client.NewReaderClient(
+				"blockbuilder",
 				i.kafkaCfg,
-				client.NewReaderClientMetrics(workerID, i.registerer, false),
 				log.With(i.logger, "component", workerID),
+				i.registerer,
 			)
 			if err != nil {
 				return err
