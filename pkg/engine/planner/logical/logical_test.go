@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestPlan_String(t *testing.T) {
@@ -15,18 +17,18 @@ func TestPlan_String(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  &ColumnRef{Column: "app", Type: ColumnTypeLabel},
-				Right: LiteralString("users"),
-				Op:    BinOpKindEq,
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  &ColumnRef{Column: "age", Type: ColumnTypeMetadata},
-			Right: LiteralInt64(21),
-			Op:    BinOpKindGt,
+			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: NewLiteral[int64](21),
+			Op:    types.BinaryOpGt,
 		},
-	).Sort(ColumnRef{Column: "age", Type: ColumnTypeMetadata}, true, false)
+	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
 
 	// Convert to SSA
 	ssaForm, err := b.ToPlan()
@@ -37,9 +39,9 @@ func TestPlan_String(t *testing.T) {
 
 	// Define expected output
 	exp := `
-%1 = EQ label.app, "users" 
-%2 = MAKE_TABLE [selector=%1] 
-%3 = GT metadata.age, 21 
+%1 = EQ label.app "users" 
+%2 = MAKETABLE [selector=%1] 
+%3 = GT metadata.age 21 
 %4 = SELECT %2 [predicate=%3] 
 %5 = SORT %4 [column=metadata.age, asc=true, nulls_first=false]
 RETURN %5 

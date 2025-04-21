@@ -1,16 +1,9 @@
 package physical
 
-import "fmt"
+import (
+	"fmt"
 
-// ValueType represents the type of a literal in a literal expression.
-type ValueType uint32
-
-const (
-	_ ValueType = iota // zero-value is an invalid type
-	ValueTypeBool
-	ValueTypeInt64
-	ValueTypeTimestamp
-	ValueTypeString
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // ExpressionType represents the type of expression in the physical plan.
@@ -18,6 +11,7 @@ type ExpressionType uint32
 
 const (
 	_ ExpressionType = iota // zero-value is an invalid type
+
 	ExprTypeUnary
 	ExprTypeBinary
 	ExprTypeLiteral
@@ -36,105 +30,13 @@ func (t ExpressionType) String() string {
 	case ExprTypeColumn:
 		return "ColumnExpression"
 	default:
-		return fmt.Sprintf("unknown expression type %d", t)
-	}
-}
-
-// UnaryOpType represents the operator of a [UnaryExpression].
-type UnaryOpType uint32
-
-const (
-	_ UnaryOpType = iota // zero-value is an invalid value
-	UnaryOpNot
-	UnaryOpAbs
-)
-
-// String returns the string representation of the [UnaryOpType].
-func (t UnaryOpType) String() string {
-	switch t {
-	case UnaryOpNot:
-		return "NOT"
-	case UnaryOpAbs:
-		return "ABS"
-	default:
-		return fmt.Sprintf("unknown unary operator type %d", t)
-	}
-}
-
-// BinaryOpType represents the operator of a [BinaryExpression].
-type BinaryOpType uint32
-
-const (
-	_ BinaryOpType = iota // zero-value is an invalid type
-	BinaryOpEq
-	BinaryOpNeq
-	BinaryOpGt
-	BinaryOpGte
-	BinaryOpLt
-	BinaryOpLte
-	BinaryOpAnd
-	BinaryOpOr
-	BinaryOpXor
-	BinaryOpNot
-	BinaryOpAdd
-	BinaryOpSub
-	BinaryOpMul
-	BinaryOpDiv
-	BinaryOpMod
-	BinaryOpMatchStr
-	BinaryOpNotMatchStr
-	BinaryOpMatchRe
-	BinaryOpNotMatchRe
-)
-
-// String returns the string representation of the [BinaryOpType].
-func (t BinaryOpType) String() string {
-	switch t {
-	case BinaryOpEq:
-		return "EQ"
-	case BinaryOpNeq:
-		return "NEQ" // convenience for NOT(EQ(expr))
-	case BinaryOpGt:
-		return "GT"
-	case BinaryOpGte:
-		return "GTE"
-	case BinaryOpLt:
-		return "LT" // convenience for NOT(GTE(expr))
-	case BinaryOpLte:
-		return "LTE" // convenience for NOT(GT(expr))
-	case BinaryOpAnd:
-		return "AND"
-	case BinaryOpOr:
-		return "OR"
-	case BinaryOpXor:
-		return "XOR"
-	case BinaryOpNot:
-		return "NOT"
-	case BinaryOpAdd:
-		return "ADD"
-	case BinaryOpSub:
-		return "SUB"
-	case BinaryOpMul:
-		return "MUL"
-	case BinaryOpDiv:
-		return "DIV"
-	case BinaryOpMod:
-		return "MOD"
-	case BinaryOpMatchStr:
-		return "MATCH_STR"
-	case BinaryOpNotMatchStr:
-		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
-	case BinaryOpMatchRe:
-		return "MATCH_RE"
-	case BinaryOpNotMatchRe:
-		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
-	default:
-		return fmt.Sprintf("unknown binary operator type %d", t)
+		panic(fmt.Sprintf("unknown expression type %d", t))
 	}
 }
 
 // Expression is the common interface for all expressions in a physical plan.
 type Expression interface {
+	fmt.Stringer
 	Type() ExpressionType
 	isExpr()
 }
@@ -157,7 +59,7 @@ type BinaryExpression interface {
 // physical plan.
 type LiteralExpression interface {
 	Expression
-	ValueType() ValueType
+	ValueType() types.ValueType
 	isLiteralExpr()
 }
 
@@ -173,11 +75,15 @@ type UnaryExpr struct {
 	// Left is the expression being operated on
 	Left Expression
 	// Op is the unary operator to apply to the expression
-	Op UnaryOpType
+	Op types.UnaryOp
 }
 
 func (*UnaryExpr) isExpr()      {}
 func (*UnaryExpr) isUnaryExpr() {}
+
+func (e *UnaryExpr) String() string {
+	return fmt.Sprintf("%s(%s)", e.Op, e.Left)
+}
 
 // ID returns the type of the [UnaryExpr].
 func (*UnaryExpr) Type() ExpressionType {
@@ -187,11 +93,15 @@ func (*UnaryExpr) Type() ExpressionType {
 // BinaryExpr is an expression that implements the [BinaryExpression] interface.
 type BinaryExpr struct {
 	Left, Right Expression
-	Op          BinaryOpType
+	Op          types.BinaryOp
 }
 
 func (*BinaryExpr) isExpr()       {}
 func (*BinaryExpr) isBinaryExpr() {}
+
+func (e *BinaryExpr) String() string {
+	return fmt.Sprintf("%s(%s, %s)", e.Op, e.Left, e.Right)
+}
 
 // ID returns the type of the [BinaryExpr].
 func (*BinaryExpr) Type() ExpressionType {
@@ -199,63 +109,56 @@ func (*BinaryExpr) Type() ExpressionType {
 }
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
-type LiteralExpr[T bool | int64 | uint64 | string] struct {
-	Value T
-	ty    ValueType
+type LiteralExpr struct {
+	Value types.Literal
 }
 
-func (*LiteralExpr[T]) isExpr()        {}
-func (*LiteralExpr[T]) isLiteralExpr() {}
+func (*LiteralExpr) isExpr()        {}
+func (*LiteralExpr) isLiteralExpr() {}
+
+// String returns the string representation of the literal value.
+func (e *LiteralExpr) String() string {
+	return e.Value.String()
+}
 
 // ID returns the type of the [LiteralExpr].
-func (*LiteralExpr[T]) Type() ExpressionType {
+func (*LiteralExpr) Type() ExpressionType {
 	return ExprTypeLiteral
 }
 
-// ValueType returns the type of the literal value.
-func (e *LiteralExpr[T]) ValueType() ValueType {
-	return e.ty
+// ValueType returns the kind of value represented by the literal.
+func (e *LiteralExpr) ValueType() types.ValueType {
+	return e.Value.ValueType()
 }
 
-// newBooleanLiteral is a convenience function for creating boolean literals.
-func newBooleanLiteral(value bool) *LiteralExpr[bool] {
-	return &LiteralExpr[bool]{
-		Value: value,
-		ty:    ValueTypeBool,
-	}
-}
-
-// newInt64Literal is a convenience function for creating int64 literals.
-func newInt64Literal(value int64) *LiteralExpr[int64] {
-	return &LiteralExpr[int64]{
-		Value: value,
-		ty:    ValueTypeInt64,
-	}
-}
-
-// newTimestampLiteral is a convenience function for creating timestamp literals.
-func newTimestampLiteral(value uint64) *LiteralExpr[uint64] {
-	return &LiteralExpr[uint64]{
-		Value: value,
-		ty:    ValueTypeTimestamp,
-	}
-}
-
-// newStringLiteral is a convenience function for creating string literals.
-func newStringLiteral(value string) *LiteralExpr[string] {
-	return &LiteralExpr[string]{
-		Value: value,
-		ty:    ValueTypeString,
+func NewLiteral(value any) *LiteralExpr {
+	return &LiteralExpr{
+		Value: types.Literal{Value: value},
 	}
 }
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.
 type ColumnExpr struct {
-	Name string
+	Ref types.ColumnRef
+}
+
+func newColumnExpr(column string, ty types.ColumnType) *ColumnExpr {
+	return &ColumnExpr{
+		Ref: types.ColumnRef{
+			Column: column,
+			Type:   ty,
+		},
+	}
 }
 
 func (e *ColumnExpr) isExpr()       {}
 func (e *ColumnExpr) isColumnExpr() {}
+
+// String returns the string representation of the column expression.
+// It contains of the name of the column and its type, joined by a dot (`.`).
+func (e *ColumnExpr) String() string {
+	return e.Ref.String()
+}
 
 // ID returns the type of the [ColumnExpr].
 func (e *ColumnExpr) Type() ExpressionType {

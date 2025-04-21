@@ -120,6 +120,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			// directly.
 			zr = zstdPool.New().(*zstdWrapper)
 		}
+
 		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
 			_ = zr.Reset(nil) // Allow releasing the buffer.
 			zstdPool.Put(zr)
@@ -168,7 +169,9 @@ var zstdPool = sync.Pool{
 
 		// See doc comment on [zstdWrapper] for why we're doing this.
 		zw := &zstdWrapper{zr}
-		runtime.AddCleanup(zw, func(zr *zstd.Decoder) { zr.Close() }, zr)
+		runtime.AddCleanup(zw, func(zr *zstd.Decoder) {
+			zr.Close()
+		}, zr)
 
 		return zw
 	},

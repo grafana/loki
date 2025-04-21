@@ -35,22 +35,6 @@ jobs:
 
       - uses: imjasonh/setup-crane@v0.4
 
-      - name: Update/regenerate files for k release
-        id: update-k
-        run: |
-          bash .github/workflows/scripts/helm-weekly-release.sh -k
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ steps.get_github_app_token.outputs.token }}
-          title: "chore: release loki helm chart ${{ steps.update-k.outputs.new_chart_version }}"
-          body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
-          commit-message: Update loki chart to ${{ steps.update-k.outputs.new_chart_version }}
-          branch: helm-chart-weekly-${{ steps.update-k.outputs.new_chart_version }}
-          base: ${{ steps.update-k.outputs.weekly }}
-          labels: helm
-
       - name: Update/regenerate files for standard release
         id: update
         run: |

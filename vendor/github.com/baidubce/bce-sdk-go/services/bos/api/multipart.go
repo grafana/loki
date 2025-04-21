@@ -74,6 +74,15 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 		if validMetadataDirective(args.TaggingDirective) {
 			req.SetHeader(http.BCE_COPY_TAGGING_DIRECTIVE, args.TaggingDirective)
 		}
+		if validCannedAcl(args.CannedAcl) {
+			req.SetHeader(http.BCE_ACL, args.CannedAcl)
+		} else {
+			if len(args.CannedAcl) != 0 {
+				return nil, bce.NewBceClientError("invalid canned acl value: " +
+					args.CannedAcl)
+			}
+		}
+
 	}
 
 	// Send request and get the result

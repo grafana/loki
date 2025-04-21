@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestExpressionTypes(t *testing.T) {
@@ -15,32 +17,28 @@ func TestExpressionTypes(t *testing.T) {
 		{
 			name: "UnaryExpression",
 			expr: &UnaryExpr{
-				Op:   UnaryOpNot,
-				Left: &LiteralExpr[bool]{Value: true},
+				Op:   types.UnaryOpNot,
+				Left: &LiteralExpr{Value: types.BoolLiteral(true)},
 			},
 			expected: ExprTypeUnary,
 		},
 		{
 			name: "BinaryExpression",
 			expr: &BinaryExpr{
-				Op:    BinaryOpEq,
-				Left:  &ColumnExpr{Name: "col"},
-				Right: &LiteralExpr[string]{Value: "foo"},
+				Op:    types.BinaryOpEq,
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
+				Right: &LiteralExpr{Value: types.StringLiteral("foo")},
 			},
 			expected: ExprTypeBinary,
 		},
 		{
-			name: "LiteralExpression",
-			expr: &LiteralExpr[string]{
-				Value: "col",
-			},
+			name:     "LiteralExpression",
+			expr:     &LiteralExpr{Value: types.StringLiteral("col")},
 			expected: ExprTypeLiteral,
 		},
 		{
-			name: "ColumnExpression",
-			expr: &ColumnExpr{
-				Name: "log",
-			},
+			name:     "ColumnExpression",
+			expr:     &ColumnExpr{Ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
 			expected: ExprTypeColumn,
 		},
 	}
@@ -55,35 +53,43 @@ func TestExpressionTypes(t *testing.T) {
 
 func TestLiteralExpr(t *testing.T) {
 
-	t.Run("bool", func(t *testing.T) {
-		var expr Expression = newBooleanLiteral(true)
+	t.Run("boolean", func(t *testing.T) {
+		var expr Expression = NewLiteral(true)
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, ValueTypeBool, literal.ValueType())
+		require.Equal(t, types.ValueTypeBool, literal.ValueType())
 	})
 
-	t.Run("int64", func(t *testing.T) {
-		var expr Expression = newInt64Literal(123456789)
+	t.Run("float", func(t *testing.T) {
+		var expr Expression = NewLiteral(123.456789)
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, ValueTypeInt64, literal.ValueType())
+		require.Equal(t, types.ValueTypeFloat, literal.ValueType())
+	})
+
+	t.Run("integer", func(t *testing.T) {
+		var expr Expression = NewLiteral(int64(123456789))
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, types.ValueTypeInt, literal.ValueType())
 	})
 
 	t.Run("timestamp", func(t *testing.T) {
-		var expr Expression = newTimestampLiteral(1741882435000000000)
+		var expr Expression = NewLiteral(uint64(1741882435000000000))
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, ValueTypeTimestamp, literal.ValueType())
+		require.Equal(t, types.ValueTypeTimestamp, literal.ValueType())
 	})
 
 	t.Run("string", func(t *testing.T) {
-		var expr Expression = newStringLiteral("loki")
+		var expr Expression = NewLiteral("loki")
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, ValueTypeString, literal.ValueType())
+		require.Equal(t, types.ValueTypeStr, literal.ValueType())
 	})
 }

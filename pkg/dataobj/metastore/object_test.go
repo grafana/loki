@@ -87,6 +87,21 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	b.builder.Reset()
 }
 
+func TestStreamIDs(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		paths, streamIDs, err := mstore.StreamIDs(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, paths, 1)
+		require.Len(t, streamIDs, 1)
+		require.Equal(t, []int64{1}, streamIDs[0])
+	})
+}
+
 func TestLabels(t *testing.T) {
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -237,10 +252,11 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
 	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
-		TargetPageSize:    1024 * 1024,      // 1MB
-		TargetObjectSize:  10 * 1024 * 1024, // 10MB
-		TargetSectionSize: 1024 * 1024,      // 1MB
-		BufferSize:        1024 * 1024,      // 1MB
+		TargetPageSize:          1024 * 1024,      // 1MB
+		TargetObjectSize:        10 * 1024 * 1024, // 10MB
+		TargetSectionSize:       1024 * 1024,      // 1MB
+		BufferSize:              1024 * 1024,      // 1MB
+		SectionStripeMergeLimit: 2,
 	})
 	require.NoError(t, err)
 

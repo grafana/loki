@@ -1,5 +1,7 @@
 package physical
 
+import "fmt"
+
 // DataObjLocation is a string that uniquely indentifies a data object location in
 // object storage.
 type DataObjLocation string
@@ -43,6 +45,9 @@ type DataObjScan struct {
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
 func (s *DataObjScan) ID() string {
+	if s.id == "" {
+		return fmt.Sprintf("%p", s)
+	}
 	return s.id
 }
 

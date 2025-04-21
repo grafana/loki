@@ -47,17 +47,25 @@ type Reader interface {
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
 type ReaderMetrics struct {
-	recordsPerFetch     prometheus.Histogram
-	fetchesErrors       prometheus.Counter
-	fetchesTotal        prometheus.Counter
-	fetchWaitDuration   prometheus.Histogram
-	receiveDelay        *prometheus.HistogramVec
-	lastCommittedOffset prometheus.Gauge
-	kprom               *kprom.Metrics
+	consumptionLag    *prometheus.HistogramVec
+	recordsPerFetch   prometheus.Histogram
+	fetchesErrors     prometheus.Counter
+	fetchesTotal      prometheus.Counter
+	fetchWaitDuration prometheus.Histogram
+	kprom             *kprom.Metrics
 }
 
-func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
+func NewReaderMetrics(r prometheus.Registerer, enableKafkaHistograms bool) *ReaderMetrics {
 	return &ReaderMetrics{
+		consumptionLag: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_kafka_reader_consumption_lag_seconds",
+			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
+			NativeHistogramZeroThreshold:    math.Pow(2, -10),
+			NativeHistogramBucketFactor:     1.2,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
+		}, []string{"phase"}),
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
 			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
@@ -76,16 +84,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		receiveDelay: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_kafka_reader_receive_delay_seconds",
-			Help:                            "Delay between producing a record and receiving it.",
-			NativeHistogramZeroThreshold:    math.Pow(2, -10),
-			NativeHistogramBucketFactor:     1.2,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
-		}, []string{"phase"}),
-		kprom: client.NewReaderClientMetrics("partition-reader", r),
+		kprom: client.NewReaderClientMetrics("partition-reader", r, enableKafkaHistograms),
 	}
 }
 
@@ -153,7 +152,7 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.receiveDelay.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
+		r.metrics.consumptionLag.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
 

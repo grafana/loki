@@ -23,11 +23,11 @@ import (
 
 var recordsTestdata = []logs.Record{
 	{StreamID: 1, Timestamp: unixTime(10), Metadata: nil, Line: []byte("hello")},
-	{StreamID: 1, Timestamp: unixTime(15), Metadata: labels.FromStrings("trace_id", "123"), Line: []byte("world")},
+	{StreamID: 1, Timestamp: unixTime(15), Metadata: []logs.RecordMetadata{{Name: "trace_id", Value: []byte("123")}}, Line: []byte("world")},
 	{StreamID: 2, Timestamp: unixTime(5), Metadata: nil, Line: []byte("hello again")},
-	{StreamID: 2, Timestamp: unixTime(20), Metadata: labels.FromStrings("user", "12"), Line: []byte("world again")},
-	{StreamID: 3, Timestamp: unixTime(25), Metadata: labels.FromStrings("user", "14"), Line: []byte("hello one more time")},
-	{StreamID: 3, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123"), Line: []byte("world one more time")},
+	{StreamID: 2, Timestamp: unixTime(20), Metadata: []logs.RecordMetadata{{Name: "user", Value: []byte("12")}}, Line: []byte("world again")},
+	{StreamID: 3, Timestamp: unixTime(25), Metadata: []logs.RecordMetadata{{Name: "user", Value: []byte("14")}}, Line: []byte("hello one more time")},
+	{StreamID: 3, Timestamp: unixTime(30), Metadata: []logs.RecordMetadata{{Name: "trace_id", Value: []byte("123")}}, Line: []byte("world one more time")},
 }
 
 func metadata(kvps ...string) push.LabelsAdapter {
@@ -54,9 +54,10 @@ func TestLogsReader(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -78,9 +79,10 @@ func TestLogsReader_MatchStreams(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -102,9 +104,10 @@ func TestLogsReader_AddMetadataMatcher(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -126,9 +129,10 @@ func TestLogsReader_AddMetadataFilter(t *testing.T) {
 
 	// Build with many pages but one section.
 	obj := buildLogsObject(t, logs.Options{
-		PageSizeHint: 1,
-		BufferSize:   1,
-		SectionSize:  1024,
+		PageSizeHint:     1,
+		BufferSize:       1,
+		SectionSize:      1024,
+		StripeMergeLimit: 2,
 	})
 	md, err := obj.Metadata(context.Background())
 	require.NoError(t, err)
@@ -169,7 +173,7 @@ func buildLogsObject(t *testing.T, opts logs.Options) *dataobj.Object {
 func readAllRecords(ctx context.Context, r *dataobj.LogsReader) ([]dataobj.Record, error) {
 	var (
 		res []dataobj.Record
-		buf = make([]dataobj.Record, 128)
+		buf = make([]dataobj.Record, 4)
 	)
 
 	for {
@@ -195,6 +199,8 @@ func BenchmarkLogsReader(b *testing.B) {
 		TargetSectionSize: 4 * 1024 * 1024,
 		BufferSize:        16 * 1024 * 1024,
 		TargetPageSize:    2 * 1024 * 1024,
+
+		SectionStripeMergeLimit: 2,
 	}
 
 	builder, err := dataobj.NewBuilder(opts)
@@ -208,7 +214,7 @@ func BenchmarkLogsReader(b *testing.B) {
 					Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 					Line:      "hello world " + strconv.Itoa(i),
 					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "123"},
+						{Name: "trace_id", Value: strconv.Itoa(i % 100)},
 						{Name: "pod", Value: "pod-abcd"},
 					},
 				},
@@ -228,7 +234,6 @@ func BenchmarkLogsReader(b *testing.B) {
 	require.Equal(b, 1, md.LogsSections)
 
 	r := dataobj.NewLogsReader(obj, 0)
-
 	var (
 		recs = make([]dataobj.Record, 128)
 		ctx  = context.Background()

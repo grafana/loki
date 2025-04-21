@@ -33,7 +33,7 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.querySchedulerLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.queryScheduler.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.queryScheduler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist

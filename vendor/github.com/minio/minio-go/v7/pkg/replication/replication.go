@@ -988,10 +988,10 @@ func (q ReplQueueStats) QStats() (r ReplQStats) {
 
 // MetricsV2 represents replication metrics for a bucket.
 type MetricsV2 struct {
-	Uptime       int64          `json:"uptime"`
-	CurrentStats Metrics        `json:"currStats"`
-	QueueStats   ReplQueueStats `json:"queueStats"`
-	DowntimeInfo DowntimeInfo   `json:"downtimeInfo"`
+	Uptime       int64                   `json:"uptime"`
+	CurrentStats Metrics                 `json:"currStats"`
+	QueueStats   ReplQueueStats          `json:"queueStats"`
+	DowntimeInfo map[string]DowntimeInfo `json:"downtimeInfo"`
 }
 
 // DowntimeInfo represents the downtime info

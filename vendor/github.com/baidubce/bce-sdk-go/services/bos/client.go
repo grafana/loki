@@ -183,7 +183,13 @@ func (c *Client) ListObjectVersions(bucket string, args *api.ListObjectsArgs) (*
 //     - error: the return error if any occurs
 func (c *Client) SimpleListObjects(bucket, prefix string, maxKeys int, marker,
 	delimiter string) (*api.ListObjectsResult, error) {
-	args := &api.ListObjectsArgs{delimiter, marker, maxKeys, prefix, ""}
+	args := &api.ListObjectsArgs{
+		Delimiter:       prefix,
+		Marker:          marker,
+		MaxKeys:         maxKeys,
+		Prefix:          prefix,
+		VersionIdMarker: "",
+	}
 	return api.ListObjects(c, bucket, args, c.BosContext)
 }
 
@@ -2126,12 +2132,16 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		ContentDisposition: objectMeta.ContentDisposition,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
-		ObjectTagging:      args.ObjectTagging,
-		TaggingDirective:   args.TaggingDirective,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {
 			initArgs.StorageClass = args.StorageClass
+		}
+		if len(args.ObjectTagging) != 0 {
+			initArgs.ObjectTagging = args.ObjectTagging
+		}
+		if len(args.TaggingDirective) != 0 {
+			initArgs.TaggingDirective = args.TaggingDirective
 		}
 	}
 	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, destBucketName, destObjectName, objectMeta.ContentType, &initArgs, c.BosContext)

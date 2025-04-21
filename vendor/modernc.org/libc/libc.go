@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !(linux && (amd64 || arm64 || loong64))
+//go:build !linux || mips64le
 
 //go.generate echo package libc > ccgo.go
 //go:generate go fmt ./...
@@ -722,7 +722,12 @@ func X__builtin_object_size(t *TLS, p uintptr, typ int32) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v p=%v typ=%v, (%v:)", t, p, typ, origin(2))
 	}
-	return ^types.Size_t(0) //TODO frontend magic
+	switch typ {
+	case 0, 1:
+		return ^types.Size_t(0)
+	default:
+		return 0
+	}
 }
 
 var atomicLoadStore16 sync.Mutex

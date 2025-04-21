@@ -1,5 +1,7 @@
 package physical
 
+import "fmt"
+
 // Projection represents a column selection operation in the physical plan.
 // It contains a list of columns (column expressions) that are later
 // evaluated against the input columns to remove unnecessary colums from the
@@ -15,6 +17,9 @@ type Projection struct {
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
 func (p *Projection) ID() string {
+	if p.id == "" {
+		return fmt.Sprintf("%p", p)
+	}
 	return p.id
 }
 

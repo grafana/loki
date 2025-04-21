@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.15.0...auth/v0.16.0) (2025-04-14)
+
+
+### Features
+
+* **auth/credentials:** Return X.509 certificate chain as subject token ([#11948](https://github.com/googleapis/google-cloud-go/issues/11948)) ([d445a3f](https://github.com/googleapis/google-cloud-go/commit/d445a3f66272ffd5c39c4939af9bebad4582631c)), refs [#11757](https://github.com/googleapis/google-cloud-go/issues/11757)
+* **auth:** Configure DirectPath bound credentials from AllowedHardBoundTokens ([#11665](https://github.com/googleapis/google-cloud-go/issues/11665)) ([0fc40bc](https://github.com/googleapis/google-cloud-go/commit/0fc40bcf4e4673704df0973e9fa65957395d7bb4))
+
+
+### Bug Fixes
+
+* **auth:** Allow non-default SA credentials for DP ([#11828](https://github.com/googleapis/google-cloud-go/issues/11828)) ([3a996b4](https://github.com/googleapis/google-cloud-go/commit/3a996b4129e6d0a34dfda6671f535d5aefb26a82))
+* **auth:** Restore calling DialContext ([#11930](https://github.com/googleapis/google-cloud-go/issues/11930)) ([9ec9a29](https://github.com/googleapis/google-cloud-go/commit/9ec9a29494e93197edbaf45aba28984801e9770a)), refs [#11118](https://github.com/googleapis/google-cloud-go/issues/11118)
+
 ## [0.15.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.14.1...auth/v0.15.0) (2025-02-19)
 
 

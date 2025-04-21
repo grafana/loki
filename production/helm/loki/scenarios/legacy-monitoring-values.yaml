@@ -8,6 +8,9 @@ loki:
       chunks: chunks
       ruler: ruler
       admin: admin
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3100"
 read:
   replicas: 1
 write:

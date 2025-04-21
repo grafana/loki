@@ -68,6 +68,7 @@ func NewDetectedFieldsHandler(
 						Type:        v.fieldType,
 						Cardinality: v.Estimate(),
 						Parsers:     p,
+						JsonPath:    v.jsonPath,
 					}
 
 					fieldCount++
@@ -226,6 +227,7 @@ type parsedFields struct {
 	sketch    *hyperloglog.Sketch
 	fieldType logproto.DetectedFieldType
 	parsers   []string
+	jsonPath  []string // Original JSON path as an array of components (e.g., ["user", "id"] for field "user_id")
 }
 
 func newParsedFields(parsers []string) *parsedFields {
@@ -233,13 +235,7 @@ func newParsedFields(parsers []string) *parsedFields {
 		sketch:    hyperloglog.New(),
 		fieldType: logproto.DetectedFieldString,
 		parsers:   parsers,
-	}
-}
-
-func newParsedLabels() *parsedFields {
-	return &parsedFields{
-		sketch:    hyperloglog.New(),
-		fieldType: logproto.DetectedFieldString,
+		jsonPath:  nil,
 	}
 }
 
@@ -341,6 +337,12 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 					}
 				}
 
+				// If we parsed with JSON, check for a JSON path
+				if slices.Contains(parsers, "json") {
+					// Get the JSON path if it exists
+					df.jsonPath = entryLbls.GetJSONPath(k)
+				}
+
 				detectType := true
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
@@ -404,7 +406,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	line := entry.Line
 	parser := "json"
-	jsonParser := logql_log.NewJSONParser()
+	jsonParser := logql_log.NewJSONParser(true)
 	_, jsonSuccess := jsonParser.Process(0, []byte(line), lblBuilder)
 	if !jsonSuccess || lblBuilder.HasErr() {
 		lblBuilder.Reset()
@@ -432,13 +434,13 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	lblsResult := lblBuilder.LabelsResult().Parsed()
-	for _, lbl := range lblsResult {
+	lblsResult.Range(func(lbl labels.Label) {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
 			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
 		}
-	}
+	})
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {

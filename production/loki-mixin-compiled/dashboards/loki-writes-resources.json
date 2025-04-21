@@ -328,7 +328,7 @@
                   "span": 1,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (loki_ingester_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"})",
+                        "expr": "sum by(pod) (loki_ingester_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -580,7 +580,7 @@
                   "span": 1,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -724,7 +724,7 @@
                   "span": 1,
                   "targets": [
                      {
-                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(ingester.*|partition-ingester.*).*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(ingester.*|partition-ingester.*).*\"})",
+                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(.*ingester.*).*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(.*ingester.*).*\"})",
                         "format": "time_series",
                         "legendFormat": "{{persistentvolumeclaim}}",
                         "legendLink": null

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,6 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // A Stream is an individual stream in a data object.
@@ -43,11 +44,14 @@ type StreamsReader struct {
 
 	predicate StreamsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	stream streams.Stream
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
 	columnDesc []*streamsmd.ColumnDesc
+
+	symbols *symbolizer.Symbolizer
 }
 
 // NewStreamsReader creates a new StreamsReader that reads from the streams
@@ -92,9 +96,8 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
-
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)
@@ -103,17 +106,20 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		readStream, err := streams.Decode(r.columnDesc, r.buf[i])
-		if err != nil {
+		if err := streams.Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
-		s[i] = Stream{
-			ID:               readStream.ID,
-			MinTime:          readStream.MinTimestamp,
-			MaxTime:          readStream.MaxTimestamp,
-			UncompressedSize: readStream.UncompressedSize,
-			Labels:           readStream.Labels,
+		// Copy record data into pre-allocated output buffer
+		s[i].ID = r.stream.ID
+		s[i].MinTime = r.stream.MinTimestamp
+		s[i].MaxTime = r.stream.MaxTimestamp
+		s[i].UncompressedSize = r.stream.UncompressedSize
+		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.stream.Labels))
+		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
+		for j := range r.stream.Labels {
+			s[i].Labels[j].Name = r.symbols.Get(r.stream.Labels[j].Name)
+			s[i].Labels[j].Value = r.symbols.Get(r.stream.Labels[j].Value)
 		}
 	}
 
@@ -150,6 +156,12 @@ func (r *StreamsReader) initReader(ctx context.Context) error {
 		r.reader = dataset.NewReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+
+	if r.symbols == nil {
+		r.symbols = symbolizer.New(128, 100_000)
+	} else {
+		r.symbols.Reset()
 	}
 
 	r.columnDesc = columnDescs
@@ -193,8 +205,21 @@ func (r *StreamsReader) Reset(obj *Object, sectionIndex int) {
 	r.columns = nil
 	r.columnDesc = nil
 
+	if r.symbols != nil {
+		r.symbols.Reset()
+	}
+
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.
+}
+
+// Close closes the StreamsReader and releases any resources it holds. Closed
+// StreamsReaders can be reused by calling [StreamsReader.Reset].
+func (r *StreamsReader) Close() error {
+	if r.reader != nil {
+		return r.reader.Close()
+	}
+	return nil
 }
 
 func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, columnDesc []*streamsmd.ColumnDesc) dataset.Predicate {
@@ -241,7 +266,7 @@ func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, col
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.StringValue(p.Value),
+			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case LabelFilterPredicate:

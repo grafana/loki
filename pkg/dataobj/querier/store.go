@@ -442,8 +442,10 @@ func shardObjects(
 }
 
 func (s *shardedObject) reset() {
+	_ = s.streamReader.Close()
 	streamReaderPool.Put(s.streamReader)
 	for i, reader := range s.logReaders {
+		_ = reader.Close()
 		logReaderPool.Put(reader)
 		s.logReaders[i] = nil
 	}
@@ -656,19 +658,17 @@ func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredi
 		predicate dataobj.LogsPredicate
 		skip      bool
 	)
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.BinOpExpr:
 			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
 			skip = true
-			return
 		case *syntax.RangeAggregationExpr:
-			if skip {
-				return
+			if !skip {
+				predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
 			}
-
-			predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
 		}
+		return true
 	})
 
 	return predicate, expr

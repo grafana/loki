@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.4.2
+    tag: 3.4.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -601,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.1
+    tag: 3.4.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -3187,7 +3187,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.37-alpine
+    tag: 1.6.38-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3209,7 +3209,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.1
+    tag: v0.15.2
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3533,7 +3533,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.1
+    tag: 1.30.3
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

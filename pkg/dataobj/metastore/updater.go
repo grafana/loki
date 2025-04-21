@@ -3,8 +3,8 @@ package metastore
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,10 +13,17 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
+)
+
+const (
+	labelNameStart = "__start__"
+	labelNameEnd   = "__end__"
+	labelNamePath  = "__path__"
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
@@ -25,6 +32,8 @@ var metastoreBuilderCfg = dataobj.BuilderConfig{
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
 	TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
+
+	SectionStripeMergeLimit: 2,
 }
 
 type Updater struct {
@@ -120,9 +129,13 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 
 				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
 
-				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
+				ls := labels.New(
+					labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
+					labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
+					labels.Label{Name: labelNamePath, Value: dataobjPath},
+				)
 				err := m.metastoreBuilder.Append(logproto.Stream{
-					Labels:  ls,
+					Labels:  ls.String(),
 					Entries: []logproto.Entry{{Line: ""}},
 				})
 				if err != nil {
@@ -160,10 +173,13 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		return errors.Wrap(err, "resolving object metadata")
 	}
 
+	var streamsReader dataobj.StreamsReader
+	defer streamsReader.Close()
+
 	// Read streams from existing metastore object and write them to the builder for the new object
 	streams := make([]dataobj.Stream, 100)
 	for i := 0; i < si.StreamsSections; i++ {
-		streamsReader := dataobj.NewStreamsReader(object, i)
+		streamsReader.Reset(object, i)
 		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading streams")

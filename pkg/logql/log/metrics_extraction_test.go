@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -251,12 +253,12 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata...)
+			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
 
-			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.structuredMetadata...)
+			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.structuredMetadata)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
@@ -265,9 +267,9 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 }
 
 func Test_Extract_ExpectedLabels(t *testing.T) {
-	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser()}, NoopStage))
+	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser(false)}, NoopStage))
 
-	f, lbs, ok := ex.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, `{"duration":"20ms","foo":"json"}`)
+	f, lbs, ok := ex.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, `{"duration":"20ms","foo":"json"}`, labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, (20 * time.Millisecond).Seconds(), f)
 	require.Equal(t, labels.FromStrings("foo", "json"), lbs.Labels())
@@ -318,7 +320,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, line := range tc.checkLines {
-				v, lbs, ok := tc.extractor.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, line.logLine)
+				v, lbs, ok := tc.extractor.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, line.logLine, labels.EmptyLabels())
 				skipped := !ok
 				assert.Equal(t, line.skip, skipped, "line", line.logLine)
 				if !skipped {
@@ -352,12 +354,12 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	)
 
 	sse := se.ForStream(lbs)
-	f, l, ok := sse.Process(0, []byte(`foo`))
+	f, l, ok := sse.Process(0, []byte(`foo`), labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
 
-	f, l, ok = sse.ProcessString(0, `foo`)
+	f, l, ok = sse.ProcessString(0, `foo`, labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
@@ -367,13 +369,13 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	f, l, ok = sse.Process(0, []byte(`foo`))
+	f, l, ok = sse.Process(0, []byte(`foo`), labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, 3., f)
 	assertLabelResult(t, labels.FromStrings("namespace", "dev"), l)
 
 	sse = se.ForStream(lbs)
-	_, _, ok = sse.Process(0, []byte(`nope`))
+	_, _, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
 	require.False(t, ok)
 }
 
@@ -388,12 +390,12 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse := se.ForStream(lbs)
-	f, l, ok := sse.Process(0, []byte(`foo`), structuredMetadata...)
+	f, l, ok := sse.Process(0, []byte(`foo`), structuredMetadata)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
-	f, l, ok = sse.ProcessString(0, `foo`, structuredMetadata...)
+	f, l, ok = sse.ProcessString(0, `foo`, structuredMetadata)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
@@ -403,16 +405,12 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 		Name: "foo_extracted", Value: "baz",
 	})
 	expectedLabelsResults = append(expectedLabelsResults, structuredMetadata...)
-	f, l, ok = sse.Process(0, []byte(`foo`), append(structuredMetadata, labels.Label{
-		Name: "foo", Value: "baz",
-	})...)
+	f, l, ok = sse.Process(0, []byte(`foo`), labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
-	f, l, ok = sse.ProcessString(0, `foo`, append(structuredMetadata, labels.Label{
-		Name: "foo", Value: "baz",
-	})...)
+	f, l, ok = sse.ProcessString(0, `foo`, labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
@@ -425,13 +423,13 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	f, l, ok = sse.Process(0, []byte(`foo`), structuredMetadata...)
+	f, l, ok = sse.Process(0, []byte(`foo`), structuredMetadata)
 	require.True(t, ok)
 	require.Equal(t, 3., f)
 	assertLabelResult(t, labels.FromStrings("foo", "bar"), l)
 
 	sse = se.ForStream(lbs)
-	_, _, ok = sse.Process(0, []byte(`nope`))
+	_, _, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
 	require.False(t, ok)
 }
 
@@ -463,10 +461,10 @@ func TestFilteringSampleExtractor(t *testing.T) {
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata...)
+			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata)
 			require.Equal(t, test.ok, ok)
 
-			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata...)
+			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata)
 			require.Equal(t, test.ok, ok)
 		})
 	}
@@ -498,20 +496,20 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 func (p *stubStreamExtractor) Process(
 	_ int64,
 	_ []byte,
-	structuredMetadata ...labels.Label,
+	structuredMetadata labels.Labels,
 ) (float64, LabelsResult, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
-	builder.Add(StructuredMetadataLabel, structuredMetadata...)
+	builder.Add(StructuredMetadataLabel, structuredMetadata)
 	return 1.0, builder.LabelsResult(), true
 }
 
 func (p *stubStreamExtractor) ProcessString(
 	_ int64,
 	_ string,
-	structuredMetadata ...labels.Label,
+	structuredMetadata labels.Labels,
 ) (float64, LabelsResult, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
-	builder.Add(StructuredMetadataLabel, structuredMetadata...)
+	builder.Add(StructuredMetadataLabel, structuredMetadata)
 	return 1.0, builder.LabelsResult(), true
 }
 
@@ -536,8 +534,8 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			input:       "test line",
 			labels:      labels.FromStrings("foo", "bar"),
 			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", "__variant__", "0"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "0"),
+			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
 		},
 		{
 			name:        "extraction with variant 1",
@@ -545,8 +543,8 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			input:       "test line",
 			labels:      labels.FromStrings("foo", "bar"),
 			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", "__variant__", "1"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "1"),
+			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
 		},
 		{
 			name:               "with structured metadata",
@@ -558,12 +556,12 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			wantLbs: labels.FromStrings(
 				"foo",
 				"bar",
-				"__variant__",
+				constants.VariantLabel,
 				"2",
 				"meta",
 				"data",
 			),
-			wantBaseLbs: labels.FromStrings("foo", "bar", "__variant__", "2"),
+			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "2"),
 		},
 	}
 
@@ -574,13 +572,13 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			wrapped := NewVariantsStreamSampleExtractorWrapper(tt.index, baseExtractor)
 
 			// Test Process
-			val, lbs, ok := wrapped.Process(0, []byte(tt.input), tt.structuredMetadata...)
+			val, lbs, ok := wrapped.Process(0, []byte(tt.input), tt.structuredMetadata)
 			require.Equal(t, true, ok)
 			require.Equal(t, tt.want, val)
 			require.Equal(t, tt.wantLbs, lbs.Labels())
 
 			// Test ProcessString
-			val, lbs, ok = wrapped.ProcessString(0, tt.input, tt.structuredMetadata...)
+			val, lbs, ok = wrapped.ProcessString(0, tt.input, tt.structuredMetadata)
 			require.Equal(t, true, ok)
 			require.Equal(t, tt.want, val)
 			require.Equal(t, tt.wantLbs, lbs.Labels())

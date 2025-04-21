@@ -392,10 +392,7 @@ func (c *Client) removeObjects(ctx context.Context, bucketName string, objectsCh
 	defer close(resultCh)
 
 	// Loop over entries by 1000 and call MultiDelete requests
-	for {
-		if finish {
-			break
-		}
+	for !finish {
 		count := 0
 		var batch []ObjectInfo
 

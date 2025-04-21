@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -66,7 +67,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		// which is out of range of at least one page.
 		Predicate: EqualPredicate{
 			Column: columns[0], // first_name column
-			Value:  StringValue("Henry"),
+			Value:  ByteArrayValue([]byte("Henry")),
 		},
 	})
 	defer r.Close()
@@ -131,6 +132,48 @@ func Test_Reader_Reset(t *testing.T) {
 	actualRows, err := readDataset(r, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
+}
+
+func Test_Reader_Stats(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	// Create a predicate that only returns people born after 1985
+	r := NewReader(ReaderOptions{
+		Dataset: dset,
+		Columns: columns,
+		Predicate: GreaterThanPredicate{
+			Column: columns[3], // birth_year column
+			Value:  Int64Value(1985),
+		},
+	})
+	defer r.Close()
+
+	statsCtx, ctx := stats.NewContext(context.Background())
+	actualRows, err := readDatasetWithContext(ctx, r, 3)
+	require.NoError(t, err)
+
+	// Filter expected data manually to verify
+	var expected []testPerson
+	for _, p := range basicReaderTestData {
+		if p.birthYear > 1985 {
+			expected = append(expected, p)
+		}
+	}
+	require.Equal(t, expected, convertToTestPersons(actualRows))
+
+	primaryColumnBytes := int64(Int64Value(0).Size()) * int64(len(basicReaderTestData)) // Size of Int64Value * all rows
+	var totalBytestoFill int64
+	for _, row := range actualRows {
+		totalBytestoFill += row.Size()
+	}
+	totalBytestoFill -= int64(Int64Value(0).Size()) * int64(len(expected)) // remove already filled primary columns
+
+	// verify statistics
+	result := statsCtx.Result(0, 0, len(actualRows))
+	require.Equal(t, int64(len(basicReaderTestData)), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
+	require.Equal(t, int64(len(expected)), result.Querier.Store.Dataobj.PostPredicateRows)
+	require.Equal(t, primaryColumnBytes, result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
+	require.Equal(t, totalBytestoFill, result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
 }
 
 func Test_buildMask(t *testing.T) {
@@ -210,6 +253,11 @@ func mergeRows(rows ...[]Row) []Row {
 
 // readDataset reads all rows from a Reader using the given batch size.
 func readDataset(br *Reader, batchSize int) ([]Row, error) {
+	return readDatasetWithContext(context.Background(), br, batchSize)
+}
+
+// readDatasetWithContext reads all rows from a Reader using the given batch size and context.
+func readDatasetWithContext(ctx context.Context, br *Reader, batchSize int) ([]Row, error) {
 	var (
 		all []Row
 
@@ -222,7 +270,7 @@ func readDataset(br *Reader, batchSize int) ([]Row, error) {
 		// [readBasicReader] for more information.
 		clear(batch)
 
-		n, err := br.Read(context.Background(), batch)
+		n, err := br.Read(ctx, batch)
 		all = append(all, batch[:n]...)
 		if errors.Is(err, io.EOF) {
 			return all, nil
@@ -279,6 +327,33 @@ func Test_BuildPredicateRanges(t *testing.T) {
 				Right: GreaterThanPredicate{Column: cols[1], Value: Int64Value(800)}, // Rows 750 - 999 of timestamp column
 			},
 			want: rowRanges{{Start: 0, End: 299}, {Start: 750, End: 999}}, // Rows 0 - 299, 750 - 999
+		},
+		{
+			name: "InPredicate with values inside and outside page ranges",
+			predicate: InPredicate{
+				Column: cols[1], // timestamp column
+				Values: []Value{
+					Int64Value(50),  // Inside page 1 (0-100)
+					Int64Value(300), // Inside page 2 (200-500)
+					Int64Value(150), // Outside all pages
+					Int64Value(600), // Outside all pages
+				},
+			},
+			want: rowRanges{
+				{Start: 0, End: 249},   // Page 1: contains 50
+				{Start: 250, End: 749}, // Page 2: contains 300
+			},
+		},
+		{
+			name: "InPredicate with values all outside page ranges",
+			predicate: InPredicate{
+				Column: cols[1], // timestamp column
+				Values: []Value{
+					Int64Value(150), // Outside all pages
+					Int64Value(600), // Outside all pages
+				},
+			},
+			want: nil, // No pages should be included
 		},
 	}
 

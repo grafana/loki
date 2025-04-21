@@ -195,9 +195,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
-				if logger.Span != nil {
-					logger.Span.LogKV(responseStats.KVList()...)
-				}
+				logger.LogKV(responseStats.KVList()...)
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

@@ -45,7 +45,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 			TenantID:     "test",
 			StreamHashes: []uint64{0x1},
 		},
-		// expected should be default value (no rejected streams).
+		// expected should be default value.
 	}, {
 		name: "exceeds limits",
 		limits: &mockLimits{
@@ -68,7 +68,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 			StreamHashes: []uint64{0x1},
 		},
 		expected: httpExceedsLimitsResponse{
-			RejectedStreams: []*logproto.RejectedStream{{
+			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     "exceeds_rate_limit",
 			}},

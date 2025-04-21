@@ -387,7 +387,6 @@ func (s *StreamingReader) Read(buf []byte) (int, error) {
 				}
 				return 0, err
 			}
-
 		}
 	}
 	return s.buf.Read(buf)

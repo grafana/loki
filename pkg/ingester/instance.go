@@ -461,7 +461,7 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
 	s, ok := i.streams.LoadByFP(fp)
 	if !ok {
-		return nil
+		return labels.EmptyLabels()
 	}
 	return s.labels
 }
@@ -640,17 +640,17 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 		}, nil
 	}
 
-	labels := util.NewUniqueStrings(0)
+	lbls := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
-		for _, label := range s.labels {
+		s.labels.Range(func(label labels.Label) {
 			if req.Values && label.Name == req.Name {
-				labels.Add(label.Value)
-				continue
+				lbls.Add(label.Value)
+				return
 			}
 			if !req.Values {
-				labels.Add(label.Name)
+				lbls.Add(label.Name)
 			}
-		}
+		})
 		return nil
 	})
 	if err != nil {
@@ -658,7 +658,7 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels.Strings(),
+		Values: lbls.Strings(),
 	}, nil
 }
 
@@ -692,7 +692,7 @@ func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, ma
 	}
 
 	err := i.forMatchingStreams(ctx, startTime, matchers, nil, func(s *stream) error {
-		for _, label := range s.labels {
+		s.labels.Range(func(label labels.Label) {
 			v, exists := labelMap[label.Name]
 			if !exists {
 				v = make(map[string]struct{})
@@ -701,7 +701,7 @@ func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, ma
 				v[label.Value] = struct{}{}
 			}
 			labelMap[label.Name] = v
-		}
+		})
 		return nil
 	})
 	if err != nil {
@@ -847,7 +847,7 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	matchAny = matchAny || len(matchers) == 0
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+	seriesLabelsBuilder := labels.NewScratchBuilder(len(labelsToMatch))
 
 	from, through := req.From.Time(), req.Through.Time()
 	volumes := make(map[string]uint64)
@@ -874,15 +874,15 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 
 			var labelVolumes map[string]uint64
 			if aggregateBySeries {
-				seriesLabels = seriesLabels[:0]
-				for _, l := range s.labels {
+				seriesLabelsBuilder.Reset()
+				s.labels.Range(func(l labels.Label) {
 					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
-						seriesLabels = append(seriesLabels, l)
+						seriesLabelsBuilder.Add(l.Name, l.Value)
 					}
-				}
+				})
 			} else {
-				labelVolumes = make(map[string]uint64, len(s.labels))
-				for _, l := range s.labels {
+				labelVolumes = make(map[string]uint64, s.labels.Len())
+				s.labels.Range(func(l labels.Label) {
 					if len(targetLabels) > 0 {
 						if _, ok := labelsToMatch[l.Name]; matchAny || ok {
 							labelVolumes[l.Name] += size
@@ -890,11 +890,12 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 					} else {
 						labelVolumes[l.Name] += size
 					}
-				}
+				})
 			}
 
 			// If the labels are < 1k, this does not alloc
 			// https://github.com/prometheus/prometheus/pull/8025
+			seriesLabels := seriesLabelsBuilder.Labels()
 			hash := seriesLabels.Hash()
 			if _, ok := seriesNames[hash]; !ok {
 				seriesNames[hash] = seriesLabels.String()

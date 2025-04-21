@@ -97,6 +97,8 @@ var testBuilderConfig = dataobj.BuilderConfig{
 	TargetSectionSize: 4096,
 
 	BufferSize: 2048 * 8,
+
+	SectionStripeMergeLimit: 2,
 }
 
 // TestIdleFlush tests the idle flush behavior of the partition processor

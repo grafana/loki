@@ -4420,7 +4420,8 @@ type Backend struct {
 	// (https://cloud.google.com/load-balancing/docs/backend-service#backends). You
 	// must use the *fully-qualified* URL (starting with
 	// https://www.googleapis.com/) to specify the instance group or NEG. Partial
-	// URLs are not supported.
+	// URLs are not supported. If haPolicy is specified, backends must refer to NEG
+	// resources of type GCE_VM_IP.
 	Group string `json:"group,omitempty"`
 	// MaxConnections: Defines a target maximum number of simultaneous connections.
 	// For usage guidelines, see Connection balancing mode and Utilization
@@ -5051,12 +5052,13 @@ type BackendService struct {
 	// Accept-Encoding header sent by the client.
 	//   "DISABLED" - Disables compression. Existing compressed responses cached by
 	// Cloud CDN will not be served to clients.
-	CompressionMode    string              `json:"compressionMode,omitempty"`
+	CompressionMode string `json:"compressionMode,omitempty"`
+	// ConnectionDraining: connectionDraining cannot be specified with haPolicy.
 	ConnectionDraining *ConnectionDraining `json:"connectionDraining,omitempty"`
 	// ConnectionTrackingPolicy: Connection Tracking configuration for this
 	// BackendService. Connection tracking policy settings are only available for
 	// external passthrough Network Load Balancers and internal passthrough Network
-	// Load Balancers.
+	// Load Balancers. connectionTrackingPolicy cannot be specified with haPolicy.
 	ConnectionTrackingPolicy *BackendServiceConnectionTrackingPolicy `json:"connectionTrackingPolicy,omitempty"`
 	// ConsistentHash: Consistent Hash-based load balancing can be used to provide
 	// soft session affinity based on HTTP headers, cookies or other properties.
@@ -5098,6 +5100,7 @@ type BackendService struct {
 	// (https://cloud.google.com/load-balancing/docs/internal/failover-overview)
 	// and external passthrough Network Load Balancers
 	// (https://cloud.google.com/load-balancing/docs/network/networklb-failover-overview).
+	// failoverPolicy cannot be specified with haPolicy.
 	FailoverPolicy *BackendServiceFailoverPolicy `json:"failoverPolicy,omitempty"`
 	// Fingerprint: Fingerprint of this resource. A hash of the contents stored in
 	// this object. This field is used in optimistic locking. This field will be
@@ -5106,13 +5109,32 @@ type BackendService struct {
 	// fail with error 412 conditionNotMet. To see the latest fingerprint, make a
 	// get() request to retrieve a BackendService.
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// HaPolicy: Configures self-managed High Availability (HA) for External and
+	// Internal Protocol Forwarding. The backends of this regional backend service
+	// must only specify zonal network endpoint groups (NEGs) of type GCE_VM_IP.
+	// When haPolicy is set for an Internal Passthrough Network Load Balancer, the
+	// regional backend service must set the network field. All zonal NEGs must
+	// belong to the same network. However, individual NEGs can belong to different
+	// subnetworks of that network. When haPolicy is specified, the set of attached
+	// network endpoints across all backends comprise an High Availability domain
+	// from which one endpoint is selected as the active endpoint (the leader) that
+	// receives all traffic. haPolicy can be added only at backend service creation
+	// time. Once set up, it cannot be deleted. Note that haPolicy is not for load
+	// balancing, and therefore cannot be specified with sessionAffinity,
+	// connectionTrackingPolicy, and failoverPolicy. haPolicy requires customers to
+	// be responsible for tracking backend endpoint health and electing a leader
+	// among the healthy endpoints. Therefore, haPolicy cannot be specified with
+	// healthChecks. haPolicy can only be specified for External Passthrough
+	// Network Load Balancers and Internal Passthrough Network Load Balancers.
+	HaPolicy *BackendServiceHAPolicy `json:"haPolicy,omitempty"`
 	// HealthChecks: The list of URLs to the healthChecks, httpHealthChecks
 	// (legacy), or httpsHealthChecks (legacy) resource for health checking this
 	// backend service. Not all backend services support legacy health checks. See
 	// Load balancer guide. Currently, at most one health check can be specified
 	// for each backend service. Backend services with instance group or zonal NEG
-	// backends must have a health check. Backend services with internet or
-	// serverless NEG backends must not have a health check.
+	// backends must have a health check unless haPolicy is specified. Backend
+	// services with internet or serverless NEG backends must not have a health
+	// check. healthChecks[] cannot be specified with haPolicy.
 	HealthChecks []string `json:"healthChecks,omitempty"`
 	// Iap: The configurations for Identity-Aware Proxy on this resource. Not
 	// available for internal passthrough Network Load Balancers and external
@@ -5210,7 +5232,8 @@ type BackendService struct {
 	// session affinity is set to a value other than NONE, then the default value
 	// for localityLbPolicy is MAGLEV. Only ROUND_ROBIN and RING_HASH are supported
 	// when the backend service is referenced by a URL map that is bound to target
-	// gRPC proxy that has validateForProxyless field set to true.
+	// gRPC proxy that has validateForProxyless field set to true. localityLbPolicy
+	// cannot be specified with haPolicy.
 	//
 	// Possible values:
 	//   "INVALID_LB_POLICY"
@@ -5273,8 +5296,10 @@ type BackendService struct {
 	// dash.
 	Name string `json:"name,omitempty"`
 	// Network: The URL of the network to which this backend service belongs. This
-	// field can only be specified when the load balancing scheme is set to
-	// INTERNAL.
+	// field must be set for Internal Passthrough Network Load Balancers when the
+	// haPolicy is enabled, and for External Passthrough Network Load Balancers
+	// when the haPolicy fastIpMove is enabled. This field can only be specified
+	// when the load balancing scheme is set to INTERNAL.
 	Network string `json:"network,omitempty"`
 	// OutlierDetection: Settings controlling the ejection of unhealthy backend
 	// endpoints from the load balancing pool of each individual proxy instance
@@ -5359,6 +5384,7 @@ type BackendService struct {
 	// validateForProxyless field set to true. For more details, see: Session
 	// Affinity
 	// (https://cloud.google.com/load-balancing/docs/backend-service#session_affinity).
+	// sessionAffinity cannot be specified with haPolicy.
 	//
 	// Possible values:
 	//   "CLIENT_IP" - 2-tuple hash on packet's source and destination IP
@@ -5394,7 +5420,8 @@ type BackendService struct {
 	// session affinity. This field is applicable and required if the
 	// sessionAffinity is set to STRONG_COOKIE_AFFINITY.
 	StrongSessionAffinityCookie *BackendServiceHttpCookie `json:"strongSessionAffinityCookie,omitempty"`
-	Subsetting                  *Subsetting               `json:"subsetting,omitempty"`
+	// Subsetting: subsetting cannot be specified with haPolicy.
+	Subsetting *Subsetting `json:"subsetting,omitempty"`
 	// TimeoutSec: The backend service timeout has a different meaning depending on
 	// the type of load balancer. For more information see, Backend service
 	// settings. The default is 30 seconds. The full range of timeout values
@@ -5976,6 +6003,78 @@ type BackendServiceGroupHealth struct {
 
 func (s BackendServiceGroupHealth) MarshalJSON() ([]byte, error) {
 	type NoMethod BackendServiceGroupHealth
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type BackendServiceHAPolicy struct {
+	// FastIPMove: Specifies whether fast IP move is enabled, and if so, the
+	// mechanism to achieve it. Supported values are: - DISABLED: Fast IP Move is
+	// disabled. You can only use the haPolicy.leader API to update the leader. -
+	// >GARP_RA: Provides a method to very quickly define a new network endpoint as
+	// the leader. This method is faster than updating the leader using the
+	// haPolicy.leader API. Fast IP move works as follows: The VM hosting the
+	// network endpoint that should become the new leader sends either a Gratuitous
+	// ARP (GARP) packet (IPv4) or an ICMPv6 Router Advertisement(RA) packet
+	// (IPv6). Google Cloud immediately but temporarily associates the forwarding
+	// rule IP address with that VM, and both new and in-flight packets are quickly
+	// delivered to that VM. Note the important properties of the Fast IP Move
+	// functionality: - The GARP/RA-initiated re-routing stays active for
+	// approximately 20 minutes. After triggering fast failover, you must also
+	// appropriately set the haPolicy.leader. - The new leader instance should
+	// continue to send GARP/RA packets periodically every 10 seconds until at
+	// least 10 minutes after updating the haPolicy.leader (but stop immediately if
+	// it is no longer the leader). - After triggering a fast failover, we
+	// recommend that you wait at least 3 seconds before sending another GARP/RA
+	// packet from a different VM instance to avoid race conditions. - Don't send
+	// GARP/RA packets from different VM instances at the same time. If multiple
+	// instances continue to send GARP/RA packets, traffic might be routed to
+	// different destinations in an alternating order. This condition ceases when a
+	// single instance issues a GARP/RA packet. - The GARP/RA request always takes
+	// priority over the leader API. Using the haPolicy.leader API to change the
+	// leader to a different instance will have no effect until the GARP/RA request
+	// becomes inactive. - The GARP/RA packets should follow the GARP/RA Packet
+	// Specifications.. - When multiple forwarding rules refer to a regional
+	// backend service, you need only send a GARP or RA packet for a single
+	// forwarding rule virtual IP. The virtual IPs for all forwarding rules
+	// targeting the same backend service will also be moved to the sender of the
+	// GARP or RA packet. The following are the Fast IP Move limitations (that is,
+	// when fastIPMove is not DISABLED): - Multiple forwarding rules cannot use the
+	// same IP address if one of them refers to a regional backend service with
+	// fastIPMove. - The regional backend service must set the network field, and
+	// all NEGs must belong to that network. However, individual NEGs can belong to
+	// different subnetworks of that network. - The maximum number of network
+	// endpoints across all backends of a backend service with fastIPMove is 64. -
+	// The maximum number of backend services with fastIPMove that can have the
+	// same network endpoint attached to one of its backends is 64. - The maximum
+	// number of backend services with fastIPMove in a VPC in a region is 64. - The
+	// network endpoints that are attached to a backend of a backend service with
+	// fastIPMove cannot resolve to C3 machines. - Traffic directed to the leader
+	// by a static route next hop will not be redirected to a new leader by fast
+	// failover. Such traffic will only be redirected once an haPolicy.leader
+	// update has taken effect. Only traffic to the forwarding rule's virtual IP
+	// will be redirected to a new leader by fast failover. haPolicy.fastIPMove can
+	// be set only at backend service creation time. Once set, it cannot be
+	// updated. By default, fastIpMove is set to DISABLED.
+	//
+	// Possible values:
+	//   "DISABLED"
+	//   "GARP_RA"
+	FastIPMove string `json:"fastIPMove,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "FastIPMove") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "FastIPMove") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BackendServiceHAPolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod BackendServiceHAPolicy
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -21792,7 +21891,8 @@ type Interconnect struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// LinkType: Type of link requested, which can take one of the following
 	// values: - LINK_TYPE_ETHERNET_10G_LR: A 10G Ethernet with LR optics -
-	// LINK_TYPE_ETHERNET_100G_LR: A 100G Ethernet with LR optics. Note that this
+	// LINK_TYPE_ETHERNET_100G_LR: A 100G Ethernet with LR optics. -
+	// LINK_TYPE_ETHERNET_400G_LR4: A 400G Ethernet with LR4 optics. Note that this
 	// field indicates the speed of each of the links in the bundle, not the speed
 	// of the entire bundle.
 	//
@@ -21800,6 +21900,7 @@ type Interconnect struct {
 	//   "LINK_TYPE_ETHERNET_100G_LR" - 100G Ethernet, LR Optics.
 	//   "LINK_TYPE_ETHERNET_10G_LR" - 10G Ethernet, LR Optics. [(rate_bps) =
 	// 10000000000];
+	//   "LINK_TYPE_ETHERNET_400G_LR4" - 400G Ethernet, LR4 Optics.
 	LinkType string `json:"linkType,omitempty"`
 	// Location: URL of the InterconnectLocation object that represents where this
 	// connection is to be provisioned.
@@ -23237,6 +23338,7 @@ type InterconnectLocation struct {
 	//   "LINK_TYPE_ETHERNET_100G_LR" - 100G Ethernet, LR Optics.
 	//   "LINK_TYPE_ETHERNET_10G_LR" - 10G Ethernet, LR Optics. [(rate_bps) =
 	// 10000000000];
+	//   "LINK_TYPE_ETHERNET_400G_LR4" - 400G Ethernet, LR4 Optics.
 	AvailableLinkTypes []string `json:"availableLinkTypes,omitempty"`
 	// City: [Output Only] Metropolitan area designator that indicates which city
 	// an interconnect is located. For example: "Chicago, IL", "Amsterdam,
