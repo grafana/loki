@@ -18,9 +18,8 @@ import (
 
 // NewReaderClient returns the kgo.Client that should be used by the Reader.
 //
-// The returned Client utilizes the standard set of *kprom.Metrics, which are prefixed with
-// the MetricsPrefix and wrapped w/labels identifying the component to which these
-// metrics pertain
+// The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
+// `MetricsPrefix`
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 	const fetchMaxBytes = 100_000_000

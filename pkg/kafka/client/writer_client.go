@@ -35,9 +35,8 @@ const (
 
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
-// The returned Client collects the standard set of *kprom.Metrics, which are prefixed with
-// the MetricsPrefix and wrapped w/labels identifying the component to which these
-// metrics pertain
+// The returned Client collects the standard set of *kprom.Metrics, prefixed with
+// `MetricsPrefix`
 func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
@@ -100,11 +99,8 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 	return client, nil
 }
 
-// NewClientMetrics returns a new instance of `kprom.Metrics` used to monitor Kafka interactions
-//
-// Users of the `kafka` package will get this set of metrics for free, wrapped with labels for
-// better identification of the service using these Kafka clients:
-//   - component: identifies the service utilizing the client
+// NewClientMetrics returns a new instance of `kprom.Metrics` (used to monitor Kafka interactions), provided
+// the `MetricsPrefix` as the `Namespace` for the default set of Prometheus metrics
 func NewClientMetrics(component string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
 	return kprom.NewMetrics(MetricsPrefix,
 		kprom.Registerer(WrapPrometheusRegisterer(component, reg)),
