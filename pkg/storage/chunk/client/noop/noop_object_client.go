@@ -10,61 +10,61 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
-// NoopObjectClient holds config for filesystem as object store
-type NoopObjectClient struct {
+// ObjectClient holds config for filesystem as object store
+type ObjectClient struct {
 }
 
 // NewNoopObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
-func NewNoopObjectClient() (*NoopObjectClient, error) {
-	return &NoopObjectClient{}, nil
+func NewNoopObjectClient() (*ObjectClient, error) {
+	return &ObjectClient{}, nil
 }
 
 // Stop implements ObjectClient
-func (NoopObjectClient) Stop() {}
+func (ObjectClient) Stop() {}
 
 // GetObject from the store
-func (f *NoopObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
+func (f *ObjectClient) GetObject(_ context.Context, _ string) (io.ReadCloser, int64, error) {
 	return nil, 0, errors.New("noop storage cannot return any objects")
 }
 
-func (f *NoopObjectClient) GetObjectRange(_ context.Context, _ string, _, _ int64) (io.ReadCloser, error) {
+func (f *ObjectClient) GetObjectRange(_ context.Context, _ string, _, _ int64) (io.ReadCloser, error) {
 	return nil, errors.New("noop storage cannot return any objects")
 }
 
 // PutObject into the store
-func (f *NoopObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
+func (f *ObjectClient) PutObject(_ context.Context, _ string, _ io.Reader) error {
 	return nil
 }
 
 // List implements chunk.ObjectClient.
-// NoopObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
-func (f *NoopObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+// ObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
+func (f *ObjectClient) List(_ context.Context, _, _ string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return []client.StorageObject{}, []client.StorageCommonPrefix{}, nil
 }
 
-func (f *NoopObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+func (f *ObjectClient) DeleteObject(_ context.Context, _ string) error {
 	return nil
 }
 
 // DeleteChunksBefore implements BucketClient
-func (f *NoopObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
+func (f *ObjectClient) DeleteChunksBefore(_ context.Context, _ time.Time) error {
 	return nil
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
-func (f *NoopObjectClient) IsObjectNotFoundErr(err error) bool {
+func (f *ObjectClient) IsObjectNotFoundErr(_ error) bool {
 	return true
 }
 
-func (f *NoopObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+func (f *ObjectClient) ObjectExists(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }
 
-func (f *NoopObjectClient) IsRetryableErr(err error) bool {
+func (f *ObjectClient) IsRetryableErr(_ error) bool {
 	return false
 }
 
 // GetAttributes implements ObjectClient
-func (f *NoopObjectClient) GetAttributes(_ context.Context, _ string) (client.ObjectAttributes, error) {
+func (f *ObjectClient) GetAttributes(_ context.Context, _ string) (client.ObjectAttributes, error) {
 	return client.ObjectAttributes{}, nil
 }
