@@ -709,6 +709,125 @@ func TestS3Extract_S3ForcePathStyle(t *testing.T) {
 	}
 }
 
+func TestS3Extract_VirtualStyleHost(t *testing.T) {
+	tt := []struct {
+		desc        string
+		secret      *corev1.Secret
+		wantOptions *storage.S3StorageConfig
+	}{
+		{
+			desc: "aws endpoint without virtual_style_host specified (default behavior)",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://s3.region.amazonaws.com",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: false, // defaults to virtual style for AWS endpoints
+			},
+		},
+		{
+			desc: "non-aws s3 endpoint without virtual_style_host specified (default behavior)",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("http://minio:9000"),
+					"region":            []byte(""),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "http://minio:9000",
+				Region:         "",
+				Buckets:        "this,that",
+				ForcePathStyle: true, // defaults to path style for non-AWS endpoints
+			},
+		},
+		{
+			desc: "aws s3 endpoint with virtual_style_host=false",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":           []byte("https://s3.region.amazonaws.com"),
+					"region":             []byte("region"),
+					"bucketnames":        []byte("this,that"),
+					"access_key_id":      []byte("id"),
+					"access_key_secret":  []byte("secret"),
+					"virtual_style_host": []byte("false"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://s3.region.amazonaws.com",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: true,
+			},
+		},
+		{
+			desc: "aws s3 endpoint with virtual_style_host=true",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":           []byte("https://s3.region.amazonaws.com"),
+					"region":             []byte("region"),
+					"bucketnames":        []byte("this,that"),
+					"access_key_id":      []byte("id"),
+					"access_key_secret":  []byte("secret"),
+					"virtual_style_host": []byte("true"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://s3.region.amazonaws.com",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: false,
+			},
+		},
+		{
+			desc: "non-aws s3 endpoint with virtual_style_host=true",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":           []byte("http://minio:9000"),
+					"region":             []byte(""),
+					"bucketnames":        []byte("this,that"),
+					"access_key_id":      []byte("id"),
+					"access_key_secret":  []byte("secret"),
+					"virtual_style_host": []byte("true"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "http://minio:9000",
+				Region:         "",
+				Buckets:        "this,that",
+				ForcePathStyle: false,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.wantOptions.ForcePathStyle, got.ForcePathStyle)
+			require.Equal(t, tc.wantOptions.Endpoint, got.Endpoint)
+			require.Equal(t, tc.wantOptions.Region, got.Region)
+			require.Equal(t, tc.wantOptions.Buckets, got.Buckets)
+		})
+	}
+}
+
 func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 	fg := configv1.FeatureGates{
 		OpenShift: configv1.OpenShiftFeatureGates{

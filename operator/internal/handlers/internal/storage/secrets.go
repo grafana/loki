@@ -410,9 +410,20 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region         = s.Data[storage.KeyAWSRegion]
-		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+		region = s.Data[storage.KeyAWSRegion]
 	)
+
+	// Determine if we should use path style URLs for S3
+	// default to false if for non-AWS endpoints
+	forcePathStyle := len(endpoint) <= 0 || !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+
+	// Check if the user has specified virtual_style_host
+	if virtualStyleHostBytes, ok := s.Data[storage.KeyAWSVirtualStyleHost]; ok && len(virtualStyleHostBytes) > 0 {
+		// If virtual_style_host is provided, use it to determine the forcePathStyle option
+		// virtual_style_host=true means forcePathStyle=false (inverse)
+		virtualStyleHost := string(virtualStyleHostBytes) == "true"
+		forcePathStyle = !virtualStyleHost
+	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {
