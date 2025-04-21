@@ -30,23 +30,17 @@ import (
 var writerRequestTimeoutOverhead = 2 * time.Second
 
 const (
-	// Role constants are applied to common Kafka metrics as the `service_role` label.  These allow
-	// users to identify the intended use of a Kafka client.  Some clients are used for reading, some
-	// for writing.  Rather than hard-coding this distinction in the metric name (e.g., `client_writer_read_bytes`
-	// or `client_reader_write_bytes`), we use labels to provide the distinction (e.g., `client_read_bytes{service_role='reader'}`)
-	WriterRole    = "writer"
-	ReaderRole    = "reader"
 	MetricsPrefix = "loki_kafka_client"
 )
 
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
 // The returned Client collects the standard set of *kprom.Metrics, which are prefixed with
-// the MetricsPrefix and wrapped w/labels identifying the component/role to which these
+// the MetricsPrefix and wrapped w/labels identifying the component to which these
 // metrics pertain
 func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
-	metrics := NewClientMetrics(component, WriterRole, reg, kafkaCfg.EnableKafkaHistograms)
+	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),
@@ -108,27 +102,25 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 
 // NewClientMetrics returns a new instance of `kprom.Metrics` used to monitor Kafka interactions
 //
-// Users of the `kafka` package will get this set of metrics for free, wrapped with two labels for
+// Users of the `kafka` package will get this set of metrics for free, wrapped with labels for
 // better identification of the service using these Kafka clients:
 //   - component: identifies the service utilizing the client
-//   - service_role: the role of the client user
-func NewClientMetrics(component string, serviceRole string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
+func NewClientMetrics(component string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
 	return kprom.NewMetrics(MetricsPrefix,
-		kprom.Registerer(WrapPrometheusRegisterer(component, serviceRole, reg)),
+		kprom.Registerer(WrapPrometheusRegisterer(component, reg)),
 		// Do not export the client ID, because we use it to specify options to the backend.
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
 		enableKafkaHistogramMetrics(enableKafkaHistograms),
 	)
 }
 
-// WrapPrometheusRegisterer returns a prometheus.Registerer with two labels applied: component, service_role
+// WrapPrometheusRegisterer returns a prometheus.Registerer with labels applied
 //
 // This Registerer is used internally by the reader/writer Kafka clients to collect *kprom.Metrics (or any custom metrics
 // passed by a calling service)
-func WrapPrometheusRegisterer(component string, serviceRole string, reg prometheus.Registerer) prometheus.Registerer {
+func WrapPrometheusRegisterer(component string, reg prometheus.Registerer) prometheus.Registerer {
 	return prometheus.WrapRegistererWith(prometheus.Labels{
-		"component":    component,
-		"service_role": serviceRole,
+		"component": component,
 	}, reg)
 }
 
@@ -257,7 +249,7 @@ type Producer struct {
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
 func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
-	wrappedRegisterer := WrapPrometheusRegisterer(component, WriterRole, reg)
+	wrappedRegisterer := WrapPrometheusRegisterer(component, reg)
 
 	producer := &Producer{
 		Client:           client,
