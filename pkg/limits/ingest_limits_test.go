@@ -221,10 +221,6 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 								{Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
 								{Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
 							},
-						},
-					},
-					{
-						"tenant1": {
 							1: []Stream{
 								{Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
 								{Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},

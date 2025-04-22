@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"hash/fnv"
 	"sync"
 )
 
@@ -91,20 +92,19 @@ func (s *streamMetadata) All(fn AllFunc) {
 }
 
 func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
-	for i := range s.stripes {
-		s.locks[i].RLock()
+	i := s.getStripeIdx(tenant)
 
-		for partitionID, partition := range s.stripes[i][tenant] {
-			for _, stream := range partition {
-				fn(partitionID, stream)
-			}
+	s.locks[i].RLock()
+	defer s.locks[i].RUnlock()
+
+	for partitionID, partition := range s.stripes[i][tenant] {
+		for _, stream := range partition {
+			fn(partitionID, stream)
 		}
-
-		s.locks[i].RUnlock()
 	}
 }
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
-	i := uint64(partitionID) & uint64(len(s.locks)-1)
+	i := s.getStripeIdx(tenant)
 
 	s.locks[i].Lock()
 	defer s.locks[i].Unlock()
@@ -223,4 +223,10 @@ func (s *streamMetadata) EvictPartitions(partitions []int32) {
 
 		s.locks[i].Unlock()
 	}
+}
+
+func (s *streamMetadata) getStripeIdx(tenant string) int {
+	h := fnv.New32()
+	h.Write([]byte(tenant))
+	return int(h.Sum32() % uint32(len(s.locks)))
 }
