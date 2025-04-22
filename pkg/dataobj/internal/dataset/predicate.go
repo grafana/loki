@@ -1,6 +1,8 @@
 package dataset
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Predicate is an expression used to filter rows in a [Reader].
 type Predicate interface{ isPredicate() }

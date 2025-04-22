@@ -1,0 +1,397 @@
+package dataset
+
+import (
+	"testing"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetPredicateSelectivity(t *testing.T) {
+	tests := []struct {
+		name      string
+		predicate Predicate
+		want      SelectivityScore
+	}{
+		{
+			name: "Equal on low cardinality column should be less selective",
+			predicate: EqualPredicate{
+				Column: (&testColumn{
+					rowCount:    1000,
+					valueCount:  1000,
+					cardinality: 10,
+					min:         0,
+					max:         100,
+				}).ToMemColumn(t),
+				Value: Int64Value(50),
+			},
+			want: SelectivityScore(0.1), // expects ~100 matches out of 1000 rows
+		},
+		{
+			name: "Equal on high cardinality column should be more selective",
+			predicate: EqualPredicate{
+				Column: (&testColumn{
+					rowCount:    1000,
+					valueCount:  1000,
+					cardinality: 1000,
+					min:         0,
+					max:         1000,
+				}).ToMemColumn(t),
+				Value: Int64Value(50),
+			},
+			want: SelectivityScore(0.001), // expects ~1 matches out of 1000 rows
+		},
+		{
+			name: "Equal with sparse data should have higher selectivity",
+			predicate: EqualPredicate{
+				Column: (&testColumn{
+					rowCount:    1000,
+					valueCount:  50,
+					cardinality: 10, // 5 matches out of 50 non-null values
+					min:         0,
+					max:         100,
+				}).ToMemColumn(t),
+				Value: Int64Value(50),
+			},
+			want: SelectivityScore(0.005),
+		},
+		{
+			name: "Equal with out of range value should have zero selectivity",
+			predicate: EqualPredicate{
+				Column: (&testColumn{
+					min: 0,
+					max: 50,
+				}).ToMemColumn(t),
+				Value: Int64Value(100),
+			},
+			want: SelectivityScore(0.0),
+		},
+		{
+			name: "GreaterThan selectivity using min/max range",
+			predicate: GreaterThanPredicate{Column: (&testColumn{
+				min: 0,
+				max: 100,
+			}).ToMemColumn(t),
+				Value: Int64Value(70),
+			},
+			want: SelectivityScore(0.3),
+		},
+		{
+			name: "GreaterThan with operand greater than max value should have zero selectivity",
+			predicate: GreaterThanPredicate{Column: (&testColumn{
+				min: 0,
+				max: 50,
+			}).ToMemColumn(t),
+				Value: Int64Value(51),
+			},
+			want: SelectivityScore(0.0),
+		},
+		{
+			name: "GreaterThan with operand less than min value should match all rows",
+			predicate: GreaterThanPredicate{Column: (&testColumn{
+				min: 10,
+				max: 50,
+			}).ToMemColumn(t),
+				Value: Int64Value(0),
+			},
+			want: SelectivityScore(1.0),
+		},
+		{
+			name: "LessThan selectivity using min/max range",
+			predicate: LessThanPredicate{Column: (&testColumn{
+				min: 0,
+				max: 100,
+			}).ToMemColumn(t),
+				Value: Int64Value(70),
+			},
+			want: SelectivityScore(0.7),
+		},
+		{
+			name: "LessThan with operand less than min value should have zero selectivity",
+			predicate: LessThanPredicate{Column: (&testColumn{
+				min: 20,
+				max: 50,
+			}).ToMemColumn(t),
+				Value: Int64Value(10),
+			},
+			want: SelectivityScore(0.0),
+		},
+		{
+			name: "LessThan with operand greater than max value should match all rows",
+			predicate: LessThanPredicate{Column: (&testColumn{
+				min: 0,
+				max: 50,
+			}).ToMemColumn(t),
+				Value: Int64Value(60),
+			},
+			want: SelectivityScore(1.0),
+		},
+		{
+			name: "Not should invert the selectivity",
+			predicate: NotPredicate{
+				Inner: EqualPredicate{
+					Column: (&testColumn{
+						rowCount:    1000,
+						valueCount:  1000,
+						cardinality: 10, // 100 matches out of 1000 rows
+						min:         0,
+						max:         1000,
+					}).ToMemColumn(t),
+					Value: Int64Value(50),
+				},
+			},
+			want: SelectivityScore(0.9), // 1 - 0.1
+		},
+		{
+			name: "In should add up selectivity for valid values",
+			predicate: InPredicate{
+				Column: (&testColumn{
+					rowCount:    1000,
+					valueCount:  1000,
+					cardinality: 10, // 100 matches out of 1000 rows
+					min:         25,
+					max:         75,
+				}).ToMemColumn(t),
+				Values: []Value{Int64Value(20), Int64Value(50), Int64Value(60), Int64Value(80)}, // 2 values in range. ~200 matching rows
+			},
+			want: SelectivityScore(0.2), // 0.1 + 0.1
+		},
+		{
+			name: "And should take the minimum selectivity of the two predicates",
+			predicate: AndPredicate{
+				Left: EqualPredicate{
+					Column: (&testColumn{
+						rowCount:    1000,
+						valueCount:  1000,
+						cardinality: 10, // 100 matches out of 1000 rows
+						min:         0,
+						max:         1000,
+					}).ToMemColumn(t),
+					Value: Int64Value(50),
+				},
+				Right: EqualPredicate{
+					Column: (&testColumn{
+						rowCount:    1000,
+						valueCount:  1000,
+						cardinality: 20, // 50 matches out of 1000 rows
+						min:         0,
+						max:         1000,
+					}).ToMemColumn(t),
+					Value: Int64Value(50),
+				},
+			},
+			want: SelectivityScore(0.05),
+		},
+		{
+			name: "Or should add up selectivity for valid values",
+			predicate: OrPredicate{
+				Left: EqualPredicate{
+					Column: (&testColumn{
+						rowCount:    1000,
+						valueCount:  1000,
+						cardinality: 10, // 100 matches out of 1000 rows
+						min:         0,
+						max:         1000,
+					}).ToMemColumn(t),
+					Value: Int64Value(50),
+				},
+				Right: EqualPredicate{
+					Column: (&testColumn{
+						rowCount:    1000,
+						valueCount:  1000,
+						cardinality: 20, // 50 matches out of 1000 rows
+						min:         0,
+						max:         1000,
+					}).ToMemColumn(t),
+					Value: Int64Value(50),
+				},
+			},
+			want: SelectivityScore(0.15),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getPredicateSelectivity(tt.predicate)
+			require.InDelta(t, float64(got), float64(tt.want), 1e-10)
+		})
+	}
+}
+
+func TestRowEvaluationCost(t *testing.T) {
+	uniqueColumn := (&testColumn{
+		size: 111,
+	}).ToMemColumn(t)
+
+	tests := []struct {
+		name      string
+		predicate Predicate
+		want      int64
+	}{
+		{
+			name: "Cost of a single column",
+			predicate: EqualPredicate{
+				Column: (&testColumn{
+					size: 100,
+				}).ToMemColumn(t),
+			},
+			want: 100,
+		},
+		{
+			name: "Cost of reading multiple columns",
+			predicate: AndPredicate{
+				Left: EqualPredicate{
+					Column: (&testColumn{
+						size: 100,
+					}).ToMemColumn(t),
+				},
+				Right: OrPredicate{
+					Left: EqualPredicate{
+						Column: (&testColumn{
+							size: 25,
+						}).ToMemColumn(t),
+					},
+					Right: EqualPredicate{
+						Column: (&testColumn{
+							size: 13,
+						}).ToMemColumn(t),
+					},
+				},
+			},
+			want: 100 + 25 + 13,
+		},
+		{
+			name: "Cost of reading multiple columns with one repeated column",
+			predicate: OrPredicate{
+				Left: EqualPredicate{
+					Column: (&testColumn{
+						size: 100,
+					}).ToMemColumn(t),
+				},
+				Right: AndPredicate{
+					Left: EqualPredicate{
+						Column: uniqueColumn,
+					},
+					Right: EqualPredicate{
+						Column: uniqueColumn,
+					},
+				},
+			},
+			want: 100 + 111,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getRowEvaluationCost(tt.predicate)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestOrderPredicates(t *testing.T) {
+	equalCol1 := (&testColumn{
+		rowCount:    1000,
+		valueCount:  1000,
+		cardinality: 10,
+		size:        128,
+		min:         0,
+		max:         100,
+	}).ToMemColumn(t)
+
+	equalCol2 := (&testColumn{
+		rowCount:    1000,
+		valueCount:  1000,
+		cardinality: 10,
+		size:        1024,
+		min:         0,
+		max:         100,
+	}).ToMemColumn(t)
+
+	rangeCol := (&testColumn{
+		rowCount:   1000,
+		valueCount: 1000,
+		size:       128,
+		min:        0,
+		max:        100,
+	}).ToMemColumn(t)
+
+	// Pre-define all predicates
+	equalPred1 := EqualPredicate{Column: equalCol1, Value: Int64Value(50)}      // selectivity 0.1, cost 128
+	equalPred2 := EqualPredicate{Column: equalCol2, Value: Int64Value(50)}      // selectivity 0.1, cost 1024
+	rangePred := GreaterThanPredicate{Column: rangeCol, Value: Int64Value(50)}  // selectivity 0.5, cost 128
+	zeroSelectPred := EqualPredicate{Column: equalCol1, Value: Int64Value(200)} // selectivity 0.0
+	andPred := AndPredicate{
+		Left:  equalPred1,
+		Right: equalPred2,
+	} // selectivity 0.1, cost 1152
+
+	tests := []struct {
+		name       string
+		predicates []Predicate
+		want       []Predicate
+	}{
+		{
+			name:       "Order by selectivity - equality before range",
+			predicates: []Predicate{rangePred, equalPred1},
+			want:       []Predicate{equalPred1, rangePred},
+		},
+		{
+			name:       "Order by cost when selectivity is similar",
+			predicates: []Predicate{equalPred2, equalPred1},
+			want:       []Predicate{equalPred1, equalPred2},
+		},
+		{
+			name:       "Zero selectivity predicates come first",
+			predicates: []Predicate{equalPred1, zeroSelectPred},
+			want:       []Predicate{zeroSelectPred, equalPred1},
+		},
+		{
+			name:       "Order by selectivity - equality before AND",
+			predicates: []Predicate{andPred, equalPred2},
+			want:       []Predicate{equalPred2, andPred},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := OrderPredicates(tt.predicates)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func makeTestInt64Value(t *testing.T, v int64) []byte {
+	t.Helper()
+	b, err := Int64Value(v).MarshalBinary()
+	if err != nil {
+		t.Fatalf("failed to marshal int64 value %d: %v", v, err)
+	}
+	return b
+}
+
+type testColumn struct {
+	name        string
+	rowCount    int
+	valueCount  int
+	cardinality int
+	size        int
+	min         int64
+	max         int64
+}
+
+func (c *testColumn) ToMemColumn(t *testing.T) *MemColumn {
+	return &MemColumn{
+		Info: ColumnInfo{
+			Name:             c.name,
+			RowsCount:        c.rowCount,
+			ValuesCount:      c.valueCount,
+			UncompressedSize: c.size,
+			Statistics: &datasetmd.Statistics{
+				CardinalityCount: uint64(c.cardinality),
+				MinValue:         makeTestInt64Value(t, c.min),
+				MaxValue:         makeTestInt64Value(t, c.max),
+			},
+		},
+	}
+}

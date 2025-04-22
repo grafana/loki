@@ -250,7 +250,7 @@ func (m *ColumnInfo) GetValuesCount() uint64 {
 	if m != nil {
 		return m.ValuesCount
 	}
-	return 0
+return 0
 }
 
 // Statistics about a column or a page. All statistics are optional and are
