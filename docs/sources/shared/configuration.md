@@ -110,6 +110,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [server: <server>]
 
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
   [node_name: <string> | default = "<hostname>"]
@@ -1214,9 +1218,9 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the stream usage cache.
-  # CLI flag: -ingest-limits-frontend.partition-id-cache-ttl
-  [partition_id_cache_ttl: <duration> | default = 1m]
+  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
+  [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
