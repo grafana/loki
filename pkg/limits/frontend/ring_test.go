@@ -3,7 +3,6 @@ package frontend
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -15,13 +14,21 @@ import (
 )
 
 func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
-	const numPartitions = 2 // Using 2 partitions for simplicity in tests
 	tests := []struct {
-		name                              string
-		getStreamUsageRequest             GetStreamUsageRequest
+		name                  string
+		getStreamUsageRequest GetStreamUsageRequest
+		// Instances contains the complete set of instances that should be mocked.
+		// For example, if a test case is expected to make RPC calls to one instance,
+		// then just one InstanceDesc is required.
+		instances     []ring.InstanceDesc
+		numPartitions int
+		// The size of the following slices must match len(instances), where each
+		// value contains the expected request/response for the instance at the
+		// same index in the instances slice. If a request/response is not expected,
+		// the value can be set to nil.
 		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
 		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
-		expectedStreamUsageRequest        []*logproto.GetStreamUsageRequest
+		expectedStreamUsageRequests       []*logproto.GetStreamUsageRequest
 		getStreamUsageResponses           []*logproto.GetStreamUsageResponse
 		expectedResponses                 []GetStreamUsageResponse
 	}{{
@@ -31,6 +38,12 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			Tenant:       "test",
 			StreamHashes: []uint64{},
 		},
+		instances:                         []ring.InstanceDesc{{Addr: "instance-0"}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{nil},
+		getAssignedPartitionsResponses:    []*logproto.GetAssignedPartitionsResponse{nil},
+		expectedStreamUsageRequests:       []*logproto.GetStreamUsageRequest{nil},
+		getStreamUsageResponses:           []*logproto.GetStreamUsageResponse{nil},
 	}, {
 		// When there is one stream, and one instance, the stream usage for that
 		// stream should be queried from that instance.
@@ -39,13 +52,17 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			Tenant:       "test",
 			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
 		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-0",
+		}},
+		numPartitions:                     1,
 		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
+				0: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
 		}},
@@ -71,6 +88,12 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			Tenant:       "test",
 			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
 		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-0",
+		}, {
+			Addr: "instance-1",
+		}},
+		numPartitions:                     2,
 		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
@@ -81,11 +104,11 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{}, {
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
 		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}, {
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
 			Tenant:        "test",
 			ActiveStreams: 1,
 			Rate:          10,
@@ -107,6 +130,12 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			Tenant:       "test",
 			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
 		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-0",
+		}, {
+			Addr: "instance-1",
+		}},
+		numPartitions:                     2,
 		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
@@ -117,11 +146,11 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{}, {
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
 			StreamHashes: []uint64{1},
 		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}, {
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
 			Tenant:        "test",
 			ActiveStreams: 1,
 			Rate:          10,
@@ -138,33 +167,32 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Set up the mock clients, one for each pair of mock RPC responses.
-			clients := make([]logproto.IngestLimitsClient, len(test.expectedAssignedPartitionsRequest))
-			instances := make([]ring.InstanceDesc, len(clients))
-
-			// Set up the mock clients for the assigned partitions requests.
-			for i := range test.expectedAssignedPartitionsRequest {
-				clients[i] = &mockIngestLimitsClient{
-					t:                                 t,
-					expectedAssignedPartitionsRequest: test.expectedAssignedPartitionsRequest[i],
-					expectedStreamUsageRequest:        test.expectedStreamUsageRequest[i],
-					getAssignedPartitionsResponse:     test.getAssignedPartitionsResponses[i],
-					getStreamUsageResponse:            test.getStreamUsageResponses[i],
+			// Set up the mock clients, one for each set of mock RPC responses.
+			mockClients := make([]*mockIngestLimitsClient, len(test.instances))
+			for i := 0; i < len(test.instances); i++ {
+				// These test cases assume one request/response per instance.
+				expectedNumAssignedPartitionsRequests := 0
+				if test.expectedAssignedPartitionsRequest[i] != nil {
+					expectedNumAssignedPartitionsRequests = 1
 				}
-			}
-
-			// Set up the instances for the ring.
-			for i := range len(clients) {
-				instances[i] = ring.InstanceDesc{
-					Addr: fmt.Sprintf("instance-%d", i),
+				expectedNumStreamUsageRequests := 0
+				if test.expectedStreamUsageRequests[i] != nil {
+					expectedNumStreamUsageRequests = 1
 				}
+				mockClients[i] = &mockIngestLimitsClient{
+					t:                                     t,
+					expectedAssignedPartitionsRequest:     test.expectedAssignedPartitionsRequest[i],
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					expectedStreamUsageRequest:            test.expectedStreamUsageRequests[i],
+					getStreamUsageResponse:                test.getStreamUsageResponses[i],
+					expectedNumAssignedPartitionsRequests: expectedNumAssignedPartitionsRequests,
+					expectedNumStreamUsageRequests:        expectedNumStreamUsageRequests,
+				}
+				t.Cleanup(mockClients[i].AssertExpectedNumRequests)
 			}
-
-			// Set up the mocked ring and client pool for the tests.
-			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
+			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
-
-			g := NewRingStreamUsageGatherer(readRing, clientPool, numPartitions, cache, log.NewNopLogger())
+			g := NewRingStreamUsageGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -179,111 +207,128 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 
 func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 	tests := []struct {
-		name                              string
-		instances                         []ring.InstanceDesc
-		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
-		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
-		getAssignedPartitionsResponseErrs []error
-		expected                          map[int32]string
+		name string
+		// Instances contains the complete set of instances that should be mocked.
+		// For example, if a test case is expected to make RPC calls to one instance,
+		// then just one InstanceDesc is required.
+		instances []ring.InstanceDesc
+		// The size of the following slices must match len(instances), where each
+		// value contains the expected request/response for the instance at the
+		// same index in the instances slice. If a request/response is not expected,
+		// the value can be set to nil.
+		expectedAssignedPartitionsRequests []*logproto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses     []*logproto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs  []error
+		// The expected result.
+		expected map[int32]string
 	}{{
 		name: "single instance returns its partitions",
 		instances: []ring.InstanceDesc{{
-			Addr: "instance-1",
+			Addr: "instance-0",
 		}},
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
+				0: time.Now().UnixNano(),
 			},
 		}},
 		getAssignedPartitionsResponseErrs: []error{nil},
 		expected: map[int32]string{
-			1: "instance-1",
+			0: "instance-0",
 		},
 	}, {
 		name: "two instances return their separate partitions",
 		instances: []ring.InstanceDesc{{
-			Addr: "instance-1",
+			Addr: "instance-0",
 		}, {
-			Addr: "instance-2",
+			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
+				0: time.Now().UnixNano(),
 			},
 		}, {
 			AssignedPartitions: map[int32]int64{
-				2: time.Now().UnixNano(),
+				1: time.Now().UnixNano(),
 			},
 		}},
 		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expected: map[int32]string{
+			0: "instance-0",
 			1: "instance-1",
-			2: "instance-2",
 		},
 	}, {
 		name: "two instances claim the same partition, latest timestamp wins",
 		instances: []ring.InstanceDesc{{
-			Addr: "instance-1",
+			Addr: "instance-0",
 		}, {
-			Addr: "instance-2",
+			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().Add(-time.Second).UnixNano(),
+				0: time.Now().Add(-time.Second).UnixNano(),
 			},
 		}, {
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
+				0: time.Now().UnixNano(),
 			},
 		}},
 		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expected: map[int32]string{
-			1: "instance-2",
+			0: "instance-1",
 		},
 	}, {
 		// This test asserts that even when one instance returns an error,
 		// we can still get the assigned partitions for all remaining instances.
 		name: "two instances, one returns error",
 		instances: []ring.InstanceDesc{{
-			Addr: "instance-1",
+			Addr: "instance-0",
 		}, {
-			Addr: "instance-2",
+			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
 		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
-				1: time.Now().Add(-time.Second).UnixNano(),
+				0: time.Now().Add(-time.Second).UnixNano(),
 			},
-		}, {nil}},
+		}, {
+			nil,
+		}},
 		getAssignedPartitionsResponseErrs: []error{
 			nil,
 			errors.New("an unexpected error occurred"),
 		},
 		expected: map[int32]string{
-			1: "instance-1",
+			0: "instance-0",
 		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up the mock clients, one for each pair of mock RPC responses.
-			clients := make([]logproto.IngestLimitsClient, len(test.expectedAssignedPartitionsRequest))
-			for i := range test.expectedAssignedPartitionsRequest {
-				clients[i] = &mockIngestLimitsClient{
-					t:                                 t,
-					expectedAssignedPartitionsRequest: test.expectedAssignedPartitionsRequest[i],
-					getAssignedPartitionsResponse:     test.getAssignedPartitionsResponses[i],
-					getAssignedPartitionsResponseErr:  test.getAssignedPartitionsResponseErrs[i],
+			mockClients := make([]*mockIngestLimitsClient, len(test.instances))
+			for i := range test.instances {
+				// These test cases assume one request/response per instance.
+				expectedNumAssignedPartitionsRequests := 0
+				if test.expectedAssignedPartitionsRequests[i] != nil {
+					expectedNumAssignedPartitionsRequests = 1
 				}
+				mockClients[i] = &mockIngestLimitsClient{
+					t:                                     t,
+					expectedAssignedPartitionsRequest:     test.expectedAssignedPartitionsRequests[i],
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
+					expectedNumAssignedPartitionsRequests: expectedNumAssignedPartitionsRequests,
+				}
+				t.Cleanup(mockClients[i].AssertExpectedNumRequests)
 			}
 			// Set up the mocked ring and client pool for the tests.
-			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
+			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
 
-			g := NewRingStreamUsageGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+			g := NewRingStreamUsageGatherer(readRing, clientPool, 1, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -298,29 +343,31 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 
 func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *testing.T) {
 	// Set up the mock clients, one for each pair of mock RPC responses.
+	client0 := mockIngestLimitsClient{
+		t: t,
+		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		},
+		expectedNumAssignedPartitionsRequests: 2,
+	}
+	t.Cleanup(client0.AssertExpectedNumRequests)
 	client1 := mockIngestLimitsClient{
-		t:                                 t,
-		expectedAssignedPartitionsRequest: &logproto.GetAssignedPartitionsRequest{},
+		t: t,
 		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
 		},
+		expectedNumAssignedPartitionsRequests: 2,
 	}
-	client2 := mockIngestLimitsClient{
-		t:                                 t,
-		expectedAssignedPartitionsRequest: &logproto.GetAssignedPartitionsRequest{},
-		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
-			AssignedPartitions: map[int32]int64{
-				2: time.Now().UnixNano(),
-			},
-		},
-	}
-	clients := []logproto.IngestLimitsClient{&client1, &client2}
-	instances := []ring.InstanceDesc{{Addr: "instance-1"}, {Addr: "instance-2"}}
+	t.Cleanup(client1.AssertExpectedNumRequests)
+	mockClients := []*mockIngestLimitsClient{&client0, &client1}
+	instances := []ring.InstanceDesc{{Addr: "instance-0"}, {Addr: "instance-1"}}
 
 	// Set up the mocked ring and client pool for the tests.
-	readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
+	readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, instances)
 
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
@@ -330,27 +377,27 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *tes
 	// Set a maximum upper bound on the test execution time.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	require.Equal(t, 0, client1.assignedPartitionsCallCount)
-	require.Equal(t, 0, client2.assignedPartitionsCallCount)
+	require.Equal(t, 0, client0.numAssignedPartitionsRequests)
+	require.Equal(t, 0, client1.numAssignedPartitionsRequests)
 
 	expected := map[int32]string{
+		0: "instance-0",
 		1: "instance-1",
-		2: "instance-2",
 	}
 
 	// The first call should be a cache miss.
 	actual, err := g.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
-	require.Equal(t, 1, client1.assignedPartitionsCallCount)
-	require.Equal(t, 1, client2.assignedPartitionsCallCount)
+	require.Equal(t, 1, client0.numAssignedPartitionsRequests)
+	require.Equal(t, 1, client1.numAssignedPartitionsRequests)
 
 	// The second call should be a cache hit.
 	actual, err = g.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
-	require.Equal(t, 1, client1.assignedPartitionsCallCount)
-	require.Equal(t, 1, client2.assignedPartitionsCallCount)
+	require.Equal(t, 1, client0.numAssignedPartitionsRequests)
+	require.Equal(t, 1, client1.numAssignedPartitionsRequests)
 
 	// Expire the cache, it should be a cache miss.
 	cache.Reset()
@@ -359,6 +406,6 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_CacheHitsAndMisses(t *tes
 	actual, err = g.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
-	require.Equal(t, 2, client1.assignedPartitionsCallCount)
-	require.Equal(t, 2, client2.assignedPartitionsCallCount)
+	require.Equal(t, 2, client0.numAssignedPartitionsRequests)
+	require.Equal(t, 2, client1.numAssignedPartitionsRequests)
 }
