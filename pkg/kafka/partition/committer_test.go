@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -25,7 +24,7 @@ func TestPartitionCommitter(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
 	kafkaCfg.ConsumerGroup = "test-group"
 
-	client, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
+	client, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Create a Kafka admin client

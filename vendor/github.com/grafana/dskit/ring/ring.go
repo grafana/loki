@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/internal/slices"
 	"github.com/grafana/dskit/kv"
 	shardUtil "github.com/grafana/dskit/ring/shard"
 	"github.com/grafana/dskit/services"
@@ -535,13 +535,14 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		// to have low single-digit number of hosts.
 		distinctHosts = bufHosts[:0]
 
-		hostsPerZone       = make(map[string]int)
-		targetHostsPerZone = max(1, replicationFactor/maxZones)
+		examinedHostsPerZone = make(map[string]int)
+		foundHostsPerZone    = make(map[string]int)
+		targetHostsPerZone   = max(1, replicationFactor/maxZones)
 	)
 
 	for i := start; len(distinctHosts) < min(maxInstances, n) && iterations < len(r.ringTokens); i++ {
-		// If we have the target number of instances in all zones, stop looking.
-		if r.cfg.ZoneAwarenessEnabled && haveTargetHostsInAllZones(hostsPerZone, targetHostsPerZone, maxZones) {
+		// If we have the target number of instances or have looked at all instances in each zone, stop looking
+		if r.cfg.ZoneAwarenessEnabled && r.canStopLooking(foundHostsPerZone, examinedHostsPerZone, targetHostsPerZone) {
 			break
 		}
 
@@ -561,11 +562,16 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 			continue
 		}
 
-		// If we already have the required number of instances for this zone, skip.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
-			if hostsPerZone[info.Zone] >= targetHostsPerZone {
+			// If we already have the required number of instances for this zone, skip.
+			if foundHostsPerZone[info.Zone] >= targetHostsPerZone {
 				continue
 			}
+
+			// Keep track of the number of hosts we have examined in each zone. Once we've looked
+			// at every host in a zone, we can stop looking at each token: we won't find any more
+			// hosts to add to the replication set.
+			examinedHostsPerZone[info.Zone]++
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
@@ -578,7 +584,7 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only increment the count for this zone if we are not going to
 			// extend, as we want to extend the instance in the same AZ.
-			hostsPerZone[info.Zone]++
+			foundHostsPerZone[info.Zone]++
 		}
 
 		include, keepGoing := true, true
@@ -595,13 +601,13 @@ func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []Instance
 	return instances, nil
 }
 
-func haveTargetHostsInAllZones(hostsByZone map[string]int, targetHostsPerZone int, maxZones int) bool {
-	if len(hostsByZone) != maxZones {
-		return false
-	}
-
-	for _, count := range hostsByZone {
-		if count < targetHostsPerZone {
+// canStopLooking returns true if we have enough hosts for the replication factor
+// or if we have looked at all hosts, for all zones. This method assumes that the
+// lock for ring state is held.
+func (r *Ring) canStopLooking(foundPerZone map[string]int, examinedPerZone map[string]int, targetPerZone int) bool {
+	for zone, total := range r.instancesCountPerZone {
+		zoneOk := foundPerZone[zone] >= targetPerZone || examinedPerZone[zone] >= total
+		if !zoneOk {
 			return false
 		}
 	}

@@ -88,10 +88,20 @@ type Row struct {
 	Values []Value // Values for the row, one per [Column].
 }
 
+// Size returns the size of all values in the row.
 func (r Row) Size() int64 {
 	var size int64
 	for _, v := range r.Values {
 		size += int64(v.Size())
+	}
+	return size
+}
+
+// SizeOfColumns returns the size of values in the row for the given column indices.
+func (r Row) SizeOfColumns(idxs []int) int64 {
+	var size int64
+	for _, idx := range idxs {
+		size += int64(r.Values[idx].Size())
 	}
 	return size
 }

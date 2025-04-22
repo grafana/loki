@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -58,7 +58,8 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		var assignedPartitions sync.Map
 		var partitionsLock sync.Mutex
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
+		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
+			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				partitionsLock.Lock()
@@ -225,7 +226,8 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 			Topic:   "test-topic",
 		}
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
+		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
+			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])
