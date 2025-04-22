@@ -1,6 +1,9 @@
-# Chroma — A general purpose syntax highlighter in pure Go
+![Chroma](chroma.jpg)
+
+# A general purpose syntax highlighter in pure Go
 
 [![Golang Documentation](https://godoc.org/github.com/alecthomas/chroma?status.svg)](https://godoc.org/github.com/alecthomas/chroma) [![CI](https://github.com/alecthomas/chroma/actions/workflows/ci.yml/badge.svg)](https://github.com/alecthomas/chroma/actions/workflows/ci.yml) [![Slack chat](https://img.shields.io/static/v1?logo=slack&style=flat&label=slack&color=green&message=gophers)](https://invite.slack.golangbridge.org/)
+
 
 Chroma takes source code and other structured text and converts it into syntax
 highlighted HTML, ANSI-coloured text, etc.
@@ -44,14 +47,14 @@ translators for Pygments lexers and styles.
 |   I    | Idris, Igor, INI, Io, ISCdhcpd                                                                                                                                                                                                                      |
 |   J    | J, Java, JavaScript, JSON, Jsonnet, Julia, Jungle                                                                                                                                                                                                   |
 |   K    | Kotlin                                                                                                                                                                                                                                              |
-|   L    | Lighttpd configuration file, LLVM, Lua                                                                                                                                                                                                              |
-|   M    | Makefile, Mako, markdown, Mason, Materialize SQL dialect, Mathematica, Matlab, MCFunction, Meson, Metal, MiniZinc, MLIR, Modula-2, Mojo, MonkeyC, MorrowindScript, Myghty, MySQL                                                                          |
+|   L    | Lean, Lighttpd configuration file, LLVM, Lua                                                                                                                                                                                                        |
+|   M    | Makefile, Mako, markdown, Mason, Materialize SQL dialect, Mathematica, Matlab, MCFunction, Meson, Metal, MiniZinc, MLIR, Modula-2, Mojo, MonkeyC, MorrowindScript, Myghty, MySQL                                                                    |
 |   N    | NASM, Natural, Newspeak, Nginx configuration file, Nim, Nix, NSIS                                                                                                                                                                                   |
 |   O    | Objective-C, OCaml, Octave, Odin, OnesEnterprise, OpenEdge ABL, OpenSCAD, Org Mode                                                                                                                                                                  |
 |   P    | PacmanConf, Perl, PHP, PHTML, Pig, PkgConfig, PL/pgSQL, plaintext, Plutus Core, Pony, PostgreSQL SQL dialect, PostScript, POVRay, PowerQuery, PowerShell, Prolog, PromQL, Promela, properties, Protocol Buffer, PRQL, PSL, Puppet, Python, Python 2 |
 |   Q    | QBasic, QML                                                                                                                                                                                                                                         |
 |   R    | R, Racket, Ragel, Raku, react, ReasonML, reg, Rego, reStructuredText, Rexx, RPMSpec, Ruby, Rust                                                                                                                                                     |
-|   S    | SAS, Sass, Scala, Scheme, Scilab, SCSS, Sed, Sieve, Smali, Smalltalk, Smarty, SNBT, Snobol, Solidity, SourcePawn, SPARQL, SQL, SquidConf, Standard ML, stas, Stylus, Svelte, Swift, SYSTEMD, systemverilog                                                |
+|   S    | SAS, Sass, Scala, Scheme, Scilab, SCSS, Sed, Sieve, Smali, Smalltalk, Smarty, SNBT, Snobol, Solidity, SourcePawn, SPARQL, SQL, SquidConf, Standard ML, stas, Stylus, Svelte, Swift, SYSTEMD, systemverilog                                          |
 |   T    | TableGen, Tal, TASM, Tcl, Tcsh, Termcap, Terminfo, Terraform, TeX, Thrift, TOML, TradingView, Transact-SQL, Turing, Turtle, Twig, TypeScript, TypoScript, TypoScriptCssData, TypoScriptHtmlData, Typst                                              |
 |   V    | V, V shell, Vala, VB.net, verilog, VHDL, VHS, VimL, vue                                                                                                                                                                                             |
 |   W    | WDTE, WebGPU Shading Language, Whiley                                                                                                                                                                                                               |
@@ -210,8 +213,7 @@ python3 _tools/pygments2chroma_xml.py \
   > lexers/embedded/kotlin.xml
 ```
 
-See notes in [pygments-lexers.txt](https://github.com/alecthomas/chroma/blob/master/pygments-lexers.txt)
-for a list of lexers, and notes on some of the issues importing them.
+A list of all lexers available in Pygments can be found in [pygments-lexers.txt](https://github.com/alecthomas/chroma/blob/master/pygments-lexers.txt).
 
 ### Formatters
 
@@ -266,6 +268,13 @@ When invoked as `.lessfilter`, the `--fail` flag is automatically turned
 on under the hood for easy integration with [lesspipe shipping with
 Debian and derivatives](https://manpages.debian.org/lesspipe#USER_DEFINED_FILTERS);
 for that setup the `chroma` executable can be just symlinked to `~/.lessfilter`.
+
+## Projects using Chroma
+
+* [`moar`](https://github.com/walles/moar) is a full-blown pager that colorizes
+  its input using Chroma
+* [Hugo](https://gohugo.io/) is a static site generator that [uses Chroma for syntax
+  highlighting code examples](https://gohugo.io/content-management/syntax-highlighting/)
 
 ## Testing lexers
 
