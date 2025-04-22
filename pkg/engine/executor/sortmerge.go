@@ -63,6 +63,10 @@ type row struct {
 	iterIdx int
 }
 
+// HeapSortMerge is a k-way merge of multiple inputs using a heap to calculate the smallest/largest element of the current batches of the inputs.
+// This means it requires the input batches to be sorted in the same order (ASC/DESC) as the SortMerge operator.
+// The sort order is defined by the direction of the query, which is either FORWARD or BACKWARDS,
+// which is then applies to the SortMerge as well as to the DataObjScan during query planning.
 type HeapSortMerge struct {
 	inputs      []Pipeline
 	state       state
