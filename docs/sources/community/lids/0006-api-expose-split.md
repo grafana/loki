@@ -27,7 +27,7 @@ Loki has an internal logic to split and shard log and metric queries by time int
 accessible outside of the code base. This proposal intends to create an API for clients to split queries by exposing the
 internal split logic.
 
-A split query is devided by time. The results of a split query can be concatenated in order to form the final
+A split query is divided by time. The results of a split query can be concatenated in order to form the final
 result.
 
 A sharded query is devided by label values. The results of a sharded cannot be simply concatenated but require some
