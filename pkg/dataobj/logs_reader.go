@@ -42,8 +42,8 @@ type LogsReader struct {
 	idx   int
 	ready bool
 
-	matchIDs  map[int64]struct{}
-	predicate LogsPredicate
+	matchIDs   map[int64]struct{}
+	predicates []LogsPredicate
 
 	buf    []dataset.Row
 	record logs.Record
@@ -84,17 +84,17 @@ func (r *LogsReader) MatchStreams(ids iter.Seq[int64]) error {
 	return nil
 }
 
-// SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
+// SetPredicate sets the predicates to use for filtering logs. [LogsReader.Read]
 // will only return logs for which the predicate passes.
 //
-// A predicate may only be set before reading begins or after a call to
+// Predicates may only be set before reading begins or after a call to
 // [LogsReader.Reset].
-func (r *LogsReader) SetPredicate(p LogsPredicate) error {
+func (r *LogsReader) SetPredicates(p []LogsPredicate) error {
 	if r.ready {
 		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
-	r.predicate = p
+	r.predicates = p
 	return nil
 }
 
@@ -181,8 +181,9 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs); p != nil {
 		predicates = append(predicates, p)
 	}
-	if r.predicate != nil {
-		if p := translateLogsPredicate(r.predicate, columns, columnDescs); p != nil {
+
+	for _, predicate := range r.predicates {
+		if p := translateLogsPredicate(predicate, columns, columnDescs); p != nil {
 			predicates = append(predicates, p)
 		}
 	}
@@ -260,7 +261,7 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	r.ready = false
 
 	clear(r.matchIDs)
-	r.predicate = nil
+	r.predicates = nil
 
 	r.columns = nil
 	r.columnDesc = nil
