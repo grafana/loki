@@ -168,6 +168,18 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 		"s3.il-central-1.amazonaws.com",
 		"s3.dualstack.il-central-1.amazonaws.com",
 	},
+	"ap-southeast-5": {
+		"s3.ap-southeast-5.amazonaws.com",
+		"s3.dualstack.ap-southeast-5.amazonaws.com",
+	},
+	"ap-southeast-7": {
+		"s3.ap-southeast-7.amazonaws.com",
+		"s3.dualstack.ap-southeast-7.amazonaws.com",
+	},
+	"mx-central-1": {
+		"s3.mx-central-1.amazonaws.com",
+		"s3.dualstack.mx-central-1.amazonaws.com",
+	},
 }
 
 // getS3Endpoint get Amazon S3 endpoint based on the bucket location.
