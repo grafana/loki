@@ -30,7 +30,7 @@ internal split logic.
 A split query is divided by time. The results of a split query can be concatenated in order to form the final
 result.
 
-A sharded query is devided by label values. The results of a sharded cannot be simply concatenated but require some
+A sharded query is divided by label values. The results of a sharded cannot always be concatenated but require some
 extra logic to form the final result. Some queries, such as `topk` cannot be sharded at all.
 
 ## Problem Statement
