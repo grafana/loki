@@ -123,7 +123,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			pushTime := time.Now()
 			_, err := kc.pusher.Push(recordCtx, req)
 
-			kc.metrics.pushLatency.Observe(float64(time.Since(pushTime).Seconds()))
+			kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
 
 			if err != nil {
 				level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
