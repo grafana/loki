@@ -24,7 +24,7 @@ type StreamMetadata interface {
 	Usage(tenant string, fn UsageFunc)
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
-	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64, evict bool)
+	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
 
 	// Evict removes all streams that have not been seen for a specific time.
 	Evict(cutoff int64) map[string]int
@@ -103,17 +103,11 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 		s.locks[i].RUnlock()
 	}
 }
-func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64, evict bool) {
+func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
 	i := uint64(partitionID) & uint64(len(s.locks)-1)
 
 	s.locks[i].Lock()
 	defer s.locks[i].Unlock()
-
-	// Partition is unassigned, evict it
-	if evict {
-		delete(s.stripes[i][tenant], partitionID)
-		return
-	}
 
 	// Initialize stripe map if it doesn't exist
 	if s.stripes[i] == nil {

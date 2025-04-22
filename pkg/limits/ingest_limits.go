@@ -358,12 +358,11 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 		totalSize = rec.EntriesSize + rec.StructuredMetadataSize
 	)
 
-	evict := false
 	if assigned := s.partitionManager.Has(partition); !assigned {
-		evict = true
+		return
 	}
 
-	s.metadata.Store(tenant, partition, rec.StreamHash, totalSize, recordTime, bucketStart, rateWindowCutoff, evict)
+	s.metadata.Store(tenant, partition, rec.StreamHash, totalSize, recordTime, bucketStart, rateWindowCutoff)
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(totalSize))
 }

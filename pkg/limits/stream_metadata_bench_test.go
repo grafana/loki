@@ -75,7 +75,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
 				totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff, false)
+				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 			}
 		})
 
@@ -100,7 +100,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
 				totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff, false)
+				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 			}
 		})
 
@@ -128,7 +128,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
 					totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff, false)
+					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 					i++
 				}
 			})
@@ -155,7 +155,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
 					totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff, false)
+					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 					i++
 				}
 			})

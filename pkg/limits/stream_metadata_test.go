@@ -16,7 +16,7 @@ func TestStreamMetadata_All(t *testing.T) {
 	m := NewStreamMetadata(10)
 
 	for i := range 10 {
-		m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+		m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 	}
 
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
@@ -35,7 +35,7 @@ func TestStreamMetadata_All_Concurrent(t *testing.T) {
 
 	for i := range 10 {
 		tenant := fmt.Sprintf("tenant%d", i)
-		m.Store(tenant, 0, uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+		m.Store(tenant, 0, uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 	}
 
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
@@ -65,9 +65,9 @@ func TestStreamMetadata_Usage(t *testing.T) {
 
 	for i := range 10 {
 		if i%2 == 0 {
-			m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+			m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 		} else {
-			m.Store("tenant2", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+			m.Store("tenant2", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 		}
 	}
 
@@ -87,9 +87,9 @@ func TestStreamMetadata_Usage_Concurrent(t *testing.T) {
 
 	for i := range 10 {
 		if i%2 == 0 {
-			m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+			m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 		} else {
-			m.Store("tenant2", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano(), false)
+			m.Store("tenant2", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
 		}
 	}
 
@@ -131,9 +131,6 @@ func TestStreamMetadata_Store(t *testing.T) {
 		partitionID int32
 		lastSeenAt  time.Time
 		record      *logproto.StreamMetadata
-
-		// Actions
-		evict bool
 
 		// Expectations.
 		expected map[string]map[int32][]Stream
@@ -397,65 +394,6 @@ func TestStreamMetadata_Store(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "evict unassigned partition",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32][]Stream{
-					{
-						"tenant1": {
-							0: {
-								{
-									Hash:       123,
-									LastSeenAt: time.Unix(100, 0).UnixNano(),
-									TotalSize:  1000,
-									RateBuckets: []RateBucket{
-										{Timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), Size: 1000},
-									},
-								},
-							},
-						},
-					},
-					{
-						"tenant1": {
-							1: {
-								{
-									Hash:       456,
-									LastSeenAt: time.Unix(200, 0).UnixNano(),
-									TotalSize:  2000,
-									RateBuckets: []RateBucket{
-										{Timestamp: time.Unix(200, 0).Truncate(time.Minute).UnixNano(), Size: 2000},
-									},
-								},
-							},
-						},
-					},
-				},
-				locks: make([]stripeLock, 2),
-			},
-			tenantID:    "tenant1",
-			partitionID: 1,
-			record: &logproto.StreamMetadata{
-				StreamHash:             789,
-				EntriesSize:            2000,
-				StructuredMetadataSize: 1000,
-			},
-			lastSeenAt: time.Unix(100, 0),
-			evict:      true,
-			expected: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: {
-						{
-							Hash:       123,
-							LastSeenAt: time.Unix(100, 0).UnixNano(),
-							TotalSize:  1000,
-							RateBuckets: []RateBucket{
-								{Timestamp: time.Unix(100, 0).Truncate(time.Minute).UnixNano(), Size: 1000},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -464,7 +402,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 			bucketStart := tt.lastSeenAt.Truncate(bucketDuration).UnixNano()
 			bucketCutOff := tt.lastSeenAt.Add(-rateWindow).UnixNano()
 
-			tt.metadata.Store(tt.tenantID, tt.partitionID, tt.record.StreamHash, totalSize, tt.lastSeenAt.UnixNano(), bucketStart, bucketCutOff, tt.evict)
+			tt.metadata.Store(tt.tenantID, tt.partitionID, tt.record.StreamHash, totalSize, tt.lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
 
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {
 				require.Contains(t, tt.expected, tenant)
@@ -508,7 +446,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 			}
 
 			totalSize := record.EntriesSize + record.StructuredMetadataSize
-			m.Store(tenantID, partitionID, record.StreamHash, totalSize, lastSeenAt.UnixNano(), bucketStart, bucketCutOff, false)
+			m.Store(tenantID, partitionID, record.StreamHash, totalSize, lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
 		}(i)
 	}
 	wg.Wait()
@@ -798,7 +736,7 @@ func TestStreamMetadata_EvictPartitions(t *testing.T) {
 	m := NewStreamMetadata(numPartitions)
 
 	for i := range numPartitions {
-		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano(), false)
+		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())
 	}
 
 	m.EvictPartitions([]int32{1, 3, 5, 7, 9})
@@ -816,7 +754,7 @@ func TestStreamMetadata_EvictPartitions_Concurrent(t *testing.T) {
 	m := NewStreamMetadata(numPartitions)
 
 	for i := range numPartitions {
-		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano(), false)
+		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())
 	}
 
 	wg := sync.WaitGroup{}
