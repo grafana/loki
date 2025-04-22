@@ -26,7 +26,7 @@ query_range:
         max_size_mb: 100
 
 limits_config:
-   enable_multi_variant_queries: true
+  enable_multi_variant_queries: true
 
 schema_config:
   configs:
