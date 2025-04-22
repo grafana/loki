@@ -569,6 +569,9 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 	} else {
 		httpMiddleware = append(defaultHTTPMiddleware, cfg.HTTPMiddleware...)
 	}
+	if cfg.ClusterValidation.HTTP.Enabled {
+		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths, cfg.ClusterValidation.HTTP.SoftValidation, logger))
+	}
 
 	return httpMiddleware, nil
 }

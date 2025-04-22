@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"slices"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.
@@ -136,14 +137,13 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	pr.buf = slices.Grow(pr.buf, len(s))
+	pr.buf = slicegrow.GrowToCap(pr.buf, len(s))
 	pr.buf = pr.buf[:len(s)]
-
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
 	for i := range s {
-		s[i].Values = slices.Grow(s[i].Values, len(pr.columns))
+		s[i].Values = slicegrow.GrowToCap(s[i].Values, len(pr.columns))
 		s[i].Values = s[i].Values[:len(pr.columns)]
 	}
 
@@ -224,7 +224,12 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 			columnRead := columnRow - startRow
 			for i := columnRead; i < int64(maxRead); i++ {
-				s[n+int(i)].Values[columnIndex] = Value{}
+				// Reset values to 0 without discarding any memory they are pointing to,
+				// rather than setting it to NULL. This prevents the caller from being able
+				// to distinguish between the zero value and a NULL.
+				if !s[n+int(i)].Values[columnIndex].IsNil() {
+					s[n+int(i)].Values[columnIndex].Zero()
+				}
 			}
 		}
 
@@ -240,7 +245,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 //
 // The resulting slice is len(src).
 func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
-	dst = slices.Grow(dst, len(src))
+	dst = slicegrow.GrowToCap(dst, len(src))
 	dst = dst[:0]
 
 	for _, row := range src {
