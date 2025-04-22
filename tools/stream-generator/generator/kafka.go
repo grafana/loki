@@ -154,12 +154,12 @@ func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Register
 	maxInflightProduceRequests := 20
 
 	// Create the Kafka client
-	kafkaClient, err := client.NewWriterClient(cfg, maxInflightProduceRequests, logger, reg)
+	kafkaClient, err := client.NewWriterClient("stream-generator", cfg, maxInflightProduceRequests, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
 	// Create a producer with 100MB buffer limit
-	producer := client.NewProducer(kafkaClient, cfg.ProducerMaxBufferedBytes, reg)
+	producer := client.NewProducer("stream-generator", kafkaClient, cfg.ProducerMaxBufferedBytes, reg)
 	return producer, nil
 }

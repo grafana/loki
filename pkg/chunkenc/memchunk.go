@@ -1395,12 +1395,12 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:      stats,
-		origBytes:  b,
-		reader:     nil, // will be initialized later
-		pool:       pool,
-		format:     format,
-		symbolizer: symbolizer,
+		stats:                  stats,
+		origBytes:              b,
+		reader:                 nil, // will be initialized later
+		pool:                   pool,
+		format:                 format,
+		symbolizer:             symbolizer,
 		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }

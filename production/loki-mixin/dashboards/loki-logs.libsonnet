@@ -3,12 +3,11 @@ local template = import 'grafonnet/template.libsonnet';
 
 
 (import 'dashboard-utils.libsonnet') {
-
   local containerTemplate =
     template.new(
       'container',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace"}, container)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace"}, container)',
       sort=1,
       multi=true,
     ),
@@ -17,7 +16,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'pod',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", namespace="$namespace", container=~"$container"}, pod)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace", ' + $._config.per_instance_label + '=~"$container"}, pod)',
       sort=1,
       multi=true,
     ),
