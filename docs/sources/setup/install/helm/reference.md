@@ -6159,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.4.3"
+"3.5.0"
 </pre>
 </td>
 		</tr>
