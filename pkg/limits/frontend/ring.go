@@ -2,6 +2,9 @@ package frontend
 
 import (
 	"context"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -21,6 +24,13 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
+var (
+	// lexicoCmp compares two strings lexicographically.
+	lexicoCmp = func(a, b string) int {
+		return strings.Compare(a, b)
+	}
+)
+
 // RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
 // limits instances.
 type RingStreamUsageGatherer struct {
@@ -29,6 +39,7 @@ type RingStreamUsageGatherer struct {
 	pool                    *ring_client.Pool
 	numPartitions           int
 	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	zoneCmp                 func(a, b string) int
 }
 
 // NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
@@ -45,6 +56,7 @@ func NewRingStreamUsageGatherer(
 		pool:                    pool,
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
+		zoneCmp:                 lexicoCmp,
 	}
 }
 
@@ -53,70 +65,129 @@ func (g *RingStreamUsageGatherer) GetStreamUsage(ctx context.Context, r GetStrea
 	if len(r.StreamHashes) == 0 {
 		return nil, nil
 	}
-	return g.forAllBackends(ctx, r)
-}
-
-// TODO(grobinson): Need to rename this to something more accurate.
-func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
+	// Get all healthy instances across all zones.
 	rs, err := g.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
-	return g.forGivenReplicaSet(ctx, rs, r)
-}
-
-func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	partitionConsumers, err := g.getPartitionConsumers(ctx, rs.Instances)
+	// Get the partition consumers for each zone.
+	zonesPartitions, err := g.getZoneAwarePartitionConsumers(ctx, rs.Instances)
 	if err != nil {
 		return nil, err
 	}
+	// In practice, we want zones to be queried in random order to spread
+	// reads. However, in tests we want a deterministic order so test cases
+	// are stable and reproducible. When compared to just iterating over
+	// a map, this allows us to achieve both.
+	zonesToQuery := make([]string, len(zonesPartitions))
+	for zone := range zonesPartitions {
+		zonesToQuery = append(zonesToQuery, zone)
+	}
+	slices.SortFunc(zonesToQuery, g.zoneCmp)
+	// Make a copy of the stream hashes as we will prune this slice each time
+	// we receive the responses from a zone.
+	streamHashesToQuery := make([]uint64, len(r.StreamHashes))
+	copy(streamHashesToQuery, r.StreamHashes)
+	// Query each zone as ordered in zonesToQuery. If a zone answers all
+	// stream hashes, the request is satisifed and there is no need to query
+	// subsequent zones. If a zone answers just a subset of stream hashes
+	// (i.e. the instance that is consuming a partition is unavailable or the
+	// partition that owns one or more stream hashes does not have a consumer)
+	// then query the next zone for the remaining stream hashes. We repeat
+	// this process until all stream hashes have been queried or we have
+	// exhausted all zones.
+	responses := make([]GetStreamUsageResponse, 0)
+	for _, zone := range zonesToQuery {
+		result, streamHashesToDelete, err := g.getStreamUsage(ctx, r.Tenant, streamHashesToQuery, zonesPartitions[zone])
+		if err != nil {
+			continue
+		}
+		responses = append(responses, result...)
+		// Delete the queried stream hashes from the slice of stream hashes
+		// to query. The slice of queried stream hashes must be sorted so we
+		// can use sort.Search to subtract the two slices.
+		slices.Sort(streamHashesToDelete)
+		streamHashesToQuery = slices.DeleteFunc(streamHashesToQuery, func(streamHashToQuery uint64) bool {
+			// see https://pkg.go.dev/sort#Search
+			i := sort.Search(len(streamHashesToDelete), func(i int) bool {
+				return streamHashesToDelete[i] >= streamHashToQuery
+			})
+			return i < len(streamHashesToDelete) && streamHashesToDelete[i] == streamHashToQuery
+		})
+		// All stream hashes have been queried.
+		if len(streamHashesToQuery) == 0 {
+			break
+		}
+	}
+	// Treat remaining stream hashes as unknown streams.
+	if len(streamHashesToQuery) > 0 {
+		responses = append(responses, GetStreamUsageResponse{
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:         "test",
+				UnknownStreams: streamHashesToQuery,
+			},
+		})
+	}
+	return responses, nil
+}
 
+type getStreamUsageResponse struct {
+	addr         string
+	response     *logproto.GetStreamUsageResponse
+	streamHashes []uint64
+}
+
+func (g *RingStreamUsageGatherer) getStreamUsage(ctx context.Context, tenant string, streamHashes []uint64, partitions map[int32]string) ([]GetStreamUsageResponse, []uint64, error) {
 	instancesToQuery := make(map[string][]uint64)
-	for _, hash := range r.StreamHashes {
-		partitionID := int32(hash % uint64(g.numPartitions))
-		addr, ok := partitionConsumers[partitionID]
+	for _, streamHash := range streamHashes {
+		partitionID := int32(streamHash % uint64(g.numPartitions))
+		addr, ok := partitions[partitionID]
 		if !ok {
 			// TODO Replace with a metric for partitions missing owners.
 			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
 			continue
 		}
-		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
+		instancesToQuery[addr] = append(instancesToQuery[addr], streamHash)
 	}
-
+	// Get the stream usage from each instance.
+	responseCh := make(chan getStreamUsageResponse, len(instancesToQuery))
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
-
-	// Query each instance for stream usage
-	i := 0
-	for addr, hashes := range instancesToQuery {
-		j := i
-		i++
+	for addr, streamHashes := range instancesToQuery {
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
-				return err
+				level.Error(g.logger).Log("failed to get client for instance", "instance", addr, "err", err.Error())
+				return nil
 			}
-
 			protoReq := &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: hashes,
+				Tenant:       tenant,
+				StreamHashes: streamHashes,
 			}
-
 			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
 			if err != nil {
-				return err
+				level.Error(g.logger).Log("failed to get stream usage for instance", "instance", addr, "err", err.Error())
+				return nil
 			}
-
-			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
+			responseCh <- getStreamUsageResponse{
+				addr:         addr,
+				response:     resp,
+				streamHashes: streamHashes,
+			}
 			return nil
 		})
 	}
-
-	if err := errg.Wait(); err != nil {
-		return nil, err
+	errg.Wait() //nolint
+	close(responseCh)
+	responses := make([]GetStreamUsageResponse, 0, len(instancesToQuery))
+	queriedStreamHashes := make([]uint64, 0, len(streamHashes))
+	for r := range responseCh {
+		responses = append(responses, GetStreamUsageResponse{
+			Addr:     r.addr,
+			Response: r.response,
+		})
+		queriedStreamHashes = append(queriedStreamHashes, r.streamHashes...)
 	}
-
-	return responses, nil
+	return responses, queriedStreamHashes, nil
 }
 
 type zonePartitionConsumersResult struct {
