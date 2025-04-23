@@ -15,7 +15,7 @@ This sections describes the recommended Memcached configuration to enable cachin
 #### Results cache
 The results cache stores the results for index-stat, instant-metric, label and volume queries and it supports negative caching for log queries. It is sometimes called frontend cache in some configurations. For details of each supported request type please see [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>//get-started/components).
 It's consulted by query-frontends to be used in subsequent queries. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further along to be executed in queriers, then also caches those results.
-To orchestrate all above, the results cache uses a query hash as the key that is computed and stored in the headers.
+To orchestrate all of the above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
 The index lookup cache only supported the legacy BoltDB index storage and is configured to be in-memory by default.
 Since moving to the TSDB indexes the attached disks/persistant volumes are utilised as cache and in-memory index lookup cache is obsolete.
