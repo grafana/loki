@@ -95,7 +95,7 @@ type Config struct {
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WorkingDirectory, "compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
+	f.StringVar(&cfg.WorkingDirectory, "compactor.working-directory", "/var/loki/compactor", "Directory where files can be downloaded for compaction.")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
