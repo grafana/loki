@@ -985,7 +985,7 @@
                "multi": true,
                "name": "pod",
                "options": [ ],
-               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$container\"}, pod)",
+               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"$container\"}, pod)",
                "refresh": 0,
                "regex": "",
                "sort": 1,
