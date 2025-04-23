@@ -11,6 +11,8 @@ compactor common labels
 {{- define "loki.compactorLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: compactor
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
