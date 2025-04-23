@@ -24,7 +24,7 @@ Since moving to the TSDB indexes the attached disks/persistent volumes are utili
 The chunks are cached using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in the Loki ingesters.
 It's consulted by queriers each time a set of `chunkRef`s are calculated to serve the query, before going to storage layer.
 
-Query results are significantly smaller compared to chunks. As the Loki cluster get bigger in ingested volume, results cache can continue to perform whereas chunks cache will need to grow in proportion to demand more memory.
+Query results are significantly smaller compared to chunks. As the Loki cluster gets bigger in ingested volume, the results cache can continue to perform, whereas the chunks cache will need to grow in proportion to demand more memory.
 To be able to support the growing needs of a cluster in 2023 we introduced support for memcached-extstore. Exstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
 Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offfering.
 For more information on how to tune memcached-extstore please consult the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
