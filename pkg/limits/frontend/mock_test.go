@@ -42,13 +42,23 @@ type mockIngestLimitsClient struct {
 	expectedStreamUsageRequest        *logproto.GetStreamUsageRequest
 
 	// The mocked responses.
-	getAssignedPartitionsResponse *logproto.GetAssignedPartitionsResponse
-	getStreamUsageResponse        *logproto.GetStreamUsageResponse
+	getAssignedPartitionsResponse    *logproto.GetAssignedPartitionsResponse
+	getAssignedPartitionsResponseErr error
+	getStreamUsageResponse           *logproto.GetStreamUsageResponse
+	getStreamUsageResponseErr        error
+
+	// The call count.
+	assignedPartitionsCallCount int
+	streamUsageCallCount        int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
 	if expected := m.expectedAssignedPartitionsRequest; expected != nil {
 		require.Equal(m.t, expected, r)
+	}
+	m.assignedPartitionsCallCount++
+	if err := m.getAssignedPartitionsResponseErr; err != nil {
+		return nil, err
 	}
 	return m.getAssignedPartitionsResponse, nil
 }
@@ -56,6 +66,10 @@ func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *log
 func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
 	if expected := m.expectedStreamUsageRequest; expected != nil {
 		require.Equal(m.t, expected, r)
+	}
+	m.streamUsageCallCount++
+	if err := m.getStreamUsageResponseErr; err != nil {
+		return nil, err
 	}
 	return m.getStreamUsageResponse, nil
 }

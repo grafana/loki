@@ -60,14 +60,14 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 	}
 
 	if !allMatch(d.matchers, lbls) {
-		return func(_ time.Time, _ string, _ ...labels.Label) bool {
+		return func(_ time.Time, _ string, _ labels.Labels) bool {
 			return false
 		}, nil
 	}
 
 	// if delete request doesn't have a line filter, just do time based filtering
 	if !d.logSelectorExpr.HasFilter() {
-		return func(ts time.Time, _ string, _ ...labels.Label) bool {
+		return func(ts time.Time, _ string, _ labels.Labels) bool {
 			if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 				return false
 			}
@@ -82,12 +82,12 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 	}
 
 	f := p.ForStream(lbls).ProcessString
-	return func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+	return func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 			return false
 		}
 
-		result, _, skip := f(0, s, structuredMetadata...)
+		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++

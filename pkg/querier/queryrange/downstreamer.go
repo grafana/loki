@@ -223,10 +223,11 @@ func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Matrix, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Series{}
-		x.Metric = make(labels.Labels, 0, len(stream.Labels))
+		lblsBuilder := labels.NewScratchBuilder(len(stream.Labels))
 		for _, l := range stream.Labels {
-			x.Metric = append(x.Metric, labels.Label(l))
+			lblsBuilder.Add(l.Name, l.Value)
 		}
+		x.Metric = lblsBuilder.Labels()
 
 		x.Floats = make([]promql.FPoint, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
@@ -245,10 +246,11 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Vector, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Sample{}
-		x.Metric = make(labels.Labels, 0, len(stream.Labels))
+		lblsBuilder := labels.NewScratchBuilder(len(stream.Labels))
 		for _, l := range stream.Labels {
-			x.Metric = append(x.Metric, labels.Label(l))
+			lblsBuilder.Add(l.Name, l.Value)
 		}
+		x.Metric = lblsBuilder.Labels()
 
 		x.T = stream.Samples[0].TimestampMs
 		x.F = stream.Samples[0].Value

@@ -68,6 +68,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				// Add empty values for retention_hours and policy labels since we don't have
 				// that information for request body too large errors
 				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "").Add(float64(r.ContentLength))
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative content length observed",
+					"tenantID", tenantID,
+					"contentLength", r.ContentLength)
 			}
 			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
 			return

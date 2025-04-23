@@ -155,7 +155,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.89"
+	libraryVersion = "v7.0.90"
 )
 
 // User Agent should always following the below style.
@@ -660,13 +660,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(crc.Sum(nil)))
 	}
 
-	// Create cancel context to control 'newRetryTimer' go routine.
-	retryCtx, cancel := context.WithCancel(ctx)
-
-	// Indicate to our routine to exit cleanly upon return.
-	defer cancel()
-
-	for range c.newRetryTimer(retryCtx, reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter) {
+	for range c.newRetryTimer(ctx, reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter) {
 		// Retry executes the following function body if request has an
 		// error until maxRetries have been exhausted, retry attempts are
 		// performed after waiting for a given period of time in a
@@ -779,7 +773,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 	}
 
 	// Return an error when retry is canceled or deadlined
-	if e := retryCtx.Err(); e != nil {
+	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
 
@@ -909,6 +903,11 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 
 	// For anonymous requests just return.
 	if signerType.IsAnonymous() {
+		if len(metadata.trailer) > 0 {
+			req.Header.Set("X-Amz-Content-Sha256", unsignedPayloadTrailer)
+			return signer.UnsignedTrailer(*req, metadata.trailer), nil
+		}
+
 		return req, nil
 	}
 
@@ -1065,4 +1064,12 @@ func (c *Client) CredContext() *credentials.CredContext {
 		Client:   httpClient,
 		Endpoint: c.endpointURL.String(),
 	}
+}
+
+// GetCreds returns the access creds for the client
+func (c *Client) GetCreds() (credentials.Value, error) {
+	if c.credsProvider == nil {
+		return credentials.Value{}, errors.New("no credentials provider")
+	}
+	return c.credsProvider.GetWithContext(c.CredContext())
 }

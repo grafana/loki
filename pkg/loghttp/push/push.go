@@ -159,8 +159,19 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size > 0 {
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative log lines bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 			entriesSize += size
 		}
 	}
@@ -169,10 +180,21 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 
-			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
-			structuredMetadataBytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size > 0 {
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+				structuredMetadataBytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative structured metadata bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 
 			entriesSize += size
 			structuredMetadataSize += size
