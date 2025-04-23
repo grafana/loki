@@ -385,16 +385,22 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder 
 	}
 	b.add[category] = append(b.add[category], labels.Label{Name: n, Value: v})
 
-	// Sometimes labels are set and later modified. Only record
-	// each label once
-	b.parserKeyHints.RecordExtracted(n)
+	if category == ParsedLabel {
+		// We record parsed labels as extracted so that future parse stages can
+		// quickly bypass any existing extracted fields.
+		//
+		// Note that because this is used for bypassing extracted fields, and
+		// because parsed labels always take precedence over structured metadata
+		// and stream labels, we must only call RecordExtracted for parsed labels.
+		b.parserKeyHints.RecordExtracted(n)
+	}
 	return b
 }
 
 // Add the labels to the builder. If a label with the same name
 // already exists in the base labels, a suffix is added to the name.
-func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *LabelsBuilder {
-	for _, l := range labels {
+func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBuilder {
+	lbs.Range(func(l labels.Label) {
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
@@ -402,16 +408,16 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 
 		if name == logqlmodel.ErrorLabel {
 			b.err = l.Value
-			continue
+			return
 		}
 
 		if name == logqlmodel.ErrorDetailsLabel {
 			b.errDetails = l.Value
-			continue
+			return
 		}
 
 		b.Set(category, name, l.Value)
-	}
+	})
 	return b
 }
 

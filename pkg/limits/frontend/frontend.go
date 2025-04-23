@@ -58,10 +58,11 @@ type Frontend struct {
 	cfg    Config
 	logger log.Logger
 
-	limits      Limits
-	rateLimiter *limiter.RateLimiter
-	streamUsage StreamUsageGatherer
-	metrics     *metrics
+	limits                  Limits
+	rateLimiter             *limiter.RateLimiter
+	streamUsage             StreamUsageGatherer
+	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	metrics                 *metrics
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -83,16 +84,25 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 		logger,
 	)
 
+	var assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	if cfg.AssignedPartitionsCacheTTL == 0 {
+		// When the TTL is 0, the cache is disabled.
+		assignedPartitionsCache = NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+	} else {
+		assignedPartitionsCache = NewTTLCache[string, *logproto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	}
+
 	rateLimiter := limiter.NewRateLimiter(newRateLimitsAdapter(limits), cfg.RecheckPeriod)
-	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, logger, cfg.NumPartitions)
+	streamUsage := NewRingStreamUsageGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
 
 	f := &Frontend{
-		cfg:         cfg,
-		logger:      logger,
-		limits:      limits,
-		rateLimiter: rateLimiter,
-		streamUsage: streamUsage,
-		metrics:     newMetrics(reg),
+		cfg:                     cfg,
+		logger:                  logger,
+		limits:                  limits,
+		rateLimiter:             rateLimiter,
+		streamUsage:             streamUsage,
+		assignedPartitionsCache: assignedPartitionsCache,
+		metrics:                 newMetrics(reg),
 	}
 
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
@@ -185,25 +195,12 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 	// Check if max streams limit would be exceeded.
 	maxGlobalStreams := f.limits.MaxGlobalStreamsPerUser(req.Tenant)
 	if activeStreamsTotal >= uint64(maxGlobalStreams) {
-		// Take the intersection of unknown streams from all responses by counting
-		// the number of occurrences. If the number of occurrences matches the
-		// number of responses, we know the stream was unknown to all instances.
-		unknownStreams := make(map[uint64]int)
 		for _, resp := range resps {
 			for _, unknownStream := range resp.Response.UnknownStreams {
-				unknownStreams[unknownStream]++
-			}
-		}
-		for _, resp := range resps {
-			for _, unknownStream := range resp.Response.UnknownStreams {
-				// If the stream is unknown to all instances, it must be a new
-				// stream.
-				if unknownStreams[unknownStream] == len(resps) {
-					results = append(results, &logproto.ExceedsLimitsResult{
-						StreamHash: unknownStream,
-						Reason:     ReasonExceedsMaxStreams,
-					})
-				}
+				results = append(results, &logproto.ExceedsLimitsResult{
+					StreamHash: unknownStream,
+					Reason:     ReasonExceedsMaxStreams,
+				})
 			}
 		}
 	}

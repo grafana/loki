@@ -613,12 +613,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	store, err := t.createDataObjBucket("dataobj-querier")
-	if err != nil {
-		return nil, err
+	var ms metastore.Metastore
+	if t.Cfg.Querier.Engine.EnableV2Engine {
+		store, err := t.createDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		ms = metastore.NewObjectMetastore(store)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, metastore.NewObjectMetastore(store), logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, ms, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -2087,6 +2091,10 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 }
 
 func (t *Loki) initUI() (services.Service, error) {
+	if !t.Cfg.UI.Enabled {
+		// UI is disabled, return nil to skip initialization
+		return nil, nil
+	}
 	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
 	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
 	if err != nil {

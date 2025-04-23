@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/grafana/dskit/tenant"
 	"gopkg.in/yaml.v2"
 )
 
@@ -110,6 +111,29 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		writeYAMLResponse(w, output)
+	}
+}
+
+func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if t.TenantLimits == nil {
+			http.Error(w, "Tenant configs not enabled", http.StatusNotFound)
+			return
+		}
+
+		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		limit := t.TenantLimits.TenantLimits(user)
+		if limit == nil {
+			http.Error(w, "Tenant limits not found", http.StatusNotFound)
+			return
+		}
+
+		writeYAMLResponse(w, limit)
 	}
 }
 

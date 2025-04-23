@@ -211,7 +211,7 @@ type Middleware func(ctx context.Context, req *httpgrpc.HTTPRequest) error
 // Query performs a query for the given time.
 func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, orgID, qs string, t time.Time) {
 	logger, ctx := spanlogger.NewWithLogger(ctx, r.logger, "ruler.remoteEvaluation.Query")
-	defer logger.Span.Finish()
+	defer logger.Finish()
 
 	res, err := r.query(ctx, orgID, qs, t, logger)
 	ch <- queryResponse{res, err}

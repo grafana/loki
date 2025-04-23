@@ -2,6 +2,7 @@ package otgrpc
 
 import (
 	"context"
+	"fmt"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -138,5 +139,9 @@ func extractSpanContext(ctx context.Context, tracer opentracing.Tracer) (opentra
 	if !ok {
 		md = metadata.New(nil)
 	}
-	return tracer.Extract(opentracing.HTTPHeaders, metadataReaderWriter{md})
+	spanContext, err := tracer.Extract(opentracing.HTTPHeaders, metadataReaderWriter{md})
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract span context: %w", err)
+	}
+	return spanContext, nil
 }
