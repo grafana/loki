@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator *expressionEvaluator) *GenericPipeline {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
 	return newGenericPipeline(Local, func(inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]

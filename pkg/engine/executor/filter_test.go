@@ -38,7 +38,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, &expressionEvaluator{})
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
 
 		// Create expected output (should be same as input since predicate is always true)
 		expectedRecord, err := CSVToArrow(fields, inputCSV)
@@ -72,7 +72,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, &expressionEvaluator{})
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
 
 		// Create expected output (should be empty since predicate is always false)
 		schema := arrow.NewSchema(fields, nil)
@@ -98,7 +98,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
 	})
 
-	t.Run("filter using valid column directly", func(t *testing.T) {
+	t.Run("filter on boolean column with column expression", func(t *testing.T) {
 		// Create input data
 		inputCSV := "Alice,true\nBob,false\nCharlie,true"
 		inputRecord, err := CSVToArrow(fields, inputCSV)
@@ -119,7 +119,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, &expressionEvaluator{})
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
 
 		// Create expected output (only rows where valid=true)
 		expectedCSV := "Alice,true\nCharlie,true"
@@ -166,7 +166,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, &expressionEvaluator{})
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
 
 		// Create expected output (also empty)
 		mem2 := memory.NewGoAllocator()
@@ -218,7 +218,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, &expressionEvaluator{})
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
 
 		// Create expected output (only rows where valid=true)
 		expectedCSV := `

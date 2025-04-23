@@ -91,7 +91,7 @@ func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inpu
 		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], &c.evaluator)
+	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
 func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
