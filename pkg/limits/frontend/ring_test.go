@@ -307,9 +307,9 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Zone: "b",
 		}},
 		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{}, {}},
-		getAssignedPartitionsResponseErrs: []error{nil, nil, nil},
-		expected: map[string]map[int32]string{"a": {}, "b": {}},
+		getAssignedPartitionsResponses:     []*logproto.GetAssignedPartitionsResponse{{}, {}},
+		getAssignedPartitionsResponseErrs:  []error{nil, nil, nil},
+		expected:                           map[string]map[int32]string{"a": {}, "b": {}},
 	}, {
 		name: "two zones, different number of instances per zone",
 		instances: []ring.InstanceDesc{{
