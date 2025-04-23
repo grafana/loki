@@ -50,7 +50,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		name: "one stream",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
-			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+			StreamHashes: []uint64{0x1}, // Hash 0x1 maps to partition 0.
 		},
 		instances: []ring.InstanceDesc{{
 			Addr: "instance-0",
@@ -64,7 +64,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
-			StreamHashes: []uint64{1},
+			StreamHashes: []uint64{0x1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
 			Tenant:        "test",
@@ -86,7 +86,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		name: "one stream two instances",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
-			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+			StreamHashes: []uint64{0x1}, // Hash 1 maps to partition 1.
 		},
 		instances: []ring.InstanceDesc{{
 			Addr: "instance-0",
@@ -106,7 +106,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
-			StreamHashes: []uint64{1},
+			StreamHashes: []uint64{0x1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
 			Tenant:        "test",
@@ -128,7 +128,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		name: "one stream two instances, overlapping partition ownership",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
-			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+			StreamHashes: []uint64{0x1}, // Hash 0x1 maps to partition 1.
 		},
 		instances: []ring.InstanceDesc{{
 			Addr: "instance-0",
@@ -148,7 +148,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
-			StreamHashes: []uint64{1},
+			StreamHashes: []uint64{0x1},
 		}},
 		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
 			Tenant:        "test",
