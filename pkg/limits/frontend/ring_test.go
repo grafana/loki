@@ -205,6 +205,167 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 	}
 }
 
+func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
+	tests := []struct {
+		name                               string
+		instances                          []ring.InstanceDesc
+		expectedAssignedPartitionsRequests []*logproto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses     []*logproto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs  []error
+		expected                           map[string]map[int32]string
+	}{{
+		name: "single zone",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil},
+		expected:                          map[string]map[int32]string{"a": {0: "instance-a-0"}},
+	}, {
+		name: "two zones",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expected: map[string]map[int32]string{
+			"a": {0: "instance-a-0"},
+			"b": {0: "instance-b-0"},
+		},
+	}, {
+		name: "two zones, subset of partitions in zone b",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+				1: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expected: map[string]map[int32]string{
+			"a": {0: "instance-a-0", 1: "instance-a-0"},
+			"b": {0: "instance-b-0"},
+		},
+	}, {
+		name: "two zones, error in zone b",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+				1: time.Now().UnixNano(),
+			},
+		}, nil},
+		getAssignedPartitionsResponseErrs: []error{nil, errors.New("an unexpected error occurred")},
+		expected: map[string]map[int32]string{
+			"a": {0: "instance-a-0", 1: "instance-a-0"},
+			"b": {},
+		},
+	}, {
+		name: "two zones, different number of instances per zone",
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-a-1",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				1: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+				1: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil, nil},
+		expected: map[string]map[int32]string{
+			"a": {0: "instance-a-0", 1: "instance-a-1"},
+			"b": {0: "instance-b-0", 1: "instance-b-0"},
+		},
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Set up the mock clients, one for each pair of mock RPC responses.
+			clients := make([]*mockIngestLimitsClient, len(test.instances))
+			for i := range test.instances {
+				// These test cases assume one request/response per instance.
+				expectedNumAssignedPartitionsRequests := 0
+				if test.expectedAssignedPartitionsRequests[i] != nil {
+					expectedNumAssignedPartitionsRequests = 1
+				}
+				clients[i] = &mockIngestLimitsClient{
+					t:                                     t,
+					expectedAssignedPartitionsRequest:     test.expectedAssignedPartitionsRequests[i],
+					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
+					expectedNumAssignedPartitionsRequests: expectedNumAssignedPartitionsRequests,
+				}
+				t.Cleanup(clients[i].AssertExpectedNumRequests)
+			}
+			// Set up the mocked ring and client pool for the tests.
+			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
+			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+			g := NewRingStreamUsageGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+
+			// Set a maximum upper bound on the test execution time.
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			result, err := g.getZoneAwarePartitionConsumers(ctx, test.instances)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
 func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name string
