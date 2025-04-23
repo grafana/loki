@@ -13,7 +13,7 @@ Loki supports two types of caching for query results and chunks to speed up quer
 This sections describes the recommended Memcached configuration to enable caching for chunks and query results.
 
 #### Results cache
-The results cache stores the results for index-stat, instant-metric, label and volume queries and it supports negative caching for log queries. It is sometimes called frontend cache in some configurations. For details of each supported request type please see [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>//get-started/components)
+The results cache stores the results for index-stat, instant-metric, label and volume queries and it supports negative caching for log queries. It is sometimes called frontend cache in some configurations. For details of each supported request type please see [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>//get-started/components).
 It's consulted by query-frontends to be used in subsequent queries. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further to be executed in queriers, then also cache those results.
 To orchestrate all above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
