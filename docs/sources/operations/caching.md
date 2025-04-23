@@ -21,7 +21,7 @@ The index lookup cache only supported the legacy BoltDB index storage and is con
 Since moving to the TSDB indexes the attached disks/persistent volumes are utilised as cache and in-memory index lookup cache is obsolete.
 
 #### Chunks cache
-The cache chunks using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in ingesters.
+The chunks are cached using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in the Loki ingesters.
 It's consulted by queriers each time a set of `chunkRef`s are calculated to serve the query, before going to storage layer.
 
 Query results are significantly smaller compared to chunks. As the Loki cluster get bigger in ingested volume, results cache can continue to perform whereas chunks cache will need to grow in proportion to demand more memory.
