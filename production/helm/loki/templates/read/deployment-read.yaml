@@ -96,7 +96,7 @@ spec:
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
           {{- if .Values.read.livenessProbe }}
           livenessProbe:
             {{- toYaml .Values.read.livenessProbe | nindent 12 }}
