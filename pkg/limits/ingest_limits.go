@@ -173,6 +173,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
+		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
 		kgo.OnPartitionsLost(s.onPartitionsLost),
