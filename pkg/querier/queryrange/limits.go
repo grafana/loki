@@ -679,7 +679,7 @@ func WeightedParallelism(
 		}
 	}
 
-	totalDur := int(tsdbDur + otherDur)
+	totalDur := int64(tsdbDur + otherDur)
 	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
 	// let the downstream code handle it.
 	if totalDur == 0 {
@@ -688,11 +688,11 @@ func WeightedParallelism(
 		return 1
 	}
 
-	tsdbPart := int(tsdbDur) * tsdbMaxQueryParallelism / totalDur
-	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
+	tsdbPart := int64(tsdbDur) * int64(tsdbMaxQueryParallelism) / totalDur
+	regPart := int64(otherDur) * int64(regMaxQueryParallelism) / totalDur
 
 	if combined := regPart + tsdbPart; combined > 0 {
-		return combined
+		return int(combined)
 	}
 
 	// As long as the actual config is not zero,

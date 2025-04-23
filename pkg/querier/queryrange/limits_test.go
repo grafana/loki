@@ -741,6 +741,12 @@ func Test_WeightedParallelism(t *testing.T) {
 				end:   borderTime.Add(time.Hour),
 				exp:   100,
 			},
+			{
+				desc:  "huge range which previously overflowed int",
+				start: model.Now().Add(-24 * 60 * time.Hour),
+				end:   model.Now(),
+				exp:   100,
+			},
 		} {
 			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {
 				require.Equal(t, tc.exp, WeightedParallelism(context.Background(), confs, "fake", limits, tc.start, tc.end))
