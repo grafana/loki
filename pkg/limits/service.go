@@ -27,9 +27,6 @@ const (
 	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
-
-	// Kafka
-	consumerGroup = "ingest-limits"
 )
 
 // MetadataTopic returns the metadata topic name for the given topic.
@@ -168,6 +165,11 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		cfg.ActiveWindow,
 		logger,
 	)
+
+	consumerGroup := "ingest-limits"
+	if zone := cfg.LifecyclerConfig.Zone; zone != "" {
+		consumerGroup += "-" + zone
+	}
 
 	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
