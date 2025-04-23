@@ -11,6 +11,8 @@ provisioner common labels
 {{- define "enterprise-logs.provisionerLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: provisioner
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
