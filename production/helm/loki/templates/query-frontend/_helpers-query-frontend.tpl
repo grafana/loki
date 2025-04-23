@@ -11,6 +11,8 @@ query-frontend common labels
 {{- define "loki.queryFrontendLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: query-frontend
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
