@@ -11,6 +11,8 @@ pattern ingester common labels
 {{- define "loki.patternIngesterLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: pattern-ingester
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
