@@ -143,8 +143,8 @@ func (g *RingStreamUsageGatherer) getZoneAwarePartitionConsumers(ctx context.Con
 			if err != nil {
 				level.Error(g.logger).Log("msg", "failed to get partition consumers for zone", "zone", zone, "err", err.Error())
 			}
-			// If the consumers could not be fetched for a zone, then it is
-			// expected partitionConsumers is nil.
+			// Even if the consumers could not be fetched for a zone, we
+			// should still return the zone.
 			resultsCh <- zonePartitionConsumersResult{
 				zone:       zone,
 				partitions: res,
@@ -215,9 +215,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, ins
 			return nil
 		})
 	}
-	if err := errg.Wait(); err != nil {
-		return nil, err
-	}
+	errg.Wait() //nolint
 	close(responseCh)
 	highestTimestamp := make(map[int32]int64)
 	assigned := make(map[int32]string)
