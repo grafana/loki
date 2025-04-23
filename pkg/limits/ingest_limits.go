@@ -159,7 +159,6 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
-		kgo.OnPartitionsLost(s.onPartitionsLost),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -226,14 +225,6 @@ func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Clie
 
 	for _, ids := range partitions {
 		s.metadata.EvictPartitions(ids)
-	}
-}
-
-func (s *IngestLimits) onPartitionsLost(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	s.partitionManager.Remove(ctx, client, partitions)
-
-	for _, partitionIDs := range partitions {
-		s.metadata.EvictPartitions(partitionIDs)
 	}
 }
 
