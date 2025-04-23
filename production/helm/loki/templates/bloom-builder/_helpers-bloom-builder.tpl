@@ -11,6 +11,8 @@ bloom-builder common labels
 {{- define "loki.bloomBuilderLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: bloom-builder
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
