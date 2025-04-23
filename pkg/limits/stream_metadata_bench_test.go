@@ -285,7 +285,7 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 					go func(tenant string) {
 						defer readGroup.Done()
 
-						s.Usage(tenant, func(partitionID int32, stream Stream) {
+						s.Usage(tenant, func(_ int32, _ Stream) {
 							// Do nothing
 						})
 					}(tenant)
