@@ -26,13 +26,14 @@ It's consulted by queriers each time a set of `chunkRef`s are calculated to serv
 
 Query results are significantly smaller compared to chunks. As the Loki cluster gets bigger in ingested volume, the results cache can continue to perform, whereas the chunks cache will need to grow in proportion to demand more memory.
 To be able to support the growing needs of a cluster in 2023 we introduced support for memcached-extstore. Exstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
+
 Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offfering.
 For more information on how to tune memcached-extstore please consult the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
 
 ## Before you begin
 
-- It is recommended to deploy three, or in the case of the Helm chart two, dedicated Memcached clusters.
-- As of 2025-02-06, the `memcached:1.6.35-alpine` version of the library is recommended.
+- It is recommended to deploy separate Memcached clusters for these components.
+- As of 2025-02-06, the `memcached:1.6.32-alpine` version of the library is recommended.
 - Consult the Loki ksonnet [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the ksonnet [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
 - Index caching is not required for the [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required) index format.
 - Please see [Size the cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/size/)  page for recommendations on scaling the cache.
