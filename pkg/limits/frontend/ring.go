@@ -152,7 +152,7 @@ func (g *RingStreamUsageGatherer) getZoneAwarePartitionConsumers(ctx context.Con
 			return nil
 		})
 	}
-	errg.Wait() //nolint
+	_ = errg.Wait()
 	close(resultsCh)
 	results := make(map[string]map[int32]string)
 	for result := range resultsCh {
@@ -215,7 +215,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, ins
 			return nil
 		})
 	}
-	errg.Wait() //nolint
+	_ = errg.Wait()
 	close(responseCh)
 	highestTimestamp := make(map[int32]int64)
 	assigned := make(map[int32]string)
