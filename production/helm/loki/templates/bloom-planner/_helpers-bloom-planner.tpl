@@ -11,6 +11,8 @@ bloom planner common labels
 {{- define "loki.bloomPlannerLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: bloom-planner
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
