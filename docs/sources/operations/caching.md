@@ -18,7 +18,7 @@ It's consulted by query-frontends to be used in subsequent queries. If the cache
 To orchestrate all of the above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
 The index lookup cache only supported the legacy BoltDB index storage and is configured to be in-memory by default.
-Since moving to the TSDB indexes the attached disks/persistant volumes are utilised as cache and in-memory index lookup cache is obsolete.
+Since moving to the TSDB indexes the attached disks/persistent volumes are utilised as cache and in-memory index lookup cache is obsolete.
 
 #### Chunks cache
 The cache chunks using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in ingesters.
