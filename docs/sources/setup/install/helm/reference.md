@@ -1883,6 +1883,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \\\"loki.fullname\\\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for chunks-cache pods</td>
@@ -1915,6 +1924,15 @@ null
 			<td>Batchsize for sending and receiving chunks from chunks cache</td>
 			<td><pre lang="json">
 4
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.clientService</td>
+			<td>string</td>
+			<td>SRV service used to discover memcache servers.</td>
+			<td><pre lang="json">
+"memcached"
 </pre>
 </td>
 		</tr>
@@ -1987,6 +2005,15 @@ true
 			<td>Additional volumes to be added to the chunks-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.host</td>
+			<td>string</td>
+			<td>Hostname for memcached service to use.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -6814,6 +6841,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memcached.enabled</td>
+			<td>bool</td>
+			<td>Specified whether the memcached should be enabled</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.image.pullPolicy</td>
 			<td>string</td>
 			<td>Memcached Docker image pull policy</td>
@@ -10071,6 +10107,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for results-cache pods</td>
@@ -10094,6 +10139,15 @@ null
 			<td>Annotations for the results-cache pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.clientService</td>
+			<td>string</td>
+			<td>SRV service used to discover memcache servers.</td>
+			<td><pre lang="json">
+"memcached"
 </pre>
 </td>
 		</tr>
@@ -10166,6 +10220,15 @@ true
 			<td>Additional volumes to be added to the results-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.host</td>
+			<td>string</td>
+			<td>Hostname for memcached service to use.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
