@@ -12,15 +12,6 @@ local template = import 'grafonnet/template.libsonnet';
       multi=true,
     ),
 
-  local podTemplate =
-    template.new(
-      'pod',
-      '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace", ' + $._config.per_component_label + '=~"$container"}, pod)',
-      sort=1,
-      multi=true,
-    ),
-
   local levelTemplate =
     template.custom(
       'level',
@@ -66,7 +57,6 @@ local template = import 'grafonnet/template.libsonnet';
                         templating+: {
                           list+: [
                             containerTemplate,
-                            podTemplate,
                             levelTemplate,
                             logTemplate,
                           ],
