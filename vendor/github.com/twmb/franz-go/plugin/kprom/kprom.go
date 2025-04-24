@@ -400,7 +400,6 @@ func (m *Metrics) OnClientClosed(*kgo.Client) {
 			m.cfg.reg.Unregister(c)
 		}
 	}
-	m.cfg.reg = nil
 }
 
 // OnBrokerConnect implements the HookBrokerConnect interface for metrics
