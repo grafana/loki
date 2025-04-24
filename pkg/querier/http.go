@@ -198,7 +198,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
-	// filter the repsonse to catch the empty matcher case
+	// filter the response to catch the empty matcher case
 	if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
 		return q.filterAggregatedMetricsFromSeriesResp(resp), statResult, err
 	}
@@ -345,7 +345,7 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 		}
 
 		if slices.Contains(keys, constants.AggregatedMetricLabel) {
-			slices.Delete(resp.Series, i, i+1)
+			resp.Series = slices.Delete(resp.Series, i, i+1)
 			i--
 		}
 	}

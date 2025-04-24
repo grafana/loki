@@ -207,7 +207,7 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 
-	t.Run("ignores __aggregated_metric__ series unless explicitly requested", func(t *testing.T) {
+	t.Run("ignores __aggregated_metric__ series, when possible, unless explicitly requested", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
 			return &logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{},
@@ -224,8 +224,10 @@ func TestSeriesHandler(t *testing.T) {
 			expectedGroups []string
 		}{
 			{
+				// we can't add the negated __aggregated_metric__ matcher to an empty matcher set,
+				// as that will produce an invalid query
 				match:          "{}",
-				expectedGroups: []string{fmt.Sprintf(`{%s=""}`, constants.AggregatedMetricLabel)},
+				expectedGroups: []string{},
 			},
 			{
 				match:          `{foo="bar"}`,
