@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -129,8 +130,16 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	resp, err := q.querier.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
-	if resp != nil && q.cfg.MetricAggregationEnabled {
+	metricAggregationEnabled, err := q.metricAggregationEnabled(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp != nil && metricAggregationEnabled {
 		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
 	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -150,6 +159,14 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	return resp, err
 }
 
+func (q *QuerierAPI) metricAggregationEnabled(ctx context.Context) (bool, error) {
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return false, err
+	}
+	return q.limits.MetricAggregationEnabled(orgID), nil
+}
+
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
@@ -159,7 +176,12 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
-	if q.cfg.MetricAggregationEnabled {
+	metricAggregationEnabled, err := q.metricAggregationEnabled(ctx)
+	if err != nil {
+		return nil, stats.Result{}, err
+	}
+
+	if metricAggregationEnabled {
 		grpsWithAggMetricsFilter, err := q.filterAggregatedMetrics(req.GetGroups())
 		if err != nil {
 			return nil, stats.Result{}, err

@@ -73,11 +73,6 @@ var (
 	ErrRequestBodyTooLarge = errors.New("request body too large")
 )
 
-var (
-	ErrAllLogsFiltered     = errors.New("all logs lines filtered during parsing")
-	ErrRequestBodyTooLarge = errors.New("request body too large")
-)
-
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
 }

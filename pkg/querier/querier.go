@@ -62,7 +62,6 @@ type Config struct {
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
-	MetricAggregationEnabled      bool             `yaml:"_" doc:"hidden"`
 }
 
 // RegisterFlags register flags.

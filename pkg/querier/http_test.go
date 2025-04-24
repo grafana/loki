@@ -181,7 +181,7 @@ func TestSeriesHandler(t *testing.T) {
 
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(q)
+		api := setupAPI(t, q, false)
 		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
@@ -204,8 +204,7 @@ func TestSeriesHandler(t *testing.T) {
 
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(q)
-		api.cfg.MetricAggregationEnabled = true
+		api := setupAPI(t, q, true)
 		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
 
 		for _, tt := range []struct {
@@ -257,7 +256,7 @@ func TestVolumeHandler(t *testing.T) {
 			t.Run(fmt.Sprintf("%s queries return label volumes from the querier", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				res, err := api.VolumeHandler(context.Background(), tc.req)
 				require.NoError(t, err)
@@ -275,7 +274,7 @@ func TestVolumeHandler(t *testing.T) {
 			t.Run(fmt.Sprintf("%s queries return nothing when a store doesn't support label volumes", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				res, err := api.VolumeHandler(context.Background(), tc.req)
 				require.NoError(t, err)
@@ -291,7 +290,7 @@ func TestVolumeHandler(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, err)
 
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				_, err = api.VolumeHandler(context.Background(), tc.req)
 				require.ErrorContains(t, err, "something bad")
@@ -316,8 +315,7 @@ func TestLabelsHandler(t *testing.T) {
 
 		q := newQuerierMock()
 		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(q)
-		api.cfg.MetricAggregationEnabled = true
+		api := setupAPI(t, q, true)
 		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
@@ -339,7 +337,12 @@ func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptes
 	return w
 }
 
-func setupAPI(querier *querierMock) *QuerierAPI {
-	api := NewQuerierAPI(Config{}, querier, nil, nil, log.NewNopLogger())
+func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) *QuerierAPI {
+	defaultLimits := defaultLimitsTestConfig()
+	defaultLimits.MetricAggregationEnabled = enableMetricAggregation
+	limits, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+
+	api := NewQuerierAPI(Config{}, querier, limits, nil, log.NewNopLogger())
 	return api
 }
