@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -168,8 +169,13 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
+	// filtering out aggregated metrics is quicker if we had a matcher for it, ie. __aggregated__metric__=""
+	// however, that only works fo non-empty matchers, so we still need the filter the response
+	aggMetricsRequestedInAnyGroup := false
 	if q.metricAggregationEnabled(ctx) {
-		grpsWithAggMetricsFilter, err := q.filterAggregatedMetrics(req.GetGroups())
+		var grpsWithAggMetricsFilter []string
+		var err error
+		grpsWithAggMetricsFilter, aggMetricsRequestedInAnyGroup, err = q.filterAggregatedMetrics(req.GetGroups())
 		if err != nil {
 			return nil, stats.Result{}, err
 		}
@@ -191,6 +197,11 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
+
+	// filter the repsonse to catch the empty matcher case
+	if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
+		return q.filterAggregatedMetricsFromSeriesResp(resp), statResult, err
+	}
 
 	return resp, statResult, err
 }
@@ -284,32 +295,35 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 }
 
 // filterAggregatedMetrics adds a matcher to exclude aggregated metrics unless explicitly requested
-func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, error) {
+func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, error) {
+	// cannot add filter to an empty matcher set
+	if len(groups) == 0 {
+		return groups, false, nil
+	}
+
 	noAggMetrics, err := labels.NewMatcher(
 		labels.MatchEqual,
 		constants.AggregatedMetricLabel,
 		"",
 	)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	newGroups := make([]string, 0, len(groups)+1)
-	if len(groups) == 0 {
-		newGroups = append(newGroups, syntax.MatchersString([]*labels.Matcher{noAggMetrics}))
-		return newGroups, nil
-	}
 
+	aggMetricsRequestedInAnyGroup := false
 	for _, group := range groups {
 		grp, err := syntax.ParseMatchers(group, false)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		aggMetricsRequested := false
 		for _, m := range grp {
 			if m.Name == constants.AggregatedMetricLabel {
 				aggMetricsRequested = true
+				aggMetricsRequestedInAnyGroup = true
 				break
 			}
 		}
@@ -320,7 +334,23 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, error) 
 
 		newGroups = append(newGroups, syntax.MatchersString(grp))
 	}
-	return newGroups, nil
+	return newGroups, aggMetricsRequestedInAnyGroup, nil
+}
+
+func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
+	for i := 0; i < len(resp.Series); i++ {
+		keys := make([]string, 0, len(resp.Series[i].Labels))
+		for _, label := range resp.Series[i].Labels {
+			keys = append(keys, label.Key)
+		}
+
+		if slices.Contains(keys, constants.AggregatedMetricLabel) {
+			slices.Delete(resp.Series, i, i+1)
+			i--
+		}
+	}
+
+	return resp
 }
 
 func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
