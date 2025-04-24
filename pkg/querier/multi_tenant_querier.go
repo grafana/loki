@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
@@ -330,27 +331,19 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 		responses[i] = resp
 	}
 
-	// Merge responses by combining unique detected labels and summing cardinalities
-	uniqueLabels := make(map[string]*logproto.DetectedLabel)
+	// Collect all detected labels from all tenants
+	var allLabels []*logproto.DetectedLabel
 	for _, resp := range responses {
-		for _, label := range resp.DetectedLabels {
-			if existing, ok := uniqueLabels[label.Label]; ok {
-				existing.Cardinality += label.Cardinality
-			} else {
-				// Make a copy to avoid modifying the original
-				uniqueLabels[label.Label] = &logproto.DetectedLabel{
-					Label:       label.Label,
-					Cardinality: label.Cardinality,
-				}
-			}
-		}
+		allLabels = append(allLabels, resp.DetectedLabels...)
 	}
 
-	// Convert map back to slice and sort for consistent output
-	mergedLabels := make([]*logproto.DetectedLabel, 0, len(uniqueLabels))
-	for _, label := range uniqueLabels {
-		mergedLabels = append(mergedLabels, label)
+	// Use the storage package's MergeLabels function to merge HyperLogLog sketches
+	mergedLabels, err := detected.MergeLabels(allLabels)
+	if err != nil {
+		return nil, err
 	}
+
+	// Sort by cardinality for consistent output
 	sort.Slice(mergedLabels, func(i, j int) bool {
 		return mergedLabels[i].Cardinality < mergedLabels[j].Cardinality
 	})

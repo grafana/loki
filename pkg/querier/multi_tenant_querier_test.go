@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
@@ -539,10 +540,23 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 				{Label: "env", Cardinality: 50},
 			},
 			mockSetup: func(q *querierMock) {
+				// Create sketches for app and env labels
+				appSketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketchData, _ := appSketch.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
 				q.On("DetectedLabels", mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
 					DetectedLabels: []*logproto.DetectedLabel{
-						{Label: "app", Cardinality: 100},
-						{Label: "env", Cardinality: 50},
+						{Label: "app", Cardinality: 100, Sketch: appSketchData},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
 					},
 				}, nil)
 			},
@@ -551,27 +565,54 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 			desc:  "multiple tenants with overlapping labels",
 			orgID: "1|2",
 			expected: []*logproto.DetectedLabel{
-				{Label: "app", Cardinality: 150},    // 100 + 50
+				{Label: "app", Cardinality: 150},    // Combined cardinality after merging sketches
 				{Label: "env", Cardinality: 50},     // from tenant 1
 				{Label: "service", Cardinality: 75}, // from tenant 2
 			},
 			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				appSketch1 := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch1.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch1Data, _ := appSketch1.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				appSketch2 := hyperloglog.New()
+				for i := 50; i < 150; i++ { // 50 new values + 50 overlapping values
+					appSketch2.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch2Data, _ := appSketch2.MarshalBinary()
+
+				serviceSketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					serviceSketch.Insert([]byte(fmt.Sprintf("service-value-%d", i)))
+				}
+				serviceSketchData, _ := serviceSketch.MarshalBinary()
+
 				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
 					id, err := user.ExtractOrgID(ctx)
-					return err == nil && (id == "1" || id == "2")
+					return err == nil && id == "1"
 				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
 					DetectedLabels: []*logproto.DetectedLabel{
-						{Label: "app", Cardinality: 100},
-						{Label: "env", Cardinality: 50},
+						{Label: "app", Cardinality: 100, Sketch: appSketch1Data},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
 					},
 				}, nil).Once()
+
 				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
 					id, err := user.ExtractOrgID(ctx)
-					return err == nil && (id == "1" || id == "2")
+					return err == nil && id == "2"
 				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
 					DetectedLabels: []*logproto.DetectedLabel{
-						{Label: "app", Cardinality: 50},
-						{Label: "service", Cardinality: 75},
+						{Label: "app", Cardinality: 100, Sketch: appSketch2Data},
+						{Label: "service", Cardinality: 75, Sketch: serviceSketchData},
 					},
 				}, nil).Once()
 			},
@@ -586,22 +627,49 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 				{Label: "env2", Cardinality: 75},
 			},
 			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				app1Sketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					app1Sketch.Insert([]byte(fmt.Sprintf("app1-value-%d", i)))
+				}
+				app1SketchData, _ := app1Sketch.MarshalBinary()
+
+				env1Sketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					env1Sketch.Insert([]byte(fmt.Sprintf("env1-value-%d", i)))
+				}
+				env1SketchData, _ := env1Sketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				app2Sketch := hyperloglog.New()
+				for i := 0; i < 200; i++ {
+					app2Sketch.Insert([]byte(fmt.Sprintf("app2-value-%d", i)))
+				}
+				app2SketchData, _ := app2Sketch.MarshalBinary()
+
+				env2Sketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					env2Sketch.Insert([]byte(fmt.Sprintf("env2-value-%d", i)))
+				}
+				env2SketchData, _ := env2Sketch.MarshalBinary()
+
 				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
 					id, err := user.ExtractOrgID(ctx)
-					return err == nil && (id == "1" || id == "2")
+					return err == nil && id == "1"
 				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
 					DetectedLabels: []*logproto.DetectedLabel{
-						{Label: "app1", Cardinality: 100},
-						{Label: "env1", Cardinality: 50},
+						{Label: "app1", Cardinality: 100, Sketch: app1SketchData},
+						{Label: "env1", Cardinality: 50, Sketch: env1SketchData},
 					},
 				}, nil).Once()
+
 				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
 					id, err := user.ExtractOrgID(ctx)
-					return err == nil && (id == "1" || id == "2")
+					return err == nil && id == "2"
 				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
 					DetectedLabels: []*logproto.DetectedLabel{
-						{Label: "app2", Cardinality: 200},
-						{Label: "env2", Cardinality: 75},
+						{Label: "app2", Cardinality: 200, Sketch: app2SketchData},
+						{Label: "env2", Cardinality: 75, Sketch: env2SketchData},
 					},
 				}, nil).Once()
 			},
@@ -634,7 +702,8 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 
 			for i := range tc.expected {
 				require.Equal(t, tc.expected[i].Label, resp.DetectedLabels[i].Label)
-				require.Equal(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality)
+				// Allow for some error in cardinality estimation due to HyperLogLog approximation
+				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
 			}
 		})
 	}
