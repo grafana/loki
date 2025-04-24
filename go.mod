@@ -102,7 +102,7 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.2.1
 	golang.org/x/crypto v0.35.0
-	golang.org/x/net v0.36.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sync v0.11.0
 	golang.org/x/sys v0.30.0
 	golang.org/x/time v0.3.0
