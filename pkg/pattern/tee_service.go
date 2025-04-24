@@ -437,7 +437,7 @@ func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream
 			continue
 		}
 
-		if lbls.Has(push.AggregatedMetricLabel) {
+		if lbls.Has(constants.AggregatedMetricLabel) {
 			continue
 		}
 
