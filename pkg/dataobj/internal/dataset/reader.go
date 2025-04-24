@@ -126,11 +126,11 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	}
 	r.dl.SetReadRange(readRange)
 
-	var primaryColumnBytes int64
-	var primaryColumnPostFilterBytes int64
-	var totalBytesAfterFill int64
-	var rowsRead int
-	var passCount int // passCount tracks how many rows pass the predicate.
+	var (
+		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
+		passCount  int // tracks how many rows passed the predicate
+		statistics = stats.FromContext(ctx)
+	)
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
@@ -144,63 +144,19 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		rowsRead = count
 		passCount = count
 
+		statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
+		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
+		statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
 	} else {
-		// sequentially apply rest of the predicates.
-		for i, p := range r.opts.Predicates {
-			columns, idxs, err := r.predicateColumns(p)
-			if err != nil {
-				return n, err
-			}
-
-			var count int
-
-			// read the requested number of rows for the first predicate.
-			if i == 0 {
-				count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
-				if err != nil && !errors.Is(err, io.EOF) {
-					return n, err
-				} else if count == 0 && errors.Is(err, io.EOF) {
-					return 0, io.EOF
-				}
-
-				rowsRead = count
-			} else {
-				count, err = r.inner.Fill(ctx, columns, s[:readSize])
-				if err != nil && !errors.Is(err, io.EOF) {
-					return n, err
-				} else if count != readSize {
-					return n, fmt.Errorf("failed to fill rows: expected %d, got %d", len(s), count)
-				}
-			}
-
-			passCount = 0
-			for i := range count {
-				size := s[i].SizeOfColumns(idxs)
-				primaryColumnBytes += size
-
-				if !checkPredicate(p, r.origColumnLookup, s[i]) {
-					continue
-				}
-				// We move s[i] to s[passCount] by *swapping* the rows. Copying would
-				// result in the Row.Values slice existing in two places in the buffer,
-				// which causes memory corruption when filling in rows.
-				s[passCount], s[i] = s[i], s[passCount]
-				passCount++
-
-				primaryColumnPostFilterBytes += size
-			}
-
-			if passCount == 0 {
-				// No rows passed the predicate, so we can stop early.
-				break
-			}
-
-			readSize = passCount
+		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], statistics)
+		if err != nil {
+			return n, err
 		}
 	}
+	statistics.AddPostPredicateRows(int64(passCount))
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
 		// Mask out any ranges that aren't in s[:passCount], so that filling in
@@ -220,26 +176,90 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		} else if count != passCount {
 			return n, fmt.Errorf("failed to fill rows: expected %d, got %d", n, count)
 		}
+
+		var totalBytesFilled int64
 		for i := range count {
-			totalBytesAfterFill += s[i].Size()
+			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
+		statistics.AddPostPredicateDecompressedBytes(totalBytesFilled)
 	}
 
 	n += passCount
-
-	statistics := stats.FromContext(ctx)
-	statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
-	statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
-	statistics.AddPostPredicateRows(int64(passCount))
-	// Fill is not called when there is no predicate
-	if totalBytesAfterFill > 0 {
-		statistics.AddPostPredicateDecompressedBytes(totalBytesAfterFill - primaryColumnPostFilterBytes)
-	}
 
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
 	r.row += int64(rowsRead)
 	return n, nil
+}
+
+// readAndFilterPrimaryColumns reads the primary columns from the dataset
+// and filters the rows by sequentially applying the predicates.
+//
+// For each predicate evaluation, only the required columns are loaded.
+// Rows are filtered at each step with subsequent predicates only having to fill
+// the columns on the reduced row range.
+//
+// It returns the max rows read, rows that passed all the predicates, and any error
+func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *stats.Context) (int, int, error) {
+	var (
+		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
+		passCount          int // number of rows that passed the predicate
+		primaryColumnBytes int64
+	)
+
+	// sequentially apply the predicates.
+	for i, p := range r.opts.Predicates {
+		columns, idxs, err := r.predicateColumns(p)
+		if err != nil {
+			return rowsRead, 0, err
+		}
+
+		var count int
+		// read the requested number of rows for the first predicate.
+		if i == 0 {
+			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
+			if err != nil && !errors.Is(err, io.EOF) {
+				return 0, 0, err
+			} else if count == 0 && errors.Is(err, io.EOF) {
+				return 0, 0, io.EOF
+			}
+
+			rowsRead = count
+		} else {
+			count, err = r.inner.Fill(ctx, columns, s[:readSize])
+			if err != nil && !errors.Is(err, io.EOF) {
+				return rowsRead, 0, err
+			} else if count != readSize {
+				return rowsRead, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", len(s), count)
+			}
+		}
+
+		passCount = 0
+		for i := range count {
+			size := s[i].SizeOfColumns(idxs)
+			primaryColumnBytes += size
+
+			if !checkPredicate(p, r.origColumnLookup, s[i]) {
+				continue
+			}
+			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
+			// result in the Row.Values slice existing in two places in the buffer,
+			// which causes memory corruption when filling in rows.
+			s[passCount], s[i] = s[i], s[passCount]
+			passCount++
+		}
+
+		if passCount == 0 {
+			// No rows passed the predicate, so we can stop early.
+			break
+		}
+
+		readSize = passCount
+	}
+
+	stats.AddPrePredicateDecompressedRows(int64(rowsRead))
+	stats.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+	return rowsRead, passCount, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
