@@ -205,11 +205,16 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
 		primaryColumnBytes int64
+		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
 	)
 
 	// sequentially apply the predicates.
 	for i, p := range r.opts.Predicates {
-		columns, idxs, err := r.predicateColumns(p)
+		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
+			// keep only columns that haven't been filled yet.
+			_, ok := filledColumns[c]
+			return !ok
+		})
 		if err != nil {
 			return rowsRead, 0, err
 		}
@@ -225,13 +230,15 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 			}
 
 			rowsRead = count
-		} else {
+		} else if len(columns) > 0 {
 			count, err = r.inner.Fill(ctx, columns, s[:readSize])
 			if err != nil && !errors.Is(err, io.EOF) {
 				return rowsRead, 0, err
 			} else if count != readSize {
 				return rowsRead, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", len(s), count)
 			}
+		} else {
+			count = readSize // required columns are already filled
 		}
 
 		passCount = 0
@@ -252,6 +259,10 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		if passCount == 0 {
 			// No rows passed the predicate, so we can stop early.
 			break
+		}
+
+		for _, c := range columns {
+			filledColumns[c] = struct{}{}
 		}
 
 		readSize = passCount
@@ -823,7 +834,7 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 	return
 }
 
-func (r *Reader) predicateColumns(p Predicate) ([]Column, []int, error) {
+func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
 	columns := make(map[Column]struct{})
 
 	WalkPredicate(p, func(p Predicate) bool {
@@ -849,6 +860,10 @@ func (r *Reader) predicateColumns(p Predicate) ([]Column, []int, error) {
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
+		if !keep(c) {
+			continue
+		}
+
 		idx, ok := r.origColumnLookup[c]
 		if !ok {
 			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
