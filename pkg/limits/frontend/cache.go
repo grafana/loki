@@ -32,9 +32,10 @@ func (i *item[V]) hasExpired(now time.Time) bool {
 
 // TTLCache is a simple, thread-safe cache with a single per-cache TTL.
 type TTLCache[K comparable, V any] struct {
-	items map[K]item[V]
-	ttl   time.Duration
-	mu    sync.RWMutex
+	items         map[K]item[V]
+	ttl           time.Duration
+	lastEvictedAt time.Time
+	mu            sync.RWMutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -73,7 +74,10 @@ func (c *TTLCache[K, V]) Set(key K, value V) {
 		value:     value,
 		expiresAt: now.Add(c.ttl),
 	}
-	c.removeExpiredItems(now)
+	if now.Sub(c.lastEvictedAt) > c.ttl/2 {
+		c.lastEvictedAt = now
+		c.evictExpired(now)
+	}
 }
 
 // Delete implements Cache.Delete.
@@ -90,8 +94,8 @@ func (c *TTLCache[K, V]) Reset() {
 	c.items = make(map[K]item[V])
 }
 
-// removeExpiredItems removes expired items.
-func (c *TTLCache[K, V]) removeExpiredItems(now time.Time) {
+// evictExpired evicts expired items.
+func (c *TTLCache[K, V]) evictExpired(now time.Time) {
 	for key, item := range c.items {
 		if item.hasExpired(now) {
 			delete(c.items, key)
