@@ -76,7 +76,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine {
+	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -91,6 +91,12 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
+}
+
+func hasDataObjectsAvailable(_, end time.Time) bool {
+	// Data objects in object storage lag behind 20-30 minutes.
+	// We are generous and only enable v2 engine queries that end earlier than 1 hour ago, to ensure data objects are available.
+	return end.Before(time.Now().Add(-1 * time.Hour))
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
