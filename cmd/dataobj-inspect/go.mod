@@ -4,7 +4,7 @@ go 1.23.1
 
 replace github.com/grafana/loki/v3 => ../..
 
-require github.com/grafana/loki/v3 v3.4.3
+require github.com/grafana/loki/v3 v3.5.0
 
 require (
 	github.com/axiomhq/hyperloglog v0.2.3 // indirect

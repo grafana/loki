@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
 )
 
@@ -63,8 +62,8 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		kafkaCfg,
 		partitionRing,
 		groupName,
-		client.NewReaderClientMetrics(groupName, reg, kafkaCfg.EnableKafkaHistograms),
 		logger,
+		reg,
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.RebalanceTimeout(5*time.Minute),

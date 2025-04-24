@@ -121,7 +121,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.strReplace(
                                      std.strReplace(
                                        expr,
-                                       'pod=~"backend.*"',
+                                       $._config.per_instance_label + '=~"backend.*"',
                                        matcherStr('backend', matcher='pod', sep='')
                                      ),
                                      'job="$namespace/backend",',
@@ -136,7 +136,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.strReplace(
                                      std.strReplace(
                                        expr,
-                                       'pod=~"querier.*"',
+                                       $._config.per_instance_label + '=~"querier.*"',
                                        matcherStr('querier', matcher='pod', sep='')
                                      ),
                                      'job="$namespace/querier",',
@@ -160,10 +160,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                                      std.strReplace(
                                                        std.strReplace(
                                                          expr,
-                                                         'pod=~"ingester.*"',
+                                                         $._config.per_instance_label + '=~"ingester.*"',
                                                          matcherStr('ingester', matcher='pod', sep='')
                                                        ),
-                                                       'pod=~"distributor.*"',
+                                                       $._config.per_instance_label + '=~"distributor.*"',
                                                        matcherStr('distributor', matcher='pod', sep='')
                                                      ),
                                                      'job="$namespace/cortex-gw",',
