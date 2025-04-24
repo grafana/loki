@@ -182,7 +182,7 @@ func collectRow(rec arrow.Record, i int, result *resultBuilder) {
 
 		// Extract timestamp
 		if colName == types.ColumnNameBuiltinTimestamp && colType == types.ColumnTypeBuiltin.String() {
-			entry.Timestamp = time.Unix(0, int64(col.(*array.Uint64).Value(i)))
+			entry.Timestamp = col.(*array.Timestamp).Value(i).ToTime(arrow.Nanosecond)
 			continue
 		}
 
