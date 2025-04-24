@@ -417,12 +417,12 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	// default to false if for non-AWS endpoints
 	forcePathStyle := len(endpoint) <= 0 || !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
 
-	// Check if the user has specified virtual_style_host
-	if virtualStyleHostBytes, ok := s.Data[storage.KeyAWSVirtualStyleHost]; ok && len(virtualStyleHostBytes) > 0 {
-		// If virtual_style_host is provided, use it to determine the forcePathStyle option
-		// virtual_style_host=true means forcePathStyle=false (inverse)
-		virtualStyleHost := string(virtualStyleHostBytes) == "true"
-		forcePathStyle = !virtualStyleHost
+if configForcePathStyle, ok := s.Data["forcepathstyle"]; ok && len(configForcePathStyle) > 0 {
+		var err error
+		forcePathStyle,err = strconv.ParseBool(string(configForcePathStyle))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", errors.New(`can not parse value of "forcepathstyle"`), configForcePathStyle)
+		}
 	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
