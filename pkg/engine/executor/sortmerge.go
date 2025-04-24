@@ -126,6 +126,8 @@ func (p *KWayMerge) read() error {
 				return err
 			}
 			p.offsets[i] = 0
+			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
+			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
 			p.batches[i], _ = p.inputs[i].Value()
 		}
 
