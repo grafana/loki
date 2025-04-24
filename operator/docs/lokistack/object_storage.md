@@ -66,7 +66,7 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=sse_type="SSE-S3"
     ```
 
-    Additionally, you can control the S3 URL style access behavior with `virtual_style_host` parameter:
+    Additionally, you can control the S3 URL style access behavior with `force_path_style` parameter:
 
     ```console
     kubectl create secret generic lokistack-dev-s3 \
@@ -75,14 +75,14 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
       --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>" \
-      --from-literal=virtual_style_host="true"
+      --from-literal=force_path_style="true"
     ```
 
     By default:
-    - AWS endpoints (ending with `.amazonaws.com`) use virtual hosted style (`virtual_style_host=true`)
-    - Non-AWS endpoints use path style (`virtual_style_host=false`)
+    * AWS endpoints (ending with `.amazonaws.com`) use virtual hosted style (`force_path_style=false`)
+    * Non-AWS endpoints use path style (`force_path_style=true`)
 
-    Set `virtual_style_host` to `true` if you need to use virtual-hosted style with non-AWS S3 compatible services.
+    Set `force_path_style` to `false` if you need to use virtual-hosted style with non-AWS S3 compatible services.
 
     where `lokistack-dev-s3` is the secret name.
 

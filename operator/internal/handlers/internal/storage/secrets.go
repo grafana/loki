@@ -415,14 +415,10 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 
 	// Determine if we should use path style URLs for S3
 	// default to false if for non-AWS endpoints
-	forcePathStyle := len(endpoint) <= 0 || !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
-
-if configForcePathStyle, ok := s.Data["forcepathstyle"]; ok && len(configForcePathStyle) > 0 {
-		var err error
-		forcePathStyle,err = strconv.ParseBool(string(configForcePathStyle))
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s", errors.New(`can not parse value of "forcepathstyle"`), configForcePathStyle)
-		}
+	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+	// Check if the user has specified force_path_style
+	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
+		forcePathStyle = string(configForcePathStyle) == "true"
 	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)

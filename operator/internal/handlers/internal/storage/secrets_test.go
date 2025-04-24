@@ -654,69 +654,14 @@ func TestS3Extract(t *testing.T) {
 	}
 }
 
-func TestS3Extract_S3ForcePathStyle(t *testing.T) {
+func TestS3Extract_ForcePathStyle(t *testing.T) {
 	tt := []struct {
 		desc        string
 		secret      *corev1.Secret
 		wantOptions *storage.S3StorageConfig
 	}{
 		{
-			desc: "aws s3 endpoint",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"endpoint":          []byte("https://s3.region.amazonaws.com"),
-					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
-					"access_key_id":     []byte("id"),
-					"access_key_secret": []byte("secret"),
-				},
-			},
-			wantOptions: &storage.S3StorageConfig{
-				Endpoint: "https://s3.region.amazonaws.com",
-				Region:   "region",
-				Buckets:  "this,that",
-			},
-		},
-		{
-			desc: "non-aws s3 endpoint",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"endpoint":          []byte("https://test.default.svc.cluster.local:9000"),
-					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
-					"access_key_id":     []byte("id"),
-					"access_key_secret": []byte("secret"),
-				},
-			},
-			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "https://test.default.svc.cluster.local:9000",
-				Region:         "region",
-				Buckets:        "this,that",
-				ForcePathStyle: true,
-			},
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
-			require.NoError(t, err)
-			require.Equal(t, tc.wantOptions, options)
-		})
-	}
-}
-
-func TestS3Extract_VirtualStyleHost(t *testing.T) {
-	tt := []struct {
-		desc        string
-		secret      *corev1.Secret
-		wantOptions *storage.S3StorageConfig
-	}{
-		{
-			desc: "aws endpoint without virtual_style_host specified (default behavior)",
+			desc: "aws endpoint without force_path_style specified (default behavior)",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -735,7 +680,7 @@ func TestS3Extract_VirtualStyleHost(t *testing.T) {
 			},
 		},
 		{
-			desc: "non-aws s3 endpoint without virtual_style_host specified (default behavior)",
+			desc: "non-aws s3 endpoint without force_path_style specified (default behavior)",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -754,16 +699,16 @@ func TestS3Extract_VirtualStyleHost(t *testing.T) {
 			},
 		},
 		{
-			desc: "aws s3 endpoint with virtual_style_host=false",
+			desc: "aws s3 endpoint with force_path_style=true",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":           []byte("https://s3.region.amazonaws.com"),
-					"region":             []byte("region"),
-					"bucketnames":        []byte("this,that"),
-					"access_key_id":      []byte("id"),
-					"access_key_secret":  []byte("secret"),
-					"virtual_style_host": []byte("false"),
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"force_path_style":  []byte("true"),
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
@@ -774,16 +719,16 @@ func TestS3Extract_VirtualStyleHost(t *testing.T) {
 			},
 		},
 		{
-			desc: "aws s3 endpoint with virtual_style_host=true",
+			desc: "aws s3 endpoint with force_path_style=false",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":           []byte("https://s3.region.amazonaws.com"),
-					"region":             []byte("region"),
-					"bucketnames":        []byte("this,that"),
-					"access_key_id":      []byte("id"),
-					"access_key_secret":  []byte("secret"),
-					"virtual_style_host": []byte("true"),
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"force_path_style":  []byte("false"),
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
@@ -794,16 +739,16 @@ func TestS3Extract_VirtualStyleHost(t *testing.T) {
 			},
 		},
 		{
-			desc: "non-aws s3 endpoint with virtual_style_host=true",
+			desc: "non-aws s3 endpoint with force_path_style=false",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":           []byte("http://minio:9000"),
-					"region":             []byte(""),
-					"bucketnames":        []byte("this,that"),
-					"access_key_id":      []byte("id"),
-					"access_key_secret":  []byte("secret"),
-					"virtual_style_host": []byte("true"),
+					"endpoint":          []byte("http://minio:9000"),
+					"region":            []byte(""),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"force_path_style":  []byte("false"),
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{

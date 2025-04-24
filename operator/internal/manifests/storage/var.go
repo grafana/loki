@@ -59,8 +59,8 @@ const (
 	KeyAWSEndpoint = "endpoint"
 	// KeyAWSRegion is the secret data key for the AWS region.
 	KeyAWSRegion = "region"
-	// KeyAWSVirtualStyleHost is the secret data key for controlling S3 virtual hosted style access.
-	KeyAWSVirtualStyleHost = "virtual_style_host"
+	// KeyAWSForcePathStyle is the secret data key for controlling S3 force the requests to use path-style addressing
+	KeyAWSForcePathStyle = "forcepathstyle"
 	// KeyAWSSSEType is the secret data key for the AWS server-side encryption type.
 	KeyAWSSSEType = "sse_type"
 	// KeyAWSSseKmsEncryptionContext is the secret data key for the AWS SSE KMS encryption context.
