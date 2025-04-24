@@ -134,12 +134,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		return nil, err
 	}
 
-	metricAggregationEnabled, err := q.metricAggregationEnabled(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp != nil && metricAggregationEnabled {
+	if resp != nil && q.metricAggregationEnabled(ctx) {
 		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
 	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -159,12 +154,9 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	return resp, err
 }
 
-func (q *QuerierAPI) metricAggregationEnabled(ctx context.Context) (bool, error) {
-	orgID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return false, err
-	}
-	return q.limits.MetricAggregationEnabled(orgID), nil
+func (q *QuerierAPI) metricAggregationEnabled(ctx context.Context) bool {
+	orgID, _ := user.ExtractOrgID(ctx)
+	return q.limits.MetricAggregationEnabled(orgID)
 }
 
 // SeriesHandler returns the list of time series that match a certain label set.
@@ -176,12 +168,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
-	metricAggregationEnabled, err := q.metricAggregationEnabled(ctx)
-	if err != nil {
-		return nil, stats.Result{}, err
-	}
-
-	if metricAggregationEnabled {
+	if q.metricAggregationEnabled(ctx) {
 		grpsWithAggMetricsFilter, err := q.filterAggregatedMetrics(req.GetGroups())
 		if err != nil {
 			return nil, stats.Result{}, err

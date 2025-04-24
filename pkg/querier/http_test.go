@@ -157,6 +157,17 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
+func injectOrgID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func buildHandler(api *QuerierAPI) http.Handler {
+	return injectOrgID(NewQuerierHTTPHandler(NewQuerierHandler(api)))
+}
+
 func TestSeriesHandler(t *testing.T) {
 	t.Run("instant queries set a step of 0", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
@@ -182,13 +193,14 @@ func TestSeriesHandler(t *testing.T) {
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(t, q, false)
-		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
+		handler := buildHandler(api)
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
 		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
@@ -205,7 +217,7 @@ func TestSeriesHandler(t *testing.T) {
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(t, q, true)
-		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
+		handler := buildHandler(api)
 
 		for _, tt := range []struct {
 			match          string
@@ -228,6 +240,7 @@ func TestSeriesHandler(t *testing.T) {
 				"?start=0"+
 				"&end=1"+
 				fmt.Sprintf("&match=%s", url.QueryEscape(tt.match)), nil)
+			req.Header.Set("X-Scope-OrgID", "test-org")
 			_ = makeRequest(t, handler, req)
 			q.AssertCalled(t, "Series", mock.Anything, &logproto.SeriesRequest{
 				Start:  time.Unix(0, 0).UTC(),
@@ -316,11 +329,12 @@ func TestLabelsHandler(t *testing.T) {
 		q := newQuerierMock()
 		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(t, q, true)
-		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
+		handler := buildHandler(api)
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
 			"?start=0"+
 			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
 		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
