@@ -6,6 +6,13 @@
 
 * **promtail:** fix parser for azureeventhubs message without time field ([#14218](https://github.com/grafana/loki/pull/14218))
 
+## [3.3.5](https://github.com/grafana/loki/compare/v3.3.4...v3.3.5) (2025-04-25)
+
+
+### Bug Fixes
+
+* **docs:** Update configuration.md (backport release-3.3.x) ([#17299](https://github.com/grafana/loki/issues/17299)) ([c77dfb0](https://github.com/grafana/loki/commit/c77dfb0618584e9586c3224fe65742435a064df9))
+
 ## [3.3.4](https://github.com/grafana/loki/compare/v3.3.3...v3.3.4) (2025-04-03)
 
 
