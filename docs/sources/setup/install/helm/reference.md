@@ -25,6 +25,8 @@ This is the generated reference for the Loki Helm Chart values.
 <!-- vale Grafana.Spelling = NO -->
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+
+
 {{< responsive-table >}}
 <table>
 	<thead>
@@ -6054,6 +6056,15 @@ See values.yaml
 			<td>loki.annotations</td>
 			<td>object</td>
 			<td>Common annotations for all deployments/StatefulSets</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.block_builder</td>
+			<td>object</td>
+			<td>Optional block builder configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
