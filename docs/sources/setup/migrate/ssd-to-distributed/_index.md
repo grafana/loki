@@ -11,7 +11,11 @@ keywords:
 
 # Migrate from SSD to distributed
 
-This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
+This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section. 
+
+{{< admonition type="note" >}}
+In this guide, an AWS deployment is used as an example. However, the migration process is mirrored for other cloud providers. This is due to the fact that no changes are required to the underlying data storage.
+{{< /admonition >}}
 
 ## Considerations
 
@@ -33,6 +37,10 @@ Before starting the migration process, make sure you have the following prerequi
 ## Example SSD deployment
 
 This example will use the following SSD deployment as a reference:
+
+{{< admonition type="note" >}}
+This example is only a reference on the parameters that need to be changed. There will be other parameters within your own config such as `limits_config`, `gateway`, `compactor`, etc. These can remain the same.
+{{< /admonition >}}
 
 ```yaml
 ---
@@ -117,21 +125,18 @@ minio:
  enabled: false
 ```
 
-{{< admonition type="note" >}}
-This example is only a reference on the parameters that need to be changed. There will be other parameters within your own config such as `limits_config`, `gateway`, `compactor`, etc. These can remain the same.
-{{< /admonition >}}
-
 ## Stage 1: Deploying the Loki distributed components
 
 In this stage, we will deploy the distributed Loki components alongside the SSD components. We will also change the `deploymentMode` to `SimpleScalable<->Distributed`. The `SimpleScalable<->Distributed` migration mode allows for a zero-downtime transition between Simple Scalable and fully Distributed architectures. During migration, both deployment types run simultaneously, sharing the same object storage backend.
 
-```
-Simple Scalable Components   ->    Distributed Components
-------------------------    ->    ---------------------
-write (StatefulSet)         ->    Distributor + Ingester
-read (Deployment)           ->    Query Frontend + Querier
-backend (StatefulSet)       ->    Compactor + Ruler + Index Gateway
-```
+The the following table outlines which components take over the responsibilities of the SSD components:
+
+Simple Scalable Components |  Distributed Components
+---------------------------|--------------------------------
+write (Deployment)         |   Distributor + Ingester
+read (StatefulSet)         |   Query Frontend + Querier
+backend (StatefulSet)      |   Compactor + Ruler + Index Gateway
+
 How Loki handles request routing during the migration:
 
 The Gateway (nginx) handles request routing based on endpoint type:
@@ -271,7 +276,7 @@ The final stage of the migration involves transitioning all traffic to the distr
     ```bash
     cp values-migration.yaml values-distributed.yaml
     ```
-2. Next modify the following parameters; `deploymentMode` and components based on the annotations below.
+1. Next modify the following parameters; `deploymentMode` and components based on the annotations below.
    ```yaml
    ---
    loki:
@@ -361,12 +366,21 @@ The final stage of the migration involves transitioning all traffic to the distr
   * `deploymentMode: Distributed`: This will allow for the distributed components to run in isolation.
   * Scale down all SSD components to `0`.
 
+1. Deploy the final configuration using the following command:
 
-## Migrating from SSD to Single Binary
+    ```bash
+    helm upgrade --values values-distributed.yaml loki grafana/loki -n loki 
+    ```
 
-If you are looking to migrate from SSD to a single binary deployment the process is similar to the migration from SSD to Distributed. The primary difference is that you will use `SingleBinary<->SimpleScalable` as your `deploymentMode`. Before moving to `SingleBinary`.
+1. Once the deployment is complete, you can verify that all components are running using the following command:
 
-## Summary
+    ```bash
+    kubectl get pods -n loki
+    ```
 
-This guide provides instructions for migrating from a simple scalable deployment (SSD) to a distributed deployment. The migration process involves deploying the distributed components alongside the SSD components and transitioning all traffic to the distributed components. The migration process is designed to be zero-downtime, though it is worth placing a maintenance window for mission critical applications. Make sure to take note of the [considerations](#considerations) before starting the migration process.
+You should see all distributed components running and the SSD compontents have now been removed.
+
+## What's next?
+
+Loki in distributed mode is inherently more complex than SSD mode. It is recommended to meta-minitor your Loki deployment to ensure that everything is running smoothly. You can do this by following the [meta-monitoring guide](https://grafana.com/docs/loki/latest/operations/meta-monitoring/). 
 
