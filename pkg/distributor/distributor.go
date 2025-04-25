@@ -514,8 +514,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	defer d.waitSimulatedLatency(ctx, tenantID, start)
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
 }
 
@@ -526,6 +524,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if err != nil {
 		return nil, err
 	}
+
+	start := time.Now()
+	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
