@@ -207,8 +207,8 @@ func (s *streamMetadata) EvictPartitions(partitions []int32) {
 		s.locks[i].Lock()
 
 		for tenant, tenantPartitions := range s.stripes[i] {
-			for _, deleteId := range partitions {
-				delete(tenantPartitions, deleteId)
+			for _, deleteID := range partitions {
+				delete(tenantPartitions, deleteID)
 			}
 			if len(tenantPartitions) == 0 {
 				delete(s.stripes[i], tenant)
