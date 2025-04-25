@@ -1258,8 +1258,12 @@ func (t *Loki) supportIndexDeleteRequest() bool {
 func (t *Loki) compactorAddress() (string, bool, error) {
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isTarget(Read)
 	if t.Cfg.isTarget(All) || legacyReadMode || t.Cfg.isTarget(Backend) {
+		listenAddress := "127.0.0.1"
+		if t.Cfg.Server.GRPCListenAddress != "" {
+			listenAddress = t.Cfg.Server.GRPCListenAddress
+		}
 		// In single binary or read modes, this module depends on Server
-		return net.JoinHostPort(t.Cfg.Server.GRPCListenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
+		return net.JoinHostPort(listenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {
