@@ -168,7 +168,7 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with (concat .Values.global.extraEnv .Values.backend.extraEnvFrom) | uniq }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.backend.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
