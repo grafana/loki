@@ -151,6 +151,10 @@ spec:
         - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.singleBinary.command }}
+          command:
+            - {{ coalesce .Values.singleBinary.command .Values.loki.command | quote }}
+          {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.singleBinary.targetModule }}

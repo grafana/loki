@@ -68,6 +68,10 @@ spec:
         - name: querier
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.querier.command }}
+          command:
+            - {{ coalesce .Values.querier.command .Values.loki.command | quote }}
+          {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=querier
