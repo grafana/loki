@@ -2,7 +2,9 @@ package physical
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -59,7 +61,7 @@ type BinaryExpression interface {
 // physical plan.
 type LiteralExpression interface {
 	Expression
-	ValueType() types.ValueType
+	ValueType() datatype.DataType
 	isLiteralExpr()
 }
 
@@ -110,7 +112,7 @@ func (*BinaryExpr) Type() ExpressionType {
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
 type LiteralExpr struct {
-	Value types.Literal
+	datatype.Literal
 }
 
 func (*LiteralExpr) isExpr()        {}
@@ -118,7 +120,7 @@ func (*LiteralExpr) isLiteralExpr() {}
 
 // String returns the string representation of the literal value.
 func (e *LiteralExpr) String() string {
-	return e.Value.String()
+	return e.Literal.String()
 }
 
 // ID returns the type of the [LiteralExpr].
@@ -127,13 +129,33 @@ func (*LiteralExpr) Type() ExpressionType {
 }
 
 // ValueType returns the kind of value represented by the literal.
-func (e *LiteralExpr) ValueType() types.ValueType {
-	return e.Value.ValueType()
+func (e *LiteralExpr) ValueType() datatype.DataType {
+	return e.Literal.Type()
 }
 
 func NewLiteral(value any) *LiteralExpr {
-	return &LiteralExpr{
-		Value: types.Literal{Value: value},
+	if value == nil {
+		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
+	}
+
+	switch casted := value.(type) {
+	case bool:
+		return &LiteralExpr{Literal: datatype.NewBoolLiteral(casted)}
+	case string:
+		// TODO(chaudum): Try parsing bytes/timestamp/duration
+		return &LiteralExpr{Literal: datatype.NewStringLiteral(casted)}
+	case int:
+		return &LiteralExpr{Literal: datatype.NewIntegerLiteral(int64(casted))}
+	case int64:
+		return &LiteralExpr{Literal: datatype.NewIntegerLiteral(casted)}
+	case float64:
+		return &LiteralExpr{Literal: datatype.NewFloatLiteral(casted)}
+	case time.Time:
+		return &LiteralExpr{Literal: datatype.NewTimestampLiteral(casted.UnixNano())}
+	case time.Duration:
+		return &LiteralExpr{Literal: datatype.NewDurationLiteral(casted.Nanoseconds())}
+	default:
+		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
 	}
 }
 

@@ -199,8 +199,3 @@ func createColumnRef(name string) types.ColumnRef {
 		Type:   types.ColumnTypeBuiltin,
 	}
 }
-
-// Helper to create a literal value
-func createLiteral(val any) types.Literal {
-	return types.Literal{Value: val}
-}

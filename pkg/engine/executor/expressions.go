@@ -7,8 +7,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -19,7 +19,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 	case *physical.LiteralExpr:
 		return &Scalar{
-			value: expr.Value,
+			value: expr.Literal,
 			rows:  input.NumRows(),
 		}, nil
 
@@ -94,7 +94,7 @@ type ColumnVector interface {
 
 // Scalar represents a single value repeated any number of times.
 type Scalar struct {
-	value types.Literal
+	value datatype.Literal
 	rows  int64
 }
 
@@ -106,47 +106,43 @@ func (v *Scalar) ToArray() arrow.Array {
 	builder := array.NewBuilder(mem, v.Type())
 	defer builder.Release()
 
-	for i := int64(0); i < v.rows; i++ {
-		switch v.value.ValueType() {
-		case types.ValueTypeBool:
-			builder.(*array.BooleanBuilder).Append(v.value.Value.(bool))
-		case types.ValueTypeStr:
-			builder.(*array.StringBuilder).Append(v.value.Value.(string))
-		case types.ValueTypeInt:
-			builder.(*array.Int64Builder).Append(v.value.Value.(int64))
-		case types.ValueTypeFloat:
-			builder.(*array.Float64Builder).Append(v.value.Value.(float64))
-		case types.ValueTypeTimestamp:
-			builder.(*array.Uint64Builder).Append(v.value.Value.(uint64))
-		default:
+	switch builder := builder.(type) {
+	case *array.NullBuilder:
+		for range v.rows {
 			builder.AppendNull()
 		}
+	case *array.BooleanBuilder:
+		value := v.value.Value().(bool)
+		for range v.rows {
+			builder.Append(value)
+		}
+	case *array.StringBuilder:
+		value := v.value.Value().(string)
+		for range v.rows {
+			builder.Append(value)
+		}
+	case *array.Int64Builder:
+		value := v.value.Value().(int64)
+		for range v.rows {
+			builder.Append(value)
+		}
+	case *array.Float64Builder:
+		value := v.value.Value().(float64)
+		for range v.rows {
+			builder.Append(value)
+		}
 	}
-
 	return builder.NewArray()
 }
 
 // Value implements ColumnVector.
 func (v *Scalar) Value(_ int) any {
-	return v.value.Value
+	return v.value.Value()
 }
 
 // Type implements ColumnVector.
 func (v Scalar) Type() arrow.DataType {
-	switch v.value.ValueType() {
-	case types.ValueTypeBool:
-		return arrow.FixedWidthTypes.Boolean
-	case types.ValueTypeStr:
-		return arrow.BinaryTypes.String
-	case types.ValueTypeInt:
-		return arrow.PrimitiveTypes.Int64
-	case types.ValueTypeFloat:
-		return arrow.PrimitiveTypes.Float64
-	case types.ValueTypeTimestamp:
-		return arrow.PrimitiveTypes.Uint64
-	default:
-		return arrow.Null
-	}
+	return datatype.ToArrow[v.value.Type()]
 }
 
 // Len implements ColumnVector.

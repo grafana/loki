@@ -38,36 +38,49 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		name      string
 		value     any
 		arrowType arrow.Type
+		expected  any
 	}{
 		{
 			name:      "null",
 			value:     nil,
 			arrowType: arrow.NULL,
+			expected:  nil,
 		},
 		{
 			name:      "bool",
 			value:     true,
 			arrowType: arrow.BOOL,
+			expected:  true,
 		},
 		{
 			name:      "str",
 			value:     "loki",
 			arrowType: arrow.STRING,
+			expected:  "loki",
 		},
 		{
 			name:      "int",
-			value:     int64(123456789),
+			value:     123456789,
 			arrowType: arrow.INT64,
+			expected:  int64(123456789),
 		},
 		{
 			name:      "float",
-			value:     float64(123.456789),
+			value:     123.456789,
 			arrowType: arrow.FLOAT64,
+			expected:  123.456789,
 		},
 		{
 			name:      "timestamp",
-			value:     uint64(1744612881740032450),
-			arrowType: arrow.UINT64,
+			value:     time.Unix(3600, 0),
+			arrowType: arrow.INT64,
+			expected:  int64(3600000000000),
+		},
+		{
+			name:      "duration",
+			value:     time.Duration(1 * time.Hour),
+			arrowType: arrow.INT64,
+			expected:  int64(3600000000000),
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,7 +95,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			for i := range n {
 				val := colVec.Value(i)
-				require.Equal(t, tt.value, val)
+				require.Equal(t, tt.expected, val)
 			}
 		})
 	}
@@ -156,11 +169,11 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Right: &physical.ColumnExpr{
 				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
 			},
-			Op: types.BinaryOpInvalid,
+			Op: types.BinaryOpXor,
 		}
 
 		_, err := e.eval(expr, rec)
-		require.ErrorContains(t, err, "failed to lookup binary function for signature invalid(utf8,utf8): not implemented")
+		require.ErrorContains(t, err, "failed to lookup binary function for signature XOR(utf8,utf8): not implemented")
 	})
 
 	t.Run("EQ(string,string)", func(t *testing.T) {
@@ -168,10 +181,8 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Left: &physical.ColumnExpr{
 				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
 			},
-			Right: &physical.LiteralExpr{
-				Value: types.Literal{Value: "Charlie"},
-			},
-			Op: types.BinaryOpEq,
+			Right: physical.NewLiteral("Charlie"),
+			Op:    types.BinaryOpEq,
 		}
 
 		res, err := e.eval(expr, rec)
@@ -185,10 +196,8 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Left: &physical.ColumnExpr{
 				Ref: types.ColumnRef{Column: "value", Type: types.ColumnTypeBuiltin},
 			},
-			Right: &physical.LiteralExpr{
-				Value: types.Literal{Value: 0.5},
-			},
-			Op: types.BinaryOpGt,
+			Right: physical.NewLiteral(0.5),
+			Op:    types.BinaryOpGt,
 		}
 
 		res, err := e.eval(expr, rec)

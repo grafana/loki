@@ -29,9 +29,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always true
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -63,9 +61,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always false
-		falsePredicate := &physical.LiteralExpr{
-			Value: createLiteral(false),
-		}
+		falsePredicate := physical.NewLiteral(false)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -149,12 +145,12 @@ func TestNewFilterPipeline(t *testing.T) {
 			Predicates: []physical.Expression{
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
-					Right: &physical.LiteralExpr{Value: createLiteral("Bob")},
+					Right: physical.NewLiteral("Bob"),
 					Op:    types.BinaryOpEq,
 				},
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
-					Right: &physical.LiteralExpr{Value: createLiteral(false)},
+					Right: physical.NewLiteral(false),
 					Op:    types.BinaryOpNeq,
 				},
 			},
@@ -198,9 +194,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(emptyRecord)
 
 		// Create a simple filter
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{

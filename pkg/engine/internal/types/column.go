@@ -27,8 +27,6 @@ const (
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {
 	switch ct {
-	case ColumnTypeInvalid:
-		return typeInvalid
 	case ColumnTypeBuiltin:
 		return "builtin"
 	case ColumnTypeLabel:
