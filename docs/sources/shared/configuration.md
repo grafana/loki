@@ -4523,6 +4523,10 @@ engine:
   # CLI flag: -querier.engine.enable-v2-engine
   [enable_v2_engine: <boolean> | default = false]
 
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

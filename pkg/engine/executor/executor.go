@@ -61,12 +61,16 @@ func (c *Context) executeDataObjScan(_ context.Context, _ *physical.DataObjScan)
 	return errorPipeline(errNotImplemented)
 }
 
-func (c *Context) executeSortMerge(_ context.Context, _ *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
-	return errorPipeline(errNotImplemented)
+	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
+	if err != nil {
+		return errorPipeline(err)
+	}
+	return pipeline
 }
 
 func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {

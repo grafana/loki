@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -123,6 +124,47 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create expected output (only rows where valid=true)
 		expectedCSV := "Alice,true\nCharlie,true"
+		expectedRecord, err := CSVToArrow(fields, expectedCSV)
+		require.NoError(t, err)
+		defer expectedRecord.Release()
+
+		expectedPipeline := NewBufferedPipeline(expectedRecord)
+
+		// Assert that the pipelines produce equal results
+		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+	})
+
+	t.Run("filter on multiple columns with binary expressions", func(t *testing.T) {
+		// Create input data
+		inputCSV := "Alice,true\nBob,false\nBob,true\nCharlie,false"
+		inputRecord, err := CSVToArrow(fields, inputCSV)
+		require.NoError(t, err)
+		defer inputRecord.Release()
+
+		// Create input pipeline
+		inputPipeline := NewBufferedPipeline(inputRecord)
+
+		// Create a Filter node
+		filter := &physical.Filter{
+			Predicates: []physical.Expression{
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
+					Right: &physical.LiteralExpr{Value: createLiteral("Bob")},
+					Op:    types.BinaryOpEq,
+				},
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
+					Right: &physical.LiteralExpr{Value: createLiteral(false)},
+					Op:    types.BinaryOpNeq,
+				},
+			},
+		}
+
+		// Create filter pipeline
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+
+		// Create expected output (only rows where name=="Bob" AND valid!=false)
+		expectedCSV := "Bob,true"
 		expectedRecord, err := CSVToArrow(fields, expectedCSV)
 		require.NoError(t, err)
 		defer expectedRecord.Release()
