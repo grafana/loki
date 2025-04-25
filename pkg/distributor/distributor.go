@@ -1269,7 +1269,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 
 	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 
-	if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok {
+	if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok && d.cfg.IngestLimitsEnabled {
 		// However, unlike stream records, the distributor writes stream metadata
 		// records to one of a fixed number of partitions, the size of which is
 		// determined ahead of time. It does not use a ring. The reason for this

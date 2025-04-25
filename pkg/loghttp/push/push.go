@@ -63,10 +63,9 @@ var (
 )
 
 const (
-	applicationJSON       = "application/json"
-	LabelServiceName      = "service_name"
-	ServiceUnknown        = "unknown_service"
-	AggregatedMetricLabel = "__aggregated_metric__"
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
 )
 
 var (
@@ -318,7 +317,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
-		if lbs.Has(AggregatedMetricLabel) {
+		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
 
