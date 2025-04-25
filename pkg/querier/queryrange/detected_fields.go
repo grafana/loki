@@ -434,13 +434,13 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	lblsResult := lblBuilder.LabelsResult().Parsed()
-	for _, lbl := range lblsResult {
+	lblsResult.Range(func(lbl labels.Label) {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
 			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
 		}
-	}
+	})
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {

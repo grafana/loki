@@ -29,18 +29,17 @@ import (
 // start being processed by Kafka.
 var writerRequestTimeoutOverhead = 2 * time.Second
 
+const (
+	MetricsPrefix = "loki_kafka_client"
+)
+
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
-// The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
-// registered don't have a prefix).
-func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
+// The returned Client collects the standard set of *kprom.Metrics, prefixed with
+// `MetricsPrefix`
+func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
-	metrics := kprom.NewMetrics(
-		"", // No prefix. We expect the input prometheus.Registered to be wrapped with a prefix.
-		kprom.Registerer(reg),
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
-		enableKafkaHistogramMetrics(kafkaCfg.EnableKafkaHistograms),
-	)
+	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),
@@ -98,6 +97,48 @@ func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logg
 		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)
 	}
 	return client, nil
+}
+
+// NewClientMetrics returns a new instance of `kprom.Metrics` (used to monitor Kafka interactions), provided
+// the `MetricsPrefix` as the `Namespace` for the default set of Prometheus metrics
+func NewClientMetrics(component string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
+	return kprom.NewMetrics(MetricsPrefix,
+		kprom.Registerer(WrapPrometheusRegisterer(component, reg)),
+		// Do not export the client ID, because we use it to specify options to the backend.
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+		enableKafkaHistogramMetrics(enableKafkaHistograms),
+	)
+}
+
+// WrapPrometheusRegisterer returns a prometheus.Registerer with labels applied
+//
+// This Registerer is used internally by the reader/writer Kafka clients to collect *kprom.Metrics (or any custom metrics
+// passed by a calling service)
+func WrapPrometheusRegisterer(component string, reg prometheus.Registerer) prometheus.Registerer {
+	return prometheus.WrapRegistererWith(prometheus.Labels{
+		"component": component,
+	}, reg)
+}
+
+func enableKafkaHistogramMetrics(enable bool) kprom.Opt {
+	histogramOpts := []kprom.HistogramOpts{}
+	if enable {
+		histogramOpts = append(histogramOpts,
+			kprom.HistogramOpts{
+				Enable:  kprom.ReadTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.ReadWait,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteTime,
+				Buckets: prometheus.DefBuckets,
+			}, kprom.HistogramOpts{
+				Enable:  kprom.WriteWait,
+				Buckets: prometheus.DefBuckets,
+			})
+	}
+	return kprom.HistogramsFromOpts(histogramOpts...)
 }
 
 type onlySampledTraces struct {
@@ -203,7 +244,9 @@ type Producer struct {
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewProducer(client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
+func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
+	wrappedRegisterer := WrapPrometheusRegisterer(component, reg)
+
 	producer := &Producer{
 		Client:           client,
 		closeOnce:        &sync.Once{},
@@ -212,28 +255,28 @@ func NewProducer(client *kgo.Client, maxBufferedBytes int64, reg prometheus.Regi
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
-		bufferedProduceBytes: promauto.With(reg).NewSummary(
+		bufferedProduceBytes: promauto.With(wrappedRegisterer).NewSummary(
 			prometheus.SummaryOpts{
-				Namespace:  "kafka",
+				Namespace:  "kafka_client",
 				Name:       "buffered_produce_bytes",
 				Help:       "The buffered produce records in bytes. Quantile buckets keep track of buffered records size over the last 60s.",
 				Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 1: 0.001},
 				MaxAge:     time.Minute,
 				AgeBuckets: 6,
 			}),
-		bufferedProduceBytesLimit: promauto.With(reg).NewGauge(
+		bufferedProduceBytesLimit: promauto.With(wrappedRegisterer).NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "kafka",
+				Namespace: "kafka_client",
 				Name:      "buffered_produce_bytes_limit",
 				Help:      "The bytes limit on buffered produce records. Produce requests fail once this limit is reached.",
 			}),
-		produceRequestsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: "kafka",
+		produceRequestsTotal: promauto.With(wrappedRegisterer).NewCounter(prometheus.CounterOpts{
+			Namespace: "kafka_client",
 			Name:      "produce_requests_total",
 			Help:      "Total number of produce requests issued to Kafka.",
 		}),
-		produceFailuresTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "kafka",
+		produceFailuresTotal: promauto.With(wrappedRegisterer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "kafka_client",
 			Name:      "produce_failures_total",
 			Help:      "Total number of failed produce requests issued to Kafka.",
 		}, []string{"reason"}),

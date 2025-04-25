@@ -679,6 +679,10 @@ func WeightedParallelism(
 		}
 	}
 
+	// We don't need nanosecond precision here so convert to seconds.
+	// This is also important to prevent overflowing int64 when multiplying by parallelism below.
+	tsdbDur = tsdbDur / 1e9
+	otherDur = otherDur / 1e9
 	totalDur := int(tsdbDur + otherDur)
 	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
 	// let the downstream code handle it.
@@ -692,7 +696,7 @@ func WeightedParallelism(
 	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
 
 	if combined := regPart + tsdbPart; combined > 0 {
-		return combined
+		return int(combined)
 	}
 
 	// As long as the actual config is not zero,

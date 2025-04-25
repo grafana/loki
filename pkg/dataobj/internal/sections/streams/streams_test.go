@@ -3,6 +3,7 @@ package streams_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,10 +22,10 @@ func Test(t *testing.T) {
 	}
 
 	tt := []ent{
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0).UTC(), 10},
-		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0).UTC(), 20},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0).UTC(), 15},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC(), 5},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0), 10},
+		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0), 20},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0), 15},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
 	}
 
 	tracker := streams.New(nil, 1024)
@@ -39,16 +40,16 @@ func Test(t *testing.T) {
 		{
 			ID:               1,
 			Labels:           labels.FromStrings("cluster", "test", "app", "foo"),
-			MinTimestamp:     time.Unix(9, 0).UTC(),
-			MaxTimestamp:     time.Unix(15, 0).UTC(),
+			MinTimestamp:     time.Unix(9, 0),
+			MaxTimestamp:     time.Unix(15, 0),
 			Rows:             3,
 			UncompressedSize: 30,
 		},
 		{
 			ID:               2,
 			Labels:           labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"),
-			MinTimestamp:     time.Unix(100, 0).UTC(),
-			MaxTimestamp:     time.Unix(100, 0).UTC(),
+			MinTimestamp:     time.Unix(100, 0),
+			MaxTimestamp:     time.Unix(100, 0),
 			Rows:             1,
 			UncompressedSize: 20,
 		},
@@ -60,10 +61,23 @@ func Test(t *testing.T) {
 	for result := range streams.Iter(context.Background(), dec) {
 		stream, err := result.Value()
 		require.NoError(t, err)
+		stream.Labels = copyLabels(stream.Labels)
+		stream.LbValueCaps = nil
 		actual = append(actual, stream)
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func copyLabels(in labels.Labels) labels.Labels {
+	lb := make(labels.Labels, len(in))
+	for i, label := range in {
+		lb[i] = labels.Label{
+			Name:  strings.Clone(label.Name),
+			Value: strings.Clone(label.Value),
+		}
+	}
+	return lb
 }
 
 func buildObject(st *streams.Streams) ([]byte, error) {

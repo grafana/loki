@@ -166,7 +166,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, s string, _ labels.Labels) bool {
 					return strings.Contains(s, "fizz")
 				},
 			},
@@ -193,8 +193,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+				expectedFilter: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+					return structuredMetadata.Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -220,8 +220,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, structuredMetadata ...labels.Label) bool {
-					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong && strings.Contains(s, "fizz")
+				expectedFilter: func(_ time.Time, s string, structuredMetadata labels.Labels) bool {
+					return structuredMetadata.Get(lblPing) == lblPong && strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -344,7 +344,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, s string, _ labels.Labels) bool {
 					return strings.Contains(s, "fizz")
 				},
 			},
@@ -378,8 +378,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+				expectedFilter: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+					return structuredMetadata.Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -426,7 +426,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ labels.Labels) bool {
 					tsUnixNano := ts.UnixNano()
 					if (now.Add(-13*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-11*time.Hour).UnixNano()) ||
 						(now.Add(-10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-8*time.Hour).UnixNano()) ||
@@ -467,7 +467,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, _ string, _ labels.Labels) bool {
 					return true
 				},
 			},
@@ -501,7 +501,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, s string, _ labels.Labels) bool {
 					return strings.Contains(s, "fizz")
 				},
 			},
@@ -535,8 +535,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+				expectedFilter: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+					return structuredMetadata.Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -576,7 +576,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, _ string, _ labels.Labels) bool {
 					return true
 				},
 			},
@@ -617,7 +617,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, s string, _ labels.Labels) bool {
 					return strings.Contains(s, "fizz")
 				},
 			},
@@ -658,8 +658,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+				expectedFilter: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+					return structuredMetadata.Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -782,7 +782,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ labels.Labels) bool {
 					tsUnixNano := ts.UnixNano()
 					if (now.Add(-13*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-11*time.Hour).UnixNano()) ||
 						(now.Add(-10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-8*time.Hour).UnixNano()) {
@@ -850,7 +850,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, _ string, _ ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, _ string, _ labels.Labels) bool {
 					tsUnixNano := ts.UnixNano()
 					if (now.Add(-13*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-11*time.Hour).UnixNano()) ||
 						(now.Add(-10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-8*time.Hour).UnixNano()) {
@@ -917,7 +917,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+				expectedFilter: func(_ time.Time, s string, _ labels.Labels) bool {
 					return strings.Contains(s, "fizz")
 				},
 			},
@@ -959,13 +959,13 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 						line = "fizz buzz"
 					}
 					// mix of empty, ding=dong and ping=pong as structured metadata
-					var structuredMetadata []labels.Label
+					var structuredMetadata labels.Labels
 					if start.Time().Minute()%3 == 0 {
-						structuredMetadata = []labels.Label{{Name: lblPing, Value: lblPong}}
+						structuredMetadata = labels.FromStrings(lblPing, lblPong)
 					} else if start.Time().Minute()%2 == 0 {
-						structuredMetadata = []labels.Label{{Name: "ting", Value: "tong"}}
+						structuredMetadata = labels.FromStrings("ting", "tong")
 					}
-					require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, structuredMetadata...), filterFunc(start.Time(), line, structuredMetadata...), "line", line, "time", start.Time(), "now", now.Time())
+					require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, structuredMetadata), filterFunc(start.Time(), line, structuredMetadata), "line", line, "time", start.Time(), "now", now.Time())
 				}
 
 				require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))
@@ -1019,10 +1019,6 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 	user2 := []byte("user2")
 	lblFooBar := mustParseLabel(`{foo="bar"}`)
 	lblFizzBuzz := mustParseLabel(`{fizz="buzz"}`)
-	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
-		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
-		{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
-	}}
 	type markSeriesProcessed struct {
 		userID, seriesID []byte
 		lbls             labels.Labels
@@ -1189,6 +1185,11 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			workingDir := t.TempDir()
+			deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+				{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+				{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
+			}}
+
 			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
 			require.NoError(t, mgr.loadDeleteRequestsToProcess())
@@ -1207,6 +1208,7 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
 			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
+			require.NoError(t, mgr.loadDeleteRequestsToProcess())
 
 			// when the mark phase ends, series progress should get cleared
 			mgr.MarkPhaseFinished()
@@ -1214,6 +1216,40 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 		})
 	}
+}
+
+func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
+	workingDir := t.TempDir()
+
+	user1 := []byte("user1")
+	lblFooBar := mustParseLabel(`{foo="bar"}`)
+	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 100, EndTime: 200, Status: StatusReceived},
+	}}
+
+	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+	require.NoError(t, err)
+	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+	require.NoError(t, mgr.MarkSeriesAsProcessed(user1, []byte(lblFooBar.String()), lblFooBar, "t1"))
+
+	// timeout the retention processing
+	mgr.MarkPhaseTimedOut()
+
+	// timeout should not clear the series progress
+	mgr.MarkPhaseFinished()
+	require.Len(t, mgr.processedSeries, 2)
+	require.NoError(t, mgr.storeSeriesProgress())
+	require.FileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+
+	// load the requests again for processing
+	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+
+	// not hitting the timeout should clear the series progress
+	mgr.MarkPhaseFinished()
+	require.Len(t, mgr.processedSeries, 0)
+	require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 }
 
 type storeAddReqDetails struct {

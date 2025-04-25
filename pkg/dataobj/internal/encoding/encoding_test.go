@@ -37,22 +37,22 @@ func TestStreams(t *testing.T) {
 
 	t.Run("Encode", func(t *testing.T) {
 		nameBuilder, err := dataset.NewColumnBuilder("name", dataset.BuilderOptions{
-			Value:       datasetmd.VALUE_TYPE_STRING,
+			Value:       datasetmd.VALUE_TYPE_BYTE_ARRAY,
 			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
 			Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		})
 		require.NoError(t, err)
 
 		capitalBuilder, err := dataset.NewColumnBuilder("capital", dataset.BuilderOptions{
-			Value:       datasetmd.VALUE_TYPE_STRING,
+			Value:       datasetmd.VALUE_TYPE_BYTE_ARRAY,
 			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
 			Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		})
 		require.NoError(t, err)
 
 		for i, c := range countries {
-			require.NoError(t, nameBuilder.Append(i, dataset.StringValue(c.Name)))
-			require.NoError(t, capitalBuilder.Append(i, dataset.StringValue(c.Capital)))
+			require.NoError(t, nameBuilder.Append(i, dataset.ByteArrayValue([]byte(c.Name))))
+			require.NoError(t, capitalBuilder.Append(i, dataset.ByteArrayValue([]byte(c.Capital))))
 		}
 
 		nameColumn, err := nameBuilder.Flush()
@@ -123,8 +123,8 @@ func TestStreams(t *testing.T) {
 				require.Equal(t, len(actual), row.Index)
 
 				actual = append(actual, Country{
-					Name:    row.Values[0].String(),
-					Capital: row.Values[1].String(),
+					Name:    string(row.Values[0].ByteArray()),
+					Capital: string(row.Values[1].ByteArray()),
 				})
 			}
 		}

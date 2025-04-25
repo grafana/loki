@@ -309,6 +309,7 @@ func NewTenantTopicWriter(
 		logger: logger,
 		limits: limits,
 		producer: client.NewProducer(
+			"distributor_tenant_topic_tee",
 			kafkaClient,
 			int64(cfg.MaxBufferedBytes),
 			reg,

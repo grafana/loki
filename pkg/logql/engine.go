@@ -159,12 +159,16 @@ type EngineOpts struct {
 
 	// Enable the next generation Loki Query Engine for supported queries.
 	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
+
+	// Batch size of the v2 execution engine.
+	BatchSize int `yaml:"batch_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }

@@ -399,8 +399,8 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder 
 
 // Add the labels to the builder. If a label with the same name
 // already exists in the base labels, a suffix is added to the name.
-func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *LabelsBuilder {
-	for _, l := range labels {
+func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBuilder {
+	lbs.Range(func(l labels.Label) {
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
@@ -408,16 +408,16 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 
 		if name == logqlmodel.ErrorLabel {
 			b.err = l.Value
-			continue
+			return
 		}
 
 		if name == logqlmodel.ErrorDetailsLabel {
 			b.errDetails = l.Value
-			continue
+			return
 		}
 
 		b.Set(category, name, l.Value)
-	}
+	})
 	return b
 }
 
