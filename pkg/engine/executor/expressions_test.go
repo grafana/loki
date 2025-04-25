@@ -78,7 +78,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		},
 		{
 			name:      "duration",
-			value:     time.Duration(1 * time.Hour),
+			value:     time.Hour,
 			arrowType: arrow.INT64,
 			expected:  int64(3600000000000),
 		},
