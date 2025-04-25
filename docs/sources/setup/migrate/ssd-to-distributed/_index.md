@@ -1,6 +1,6 @@
 ---
-title: Migrate from SSD to Distributed
-menuTitle: Migrate from SSD to Distributed
+title: Migrate from SSD to distributed
+menuTitle: Migrate from SSD to distributed
 description: Migration guide from migrating from simple scalable deployment to a distributed microservices deployment.
 weight: 300
 keywords:
@@ -9,7 +9,7 @@ keywords:
   - ssd
 ---
 
-# Migrate from SSD to Distributed
+# Migrate from SSD to distributed
 
 This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
 
@@ -20,8 +20,8 @@ Migrating from a simple scalable deployment to a distributed deployment with zer
 1. **Helm Deployment:** This guide assumes that you have deploying Loki using Helm. Other migration methods are possible but are not covered in this guide.
 1. **Kubernetes Resources:** This migration method requires you to spin up distributed Loki pods before shutting down the SSD pods. This means that you need to have enough resources in your Kubernetes cluster to run both the SSD and distributed Loki pods at the same time.
 1. **Data:** No changes are required to your underlying data storage. Although data loss or corruption is unlikely, it is always recommended to back up your data before starting the migration process. If you are using a cloud provider you can take a snapshot/backup.
-1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However:** if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana drilldown logs feature.
-2. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note not all paramters are equivalent between Mimir and Loki. 
+1. **Configuration:** We do not account for all configuration parameters in this guide. We only cover the parameters that need to be changed. Other parameters can remain the same. **However**, if `pattern_ingesters=true` you will need to spin up `patternIngesters` before shutting down the SSD ingesters. This is primarily needed for the Grafana drilldown logs feature.
+1. **Zone Aware Ingesters:** This guide does not currently account for Zone Aware Ingesters. Our current recommendation is to either disable Zone Aware Ingesters or to consult the [Mimir migration guide](https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-from-single-zone-with-helm/). Take note not all paramters are equivalent between Mimir and Loki. 
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Before starting the migration process, make sure you have the following prerequi
 1. Access to your Kubernetes cluster via `kubectl`.
 1. Helm installed.
 
-## SSD example
+## Example SSD deployment
 
 This example will use the following SSD deployment as a reference:
 
@@ -132,7 +132,7 @@ write (StatefulSet)         ->    Distributor + Ingester
 read (Deployment)           ->    Query Frontend + Querier
 backend (StatefulSet)       ->    Compactor + Ruler + Index Gateway
 ```
-Request routing:
+How Loki handles request routing during the migration:
 
 The Gateway (nginx) handles request routing based on endpoint type:
 1. Write Path (`loki/api/v1/push`):
@@ -148,7 +148,7 @@ The Gateway (nginx) handles request routing based on endpoint type:
 
 To start the migration process:  
 
-1. Create a copy of your existing `values.yaml` file and name it `values-migration.yaml` (You can also make these changes within your current values file).
+1. Create a copy of your existing `values.yaml` file and name it `values-migration.yaml`.
 
     ```bash
     cp values.yaml values-migration.yaml
@@ -262,7 +262,7 @@ To start the migration process:
    Let all components reach the `Running` state before proceeding to the next stage.
    {{< /admonition >}}
 
-## Stage 2: Transitioning to Distributed components
+## Stage 2: Transitioning to distributed components
 
 The final stage of the migration involves transitioning all traffic to the distributed components. This is done by scaling down the SSD components and swapping the `deploymentMode` to `Distributed`. To do this:
 
