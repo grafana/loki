@@ -17,7 +17,7 @@ The results cache stores the results for index-stat, instant-metric, label and v
 The results cache is consulted by query-frontends to be used in subsequent queries. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further along to be executed in queriers, then also caches those results.
 To orchestrate all of the above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
-The index lookup cache only supported the legacy BoltDB index storage and is configured to be in-memory by default.
+The index lookup cache only supports the legacy BoltDB index storage and is configured to be in-memory by default.
 Since moving to the TSDB indexes the attached disks/persistent volumes are utilised as cache and in-memory index lookup cache is obsolete.
 
 #### Chunks cache
