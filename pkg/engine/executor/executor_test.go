@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -40,13 +39,6 @@ func TestExecutor_SortMerge(t *testing.T) {
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
 	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeSortMerge(context.TODO(), &physical.SortMerge{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
 }
 
 func TestExecutor_Limit(t *testing.T) {
@@ -55,13 +47,6 @@ func TestExecutor_Limit(t *testing.T) {
 		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, nil)
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {
@@ -78,13 +63,6 @@ func TestExecutor_Filter(t *testing.T) {
 		pipeline := c.executeFilter(context.TODO(), &physical.Filter{}, nil)
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeFilter(context.TODO(), &physical.Filter{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {
@@ -109,21 +87,6 @@ func TestExecutor_Projection(t *testing.T) {
 		pipeline := c.executeProjection(context.TODO(), &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
 		err := pipeline.Read()
 		require.ErrorContains(t, err, "projection expects at least one column, got 0")
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		cols := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "a",
-					Type:   types.ColumnTypeBuiltin,
-				},
-			},
-		}
-		c := &Context{}
-		pipeline := c.executeProjection(context.TODO(), &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {

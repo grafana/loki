@@ -333,7 +333,7 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 	if len(trailer) > 0 {
 		// Use custom chunked encoding.
 		req.Trailer = trailer
-		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, time.Now().UTC())
+		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, t)
 	}
 	return &req
 }

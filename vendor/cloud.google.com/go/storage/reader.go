@@ -393,6 +393,7 @@ type multiRangeDownloader interface {
 	wait()
 	close() error
 	getHandle() []byte
+	error() error
 }
 
 // Add adds a new range to MultiRangeDownloader.
@@ -442,4 +443,11 @@ func (mrd *MultiRangeDownloader) Wait() {
 // follow up read if the same object is read through a different stream.
 func (mrd *MultiRangeDownloader) GetHandle() []byte {
 	return mrd.reader.getHandle()
+}
+
+// Error returns an error if the MultiRangeDownloader is in a permanent failure
+// state. It returns a nil error if the MultiRangeDownloader is open and can be
+// used.
+func (mrd *MultiRangeDownloader) Error() error {
+	return mrd.reader.error()
 }

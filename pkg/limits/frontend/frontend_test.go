@@ -313,11 +313,11 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up the mock clients, one for each pair of mock RPC responses.
-			clients := make([]logproto.IngestLimitsClient, len(test.getAssignedPartitionsResponses))
-			instances := make([]ring.InstanceDesc, len(clients))
+			mockClients := make([]*mockIngestLimitsClient, len(test.getAssignedPartitionsResponses))
+			instances := make([]ring.InstanceDesc, len(mockClients))
 
 			for i := range test.getAssignedPartitionsResponses {
-				clients[i] = &mockIngestLimitsClient{
+				mockClients[i] = &mockIngestLimitsClient{
 					getAssignedPartitionsResponse: test.getAssignedPartitionsResponses[i],
 					expectedStreamUsageRequest:    test.expectedStreamUsageRequest[i],
 					getStreamUsageResponse:        test.getStreamUsageResponses[i],
@@ -329,18 +329,18 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}
 
 			// Set up the mocked ring and client pool for the tests.
-			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
+			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, instances)
 			l := &mockLimits{
 				maxGlobalStreams: test.maxGlobalStreams,
 				ingestionRate:    test.ingestionRate,
 			}
 			rl := limiter.NewRateLimiter(newRateLimitsAdapter(l), 10*time.Second)
-			cache := NewPartitionConsumerCache(1 * time.Millisecond)
+			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
 
 			f := Frontend{
 				limits:      l,
 				rateLimiter: rl,
-				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger(), cache, test.numPartitions),
+				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger()),
 				metrics:     newMetrics(prometheus.NewRegistry()),
 			}
 

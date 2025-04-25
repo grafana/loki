@@ -63,10 +63,9 @@ var (
 )
 
 const (
-	applicationJSON       = "application/json"
-	LabelServiceName      = "service_name"
-	ServiceUnknown        = "unknown_service"
-	AggregatedMetricLabel = "__aggregated_metric__"
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
 )
 
 var (
@@ -160,7 +159,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size > 0 {
+			if size >= 0 {
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 			} else {
@@ -181,7 +180,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size > 0 {
+			if size >= 0 {
 				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
@@ -318,7 +317,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
-		if lbs.Has(AggregatedMetricLabel) {
+		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
 
