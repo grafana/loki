@@ -2,6 +2,7 @@ package limits
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -419,21 +420,22 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 		metrics:          newMetrics(prometheus.NewRegistry()),
 	}
 
+	// Assign the Partition IDs.
+	partitions := map[string][]int32{"tenant1": {0}}
+	s.partitionManager.Assign(context.Background(), nil, partitions)
+
 	// Run concurrent requests
 	concurrency := 10
-	done := make(chan struct{})
+	wg := sync.WaitGroup{}
+	wg.Add(concurrency)
+
 	for range concurrency {
 		go func() {
-			defer func() { done <- struct{}{} }()
-
+			defer wg.Done()
 			req := &logproto.GetStreamUsageRequest{
 				Tenant:       "tenant1",
 				StreamHashes: []uint64{1, 2, 3, 4, 5},
 			}
-
-			// Assign the Partition IDs.
-			partitions := map[string][]int32{"tenant1": {0}}
-			s.partitionManager.Assign(context.Background(), nil, partitions)
 
 			resp, err := s.GetStreamUsage(context.Background(), req)
 			require.NoError(t, err)
@@ -447,9 +449,7 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for range concurrency {
-		<-done
-	}
+	wg.Wait()
 }
 
 func TestNewIngestLimits(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 
 // AllFunc is a function that is called for each stream in the metadata.
 // It is used to count per tenant active streams.
-// Note: The collect function should not modify the stream metadata.
+// Note: The All function should not modify the stream metadata.
 type AllFunc = func(tenant string, partitionID int32, stream Stream)
 
 // UsageFunc is a function that is called for per tenant streams.
@@ -109,11 +109,6 @@ func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, rec
 	s.locks[i].Lock()
 	defer s.locks[i].Unlock()
 
-	// Initialize stripe map if it doesn't exist
-	if s.stripes[i] == nil {
-		s.stripes[i] = make(map[string]map[int32][]Stream)
-	}
-
 	// Initialize tenant map if it doesn't exist
 	if _, ok := s.stripes[i][tenant]; !ok {
 		s.stripes[i][tenant] = make(map[int32][]Stream)
@@ -211,13 +206,12 @@ func (s *streamMetadata) EvictPartitions(partitions []int32) {
 	for i := range s.locks {
 		s.locks[i].Lock()
 
-		for _, id := range partitions {
-			for tenant, partitions := range s.stripes[i] {
-				delete(partitions, id)
-
-				if len(partitions) == 0 {
-					delete(s.stripes[i], tenant)
-				}
+		for tenant, tenantPartitions := range s.stripes[i] {
+			for _, deleteId := range partitions {
+				delete(tenantPartitions, deleteId)
+			}
+			if len(tenantPartitions) == 0 {
+				delete(s.stripes[i], tenant)
 			}
 		}
 
