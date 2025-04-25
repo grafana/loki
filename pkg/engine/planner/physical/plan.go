@@ -264,6 +264,17 @@ func (p *Plan) Roots() []Node {
 	return roots
 }
 
+// Root returns the root node that have no parents. It returns an error if the plan has no or multiple root nodes.
+func (p *Plan) Root() (Node, error) {
+	roots := p.Roots()
+	if len(roots) == 0 {
+		return nil, errors.New("plan has no root node")
+	} else if len(roots) > 1 {
+		return nil, errors.New("plan has multiple root nodes")
+	}
+	return roots[0], nil
+}
+
 // Leaves returns all nodes that have no children
 func (p *Plan) Leaves() []Node {
 	if len(p.nodes) == 0 {

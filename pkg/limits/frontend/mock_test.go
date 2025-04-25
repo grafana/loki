@@ -42,19 +42,28 @@ type mockIngestLimitsClient struct {
 	expectedStreamUsageRequest        *logproto.GetStreamUsageRequest
 
 	// The mocked responses.
-	getAssignedPartitionsResponse *logproto.GetAssignedPartitionsResponse
-	getStreamUsageResponse        *logproto.GetStreamUsageResponse
+	getAssignedPartitionsResponse    *logproto.GetAssignedPartitionsResponse
+	getAssignedPartitionsResponseErr error
+	getStreamUsageResponse           *logproto.GetStreamUsageResponse
+	getStreamUsageResponseErr        error
 
-	// The call count.
-	assignedPartitionsCallCount int
-	streamUsageCallCount        int
+	// The expected request counts.
+	expectedNumAssignedPartitionsRequests int
+	expectedNumStreamUsageRequests        int
+
+	// The actual request counts.
+	numAssignedPartitionsRequests int
+	numStreamUsageRequests        int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
 	if expected := m.expectedAssignedPartitionsRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
-	m.assignedPartitionsCallCount++
+	m.numAssignedPartitionsRequests++
+	if err := m.getAssignedPartitionsResponseErr; err != nil {
+		return nil, err
+	}
 	return m.getAssignedPartitionsResponse, nil
 }
 
@@ -62,8 +71,16 @@ func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.G
 	if expected := m.expectedStreamUsageRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
-	m.streamUsageCallCount++
+	m.numStreamUsageRequests++
+	if err := m.getStreamUsageResponseErr; err != nil {
+		return nil, err
+	}
 	return m.getStreamUsageResponse, nil
+}
+
+func (m *mockIngestLimitsClient) AssertExpectedNumRequests() {
+	require.Equal(m.t, m.expectedNumAssignedPartitionsRequests, m.numAssignedPartitionsRequests)
+	require.Equal(m.t, m.expectedNumStreamUsageRequests, m.numStreamUsageRequests)
 }
 
 func (m *mockIngestLimitsClient) Close() error {
@@ -121,7 +138,7 @@ func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 	return 1000
 }
 
-func newMockRingWithClientPool(_ *testing.T, name string, clients []logproto.IngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
+func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
 		rs: ring.ReplicationSet{

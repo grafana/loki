@@ -145,7 +145,7 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 
 func convertLineFilter(filter syntax.LineFilter) Value {
 	return &BinOp{
-		Left:  logColumnRef(),
+		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
 	}
@@ -174,8 +174,8 @@ func timestampColumnRef() *ColumnRef {
 	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
-func logColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinLog, types.ColumnTypeBuiltin)
+func lineColumnRef() *ColumnRef {
+	return NewColumnRef(types.ColumnNameBuiltinLine, types.ColumnTypeBuiltin)
 }
 
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {

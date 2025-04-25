@@ -7,6 +7,7 @@ package spanlogger
 import (
 	"context"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -42,11 +43,11 @@ var (
 
 // SpanLogger unifies tracing and logging, to reduce repetition.
 type SpanLogger struct {
-	ctx        context.Context            // context passed in, with logger
-	resolver   TenantResolver             // passed in
-	baseLogger log.Logger                 // passed in
-	logger     atomic.Pointer[log.Logger] // initialized on first use
-	opentracing.Span
+	ctx          context.Context            // context passed in, with logger
+	resolver     TenantResolver             // passed in
+	baseLogger   log.Logger                 // passed in
+	logger       atomic.Pointer[log.Logger] // initialized on first use
+	span         opentracing.Span
 	sampled      bool
 	debugEnabled bool
 }
@@ -63,7 +64,7 @@ func New(ctx context.Context, logger log.Logger, method string, resolver TenantR
 		ctx:          ctx,
 		resolver:     resolver,
 		baseLogger:   log.With(logger, "method", method),
-		Span:         span,
+		span:         span,
 		sampled:      sampled,
 		debugEnabled: debugEnabled(logger),
 	}
@@ -95,7 +96,7 @@ func FromContext(ctx context.Context, fallback log.Logger, resolver TenantResolv
 		ctx:          ctx,
 		baseLogger:   logger,
 		resolver:     resolver,
-		Span:         sp,
+		span:         sp,
 		sampled:      sampled,
 		debugEnabled: debugEnabled(logger),
 	}
@@ -137,7 +138,7 @@ func (s *SpanLogger) spanLog(kvps ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	s.Span.LogFields(fields...)
+	s.LogFields(fields...)
 	return nil
 }
 
@@ -146,8 +147,8 @@ func (s *SpanLogger) Error(err error) error {
 	if err == nil || !s.sampled {
 		return err
 	}
-	ext.Error.Set(s.Span, true)
-	s.Span.LogFields(otlog.Error(err))
+	s.SetError()
+	s.LogFields(otlog.Error(err))
 	return err
 }
 
@@ -183,11 +184,46 @@ func (s *SpanLogger) getLogger() log.Logger {
 // It is safe to call this method at the same time as calling other SpanLogger methods, however, this may produce
 // inconsistent results (eg. some log lines may be emitted with the provided key/value pair, and others may not).
 func (s *SpanLogger) SetSpanAndLogTag(key string, value interface{}) {
-	s.Span.SetTag(key, value)
+	s.SetTag(key, value)
 
 	logger := s.getLogger()
 	wrappedLogger := log.With(logger, key, value)
 	s.logger.Store(&wrappedLogger)
+}
+
+// SetError will set the error flag on the span.
+func (s *SpanLogger) SetError() {
+	ext.Error.Set(s.span, true)
+}
+
+// SetTag will set a tag/attribute on the span.
+func (s *SpanLogger) SetTag(key string, value interface{}) {
+	s.span.SetTag(key, value)
+}
+
+// Finish will finish the span.
+func (s *SpanLogger) Finish() {
+	s.span.Finish()
+}
+
+// LogFields will log the provided fields in the span, this is more performant that LogKV when using opentracing library.
+func (s *SpanLogger) LogFields(kvps ...otlog.Field) {
+	if !s.sampled {
+		return
+	}
+
+	// Clone kvps to prevent it from escaping to heap even when it's not sampled.
+	s.span.LogFields(slices.Clone(kvps)...)
+}
+
+// LogKV will log the provided key/value pairs in the span, this is less performant than LogFields when using opentracing library.
+func (s *SpanLogger) LogKV(kvps ...interface{}) {
+	if !s.sampled {
+		return
+	}
+
+	// Clone kvps to prevent it from escaping to heap even when it's not sampled.
+	s.span.LogKV(slices.Clone(kvps)...)
 }
 
 // Caller is like github.com/go-kit/log's Caller, but ensures that the caller information is

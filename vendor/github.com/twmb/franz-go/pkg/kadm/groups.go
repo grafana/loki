@@ -1555,6 +1555,35 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	return lags, nil
 }
 
+// CalculateGroupLag returns the per-partition lag of all members in a group.
+// The input to this method is the returns from the following methods (make
+// sure to check shard errors):
+//
+//	// Note that FetchOffsets exists to fetch only one group's offsets,
+//	// but some of the code below slightly changes.
+//	groups := DescribeGroups(ctx, group)
+//	commits := FetchManyOffsets(ctx, group)
+//	var endOffsets ListedOffsets
+//	listPartitions := described.AssignedPartitions()
+//	listPartitions.Merge(commits.CommittedPartitions()
+//	if topics := listPartitions.Topics(); len(topics) > 0 {
+//		endOffsets = ListEndOffsets(ctx, listPartitions.Topics())
+//	}
+//	for _, group := range groups {
+//		lag := CalculateGroupLag(group, commits[group.Group].Fetched, endOffsets)
+//	}
+//
+// If assigned partitions are missing in the listed end offsets, the partition
+// will have an error indicating it is missing. A missing topic or partition in
+// the commits is assumed to be nothing committing yet.
+func CalculateGroupLag(
+	group DescribedGroup,
+	commit OffsetResponses,
+	endOffsets ListedOffsets,
+) GroupLag {
+	return CalculateGroupLagWithStartOffsets(group, commit, nil, endOffsets)
+}
+
 var noOffsets = make(ListedOffsets)
 
 // CalculateGroupLagWithStartOffsets returns the per-partition lag of all
@@ -1586,9 +1615,6 @@ func CalculateGroupLagWithStartOffsets(
 	}
 	if endOffsets == nil {
 		endOffsets = noOffsets
-	}
-	if group.State == "Empty" {
-		return calculateEmptyLag(commit, startOffsets, endOffsets)
 	}
 
 	l := make(map[string]map[int32]GroupMemberLag)
@@ -1628,6 +1654,19 @@ func CalculateGroupLagWithStartOffsets(
 						pcommit = pcommitActual
 					}
 				}
+
+				// In order of priority, perr (the error on the Lag
+				// calculation) is non-nil if:
+				//
+				//  * The topic is missing from end ListOffsets
+				//  * The partition is missing from end ListOffsets
+				//  * OffsetFetch has an error on the partition
+				//  * ListOffsets has an error on the partition
+				//
+				// If we have no error, then we can calculate lag.
+				// We *do* allow an error on start ListedOffsets;
+				// if there are no start offsets or the start offset
+				// has an error, it is not used for lag calculation.
 				perr = errListMissing
 				if tend != nil {
 					if pendActual, ok := tend[p]; ok {
@@ -1680,49 +1719,27 @@ func CalculateGroupLagWithStartOffsets(
 		}
 	}
 
-	return l
-}
-
-// CalculateGroupLag returns the per-partition lag of all members in a group.
-// The input to this method is the returns from the following methods (make
-// sure to check shard errors):
-//
-//	// Note that FetchOffsets exists to fetch only one group's offsets,
-//	// but some of the code below slightly changes.
-//	groups := DescribeGroups(ctx, group)
-//	commits := FetchManyOffsets(ctx, group)
-//	var endOffsets ListedOffsets
-//	listPartitions := described.AssignedPartitions()
-//	listPartitions.Merge(commits.CommittedPartitions()
-//	if topics := listPartitions.Topics(); len(topics) > 0 {
-//		endOffsets = ListEndOffsets(ctx, listPartitions.Topics())
-//	}
-//	for _, group := range groups {
-//		lag := CalculateGroupLag(group, commits[group.Group].Fetched, endOffsets)
-//	}
-//
-// If assigned partitions are missing in the listed end offsets, the partition
-// will have an error indicating it is missing. A missing topic or partition in
-// the commits is assumed to be nothing committing yet.
-func CalculateGroupLag(
-	group DescribedGroup,
-	commit OffsetResponses,
-	endOffsets ListedOffsets,
-) GroupLag {
-	return CalculateGroupLagWithStartOffsets(group, commit, nil, endOffsets)
-}
-
-func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOffsets) GroupLag {
-	l := make(map[string]map[int32]GroupMemberLag)
+	// Now we go through everything previously committed to and calculate
+	// the lag for any topic or partition that is not currently assigned
+	// to any member. This block also entirely handles the case when the
+	// group.State is "Empty".
 	for t, ps := range commit {
 		lt := l[t]
 		if lt == nil {
 			lt = make(map[int32]GroupMemberLag)
 			l[t] = lt
 		}
-		tstart := startOffsets[t]
-		tend := endOffsets[t]
+		var tstart, tend map[int32]ListedOffset
+		var tlookup bool
 		for p, pcommit := range ps {
+			if _, ok := lt[p]; ok {
+				continue
+			}
+			if !tlookup {
+				tstart = startOffsets[t]
+				tend = endOffsets[t]
+				tlookup = true
+			}
 			var (
 				pend = ListedOffset{
 					Topic:     t,
@@ -1733,18 +1750,8 @@ func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOf
 				perr   error
 			)
 
-			// In order of priority, perr (the error on the Lag
-			// calculation) is non-nil if:
-			//
-			//  * The topic is missing from end ListOffsets
-			//  * The partition is missing from end ListOffsets
-			//  * OffsetFetch has an error on the partition
-			//  * ListOffsets has an error on the partition
-			//
-			// If we have no error, then we can calculate lag.
-			// We *do* allow an error on start ListedOffsets;
-			// if there are no start offsets or the start offset
-			// has an error, it is not used for lag calculation.
+			// The following block duplicates the above;
+			// the difference here is we have no member.
 			perr = errListMissing
 			if tend != nil {
 				if pendActual, ok := tend[p]; ok {
@@ -1790,15 +1797,17 @@ func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOf
 	}
 
 	// Now we look at all topics that we calculated lag for, and check out
-	// the partitions we listed. If those partitions are missing from the
-	// lag calculations above, the partitions were not committed to and we
-	// count that as entirely lagging.
+	// the partitions we listed. Any partition that does not have lag
+	// calculated yet was never committed to and is not currently assigned;
+	// it is entirely lagging.
 	for t, lt := range l {
-		tstart := startOffsets[t]
-		tend := endOffsets[t]
-		for p, pend := range tend {
+		var tstart map[int32]ListedOffset
+		for p, pend := range endOffsets[t] {
 			if _, ok := lt[p]; ok {
 				continue
+			}
+			if tstart == nil {
+				tstart = startOffsets[t]
 			}
 			pcommit := Offset{
 				Topic:       t,
