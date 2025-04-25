@@ -26,7 +26,7 @@ func (b *Builder) Select(predicate Value) *Builder {
 }
 
 // Limit applies a [Limit] operation to the Builder.
-func (b *Builder) Limit(skip uint64, fetch uint64) *Builder {
+func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 	return &Builder{
 		val: &Limit{
 			Table: b.val,

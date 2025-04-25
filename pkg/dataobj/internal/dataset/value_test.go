@@ -48,31 +48,31 @@ func TestValue_MarshalBinary(t *testing.T) {
 		require.Equal(t, expect.Uint64(), actual.Uint64())
 	})
 
-	t.Run("StringValue", func(t *testing.T) {
+	t.Run("ByteArrayValue", func(t *testing.T) {
 		t.Run("Empty", func(t *testing.T) {
-			expect := dataset.StringValue("")
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, expect.Type())
+			expect := dataset.ByteArrayValue([]byte{})
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, expect.Type())
 
 			b, err := expect.MarshalBinary()
 			require.NoError(t, err)
 
 			var actual dataset.Value
 			require.NoError(t, actual.UnmarshalBinary(b))
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, actual.Type())
-			require.Equal(t, expect.String(), actual.String())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, actual.Type())
+			require.Equal(t, expect.ByteArray(), actual.ByteArray())
 		})
 
 		t.Run("Non-empty", func(t *testing.T) {
-			expect := dataset.StringValue("hello, world!")
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, expect.Type())
+			expect := dataset.ByteArrayValue([]byte("hello, world!"))
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, expect.Type())
 
 			b, err := expect.MarshalBinary()
 			require.NoError(t, err)
 
 			var actual dataset.Value
 			require.NoError(t, actual.UnmarshalBinary(b))
-			require.Equal(t, datasetmd.VALUE_TYPE_STRING, actual.Type())
-			require.Equal(t, expect.String(), actual.String())
+			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, actual.Type())
+			require.Equal(t, expect.ByteArray(), actual.ByteArray())
 		})
 	})
 }

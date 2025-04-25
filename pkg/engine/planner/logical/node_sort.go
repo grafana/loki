@@ -32,7 +32,7 @@ func (s *Sort) Name() string {
 	if s.id != "" {
 		return s.id
 	}
-	return fmt.Sprintf("<%p>", s)
+	return fmt.Sprintf("%p", s)
 }
 
 // String returns the disassembled SSA form of the Sort instruction.

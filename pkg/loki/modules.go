@@ -16,6 +16,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -35,8 +38,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/thanos-io/objstore"
 
@@ -612,7 +613,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
+	var ms metastore.Metastore
+	if t.Cfg.Querier.Engine.EnableV2Engine {
+		store, err := t.createDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		ms = metastore.NewObjectMetastore(store)
+	}
+
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, ms, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -770,7 +780,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.partitionRingWatcher)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.PartitionRingWatcher)
 	if err != nil {
 		return
 	}
@@ -1528,7 +1538,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 			break
 		}
 
-		var engine *logql.Engine
+		var engine *logql.QueryEngine
 		engine, err = t.createRulerQueryEngine(logger, deleteStore)
 		if err != nil {
 			break
@@ -1994,13 +2004,13 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
-	t.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
-	t.partitionRing = ring.NewPartitionInstanceRing(t.partitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
+	t.PartitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+	t.partitionRing = ring.NewPartitionInstanceRing(t.PartitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Expose a web page to view the partitions ring state.
-	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
+	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.PartitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
-	return t.partitionRingWatcher, nil
+	return t.PartitionRingWatcher, nil
 }
 
 func (t *Loki) initBlockBuilder() (services.Service, error) {
@@ -2081,6 +2091,10 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 }
 
 func (t *Loki) initUI() (services.Service, error) {
+	if !t.Cfg.UI.Enabled {
+		// UI is disabled, return nil to skip initialization
+		return nil, nil
+	}
 	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
 	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
 	if err != nil {
@@ -2119,8 +2133,20 @@ func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
 	}
+
+	// Handle named stores
+	cfg := t.Cfg.StorageConfig.ObjectStore
+	backend := schema.ObjectType
+	if st, ok := cfg.NamedStores.LookupStoreType(schema.ObjectType); ok {
+		backend = st
+		// override config with values from named store config
+		if err := cfg.NamedStores.OverrideConfig(&cfg.Config, schema.ObjectType); err != nil {
+			return nil, err
+		}
+	}
+
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, clientName, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -2164,7 +2190,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
-func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
+func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
 	querierStore, err := t.getQuerierStore()
 	if err != nil {
 		return nil, err

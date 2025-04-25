@@ -337,9 +337,9 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 
 			for _, service := range svcs {
 				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
-					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
+					require.Equal(t, service.Annotations, map[string]string{})
 				} else {
-					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
+					require.NotNil(t, service.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
 				}
 			}
 		})
@@ -383,14 +383,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}
@@ -456,14 +456,14 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}

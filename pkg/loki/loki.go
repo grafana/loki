@@ -11,8 +11,6 @@ import (
 	rt "runtime"
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -28,6 +26,7 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -421,7 +420,7 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	partitionRingWatcher      *ring.PartitionRingWatcher
+	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
@@ -504,6 +503,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler())
 }
 
 // ListTargets prints a list of available user visible targets and their

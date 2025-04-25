@@ -66,16 +66,20 @@ type Config struct {
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
-	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
-	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
-	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
-	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
-	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
-	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
-	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	cfg.RegisterFlagsWithPrefix("querier.", f)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&cfg.TailMaxDuration, prefix+"tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
+	f.DurationVar(&cfg.ExtraQueryDelay, prefix+"extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
+	f.DurationVar(&cfg.QueryIngestersWithin, prefix+"query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	cfg.Engine.RegisterFlagsWithPrefix(prefix+"engine.", f)
+	f.IntVar(&cfg.MaxConcurrent, prefix+"max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
+	f.BoolVar(&cfg.QueryStoreOnly, prefix+"query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
+	f.BoolVar(&cfg.QueryIngesterOnly, prefix+"query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
+	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
+	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -821,7 +825,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !shouldRejectLabel(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -836,7 +840,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !shouldRejectLabel(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -877,7 +881,38 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-// containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
+// shouldRejectLabel checks if the label should be rejected based on the values.
+// Returns true if all values are IDs or there are no values - meaning the label should be filtered out.
+// Special numeric case: boolean values (0,1) are not considered ID types.
+// Otherwise it returns false.
+func shouldRejectLabel(values []string) bool {
+	// No values means we don't want to keep this label
+	if len(values) == 0 {
+		return true
+	}
+
+	if len(values) > 2 {
+		return containsAllIDTypes(values)
+	}
+
+	// Boolean values should not be considered ID types
+	boolValues := map[string]bool{
+		"0": true,
+		"1": true,
+	}
+
+	for _, v := range values {
+		if !boolValues[v] {
+			return containsAllIDTypes(values)
+		}
+	}
+
+	return false
+}
+
+// contjainsAllIDTypes checks if all values in the array are IDs (UUIDs or numeric values)
+// Returns false if at least one value is not an ID type - meaning the label should be kept.
+// Returns true if all values are IDs - meaning the label should be filtered out.
 func containsAllIDTypes(values []string) bool {
 	for _, v := range values {
 		_, err := strconv.ParseFloat(v, 64)
@@ -1158,13 +1193,13 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	lblsResult := lbls.LabelsResult().Parsed()
-	for _, lbl := range lblsResult {
+	lblsResult.Range(func(lbl labels.Label) {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
 			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
 		}
-	}
+	})
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {

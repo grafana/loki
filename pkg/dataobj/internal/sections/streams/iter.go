@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/prometheus/prometheus/model/labels"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // Iter iterates over streams in the provided decoder. All streams sections are
@@ -78,10 +78,14 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 				return nil
 			}
 
+			var stream Stream
 			for _, row := range rows[:n] {
-				stream, err := Decode(streamsColumns, row)
-				if err != nil || !yield(stream) {
+				if err := Decode(streamsColumns, row, &stream); err != nil {
 					return err
+				}
+
+				if !yield(stream) {
+					return nil
 				}
 			}
 		}
@@ -91,8 +95,13 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 // Decode decodes a stream from a [dataset.Row], using the provided columns to
 // determine the column type. The list of columns must match the columns used
 // to create the row.
-func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
-	var stream Stream
+func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) error {
+	labelColumns := labelColumns(columns)
+	stream.Labels = slicegrow.GrowToCap(stream.Labels, labelColumns)
+	stream.Labels = stream.Labels[:labelColumns]
+	stream.LbValueCaps = slicegrow.GrowToCap(stream.LbValueCaps, labelColumns)
+	stream.LbValueCaps = stream.LbValueCaps[:labelColumns]
+	nextLabelIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
@@ -103,42 +112,47 @@ func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
 		switch column.Type {
 		case streamsmd.COLUMN_TYPE_STREAM_ID:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.ID = columnValue.Int64()
 
 		case streamsmd.COLUMN_TYPE_MIN_TIMESTAMP:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			stream.MinTimestamp = time.Unix(0, columnValue.Int64()).UTC()
+			stream.MinTimestamp = time.Unix(0, columnValue.Int64())
 
 		case streamsmd.COLUMN_TYPE_MAX_TIMESTAMP:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			stream.MaxTimestamp = time.Unix(0, columnValue.Int64()).UTC()
+			stream.MaxTimestamp = time.Unix(0, columnValue.Int64())
 
 		case streamsmd.COLUMN_TYPE_ROWS:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.Rows = int(columnValue.Int64())
 
 		case streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.UncompressedSize = columnValue.Int64()
 
 		case streamsmd.COLUMN_TYPE_LABEL:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_STRING {
-				return stream, fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			stream.Labels = append(stream.Labels, labels.Label{
-				Name:  column.Info.Name,
-				Value: columnValue.String(),
-			})
+
+			// Convert the target pointer to a byte slice and grow it if necessary.
+			target := unsafeSlice(stream.Labels[nextLabelIdx].Value, stream.LbValueCaps[nextLabelIdx])
+			target = slicegrow.Copy(target, columnValue.ByteArray())
+			stream.LbValueCaps[nextLabelIdx] = cap(target)
+
+			stream.Labels[nextLabelIdx].Name = column.Info.Name
+			stream.Labels[nextLabelIdx].Value = unsafeString(target)
+			nextLabelIdx++
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
@@ -147,5 +161,28 @@ func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
 		}
 	}
 
-	return stream, nil
+	stream.Labels = stream.Labels[:nextLabelIdx]
+
+	return nil
+}
+
+func labelColumns(columns []*streamsmd.ColumnDesc) int {
+	var count int
+	for _, column := range columns {
+		if column.Type == streamsmd.COLUMN_TYPE_LABEL {
+			count++
+		}
+	}
+	return count
+}
+
+func unsafeSlice(data string, capacity int) []byte {
+	if capacity <= 0 {
+		capacity = len(data)
+	}
+	return unsafe.Slice(unsafe.StringData(data), capacity)
+}
+
+func unsafeString(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
 }
