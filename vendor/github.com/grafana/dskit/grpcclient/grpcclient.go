@@ -13,10 +13,15 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/clusterutil"
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcencoding/snappy"
+	"github.com/grafana/dskit/middleware"
 )
+
+// grpcWithChainUnaryInterceptor helps to ensure that the requested order of interceptors is preserved.
+var grpcWithChainUnaryInterceptor = grpc.WithChainUnaryInterceptor
 
 // Config for a gRPC client.
 type Config struct {
@@ -45,6 +50,11 @@ type Config struct {
 
 	// CustomCompressors allows configuring custom compressors.
 	CustomCompressors []string `yaml:"-"`
+
+	ClusterValidation clusterutil.ClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
+
+	// clusterUnaryClientInterceptor is needed for testing purposes.
+	clusterUnaryClientInterceptor grpc.UnaryClientInterceptor `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -84,8 +94,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ConnectBackoffMaxDelay, prefix+".connect-backoff-max-delay", 5*time.Second, "Maximum backoff delay when establishing a connection. Only relevant if ConnectTimeout > 0.")
 
 	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix, f)
-
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.ClusterValidation.RegisterFlagsWithPrefix(prefix+".cluster-validation.", f)
 }
 
 func (cfg *Config) Validate() error {
@@ -108,9 +118,14 @@ func (cfg *Config) CallOptions() []grpc.CallOption {
 	return opts
 }
 
-// DialOption returns the config as a grpc.DialOptions. The passed inceptors
-// wrap around the configured middleware.
-func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor) ([]grpc.DialOption, error) {
+// DialOption returns the config as a grpc.DialOptions. The passed interceptors wrap around the configured middleware.
+// It requires an InvalidClusterValidationReporter for reporting the cluster validation issues back to the caller,
+// if cluster validation is enabled.
+// If a nil InvalidClusterValidationReporter is provided, a NoOpInvalidClusterValidationReporter is used.
+func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientInterceptor, streamClientInterceptors []grpc.StreamClientInterceptor, invalidClusterValidationReporter middleware.InvalidClusterValidationReporter) ([]grpc.DialOption, error) {
+	if invalidClusterValidationReporter == nil {
+		invalidClusterValidationReporter = middleware.NoOpInvalidClusterValidationReporter
+	}
 	var opts []grpc.DialOption
 	tlsOpts, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
 	if err != nil {
@@ -127,6 +142,13 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 
 	if cfg.RateLimit > 0 {
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
+	}
+
+	// If cluster validation is enabled, ClusterUnaryClientInterceptor must be the last UnaryClientInterceptor
+	// to wrap the real call.
+	if cfg.ClusterValidation.Label != "" {
+		cfg.clusterUnaryClientInterceptor = middleware.ClusterUnaryClientInterceptor(cfg.ClusterValidation.Label, invalidClusterValidationReporter)
+		unaryClientInterceptors = append(unaryClientInterceptors, cfg.clusterUnaryClientInterceptor)
 	}
 
 	if cfg.ConnectTimeout > 0 {
@@ -162,7 +184,7 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	return append(
 		opts,
 		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
-		grpc.WithChainUnaryInterceptor(unaryClientInterceptors...),
+		grpcWithChainUnaryInterceptor(unaryClientInterceptors...),
 		grpc.WithChainStreamInterceptor(streamClientInterceptors...),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                time.Second * 20,

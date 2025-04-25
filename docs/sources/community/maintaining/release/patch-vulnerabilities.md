@@ -8,7 +8,7 @@ This step patches vulnerabilities in Grafana Loki binaries and Docker images.
 
 ## Before you begin
 
-1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
+1. Determine the [VERSION_PREFIX](../concepts/version/).
 
 Vulnerabilities can be from two main sources.
 
@@ -34,7 +34,7 @@ Before start patching vulnerabilities, know what are you patching. It can be one
 
 	1. Patch it on `main` branch
 
-	1. [Backport]({{< relref "./backport-commits" >}}) to `release-$VERSION_PREFIX` branch.
+	1. [Backport](../backport-commits/) to `release-$VERSION_PREFIX` branch.
 
 1. Patch Go dependencies.
 
@@ -47,14 +47,14 @@ Before start patching vulnerabilities, know what are you patching. It can be one
 		go mod tidy
 		go mod vendor
 		```
-	1. [Backport]({{< relref "./backport-commits" >}}) it to `release-$VERSION_PREFIX` branch.
+	1. [Backport](../backport-commits/) it to `release-$VERSION_PREFIX` branch.
 
 	1. Repeat for each Go dependency
 
-1. [Patch Go compiler]({{< relref "./patch-go-version" >}}).
+1. [Patch Go compiler](../patch-go-version/).
 
 1. Patch Grafana Loki Docker dependencies, for example: Alphine Linux base images).
 
    1. Update Docker image version. [Example PR](https://github.com/grafana/loki/pull/10573).
 
-   1. [Backport]({{< relref "./backport-commits" >}}) to `release-$VERSION_PREFIX` branch
+   1. [Backport](../backport-commits/) to `release-$VERSION_PREFIX` branch

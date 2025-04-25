@@ -118,7 +118,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	for _, stream := range in {
 		sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -147,7 +147,7 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 		for _, extractor := range ex {
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
-				if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
+				if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
 					var s *logproto.Series
 					var found bool
 					s, found = resBySeries[lbs.String()]
@@ -235,7 +235,7 @@ outer:
 }
 
 type MockDownstreamer struct {
-	*Engine
+	*QueryEngine
 }
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }

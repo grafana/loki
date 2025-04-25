@@ -7,6 +7,8 @@ export const AVAILABLE_RINGS: Array<{ id: RingType; title: string }> = [
   { id: RingTypes.INGESTER, title: "Ingester" },
   { id: RingTypes.PARTITION_INGESTER, title: "Partition Ingester" },
   { id: RingTypes.DISTRIBUTOR, title: "Distributor" },
+  { id: RingTypes.INGEST_LIMITS_FRONTEND, title: "Ingest Limits Frontend" },
+  { id: RingTypes.INGEST_LIMITS, title: "Ingest Limits" },
   { id: RingTypes.PATTERN_INGESTER, title: "Pattern Ingester" },
   { id: RingTypes.QUERY_SCHEDULER, title: "Scheduler" },
   { id: RingTypes.COMPACTOR, title: "Compactor" },
@@ -70,7 +72,7 @@ export function useRing({
   const [ring, setRing] = useState<RingResponse | null>(null);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const abortControllerRef = useRef<AbortController>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   const isTokenBased = useMemo(() => needsTokens(ringName), [ringName]);
 

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptrace"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/smithy-go/metrics"
@@ -42,10 +43,10 @@ type timedClientDo struct {
 }
 
 func (c *timedClientDo) Do(r *http.Request) (*http.Response, error) {
-	c.hm.doStart = now()
+	c.hm.doStart.Store(now())
 	resp, err := c.ClientDo.Do(r)
 
-	c.hm.DoRequestDuration.Record(r.Context(), elapsed(c.hm.doStart))
+	c.hm.DoRequestDuration.Record(r.Context(), c.hm.doStart.Elapsed())
 	return resp, err
 }
 
@@ -58,10 +59,10 @@ type httpMetrics struct {
 	DoRequestDuration metrics.Float64Histogram // client.http.do_request_duration
 	TimeToFirstByte   metrics.Float64Histogram // client.http.time_to_first_byte
 
-	doStart      time.Time
-	dnsStart     time.Time
-	connectStart time.Time
-	tlsStart     time.Time
+	doStart      safeTime
+	dnsStart     safeTime
+	connectStart safeTime
+	tlsStart     safeTime
 }
 
 func newHTTPMetrics(meter metrics.Meter) (*httpMetrics, error) {
@@ -115,15 +116,15 @@ func newHTTPMetrics(meter metrics.Meter) (*httpMetrics, error) {
 }
 
 func (m *httpMetrics) DNSStart(httptrace.DNSStartInfo) {
-	m.dnsStart = now()
+	m.dnsStart.Store(now())
 }
 
 func (m *httpMetrics) ConnectStart(string, string) {
-	m.connectStart = now()
+	m.connectStart.Store(now())
 }
 
 func (m *httpMetrics) TLSHandshakeStart() {
-	m.tlsStart = now()
+	m.tlsStart.Store(now())
 }
 
 func (m *httpMetrics) GotConn(ctx context.Context) func(httptrace.GotConnInfo) {
@@ -140,25 +141,25 @@ func (m *httpMetrics) PutIdleConn(ctx context.Context) func(error) {
 
 func (m *httpMetrics) DNSDone(ctx context.Context) func(httptrace.DNSDoneInfo) {
 	return func(httptrace.DNSDoneInfo) {
-		m.DNSLookupDuration.Record(ctx, elapsed(m.dnsStart))
+		m.DNSLookupDuration.Record(ctx, m.dnsStart.Elapsed())
 	}
 }
 
 func (m *httpMetrics) ConnectDone(ctx context.Context) func(string, string, error) {
 	return func(string, string, error) {
-		m.ConnectDuration.Record(ctx, elapsed(m.connectStart))
+		m.ConnectDuration.Record(ctx, m.connectStart.Elapsed())
 	}
 }
 
 func (m *httpMetrics) TLSHandshakeDone(ctx context.Context) func(tls.ConnectionState, error) {
 	return func(tls.ConnectionState, error) {
-		m.TLSHandshakeDuration.Record(ctx, elapsed(m.tlsStart))
+		m.TLSHandshakeDuration.Record(ctx, m.tlsStart.Elapsed())
 	}
 }
 
 func (m *httpMetrics) GotFirstResponseByte(ctx context.Context) func() {
 	return func() {
-		m.TimeToFirstByte.Record(ctx, elapsed(m.doStart))
+		m.TimeToFirstByte.Record(ctx, m.doStart.Elapsed())
 	}
 }
 
@@ -177,8 +178,21 @@ func (m *httpMetrics) addConnIdle(ctx context.Context, incr int64) {
 	})
 }
 
-func elapsed(start time.Time) float64 {
+type safeTime struct {
+	atomic.Value // time.Time
+}
+
+func (st *safeTime) Store(v time.Time) {
+	st.Value.Store(v)
+}
+
+func (st *safeTime) Load() time.Time {
+	t, _ := st.Value.Load().(time.Time)
+	return t
+}
+
+func (st *safeTime) Elapsed() float64 {
 	end := now()
-	elapsed := end.Sub(start)
+	elapsed := end.Sub(st.Load())
 	return float64(elapsed) / 1e9
 }

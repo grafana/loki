@@ -20,8 +20,10 @@ package xdsclient
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
+	"google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/grpclog"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
@@ -86,6 +88,8 @@ type authority struct {
 	xdsClientSerializer       *grpcsync.CallbackSerializer // Serializer to run call ins from the xDS client, owned by this authority.
 	xdsClientSerializerClose  func()                       // Function to close the above serializer.
 	logger                    *igrpclog.PrefixLogger       // Logger for this authority.
+	target                    string                       // The gRPC Channel target.
+	metricsRecorder           stats.MetricsRecorder        // The metrics recorder used for emitting metrics.
 
 	// The below defined fields must only be accessed in the context of the
 	// serializer callback, owned by this authority.
@@ -119,6 +123,8 @@ type authorityBuildOptions struct {
 	serializer       *grpcsync.CallbackSerializer // Callback serializer for invoking watch callbacks
 	getChannelForADS xdsChannelForADS             // Function to acquire a reference to an xdsChannel
 	logPrefix        string                       // Prefix for logging
+	target           string                       // Target for the gRPC Channel that owns xDS Client/Authority
+	metricsRecorder  stats.MetricsRecorder        // metricsRecorder to emit metrics
 }
 
 // newAuthority creates a new authority instance with the provided
@@ -142,6 +148,8 @@ func newAuthority(args authorityBuildOptions) *authority {
 		xdsClientSerializerClose:  cancel,
 		logger:                    igrpclog.NewPrefixLogger(l, logPrefix),
 		resources:                 make(map[xdsresource.Type]map[string]*resourceState),
+		target:                    args.target,
+		metricsRecorder:           args.metricsRecorder,
 	}
 
 	// Create an ordered list of xdsChannels with their server configs. The
@@ -188,18 +196,6 @@ func (a *authority) handleADSStreamFailure(serverConfig *bootstrap.ServerConfig,
 		return
 	}
 
-	// Propagate the connection error from the transport layer to all watchers.
-	for _, rType := range a.resources {
-		for _, state := range rType {
-			for watcher := range state.watchers {
-				watcher := watcher
-				a.watcherCallbackSerializer.TrySchedule(func(context.Context) {
-					watcher.OnError(xdsresource.NewErrorf(xdsresource.ErrorTypeConnection, "xds: error received from xDS stream: %v", err), func() {})
-				})
-			}
-		}
-	}
-
 	// Two conditions need to be met for fallback to be triggered:
 	// 1. There is a connectivity failure on the ADS stream, as described in
 	//    gRFC A57. For us, this means that the ADS stream was closed before the
@@ -213,21 +209,53 @@ func (a *authority) handleADSStreamFailure(serverConfig *bootstrap.ServerConfig,
 		if a.logger.V(2) {
 			a.logger.Infof("No watchers for uncached resources. Not triggering fallback")
 		}
+		// Since we are not triggering fallback, propagate the connectivity
+		// error to all watchers and return early.
+		a.propagateConnectivityErrorToAllWatchers(err)
 		return
 	}
-	a.fallbackToNextServerIfPossible(serverConfig)
+
+	// Attempt to fallback to servers with lower priority than the failing one.
+	currentServerIdx := a.serverIndexForConfig(serverConfig)
+	for i := currentServerIdx + 1; i < len(a.xdsChannelConfigs); i++ {
+		if a.fallbackToServer(a.xdsChannelConfigs[i]) {
+			// Since we have successfully triggered fallback, we don't have to
+			// notify watchers about the connectivity error.
+			return
+		}
+	}
+
+	// Having exhausted all available servers, we must notify watchers of the
+	// connectivity error - A71.
+	a.propagateConnectivityErrorToAllWatchers(err)
 }
 
-// serverIndexForConfig returns the index of the xdsChannelConfig that matches
-// the provided ServerConfig. If no match is found, it returns the length of the
-// xdsChannelConfigs slice, which represents the index of a non-existent config.
+// propagateConnectivityErrorToAllWatchers propagates the given connection error
+// to all watchers of all resources.
+//
+// Only executed in the context of a serializer callback.
+func (a *authority) propagateConnectivityErrorToAllWatchers(err error) {
+	for _, rType := range a.resources {
+		for _, state := range rType {
+			for watcher := range state.watchers {
+				a.watcherCallbackSerializer.TrySchedule(func(context.Context) {
+					watcher.OnError(xdsresource.NewErrorf(xdsresource.ErrorTypeConnection, "xds: error received from xDS stream: %v", err), func() {})
+				})
+			}
+		}
+	}
+}
+
+// serverIndexForConfig returns the index of the xdsChannelConfig matching the
+// provided server config, panicking if no match is found (which indicates a
+// programming error).
 func (a *authority) serverIndexForConfig(sc *bootstrap.ServerConfig) int {
 	for i, cfg := range a.xdsChannelConfigs {
 		if cfg.serverConfig.Equal(sc) {
 			return i
 		}
 	}
-	return len(a.xdsChannelConfigs)
+	panic(fmt.Sprintf("no server config matching %v found", sc))
 }
 
 // Determines the server to fallback to and triggers fallback to the same. If
@@ -235,50 +263,26 @@ func (a *authority) serverIndexForConfig(sc *bootstrap.ServerConfig) int {
 // existing resources.
 //
 // Only executed in the context of a serializer callback.
-func (a *authority) fallbackToNextServerIfPossible(failingServerConfig *bootstrap.ServerConfig) {
+func (a *authority) fallbackToServer(xc *xdsChannelWithConfig) bool {
 	if a.logger.V(2) {
-		a.logger.Infof("Attempting to initiate fallback after failure from server %q", failingServerConfig)
+		a.logger.Infof("Attempting to initiate fallback to server %q", xc.serverConfig)
 	}
 
-	// The server to fallback to is the next server on the list. If the current
-	// server is the last server, then there is nothing that can be done.
-	currentServerIdx := a.serverIndexForConfig(failingServerConfig)
-	if currentServerIdx == len(a.xdsChannelConfigs) {
-		// This can never happen.
-		a.logger.Errorf("Received error from an unknown server: %s", failingServerConfig)
-		return
-	}
-	if currentServerIdx == len(a.xdsChannelConfigs)-1 {
+	if xc.channel != nil {
 		if a.logger.V(2) {
-			a.logger.Infof("No more servers to fallback to")
+			a.logger.Infof("Channel to the next server in the list %q already exists", xc.serverConfig)
 		}
-		return
-	}
-	fallbackServerIdx := currentServerIdx + 1
-	fallbackChannel := a.xdsChannelConfigs[fallbackServerIdx]
-
-	// If the server to fallback to already has an xdsChannel, it means that
-	// this connectivity error is from a server with a higher priority. There
-	// is not much we can do here.
-	if fallbackChannel.channel != nil {
-		if a.logger.V(2) {
-			a.logger.Infof("Channel to the next server in the list %q already exists", fallbackChannel.serverConfig)
-		}
-		return
+		return false
 	}
 
-	// Create an xdsChannel for the fallback server.
-	if a.logger.V(2) {
-		a.logger.Infof("Initiating fallback to server %s", fallbackChannel.serverConfig)
-	}
-	xc, cleanup, err := a.getChannelForADS(fallbackChannel.serverConfig, a)
+	channel, cleanup, err := a.getChannelForADS(xc.serverConfig, a)
 	if err != nil {
-		a.logger.Errorf("Failed to create XDS channel: %v", err)
-		return
+		a.logger.Errorf("Failed to create xDS channel: %v", err)
+		return false
 	}
-	fallbackChannel.channel = xc
-	fallbackChannel.cleanup = cleanup
-	a.activeXDSChannel = fallbackChannel
+	xc.channel = channel
+	xc.cleanup = cleanup
+	a.activeXDSChannel = xc
 
 	// Subscribe to all existing resources from the new management server.
 	for typ, resources := range a.resources {
@@ -286,15 +290,16 @@ func (a *authority) fallbackToNextServerIfPossible(failingServerConfig *bootstra
 			if a.logger.V(2) {
 				a.logger.Infof("Resubscribing to resource of type %q and name %q", typ.TypeName(), name)
 			}
-			xc.subscribe(typ, name)
+			xc.channel.subscribe(typ, name)
 
-			// Add the fallback channel to the list of xdsChannels from which
-			// this resource has been requested from. Retain the cached resource
-			// and the set of existing watchers (and other metadata fields) in
-			// the resource state.
-			state.xdsChannelConfigs[fallbackChannel] = true
+			// Add the new channel to the list of xdsChannels from which this
+			// resource has been requested from. Retain the cached resource and
+			// the set of existing watchers (and other metadata fields) in the
+			// resource state.
+			state.xdsChannelConfigs[xc] = true
 		}
 	}
+	return true
 }
 
 // adsResourceUpdate is called to notify the authority about a resource update
@@ -357,6 +362,7 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 		// On error, keep previous version of the resource. But update status
 		// and error.
 		if uErr.Err != nil {
+			xdsClientResourceUpdatesInvalidMetric.Record(a.metricsRecorder, 1, a.target, serverConfig.ServerURI(), rType.TypeName())
 			state.md.ErrState = md.ErrState
 			state.md.Status = md.Status
 			for watcher := range state.watchers {
@@ -367,6 +373,8 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 			}
 			continue
 		}
+
+		xdsClientResourceUpdatesValidMetric.Record(a.metricsRecorder, 1, a.target, serverConfig.ServerURI(), rType.TypeName())
 
 		if state.deletionIgnored {
 			state.deletionIgnored = false
@@ -535,11 +543,6 @@ func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *bootstrap.Ser
 	// to revert back to it. This method guarantees that when an update is
 	// received from a server, all lower priority servers are closed.
 	serverIdx := a.serverIndexForConfig(serverConfig)
-	if serverIdx == len(a.xdsChannelConfigs) {
-		// This can never happen.
-		a.logger.Errorf("Received update from an unknown server: %s", serverConfig)
-		return
-	}
 	a.activeXDSChannel = a.xdsChannelConfigs[serverIdx]
 
 	// Close all lower priority channels.
@@ -601,8 +604,9 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 			a.logger.Infof("New watch for type %q, resource name %q", rType.TypeName(), resourceName)
 		}
 
-		xdsChannel := a.xdsChannelToUse()
-		if xdsChannel == nil {
+		xdsChannel, err := a.xdsChannelToUse()
+		if err != nil {
+			a.watcherCallbackSerializer.TrySchedule(func(context.Context) { watcher.OnError(err, func() {}) })
 			return
 		}
 
@@ -674,7 +678,7 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 }
 
 func (a *authority) unwatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) func() {
-	return grpcsync.OnceFunc(func() {
+	return sync.OnceFunc(func() {
 		done := make(chan struct{})
 		a.xdsClientSerializer.ScheduleOr(func(context.Context) {
 			defer close(done)
@@ -736,22 +740,23 @@ func (a *authority) unwatchResource(rType xdsresource.Type, resourceName string,
 // Otherwise, it creates a new channel using the first server configuration in
 // the list of configurations, and returns that.
 //
+// A non-nil error is returned if the channel creation fails.
+//
 // Only executed in the context of a serializer callback.
-func (a *authority) xdsChannelToUse() *xdsChannelWithConfig {
+func (a *authority) xdsChannelToUse() (*xdsChannelWithConfig, error) {
 	if a.activeXDSChannel != nil {
-		return a.activeXDSChannel
+		return a.activeXDSChannel, nil
 	}
 
 	sc := a.xdsChannelConfigs[0].serverConfig
 	xc, cleanup, err := a.getChannelForADS(sc, a)
 	if err != nil {
-		a.logger.Warningf("Failed to create xDS channel: %v", err)
-		return nil
+		return nil, err
 	}
 	a.xdsChannelConfigs[0].channel = xc
 	a.xdsChannelConfigs[0].cleanup = cleanup
 	a.activeXDSChannel = a.xdsChannelConfigs[0]
-	return a.activeXDSChannel
+	return a.activeXDSChannel, nil
 }
 
 // closeXDSChannels closes all the xDS channels associated with this authority,

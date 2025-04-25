@@ -24,7 +24,7 @@ func NewGRPCRequestHandler(deleteRequestsStore DeleteRequestsStore, limits Limit
 	}
 }
 
-func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, _ *grpc.GetDeleteRequestsRequest) (*grpc.GetDeleteRequestsResponse, error) {
+func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, req *grpc.GetDeleteRequestsRequest) (*grpc.GetDeleteRequestsResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, _ *grpc.GetD
 		return nil, errors.New(deletionNotAvailableMsg)
 	}
 
-	deleteGroups, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID)
+	deleteGroups, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err

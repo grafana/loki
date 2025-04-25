@@ -128,8 +128,8 @@ func getCanonicalHeaders(req http.Request, ignoredHeaders map[string]bool) strin
 	for _, k := range headers {
 		buf.WriteString(k)
 		buf.WriteByte(':')
-		switch {
-		case k == "host":
+		switch k {
+		case "host":
 			buf.WriteString(getHostAddr(&req))
 			buf.WriteByte('\n')
 		default:
@@ -333,9 +333,32 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 	if len(trailer) > 0 {
 		// Use custom chunked encoding.
 		req.Trailer = trailer
-		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, time.Now().UTC())
+		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, t)
 	}
 	return &req
+}
+
+// UnsignedTrailer will do chunked encoding with a custom trailer.
+func UnsignedTrailer(req http.Request, trailer http.Header) *http.Request {
+	if len(trailer) == 0 {
+		return &req
+	}
+	// Initial time.
+	t := time.Now().UTC()
+
+	// Set x-amz-date.
+	req.Header.Set("X-Amz-Date", t.Format(iso8601DateFormat))
+
+	for k := range trailer {
+		req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
+	}
+
+	req.Header.Set("Content-Encoding", "aws-chunked")
+	req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
+
+	// Use custom chunked encoding.
+	req.Trailer = trailer
+	return StreamingUnsignedV4(&req, "", req.ContentLength, t)
 }
 
 // SignV4 sign the request before Do(), in accordance with

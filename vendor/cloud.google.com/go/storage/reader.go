@@ -393,6 +393,7 @@ type multiRangeDownloader interface {
 	wait()
 	close() error
 	getHandle() []byte
+	error() error
 }
 
 // Add adds a new range to MultiRangeDownloader.
@@ -411,6 +412,10 @@ type multiRangeDownloader interface {
 // This will initiate the read range but is non-blocking; call callback to
 // process the result. Add is thread-safe and can be called simultaneously
 // from different goroutines.
+//
+// Callback will be called with the offset, length of data read, and error
+// of the read. Note that the length of the data read may be less than the
+// requested length if the end of the object is reached.
 func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
 	mrd.reader.add(output, offset, length, callback)
 }
@@ -438,4 +443,11 @@ func (mrd *MultiRangeDownloader) Wait() {
 // follow up read if the same object is read through a different stream.
 func (mrd *MultiRangeDownloader) GetHandle() []byte {
 	return mrd.reader.getHandle()
+}
+
+// Error returns an error if the MultiRangeDownloader is in a permanent failure
+// state. It returns a nil error if the MultiRangeDownloader is open and can be
+// used.
+func (mrd *MultiRangeDownloader) Error() error {
+	return mrd.reader.error()
 }

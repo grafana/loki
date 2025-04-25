@@ -57,7 +57,7 @@ func TestNewWriterClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewWriterClient(tt.config, 10, nil, nil)
+			client, err := NewWriterClient("test-client", tt.config, 10, nil, nil)
 			require.NoError(t, err)
 
 			err = client.Ping(context.Background())

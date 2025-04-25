@@ -2,6 +2,8 @@ package dataset
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"math"
 	"math/rand"
 	"testing"
@@ -13,8 +15,9 @@ func Test_bitmap(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc = newBitmapEncoder(&buf)
-		dec = newBitmapDecoder(&buf)
+		enc    = newBitmapEncoder(&buf)
+		dec    = newBitmapDecoder(&buf)
+		decBuf = make([]Value, batchSize)
 	)
 
 	count := 1500
@@ -25,10 +28,15 @@ func Test_bitmap(t *testing.T) {
 
 	t.Logf("Buffer size: %d", buf.Len())
 
-	for range count {
-		v, err := dec.Decode()
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		require.NoError(t, err)
-		require.Equal(t, uint64(1), v.Uint64())
+		for _, v := range decBuf[:n] {
+			require.Equal(t, uint64(1), v.Uint64())
+		}
 	}
 }
 
@@ -36,8 +44,9 @@ func Test_bitmap_bitpacking(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc = newBitmapEncoder(&buf)
-		dec = newBitmapDecoder(&buf)
+		enc    = newBitmapEncoder(&buf)
+		dec    = newBitmapDecoder(&buf)
+		decBuf = make([]Value, batchSize)
 	)
 
 	expect := []uint64{0, 1, 2, 3, 4, 5, 6, 7}
@@ -47,10 +56,15 @@ func Test_bitmap_bitpacking(t *testing.T) {
 	require.NoError(t, enc.Flush())
 
 	var actual []uint64
-	for range len(expect) {
-		v, err := dec.Decode()
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		require.NoError(t, err)
-		actual = append(actual, v.Uint64())
+		for _, v := range decBuf[:n] {
+			actual = append(actual, v.Uint64())
+		}
 	}
 	require.NoError(t, enc.Flush())
 
@@ -61,8 +75,9 @@ func Test_bitmap_bitpacking_partial(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc = newBitmapEncoder(&buf)
-		dec = newBitmapDecoder(&buf)
+		enc    = newBitmapEncoder(&buf)
+		dec    = newBitmapDecoder(&buf)
+		decBuf = make([]Value, batchSize)
 	)
 
 	expect := []uint64{0, 1, 2, 3, 4}
@@ -72,10 +87,15 @@ func Test_bitmap_bitpacking_partial(t *testing.T) {
 	require.NoError(t, enc.Flush())
 
 	var actual []uint64
-	for range len(expect) {
-		v, err := dec.Decode()
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		require.NoError(t, err)
-		actual = append(actual, v.Uint64())
+		for _, v := range decBuf[:n] {
+			actual = append(actual, v.Uint64())
+		}
 	}
 
 	require.Equal(t, expect, actual)
@@ -99,8 +119,9 @@ func Fuzz_bitmap(f *testing.F) {
 		var buf bytes.Buffer
 
 		var (
-			enc = newBitmapEncoder(&buf)
-			dec = newBitmapDecoder(&buf)
+			enc    = newBitmapEncoder(&buf)
+			dec    = newBitmapDecoder(&buf)
+			decBuf = make([]Value, batchSize)
 		)
 
 		var numbers []uint64
@@ -117,10 +138,15 @@ func Fuzz_bitmap(f *testing.F) {
 		require.NoError(t, enc.Flush())
 
 		var actual []uint64
-		for i := 0; i < count; i++ {
-			v, err := dec.Decode()
+		for {
+			n, err := dec.Decode(decBuf[:batchSize])
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			require.NoError(t, err)
-			actual = append(actual, v.Uint64())
+			for _, v := range decBuf[:n] {
+				actual = append(actual, v.Uint64())
+			}
 		}
 
 		require.Equal(t, numbers, actual)
@@ -205,7 +231,7 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 
@@ -224,7 +250,7 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 
@@ -244,7 +270,7 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = dec.Decode()
+			_, _ = dec.decode()
 		}
 	})
 }

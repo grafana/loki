@@ -324,6 +324,7 @@ This is the generated reference for the Loki Helm Chart values.
   },
   "dnsConfig": {},
   "extraArgs": [],
+  "extraContainers": [],
   "extraEnv": [],
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
@@ -450,6 +451,15 @@ null
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the backend pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3063,7 +3073,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.4.0"
+    "tag": "3.4.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3237,7 +3247,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.4.0"
+"3.4.2"
 </pre>
 </td>
 		</tr>
@@ -6149,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.4.2"
+"3.5.0"
 </pre>
 </td>
 		</tr>
@@ -6519,6 +6529,20 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.ui</td>
+			<td>object</td>
+			<td>Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "gateway": {
+    "enabled": true
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.useTestSchema</td>
 			<td>bool</td>
 			<td>a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around you can enable useTestSchema</td>
@@ -6812,7 +6836,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.36-alpine"
+"1.6.38-alpine"
 </pre>
 </td>
 		</tr>
@@ -6897,7 +6921,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.0"
+"v0.15.2"
 </pre>
 </td>
 		</tr>
@@ -10884,7 +10908,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.0"
+"1.30.3"
 </pre>
 </td>
 		</tr>

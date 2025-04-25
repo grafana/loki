@@ -86,10 +86,24 @@ type ClusterOptions struct {
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
 
-	TLSConfig        *tls.Config
-	DisableIndentity bool // Disable set-lib on connect. Default is false.
+	TLSConfig *tls.Config
+
+	// DisableIndentity - Disable set-lib on connect.
+	//
+	// default: false
+	//
+	// Deprecated: Use DisableIdentity instead.
+	DisableIndentity bool
+
+	// DisableIdentity is used to disable CLIENT SETINFO command on connect.
+	//
+	// default: false
+	DisableIdentity bool
 
 	IdentitySuffix string // Add suffix to client name. Default is empty.
+
+	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
+	UnstableResp3 bool
 }
 
 func (opt *ClusterOptions) init() {
@@ -296,7 +310,8 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		MaxActiveConns:   opt.MaxActiveConns,
 		ConnMaxIdleTime:  opt.ConnMaxIdleTime,
 		ConnMaxLifetime:  opt.ConnMaxLifetime,
-		DisableIndentity: opt.DisableIndentity,
+		DisableIdentity:  opt.DisableIdentity,
+		DisableIndentity: opt.DisableIdentity,
 		IdentitySuffix:   opt.IdentitySuffix,
 		TLSConfig:        opt.TLSConfig,
 		// If ClusterSlots is populated, then we probably have an artificial
@@ -304,7 +319,8 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		// much use for ClusterSlots config).  This means we cannot execute the
 		// READONLY command against that node -- setting readOnly to false in such
 		// situations in the options below will prevent that from happening.
-		readOnly: opt.ReadOnly && opt.ClusterSlots == nil,
+		readOnly:      opt.ReadOnly && opt.ClusterSlots == nil,
+		UnstableResp3: opt.UnstableResp3,
 	}
 }
 
@@ -465,9 +481,11 @@ func (c *clusterNodes) Addrs() ([]string, error) {
 	closed := c.closed //nolint:ifshort
 	if !closed {
 		if len(c.activeAddrs) > 0 {
-			addrs = c.activeAddrs
+			addrs = make([]string, len(c.activeAddrs))
+			copy(addrs, c.activeAddrs)
 		} else {
-			addrs = c.addrs
+			addrs = make([]string, len(c.addrs))
+			copy(addrs, c.addrs)
 		}
 	}
 	c.mu.RUnlock()

@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // NewBufferedAccumulator returns an accumulator which aggregates all query
@@ -323,7 +322,7 @@ func (acc *AccumulatedStreams) Push(x any) {
 // swapping them if so.
 func (acc *AccumulatedStreams) push(s *logproto.Stream) {
 	worst, ok := acc.top()
-	room := math.Min(acc.limit-acc.count, len(s.Entries))
+	room := min(acc.limit-acc.count, len(s.Entries))
 
 	if !ok {
 		if room == 0 {

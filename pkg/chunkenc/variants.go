@@ -14,7 +14,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
-func newMultiExtractorSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractors []log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newMultiExtractorSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	return &multiExtractorSampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractors:       extractors,
@@ -54,7 +61,7 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 
 		for _, extractor := range e.extractors {
-			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 			if !ok {
 				continue
 			}

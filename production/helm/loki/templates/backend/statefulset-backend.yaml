@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/part-of: memberlist
   {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
   annotations:
-    {{- with merge .Values.loki.annotations .Values.backend.annotations }}
+    {{- with merge (dict) .Values.loki.annotations .Values.backend.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- end }}
@@ -53,8 +53,8 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.backendLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.backend.podLabels }}
-        {{- toYaml . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.backend.podLabels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
@@ -198,6 +198,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- with .Values.backend.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.backend.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}

@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
@@ -221,7 +222,7 @@ func (b *Builder) plannerAddress() string {
 }
 
 func (b *Builder) connectAndBuild(ctx context.Context) error {
-	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
+	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}

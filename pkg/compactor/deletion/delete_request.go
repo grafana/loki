@@ -60,14 +60,14 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 	}
 
 	if !allMatch(d.matchers, lbls) {
-		return func(_ time.Time, _ string, _ ...labels.Label) bool {
+		return func(_ time.Time, _ string, _ labels.Labels) bool {
 			return false
 		}, nil
 	}
 
 	// if delete request doesn't have a line filter, just do time based filtering
 	if !d.logSelectorExpr.HasFilter() {
-		return func(ts time.Time, _ string, _ ...labels.Label) bool {
+		return func(ts time.Time, _ string, _ labels.Labels) bool {
 			if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 				return false
 			}
@@ -82,12 +82,12 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 	}
 
 	f := p.ForStream(lbls).ProcessString
-	return func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+	return func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 			return false
 		}
 
-		result, _, skip := f(0, s, structuredMetadata...)
+		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
@@ -109,14 +109,14 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 // IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
 // It returns a filter.Func if the chunk is supposed to be deleted partially or the delete request contains line filters.
 // If the filter.Func is nil, the whole chunk is supposed to be deleted.
-func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func) {
-	if d.UserID != unsafeGetString(entry.UserID) {
+func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+	if d.UserID != unsafeGetString(userID) {
 		return false, nil
 	}
 
 	if !intervalsOverlap(model.Interval{
-		Start: entry.From,
-		End:   entry.Through,
+		Start: chunk.From,
+		End:   chunk.Through,
 	}, model.Interval{
 		Start: d.StartTime,
 		End:   d.EndTime,
@@ -137,16 +137,16 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		}
 	}
 
-	if !labels.Selector(d.matchers).Matches(entry.Labels) {
+	if !labels.Selector(d.matchers).Matches(lbls) {
 		return false, nil
 	}
 
-	if d.StartTime <= entry.From && d.EndTime >= entry.Through && !d.logSelectorExpr.HasFilter() {
+	if d.StartTime <= chunk.From && d.EndTime >= chunk.Through && !d.logSelectorExpr.HasFilter() {
 		// Delete request covers the whole chunk and there are no line filters in the logSelectorExpr so the whole chunk will be deleted
 		return true, nil
 	}
 
-	ff, err := d.FilterFunction(entry.Labels)
+	ff, err := d.FilterFunction(lbls)
 	if err != nil {
 		// The query in the delete request is checked when added to the table.
 		// So this error should not occur.

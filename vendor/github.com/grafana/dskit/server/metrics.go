@@ -5,6 +5,7 @@
 package server
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,9 +20,11 @@ type Metrics struct {
 	TCPConnectionsLimit      *prometheus.GaugeVec
 	RequestDuration          *prometheus.HistogramVec
 	PerTenantRequestDuration *prometheus.HistogramVec
+	PerTenantRequestTotal    *prometheus.CounterVec
 	ReceivedMessageSize      *prometheus.HistogramVec
 	SentMessageSize          *prometheus.HistogramVec
 	InflightRequests         *prometheus.GaugeVec
+	RequestThroughput        *prometheus.HistogramVec
 }
 
 func NewServerMetrics(cfg Config) *Metrics {
@@ -56,6 +59,11 @@ func NewServerMetrics(cfg Config) *Metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route", "status_code", "ws", "tenant"}),
+		PerTenantRequestTotal: reg.NewCounterVec(prometheus.CounterOpts{
+			Namespace: cfg.MetricsNamespace,
+			Name:      "per_tenant_request_total",
+			Help:      "Total count of requests for a particular tenant.",
+		}, []string{"method", "route", "status_code", "ws", "tenant"}),
 		ReceivedMessageSize: reg.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "request_message_bytes",
@@ -72,6 +80,16 @@ func NewServerMetrics(cfg Config) *Metrics {
 			Namespace: cfg.MetricsNamespace,
 			Name:      "inflight_requests",
 			Help:      "Current number of inflight requests.",
+		}, []string{"method", "route"}),
+		RequestThroughput: reg.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:                       cfg.MetricsNamespace,
+			Name:                            "request_throughput_" + cfg.Throughput.Unit,
+			Help:                            "Server throughput of running requests.",
+			ConstLabels:                     prometheus.Labels{"cutoff_ms": strconv.FormatInt(cfg.Throughput.LatencyCutoff.Milliseconds(), 10)},
+			Buckets:                         instrument.DefBuckets,
+			NativeHistogramBucketFactor:     cfg.MetricsNativeHistogramFactor,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
 	}
 }

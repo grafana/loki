@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -13,15 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/math"
-
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -115,7 +112,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// Parallelism will be at least 1
-	p := math.Max(parallelism, 1)
+	p := max(parallelism, 1)
 	// don't spawn unnecessary goroutines
 	if len(input) < parallelism {
 		p = len(input)
@@ -268,7 +265,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 	}
 
 	var maxRVDuration, maxOffset time.Duration
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
@@ -277,6 +274,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 				maxOffset = r.Offset
 			}
 		}
+		return true
 	})
 	return maxRVDuration, maxOffset
 }

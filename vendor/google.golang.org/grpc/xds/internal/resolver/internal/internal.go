@@ -26,5 +26,5 @@ var (
 	NewWRR any // func() wrr.WRR
 
 	// NewXDSClient is the function used to create a new xDS client.
-	NewXDSClient any // func(string) (xdsclient.XDSClient, func(), error)
+	NewXDSClient any // func(string, estats.MetricsRecorder) (xdsclient.XDSClient, func(), error)
 )

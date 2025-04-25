@@ -171,10 +171,9 @@ func valueSize(v Value) int {
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.VALUE_TYPE_STRING:
-		// Assuming that strings are PLAIN encoded using their length and bytes.
-		str := v.String()
-		return binary.Size(len(str)) + len(str)
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		arr := v.ByteArray()
+		return binary.Size(len(arr)) + len(arr)
 	}
 
 	return 0

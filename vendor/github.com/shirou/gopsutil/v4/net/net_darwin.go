@@ -30,14 +30,14 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 
 	if columns[0] == "Name" {
 		err = errNetstatHeader
-		return
+		return //nolint:nakedret //FIXME
 	}
 
 	// try to extract the numeric value from <Link#123>
 	if subMatch := netstatLinkRegexp.FindStringSubmatch(columns[2]); len(subMatch) == 2 {
 		numericValue, err = strconv.ParseUint(subMatch[1], 10, 64)
 		if err != nil {
-			return
+			return //nolint:nakedret //FIXME
 		}
 		linkIDUint := uint(numericValue)
 		linkID = &linkIDUint
@@ -51,7 +51,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 	}
 	if numberColumns < 11 || numberColumns > 13 {
 		err = fmt.Errorf("Line %q do have an invalid number of columns %d", line, numberColumns)
-		return
+		return //nolint:nakedret //FIXME
 	}
 
 	parsed := make([]uint64, 0, 7)
@@ -74,7 +74,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		}
 
 		if numericValue, err = strconv.ParseUint(target, 10, 64); err != nil {
-			return
+			return //nolint:nakedret //FIXME
 		}
 		parsed = append(parsed, numericValue)
 	}
@@ -91,7 +91,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 	if len(parsed) == 7 {
 		stat.Dropout = parsed[6]
 	}
-	return
+	return //nolint:nakedret //FIXME
 }
 
 type netstatInterface struct {
@@ -163,7 +163,7 @@ func (mapi mapInterfaceNameUsage) notTruncated() []string {
 }
 
 // Deprecated: use process.PidsWithContext instead
-func PidsWithContext(ctx context.Context) ([]int32, error) {
+func PidsWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -249,23 +249,23 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 	}
 
 	if !pernic {
-		return getIOCountersAll(ret)
+		return getIOCountersAll(ret), nil
 	}
 	return ret, nil
 }
 
-func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename string) ([]IOCountersStat, error) {
+func IOCountersByFileWithContext(ctx context.Context, pernic bool, _ string) ([]IOCountersStat, error) {
 	return IOCountersWithContext(ctx, pernic)
 }
 
-func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
+func FilterCountersWithContext(_ context.Context) ([]FilterStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConntrackStatsWithContext(ctx context.Context, percpu bool) ([]ConntrackStat, error) {
+func ConntrackStatsWithContext(_ context.Context, _ bool) ([]ConntrackStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
+func ProtoCountersWithContext(_ context.Context, _ []string) ([]ProtoCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }

@@ -2,15 +2,21 @@ package dataobj
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // A Stream is an individual stream in a data object.
@@ -32,13 +38,20 @@ type Stream struct {
 
 // StreamsReader reads the set of streams from an [Object].
 type StreamsReader struct {
-	obj *Object
-	idx int
+	obj   *Object
+	idx   int
+	ready bool
 
-	predicate Predicate
+	predicate StreamsPredicate
 
-	next func() (result.Result[streams.Stream], bool)
-	stop func()
+	buf    []dataset.Row
+	stream streams.Stream
+
+	reader     *dataset.Reader
+	columns    []dataset.Column
+	columnDesc []*streamsmd.ColumnDesc
+
+	symbols *symbolizer.Symbolizer
 }
 
 // NewStreamsReader creates a new StreamsReader that reads from the streams
@@ -58,7 +71,7 @@ func NewStreamsReader(obj *Object, sectionIndex int) *StreamsReader {
 // A predicate may only be set before reading begins or after a call to
 // [StreamsReader.Reset].
 func (r *StreamsReader) SetPredicate(p StreamsPredicate) error {
-	if r.next != nil {
+	if r.ready {
 		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
@@ -70,73 +83,90 @@ func (r *StreamsReader) SetPredicate(p StreamsPredicate) error {
 // into s. It returns the number of streams read and any error encountered. At
 // the end of the stream section, Read returns 0, io.EOF.
 func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
-	// TODO(rfratto): The implementation below is the initial, naive approach. It
-	// lacks a few features that will be needed at scale:
-	//
-	// * Read columns/pages in batches of len(s), rather than one row at a time,
-	//
-	// * Add page-level filtering based on min/max page values to quickly filter
-	//   out batches of rows without needing to download or decode them.
-	//
-	// * Download pages in batches, rather than one at a time.
-	//
-	// * Only download/decode non-predicate columns following finding rows that
-	//   match all predicate columns.
-	//
-	// * Reuse as much memory as possible from a combination of s and the state
-	//   of StreamsReader.
-	//
-	// These details can change internally without changing the API exposed by
-	// StreamsReader, which is designed to permit efficient use in the future.
-
 	if r.obj == nil {
 		return 0, io.EOF
 	} else if r.idx < 0 {
 		return 0, fmt.Errorf("invalid section index %d", r.idx)
 	}
 
-	if r.next == nil {
-		err := r.initIter(ctx)
+	if !r.ready {
+		err := r.initReader(ctx)
 		if err != nil {
 			return 0, err
 		}
 	}
 
-	for i := range s {
-		res, ok := r.nextMatching()
-		if !ok {
-			return i, io.EOF
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
+	r.buf = r.buf[:len(s)]
+	n, err := r.reader.Read(ctx, r.buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, fmt.Errorf("reading rows: %w", err)
+	} else if n == 0 && errors.Is(err, io.EOF) {
+		return 0, io.EOF
+	}
+
+	for i := range r.buf[:n] {
+		if err := streams.Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
+			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
-		stream, err := res.Value()
-		if err != nil {
-			return i, fmt.Errorf("reading stream: %w", err)
-		}
-
-		s[i] = Stream{
-			ID:               stream.ID,
-			MinTime:          stream.MinTimestamp,
-			MaxTime:          stream.MaxTimestamp,
-			UncompressedSize: stream.UncompressedSize,
-			Labels:           stream.Labels,
+		// Copy record data into pre-allocated output buffer
+		s[i].ID = r.stream.ID
+		s[i].MinTime = r.stream.MinTimestamp
+		s[i].MaxTime = r.stream.MaxTimestamp
+		s[i].UncompressedSize = r.stream.UncompressedSize
+		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.stream.Labels))
+		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
+		for j := range r.stream.Labels {
+			s[i].Labels[j].Name = r.symbols.Get(r.stream.Labels[j].Name)
+			s[i].Labels[j].Value = r.symbols.Get(r.stream.Labels[j].Value)
 		}
 	}
 
-	return len(s), nil
+	return n, nil
 }
 
-func (r *StreamsReader) initIter(ctx context.Context) error {
+func (r *StreamsReader) initReader(ctx context.Context) error {
+	dec := r.obj.dec.StreamsDecoder()
 	sec, err := r.findSection(ctx)
 	if err != nil {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	if r.stop != nil {
-		r.stop()
+	columnDescs, err := dec.Columns(ctx, sec)
+	if err != nil {
+		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	seq := streams.IterSection(ctx, r.obj.dec.StreamsDecoder(), sec)
-	r.next, r.stop = result.Pull(seq)
+	dset := encoding.StreamsDataset(dec, sec)
+	columns, err := result.Collect(dset.ListColumns(ctx))
+	if err != nil {
+		return fmt.Errorf("reading columns: %w", err)
+	}
+
+	readerOpts := dataset.ReaderOptions{
+		Dataset:   dset,
+		Columns:   columns,
+		Predicate: translateStreamsPredicate(r.predicate, columns, columnDescs),
+
+		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+	}
+
+	if r.reader == nil {
+		r.reader = dataset.NewReader(readerOpts)
+	} else {
+		r.reader.Reset(readerOpts)
+	}
+
+	if r.symbols == nil {
+		r.symbols = symbolizer.New(128, 100_000)
+	} else {
+		r.symbols.Reset()
+	}
+
+	r.columnDesc = columnDescs
+	r.columns = columns
+	r.ready = true
 	return nil
 }
 
@@ -160,85 +190,6 @@ func (r *StreamsReader) findSection(ctx context.Context) (*filemd.SectionInfo, e
 	return nil, fmt.Errorf("section index %d not found", r.idx)
 }
 
-func (r *StreamsReader) nextMatching() (result.Result[streams.Stream], bool) {
-	if r.next == nil {
-		return result.Result[streams.Stream]{}, false
-	}
-
-NextRow:
-	res, ok := r.next()
-	if !ok {
-		return res, ok
-	}
-
-	stream, err := res.Value()
-	if err != nil {
-		return res, true
-	}
-
-	if !matchStreamsPredicate(r.predicate, stream) {
-		goto NextRow
-	}
-
-	return res, true
-}
-
-func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
-	if p == nil {
-		return true
-	}
-
-	switch p := p.(type) {
-	case AndPredicate[StreamsPredicate]:
-		return matchStreamsPredicate(p.Left, stream) && matchStreamsPredicate(p.Right, stream)
-	case OrPredicate[StreamsPredicate]:
-		return matchStreamsPredicate(p.Left, stream) || matchStreamsPredicate(p.Right, stream)
-	case NotPredicate[StreamsPredicate]:
-		return !matchStreamsPredicate(p.Inner, stream)
-	case TimeRangePredicate[StreamsPredicate]:
-		// A stream matches if its time range overlaps with the query range
-		return overlapsTimeRange(p, stream.MinTimestamp, stream.MaxTimestamp)
-	case LabelMatcherPredicate:
-		return stream.Labels.Get(p.Name) == p.Value
-	case LabelFilterPredicate:
-		return p.Keep(p.Name, stream.Labels.Get(p.Name))
-	default:
-		// Unsupported predicates should already be caught by
-		// [StreamsReader.SetPredicate].
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
-	}
-}
-
-func overlapsTimeRange[P Predicate](p TimeRangePredicate[P], start, end time.Time) bool {
-	switch {
-	case p.IncludeStart && p.IncludeEnd:
-		return !end.Before(p.StartTime) && !start.After(p.EndTime)
-	case p.IncludeStart && !p.IncludeEnd:
-		return !end.Before(p.StartTime) && start.Before(p.EndTime)
-	case !p.IncludeStart && p.IncludeEnd:
-		return end.After(p.StartTime) && !start.After(p.EndTime)
-	case !p.IncludeStart && !p.IncludeEnd:
-		return end.After(p.StartTime) && start.Before(p.EndTime)
-	default:
-		panic("unreachable")
-	}
-}
-
-func matchTimestamp[P Predicate](p TimeRangePredicate[P], ts time.Time) bool {
-	switch {
-	case p.IncludeStart && p.IncludeEnd:
-		return !ts.Before(p.StartTime) && !ts.After(p.EndTime) // ts >= start && ts <= end
-	case p.IncludeStart && !p.IncludeEnd:
-		return !ts.Before(p.StartTime) && ts.Before(p.EndTime) // ts >= start && ts < end
-	case !p.IncludeStart && p.IncludeEnd:
-		return ts.After(p.StartTime) && !ts.After(p.EndTime) // ts > start && ts <= end
-	case !p.IncludeStart && !p.IncludeEnd:
-		return ts.After(p.StartTime) && ts.Before(p.EndTime) // ts > start && ts < end
-	default:
-		panic("unreachable")
-	}
-}
-
 // Reset resets the StreamsReader with a new object and section index to read
 // from. Reset allows reusing a StreamsReader without allocating a new one.
 //
@@ -247,13 +198,155 @@ func matchTimestamp[P Predicate](p TimeRangePredicate[P], ts time.Time) bool {
 // Reset may be called with a nil object and a negative section index to clear
 // the StreamsReader without needing a new object.
 func (r *StreamsReader) Reset(obj *Object, sectionIndex int) {
-	if r.stop != nil {
-		r.stop()
-	}
-
 	r.obj = obj
 	r.idx = sectionIndex
-	r.next = nil
-	r.stop = nil
 	r.predicate = nil
+	r.ready = false
+	r.columns = nil
+	r.columnDesc = nil
+
+	if r.symbols != nil {
+		r.symbols.Reset()
+	}
+
+	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
+	// call to Read.
+}
+
+// Close closes the StreamsReader and releases any resources it holds. Closed
+// StreamsReaders can be reused by calling [StreamsReader.Reset].
+func (r *StreamsReader) Close() error {
+	if r.reader != nil {
+		return r.reader.Close()
+	}
+	return nil
+}
+
+func translateStreamsPredicate(p StreamsPredicate, columns []dataset.Column, columnDesc []*streamsmd.ColumnDesc) dataset.Predicate {
+	if p == nil {
+		return nil
+	}
+
+	switch p := p.(type) {
+	case AndPredicate[StreamsPredicate]:
+		return dataset.AndPredicate{
+			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
+			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+		}
+
+	case OrPredicate[StreamsPredicate]:
+		return dataset.OrPredicate{
+			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
+			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+		}
+
+	case NotPredicate[StreamsPredicate]:
+		return dataset.NotPredicate{
+			Inner: translateStreamsPredicate(p.Inner, columns, columnDesc),
+		}
+
+	case TimeRangePredicate[StreamsPredicate]:
+		minTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
+			return desc.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP
+		})
+		maxTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
+			return desc.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP
+		})
+		if minTimestamp == nil || maxTimestamp == nil {
+			return dataset.FalsePredicate{}
+		}
+		return convertStreamsTimePredicate(p, minTimestamp, maxTimestamp)
+
+	case LabelMatcherPredicate:
+		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
+			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		})
+		if metadataColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+		return dataset.EqualPredicate{
+			Column: metadataColumn,
+			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
+		}
+
+	case LabelFilterPredicate:
+		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
+			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		})
+		if metadataColumn == nil {
+			return dataset.FalsePredicate{}
+		}
+		return dataset.FuncPredicate{
+			Column: metadataColumn,
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
+				return p.Keep(p.Name, valueToString(value))
+			},
+		}
+
+	default:
+		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+func convertStreamsTimePredicate(p TimeRangePredicate[StreamsPredicate], minColumn, maxColumn dataset.Column) dataset.Predicate {
+	switch {
+	case p.IncludeStart && p.IncludeEnd: // !max.Before(p.StartTime) && !min.After(p.EndTime)
+		return dataset.AndPredicate{
+			Left: dataset.NotPredicate{
+				Inner: dataset.LessThanPredicate{
+					Column: maxColumn,
+					Value:  dataset.Int64Value(p.StartTime.UnixNano()),
+				},
+			},
+			Right: dataset.NotPredicate{
+				Inner: dataset.GreaterThanPredicate{
+					Column: minColumn,
+					Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+				},
+			},
+		}
+
+	case p.IncludeStart && !p.IncludeEnd: // !max.Before(p.StartTime) && min.Before(p.EndTime)
+		return dataset.AndPredicate{
+			Left: dataset.NotPredicate{
+				Inner: dataset.LessThanPredicate{
+					Column: maxColumn,
+					Value:  dataset.Int64Value(p.StartTime.UnixNano()),
+				},
+			},
+			Right: dataset.LessThanPredicate{
+				Column: minColumn,
+				Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+			},
+		}
+
+	case !p.IncludeStart && p.IncludeEnd: // max.After(p.StartTime) && !min.After(p.EndTime)
+		return dataset.AndPredicate{
+			Left: dataset.GreaterThanPredicate{
+				Column: maxColumn,
+				Value:  dataset.Int64Value(p.StartTime.UnixNano()),
+			},
+			Right: dataset.NotPredicate{
+				Inner: dataset.GreaterThanPredicate{
+					Column: minColumn,
+					Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+				},
+			},
+		}
+
+	case !p.IncludeStart && !p.IncludeEnd: // max.After(p.StartTime) && min.Before(p.EndTime)
+		return dataset.AndPredicate{
+			Left: dataset.GreaterThanPredicate{
+				Column: maxColumn,
+				Value:  dataset.Int64Value(p.StartTime.UnixNano()),
+			},
+			Right: dataset.LessThanPredicate{
+				Column: minColumn,
+				Value:  dataset.Int64Value(p.EndTime.UnixNano()),
+			},
+		}
+
+	default:
+		panic("unreachable")
+	}
 }

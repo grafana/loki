@@ -36,9 +36,33 @@ jobs:
           path: operator
           config-file: operator/release-please-config.json
           token: ${{ steps.get_github_app_token.outputs.token }}
+  publishImages:
+    env:
+      BUILD_TIMEOUT: 60
+      IMAGE_PREFIX: "grafana"
+    needs:
+      - "releasePlease"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Set up QEMU"
+        uses: "docker/setup-qemu-action@v3"
+      - name: "Set up docker buildx"
+        uses: "docker/setup-buildx-action@v3"
+      - name: "Login to DockerHub (from vault)"
+        uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+      - name: "Build and push"
+        timeout-minutes: ${{ env.BUILD_TIMEOUT }}
+        uses: "docker/build-push-action@v6"
+        with:
+          context: "operator"
+          file: "Dockerfile"
+          platforms: "linux/amd64,linux/arm64,linux/arm"
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/loki-operator:${{ needs.releasePlease.outputs.release_major }}.${{ needs.releasePlease.outputs.release_minor }}.${{ needs.releasePlease.outputs.release_patch }}
   publishRelease:
     needs:
     - "releasePlease"
+    - "publishImages"
     runs-on: ubuntu-latest
     if: ${{ needs.releasePlease.outputs.release_created }}
     steps:
@@ -59,26 +83,3 @@ jobs:
         working-directory: "release"
         run: |
           gh release edit "${{ needs.releasePlease.outputs.release_name }}" --draft=false --latest=false
-  publishImages:
-    env:
-      BUILD_TIMEOUT: 60
-      IMAGE_PREFIX: "grafana"
-    needs:
-      - "publishRelease"
-    runs-on: ubuntu-latest
-    steps:
-      - name: "Set up QEMU"
-        uses: "docker/setup-qemu-action@v3"
-      - name: "Set up docker buildx"
-        uses: "docker/setup-buildx-action@v3"
-      - name: "Login to DockerHub (from vault)"
-        uses: "grafana/shared-workflows/actions/dockerhub-login@main"
-      - name: "Build and push"
-        timeout-minutes: "${{ env.BUILD_TIMEOUT }}"
-        uses: "docker/build-push-action@v6"
-        with:
-          context: "operator"
-          file: "Dockerfile"
-          platforms: "linux/amd64,linux/arm64,linux/arm"
-          push: true
-          tags: "${{ env.IMAGE_PREFIX }}/loki-operator:${{ steps.releasePlease.outputs.release_major }}.${{ steps.releasePlease.outputs.release_minor }}.${{ steps.releasePlease.outputs.release_patch }}"

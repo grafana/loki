@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 var (
@@ -70,6 +71,7 @@ func newEntryIterator(ctx context.Context,
 		streamExtractor log.StreamPipeline
 		streamHash      uint64
 		top             = newTopK(int(req.Limit), req.Direction)
+		statistics      = stats.FromContext(ctx)
 	)
 
 	for {
@@ -94,21 +96,20 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 			if !ok {
 				continue
 			}
-			var metadata []logproto.LabelAdapter
-			if len(record.Metadata) > 0 {
-				metadata = logproto.FromLabelsToLabelAdapters(record.Metadata)
-			}
+			statistics.AddPostFilterRows(1)
+
 			top.Add(entryWithLabels{
 				Labels:     parsedLabels.String(),
 				StreamHash: streamHash,
 				Entry: logproto.Entry{
 					Timestamp:          record.Timestamp,
-					Line:               line,
-					StructuredMetadata: metadata,
+					Line:               string(line),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLabels.StructuredMetadata()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLabels.Parsed()),
 				},
 			})
 		}
@@ -195,11 +196,12 @@ func newTopK(k int, direction logproto.Direction) *topk {
 		panic("k must be greater than 0")
 	}
 	entries := entryWithLabelsPool.Get().(*[]entryWithLabels)
+
 	return &topk{
 		k: k,
 		minHeap: entryHeap{
 			less:    lessFn(direction),
-			entries: *entries,
+			entries: (*entries)[:0],
 		},
 	}
 }
@@ -272,6 +274,7 @@ func (s *sliceIterator) StreamHash() uint64 {
 }
 
 func (s *sliceIterator) Close() error {
+	clear(s.entries)
 	entryWithLabelsPool.Put(&s.entries)
 	return nil
 }
@@ -292,6 +295,10 @@ func newSampleIterator(ctx context.Context,
 		series          = map[string]*logproto.Series{}
 		streamHash      uint64
 	)
+
+	statistics := stats.FromContext(ctx)
+	// For dataobjs, this maps to sections downloaded
+	statistics.AddChunksDownloaded(1)
 
 	for {
 		n, err := reader.Read(ctx, buf)
@@ -328,10 +335,11 @@ func newSampleIterator(ctx context.Context,
 				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
-				value, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
+				value, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 				if !ok {
 					continue
 				}
+				statistics.AddPostFilterLines(1)
 
 				// Get or create series for the parsed labels
 				labelString := parsedLabels.String()

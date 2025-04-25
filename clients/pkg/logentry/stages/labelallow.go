@@ -17,7 +17,7 @@ const (
 type LabelAllowConfig []string
 
 func validateLabelAllowConfig(c LabelAllowConfig) error {
-	if c == nil || len(c) < 1 {
+	if len(c) < 1 {
 		return errors.New(ErrEmptyLabelAllowStageConfig)
 	}
 

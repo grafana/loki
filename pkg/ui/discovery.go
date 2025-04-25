@@ -12,6 +12,45 @@ import (
 )
 
 func (s *Service) getBootstrapPeers() ([]string, error) {
+	peers, err := s.discoverPeers()
+	if err != nil {
+		return nil, err
+	}
+	return selectRandomPeers(peers, s.cfg.ClusterMaxJoinPeers), nil
+}
+
+func selectRandomPeers(peers []string, maxPeers int) []string {
+	// Here we return the entire list because we can't take a subset.
+	if maxPeers == 0 || len(peers) < maxPeers {
+		return peers
+	}
+
+	// We shuffle the list and return only a subset of the peers.
+	rand.Shuffle(len(peers), func(i, j int) {
+		peers[i], peers[j] = peers[j], peers[i]
+	})
+	return peers[:maxPeers]
+}
+
+func (s *Service) discoverNewPeers(prevPeers map[string]struct{}) ([]string, error) {
+	peers, err := s.discoverPeers()
+	if err != nil {
+		return nil, err
+	}
+
+	// Build list of new peers that weren't in previous list
+	var newPeers []string
+	for _, peer := range peers {
+		if _, ok := prevPeers[peer]; !ok {
+			newPeers = append(newPeers, peer)
+			prevPeers[peer] = struct{}{}
+		}
+	}
+
+	return selectRandomPeers(newPeers, s.cfg.ClusterMaxJoinPeers), nil
+}
+
+func (s *Service) discoverPeers() ([]string, error) {
 	if len(s.cfg.Discovery.JoinPeers) == 0 {
 		return nil, nil
 	}
@@ -29,17 +68,7 @@ func (s *Service) getBootstrapPeers() ([]string, error) {
 	}
 
 	// Return unique addresses.
-	peers := uniq(addresses)
-	// Here we return the entire list because we can't take a subset.
-	if s.cfg.ClusterMaxJoinPeers == 0 || len(peers) < s.cfg.ClusterMaxJoinPeers {
-		return peers, nil
-	}
-
-	// We shuffle the list and return only a subset of the peers.
-	rand.Shuffle(len(peers), func(i, j int) {
-		peers[i], peers[j] = peers[j], peers[i]
-	})
-	return peers[:s.cfg.ClusterMaxJoinPeers], nil
+	return uniq(addresses), nil
 }
 
 func uniq(addresses []string) []string {

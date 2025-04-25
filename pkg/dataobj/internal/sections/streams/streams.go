@@ -31,8 +31,10 @@ type Stream struct {
 	Labels           labels.Labels // Stream labels.
 	MinTimestamp     time.Time     // Minimum timestamp in the stream.
 	MaxTimestamp     time.Time     // Maximum timestamp in the stream.
-	UncompressedSize int64         // Uncompressed size of the log lines and stuctured metadata values in the stream.
+	UncompressedSize int64         // Uncompressed size of the log lines and structured metadata values in the stream.
 	Rows             int           // Number of rows in the stream.
+
+	LbValueCaps []int // Capacities for each label value's byte array
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
@@ -261,7 +263,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
 			PageSizeHint: s.pageSize,
-			Value:        datasetmd.VALUE_TYPE_STRING,
+			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
@@ -291,7 +293,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
-			_ = builder.Append(i, dataset.StringValue(label.Value))
+			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
 		}
 	}
 

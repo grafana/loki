@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // GenericReader is similar to a Reader but uses a type parameter to define the
@@ -51,13 +53,14 @@ func NewGenericReader[T any](input io.ReaderAt, options ...ReaderOption) *Generi
 	r := &GenericReader[T]{
 		base: Reader{
 			file: reader{
+				file:     f,
 				schema:   c.Schema,
 				rowGroup: rowGroup,
 			},
 		},
 	}
 
-	if !nodesAreEqual(c.Schema, f.schema) {
+	if !EqualNodes(c.Schema, f.schema) {
 		r.base.file.rowGroup = convertRowGroupTo(r.base.file.rowGroup, c.Schema)
 	}
 
@@ -90,7 +93,7 @@ func NewGenericRowGroupReader[T any](rowGroup RowGroup, options ...ReaderOption)
 		},
 	}
 
-	if !nodesAreEqual(c.Schema, rowGroup.Schema()) {
+	if !EqualNodes(c.Schema, rowGroup.Schema()) {
 		r.base.file.rowGroup = convertRowGroupTo(r.base.file.rowGroup, c.Schema)
 	}
 
@@ -132,6 +135,11 @@ func (r *GenericReader[T]) SeekToRow(rowIndex int64) error {
 
 func (r *GenericReader[T]) Close() error {
 	return r.base.Close()
+}
+
+// File returns a FileView of the underlying parquet file.
+func (r *GenericReader[T]) File() FileView {
+	return r.base.File()
 }
 
 // readRows reads the next rows from the reader into the given rows slice up to len(rows).
@@ -274,6 +282,7 @@ func NewReader(input io.ReaderAt, options ...ReaderOption) *Reader {
 
 	r := &Reader{
 		file: reader{
+			file:     f,
 			schema:   f.schema,
 			rowGroup: fileRowGroupOf(f),
 		},
@@ -309,7 +318,7 @@ func fileRowGroupOf(f *File) RowGroup {
 	default:
 		// TODO: should we attempt to merge the row groups via MergeRowGroups
 		// to preserve the global order of sorting columns within the file?
-		return newMultiRowGroup(f.config.ReadMode, rowGroups...)
+		return MultiRowGroup(rowGroups...)
 	}
 }
 
@@ -337,7 +346,7 @@ func NewRowGroupReader(rowGroup RowGroup, options ...ReaderOption) *Reader {
 }
 
 func convertRowGroupTo(rowGroup RowGroup, schema *Schema) RowGroup {
-	if rowGroupSchema := rowGroup.Schema(); !nodesAreEqual(schema, rowGroupSchema) {
+	if rowGroupSchema := rowGroup.Schema(); !EqualNodes(schema, rowGroupSchema) {
 		conv, err := Convert(schema, rowGroupSchema)
 		if err != nil {
 			// TODO: this looks like something we should not be panicking on,
@@ -416,7 +425,7 @@ func (r *Reader) Read(row interface{}) error {
 func (r *Reader) updateReadSchema(rowType reflect.Type) error {
 	schema := schemaOf(rowType)
 
-	if nodesAreEqual(schema, r.file.schema) {
+	if EqualNodes(schema, r.file.schema) {
 		r.read.init(schema, r.file.rowGroup)
 	} else {
 		conv, err := Convert(schema, r.file.schema)
@@ -477,6 +486,7 @@ func (r *Reader) Close() error {
 // read rows into Go values, potentially doing partial reads on a subset of the
 // columns due to using a converted row group view.
 type reader struct {
+	file     *File
 	schema   *Schema
 	rowGroup RowGroup
 	rows     Rows
@@ -558,3 +568,104 @@ var (
 	_ RowReader = (*reader)(nil)
 	_ RowSeeker = (*reader)(nil)
 )
+
+type readerFileView struct {
+	reader *reader
+	schema *Schema
+}
+
+// File returns a FileView of the parquet file being read.
+// Only available if Reader was created with a File.
+func (r *Reader) File() FileView {
+	if r.file.schema == nil || r.file.file == nil {
+		return nil
+	}
+	return &readerFileView{
+		&r.file,
+		r.file.schema,
+	}
+}
+
+func (r *readerFileView) Metadata() *format.FileMetaData {
+	if r.reader.file != nil {
+		return r.reader.file.Metadata()
+	}
+	return nil
+}
+
+func (r *readerFileView) Schema() *Schema {
+	return r.schema
+}
+
+func (r *readerFileView) NumRows() int64 {
+	return r.reader.rowGroup.NumRows()
+}
+
+func (r *readerFileView) Lookup(key string) (string, bool) {
+	if meta := r.Metadata(); meta != nil {
+		return lookupKeyValueMetadata(meta.KeyValueMetadata, key)
+	}
+	return "", false
+}
+
+func (r *readerFileView) Size() int64 {
+	if r.reader.file != nil {
+		return r.reader.file.Size()
+	}
+	return 0
+}
+
+func (r *readerFileView) ColumnIndexes() []format.ColumnIndex {
+	if r.reader.file != nil {
+		return r.reader.file.ColumnIndexes()
+	}
+	return nil
+}
+
+func (r *readerFileView) OffsetIndexes() []format.OffsetIndex {
+	if r.reader.file != nil {
+		return r.reader.file.OffsetIndexes()
+	}
+	return nil
+}
+
+func (r *readerFileView) Root() *Column {
+	if meta := r.Metadata(); meta != nil {
+		root, _ := openColumns(nil, meta, r.ColumnIndexes(), r.OffsetIndexes())
+		return root
+	}
+	return nil
+}
+
+func (r *readerFileView) RowGroups() []RowGroup {
+	file := r.reader.file
+	if file == nil {
+		return nil
+	}
+	columns := makeLeafColumns(r.Root())
+	fileRowGroups := makeFileRowGroups(file, columns)
+	return makeRowGroups(fileRowGroups)
+}
+
+func makeLeafColumns(root *Column) []*Column {
+	columns := make([]*Column, 0, numLeafColumnsOf(root))
+	root.forEachLeaf(func(c *Column) { columns = append(columns, c) })
+	return columns
+}
+
+func makeFileRowGroups(file *File, columns []*Column) []FileRowGroup {
+	rowGroups := file.metadata.RowGroups
+	fileRowGroups := make([]FileRowGroup, len(rowGroups))
+	for i := range fileRowGroups {
+		fileRowGroups[i].init(file, columns, &rowGroups[i])
+	}
+	return fileRowGroups
+}
+
+func makeRowGroups(fileRowGroups []FileRowGroup) []RowGroup {
+	rowGroups := make([]RowGroup, len(fileRowGroups))
+	for i := range fileRowGroups {
+		rowGroups[i] = &fileRowGroups[i]
+	}
+	return rowGroups
+}

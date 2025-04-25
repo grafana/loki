@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -149,7 +148,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		for j := 0; j < responseSize; j += maxIndexEntriesPerResponse {
 			expectedRanges = append(expectedRanges, batchRange{
 				start: j,
-				end:   util_math.Min(j+maxIndexEntriesPerResponse, responseSize),
+				end:   min(j+maxIndexEntriesPerResponse, responseSize),
 			})
 		}
 		expectedQueryKey = index.QueryKey(query)

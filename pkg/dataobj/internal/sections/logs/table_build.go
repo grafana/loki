@@ -27,11 +27,11 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 
 		_ = streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
 		_ = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
-		_ = messageBuilder.Append(i, dataset.StringValue(record.Line))
+		_ = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
 
 		for _, md := range record.Metadata {
 			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.StringValue(md.Value))
+			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(md.Value))
 		}
 	}
 

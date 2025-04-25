@@ -177,7 +177,7 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
 		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_STRING,
+		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
@@ -211,7 +211,7 @@ func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionO
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_STRING,
+		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,

@@ -55,12 +55,60 @@ message StreamRatesResponse {
   repeated StreamRate streamRates = 1;
 }
 
+message StreamMetadata {
+  uint64 streamHash = 1;
+  uint64 entriesSize = 2;
+  uint64 structuredMetadataSize = 3;
+}
+
+service IngestLimitsFrontend {
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
+}
+
+message ExceedsLimitsRequest {
+  string tenant = 1;
+  repeated StreamMetadata streams = 2;
+}
+
+message ExceedsLimitsResponse {
+  string tenant = 1;
+  repeated ExceedsLimitsResult results = 2;
+}
+
+message ExceedsLimitsResult {
+  uint64 streamHash = 1;
+  string reason = 2;
+}
+
+service IngestLimits {
+  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
+  rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
+}
+
+message GetStreamUsageRequest {
+  string tenant = 1;
+  repeated uint64 streamHashes = 2;
+}
+
+message GetStreamUsageResponse {
+  string tenant = 1;
+  uint64 activeStreams = 2;
+  uint64 rate = 3;
+  repeated uint64 unknownStreams = 4;
+}
+
 message StreamRate {
   uint64 streamHash = 1;
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
   uint32 pushes = 5;
+}
+
+message GetAssignedPartitionsRequest {}
+
+message GetAssignedPartitionsResponse {
+  map<int32, int64> assignedPartitions = 1;
 }
 
 message QueryRequest {
@@ -480,6 +528,7 @@ message DetectedField {
   uint64 cardinality = 3;
   repeated string parsers = 4 [(gogoproto.jsontag) = "parsers"];
   bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
+  repeated string jsonPath = 6 [(gogoproto.jsontag) = "jsonPath,omitempty"]; // Array representing original JSON path (e.g., ["user", "id"] for field "user_id")
 }
 
 message DetectedLabelsRequest {

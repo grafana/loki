@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -94,15 +93,17 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 
 // Store implements querier.Store for querying data objects.
 type Store struct {
-	bucket objstore.Bucket
-	logger log.Logger
+	bucket    objstore.Bucket
+	logger    log.Logger
+	metastore metastore.Metastore
 }
 
 // NewStore creates a new Store.
-func NewStore(bucket objstore.Bucket, logger log.Logger) *Store {
+func NewStore(bucket objstore.Bucket, logger log.Logger, metastore metastore.Metastore) *Store {
 	return &Store{
-		bucket: bucket,
-		logger: logger,
+		bucket:    bucket,
+		logger:    logger,
+		metastore: metastore,
 	}
 }
 
@@ -185,11 +186,7 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	span.SetTag("from", from)
 	span.SetTag("through", through)
 
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	files, err := metastore.ListDataObjects(ctx, s.bucket, userID, from, through)
+	files, err := s.metastore.DataObjects(ctx, from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -231,13 +228,22 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		}
 	}()
 	streamsPredicate := streamPredicate(selector.Matchers(), req.Start, req.End)
-	// TODO: support more predicates and combine with log.Pipeline.
-	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicate dataobj.LogsPredicate = dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    req.Start,
 		EndTime:      req.End,
 		IncludeStart: true,
 		IncludeEnd:   false,
 	}
+
+	p, expr := buildLogsPredicateFromPipeline(selector)
+	if p != nil {
+		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+			Left:  logsPredicate,
+			Right: p,
+		}
+	}
+	req.Plan.AST = expr
+
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.EntryIterator, len(shardedObjects))
 
@@ -281,11 +287,20 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
 	// TODO: support more predicates and combine with log.Pipeline.
-	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicate dataobj.LogsPredicate = dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
 		IncludeEnd:   false,
+	}
+
+	var predicateFromExpr dataobj.LogsPredicate
+	predicateFromExpr, expr = buildLogsPredicateFromSampleExpr(expr)
+	if predicateFromExpr != nil {
+		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+			Left:  logsPredicate,
+			Right: predicateFromExpr,
+		}
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -427,8 +442,10 @@ func shardObjects(
 }
 
 func (s *shardedObject) reset() {
+	_ = s.streamReader.Close()
 	streamReaderPool.Put(s.streamReader)
 	for i, reader := range s.logReaders {
+		_ = reader.Close()
 		logReaderPool.Put(reader)
 		s.logReaders[i] = nil
 	}
@@ -634,4 +651,83 @@ func parseShards(shards []string) (logql.Shard, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", parsed[0].Variant())
 	}
 	return parsed[0], nil
+}
+
+func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredicate, syntax.SampleExpr) {
+	var (
+		predicate dataobj.LogsPredicate
+		skip      bool
+	)
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.BinOpExpr:
+			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
+			skip = true
+		case *syntax.RangeAggregationExpr:
+			if !skip {
+				predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
+			}
+		}
+		return true
+	})
+
+	return predicate, expr
+}
+
+func buildLogsPredicateFromPipeline(expr syntax.LogSelectorExpr) (dataobj.LogsPredicate, syntax.LogSelectorExpr) {
+	// Check if expr is a PipelineExpr, other implementations have no stages
+	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
+	if !ok {
+		return nil, expr
+	}
+
+	var (
+		predicate       dataobj.LogsPredicate
+		remainingStages = make([]syntax.StageExpr, 0, len(pipelineExpr.MultiStages))
+		appendPredicate = func(p dataobj.LogsPredicate) {
+			if predicate == nil {
+				predicate = p
+			} else {
+				predicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
+					Left:  predicate,
+					Right: p,
+				}
+			}
+		}
+	)
+
+Outer:
+	for i, stage := range pipelineExpr.MultiStages {
+		switch s := stage.(type) {
+		case *syntax.LineFmtExpr:
+			// modifies the log line, break early as we cannot apply any more predicates
+			remainingStages = append(remainingStages, pipelineExpr.MultiStages[i:]...)
+			break Outer
+
+		case *syntax.LineFilterExpr:
+			// Convert the line filter to a predicate
+			f, err := s.Filter()
+			if err != nil {
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Create a line filter predicate
+			appendPredicate(dataobj.LogMessageFilterPredicate{
+				Keep: func(line []byte) bool {
+					return f.Filter(line)
+				},
+			})
+
+		default:
+			remainingStages = append(remainingStages, s)
+		}
+	}
+
+	if len(remainingStages) == 0 {
+		return predicate, pipelineExpr.Left // return MatchersExpr
+	}
+	pipelineExpr.MultiStages = remainingStages
+
+	return predicate, pipelineExpr
 }

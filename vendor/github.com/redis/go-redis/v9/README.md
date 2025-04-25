@@ -170,21 +170,38 @@ By default, go-redis automatically sends the client library name and version dur
 
 #### Disabling Identity Verification
 
-When connection identity verification is not required or needs to be explicitly disabled, a `DisableIndentity` configuration option exists. In V10 of this library, `DisableIndentity` will become `DisableIdentity` in order to fix the associated typo.
+When connection identity verification is not required or needs to be explicitly disabled, a `DisableIdentity` configuration option exists.
+Initially there was a typo and the option was named `DisableIndentity` instead of `DisableIdentity`. The misspelled option is marked as Deprecated and will be removed in V10 of this library.
+Although both options will work at the moment, the correct option is `DisableIdentity`. The deprecated option will be removed in V10 of this library, so please use the correct option name to avoid any issues.
 
-To disable verification, set the `DisableIndentity` option to `true` in the Redis client options:
+To disable verification, set the `DisableIdentity` option to `true` in the Redis client options:
 
 ```go
 rdb := redis.NewClient(&redis.Options{
     Addr:            "localhost:6379",
     Password:        "",
     DB:              0,
-    DisableIndentity: true, // Disable set-info on connect
+    DisableIdentity: true, // Disable set-info on connect
 })
 ```
 
 #### Unstable RESP3 Structures for RediSearch Commands
 When integrating Redis with application functionalities using RESP3, it's important to note that some response structures aren't final yet. This is especially true for more complex structures like search and query results. We recommend using RESP2 when using the search and query capabilities, but we plan to stabilize the RESP3-based API-s in the coming versions. You can find more guidance in the upcoming release notes.
+
+To enable unstable RESP3, set the option in your client configuration:
+
+```go
+redis.NewClient(&redis.Options{
+			UnstableResp3: true,
+		})
+```
+**Note:** When UnstableResp3 mode is enabled, it's necessary to use RawResult() and RawVal() to retrieve a raw data.
+          Since, raw response is the only option for unstable search commands Val() and Result() calls wouldn't have any affect on them:
+
+```go
+res1, err := client.FTSearchWithArgs(ctx, "txt", "foo bar", &redis.FTSearchOptions{}).RawResult()
+val1 := client.FTSearchWithArgs(ctx, "txt", "foo bar", &redis.FTSearchOptions{}).RawVal()
+```
 
 ## Contributing
 

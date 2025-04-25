@@ -6,16 +6,11 @@ import (
 )
 
 // Original author of this file is github.com/clarkduvall/hyperloglog
-type iterable interface {
-	decode(i int, last uint32) (uint32, int)
-	Len() int
-	Iter() *iterator
-}
 
 type iterator struct {
 	i    int
 	last uint32
-	v    iterable
+	v    *compressedList
 }
 
 func (iter *iterator) Next() uint32 {
@@ -25,9 +20,13 @@ func (iter *iterator) Next() uint32 {
 	return n
 }
 
-func (iter *iterator) Peek() uint32 {
-	n, _ := iter.v.decode(iter.i, iter.last)
-	return n
+func (iter *iterator) Peek() (uint32, int) {
+	return iter.v.decode(iter.i, iter.last)
+}
+
+func (iter *iterator) Advance(last uint32, i int) {
+	iter.last = last
+	iter.i = i
 }
 
 func (iter iterator) HasNext() bool {
@@ -111,7 +110,7 @@ func (v *compressedList) Len() int {
 }
 
 func (v *compressedList) decode(i int, last uint32) (uint32, int) {
-	n, i := v.b.decode(i, last)
+	n, i := v.b.decode(i)
 	return n + last, i
 }
 
@@ -121,8 +120,8 @@ func (v *compressedList) Append(x uint32) {
 	v.last = x
 }
 
-func (v *compressedList) Iter() *iterator {
-	return &iterator{0, 0, v}
+func (v *compressedList) Iter() iterator {
+	return iterator{0, 0, v}
 }
 
 type variableLengthList []uint8
@@ -130,11 +129,11 @@ type variableLengthList []uint8
 func (v variableLengthList) AppendBinary(data []byte) ([]byte, error) {
 	// 4 bytes for the size of the list, and a byte for each element in the
 	// list.
-	data = slices.Grow(data, 4+v.Len())
+	data = slices.Grow(data, 4+len(v))
 
 	// Length of the list. We only need 32 bits because the size of the set
 	// couldn't exceed that on 32 bit architectures.
-	sz := v.Len()
+	sz := len(v)
 	data = append(data,
 		byte(sz>>24),
 		byte(sz>>16),
@@ -150,15 +149,7 @@ func (v variableLengthList) AppendBinary(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (v variableLengthList) Len() int {
-	return len(v)
-}
-
-func (v *variableLengthList) Iter() *iterator {
-	return &iterator{0, 0, v}
-}
-
-func (v variableLengthList) decode(i int, last uint32) (uint32, int) {
+func (v variableLengthList) decode(i int) (uint32, int) {
 	var x uint32
 	j := i
 	for ; v[j]&0x80 != 0; j++ {

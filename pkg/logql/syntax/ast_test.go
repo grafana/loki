@@ -290,7 +290,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"))
+			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"), labels.EmptyLabels())
 
 			require.True(t, matches)
 		})
@@ -615,7 +615,7 @@ func Test_FilterMatcher(t *testing.T) {
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, matches := sp.Process(0, []byte(lc.l))
+					_, _, matches := sp.Process(0, []byte(lc.l), labels.EmptyLabels())
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
@@ -863,7 +863,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 			sp := p.ForStream(labelBar)
 			for i := 0; i < b.N; i++ {
 				for _, line := range lines {
-					sp.Process(0, line)
+					sp.Process(0, line, labels.EmptyLabels())
 				}
 			}
 		})
@@ -879,7 +879,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		wantErr   bool
 		wantPanic bool
 	}{
-		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(false), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
@@ -1070,7 +1070,7 @@ func BenchmarkReorderedPipeline(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_, _, result = sp.Process(0, logfmtLine)
+		_, _, result = sp.Process(0, logfmtLine, labels.EmptyLabels())
 	}
 }
 

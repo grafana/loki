@@ -25,6 +25,7 @@ const (
 	DefaultWriteBufferSize      = 32 * 1024
 	DefaultDataPageVersion      = 2
 	DefaultDataPageStatistics   = false
+	DefaultSkipMagicBytes       = false
 	DefaultSkipPageIndex        = false
 	DefaultSkipBloomFilters     = false
 	DefaultMaxRowsPerRowGroup   = math.MaxInt64
@@ -90,8 +91,10 @@ func formatCreatedBy(application, version, build string) string {
 //		ReadMode:         ReadModeAsync,
 //	})
 type FileConfig struct {
+	SkipMagicBytes   bool
 	SkipPageIndex    bool
 	SkipBloomFilters bool
+	OptimisticRead   bool
 	ReadBufferSize   int
 	ReadMode         ReadMode
 	Schema           *Schema
@@ -101,6 +104,7 @@ type FileConfig struct {
 // default file configuration.
 func DefaultFileConfig() *FileConfig {
 	return &FileConfig{
+		SkipMagicBytes:   DefaultSkipMagicBytes,
 		SkipPageIndex:    DefaultSkipPageIndex,
 		SkipBloomFilters: DefaultSkipBloomFilters,
 		ReadBufferSize:   defaultReadBufferSize,
@@ -130,6 +134,7 @@ func (c *FileConfig) Apply(options ...FileOption) {
 // ConfigureFile applies configuration options from c to config.
 func (c *FileConfig) ConfigureFile(config *FileConfig) {
 	*config = FileConfig{
+		SkipMagicBytes:   c.SkipMagicBytes,
 		SkipPageIndex:    c.SkipPageIndex,
 		SkipBloomFilters: c.SkipBloomFilters,
 		ReadBufferSize:   coalesceInt(c.ReadBufferSize, config.ReadBufferSize),
@@ -435,6 +440,14 @@ type SortingOption interface {
 	ConfigureSorting(*SortingConfig)
 }
 
+// SkipMagicBytes is a file configuration option which prevents automatically
+// reading the magic bytes when opening a parquet file, when set to true. This
+// is useful as an optimization when programs can trust that they are dealing
+// with parquet files and do not need to verify the first 4 bytes.
+func SkipMagicBytes(skip bool) FileOption {
+	return fileOption(func(config *FileConfig) { config.SkipMagicBytes = skip })
+}
+
 // SkipPageIndex is a file configuration option which prevents automatically
 // reading the page index when opening a parquet file, when set to true. This is
 // useful as an optimization when programs know that they will not need to
@@ -453,6 +466,17 @@ func SkipPageIndex(skip bool) FileOption {
 // Defaults to false.
 func SkipBloomFilters(skip bool) FileOption {
 	return fileOption(func(config *FileConfig) { config.SkipBloomFilters = skip })
+}
+
+// OptimisticRead configures a file to optimistically perform larger buffered
+// reads to improve performance. This is useful when reading from remote storage
+// and amortize the cost of network round trips.
+//
+// This is an option instead of enabled by default because dependents of this
+// package have historically relied on the read patterns to provide external
+// caches and achieve similar results (e.g., Tempo).
+func OptimisticRead(enabled bool) FileOption {
+	return fileOption(func(config *FileConfig) { config.OptimisticRead = enabled })
 }
 
 // FileReadMode is a file configuration option which controls the way pages

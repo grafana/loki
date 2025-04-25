@@ -12,14 +12,14 @@ import (
 )
 
 // Returns a set of short term credentials you can use to perform privileged tasks
-// in a member account.
+// on a member account in your organization.
 //
-// Before you can launch a privileged session, you must have enabled centralized
-// root access in your organization. For steps to enable this feature, see [Centralize root access for member accounts]in the
-// IAM User Guide.
+// Before you can launch a privileged session, you must have centralized root
+// access in your organization. For steps to enable this feature, see [Centralize root access for member accounts]in the IAM
+// User Guide.
 //
-// The global endpoint is not supported for AssumeRoot. You must send this request
-// to a Regional STS endpoint. For more information, see [Endpoints].
+// The STS global endpoint is not supported for AssumeRoot. You must send this
+// request to a Regional STS endpoint. For more information, see [Endpoints].
 //
 // You can track AssumeRoot in CloudTrail logs to determine what actions were
 // performed in a session. For more information, see [Track privileged tasks in CloudTrail]in the IAM User Guide.
@@ -51,8 +51,7 @@ type AssumeRootInput struct {
 
 	// The identity based policy that scopes the session to the privileged tasks that
 	// can be performed. You can use one of following Amazon Web Services managed
-	// policies to scope root session actions. You can add additional customer managed
-	// policies to further limit the permissions for the root session.
+	// policies to scope root session actions.
 	//
 	// [IAMAuditRootUserCredentials]
 	//

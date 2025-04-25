@@ -32,7 +32,7 @@ spec:
       labels:
         {{- include "loki.rulerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.ruler.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.ruler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:

@@ -11,10 +11,8 @@ on:
         required: true
     secrets:
       APP_ID:
-        type: string
         required: true
       APP_PRIVATE_KEY:
-        type: string
         required: true
 
 jobs:

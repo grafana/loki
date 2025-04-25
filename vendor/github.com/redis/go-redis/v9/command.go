@@ -167,6 +167,8 @@ func (cmd *baseCmd) stringArg(pos int) string {
 	switch v := arg.(type) {
 	case string:
 		return v
+	case []byte:
+		return string(v)
 	default:
 		// TODO: consider using appendArg
 		return fmt.Sprint(v)

@@ -7,3 +7,5 @@
 package crc64nvme
 
 var hasAsm = false
+
+func updateAsm(crc uint64, p []byte) (checksum uint64) { panic("should not be reached") }

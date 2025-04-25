@@ -295,7 +295,7 @@ type AssumeRoleInput struct {
 	//
 	// The regex used to validate this parameter is a string of characters consisting
 	// of upper- and lower-case alphanumeric characters with no spaces. You can also
-	// include underscores or any of the following characters: =,.@-. You cannot use a
+	// include underscores or any of the following characters: +=,.@-. You cannot use a
 	// value that begins with the text aws: . This prefix is reserved for Amazon Web
 	// Services internal use.
 	//

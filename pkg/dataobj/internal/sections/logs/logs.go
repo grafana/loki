@@ -11,8 +11,6 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
@@ -23,8 +21,14 @@ import (
 type Record struct {
 	StreamID  int64
 	Timestamp time.Time
-	Metadata  push.LabelsAdapter
-	Line      string
+	Metadata  []RecordMetadata
+	Line      []byte
+}
+
+// A Labels-like type that holds byte buffers instead of strings.
+type RecordMetadata struct {
+	Name  string
+	Value []byte
 }
 
 // Options configures the behavior of the logs section.
@@ -39,6 +43,14 @@ type Options struct {
 	// section. If the section size is exceeded, multiple sections will be
 	// created.
 	SectionSize int
+
+	// StripeMergeLimit is the maximum number of stripes to merge at once when
+	// flushing stripes into a section. StripeMergeLimit must be larger than 1.
+	//
+	// Lower values of StripeMergeLimit reduce the memory overhead of merging but
+	// increase time spent merging. Higher values of StripeMergeLimit increase
+	// memory overhead but reduce time spent merging.
+	StripeMergeLimit int
 }
 
 // Logs accumulate a set of [Record]s within a data object.
@@ -145,12 +157,11 @@ func (l *Logs) flushSection() {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
-	section, err := mergeTables(&l.sectionBuffer, l.opts.PageSizeHint, compressionOpts, l.stripes)
+	section, err := mergeTablesIncremental(&l.sectionBuffer, l.opts.PageSizeHint, compressionOpts, l.stripes, l.opts.StripeMergeLimit)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
-
 	l.sections = append(l.sections, section)
 
 	l.stripes = sliceclear.Clear(l.stripes)

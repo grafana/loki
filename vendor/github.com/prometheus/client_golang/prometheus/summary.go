@@ -471,9 +471,13 @@ func (s *noObjectivesSummary) Observe(v float64) {
 	n := atomic.AddUint64(&s.countAndHotIdx, 1)
 	hotCounts := s.counts[n>>63]
 
-	atomicUpdateFloat(&hotCounts.sumBits, func(oldVal float64) float64 {
-		return oldVal + v
-	})
+	for {
+		oldBits := atomic.LoadUint64(&hotCounts.sumBits)
+		newBits := math.Float64bits(math.Float64frombits(oldBits) + v)
+		if atomic.CompareAndSwapUint64(&hotCounts.sumBits, oldBits, newBits) {
+			break
+		}
+	}
 	// Increment count last as we take it as a signal that the observation
 	// is complete.
 	atomic.AddUint64(&hotCounts.count, 1)
@@ -515,13 +519,14 @@ func (s *noObjectivesSummary) Write(out *dto.Metric) error {
 	// Finally add all the cold counts to the new hot counts and reset the cold counts.
 	atomic.AddUint64(&hotCounts.count, count)
 	atomic.StoreUint64(&coldCounts.count, 0)
-
-	// Use atomicUpdateFloat to update hotCounts.sumBits atomically.
-	atomicUpdateFloat(&hotCounts.sumBits, func(oldVal float64) float64 {
-		return oldVal + sum.GetSampleSum()
-	})
-	atomic.StoreUint64(&coldCounts.sumBits, 0)
-
+	for {
+		oldBits := atomic.LoadUint64(&hotCounts.sumBits)
+		newBits := math.Float64bits(math.Float64frombits(oldBits) + sum.GetSampleSum())
+		if atomic.CompareAndSwapUint64(&hotCounts.sumBits, oldBits, newBits) {
+			atomic.StoreUint64(&coldCounts.sumBits, 0)
+			break
+		}
+	}
 	return nil
 }
 

@@ -225,7 +225,7 @@ func (c cmdable) HExpire(ctx context.Context, key string, expiration time.Durati
 	return cmd
 }
 
-// HExpire - Sets the expiration time for specified fields in a hash in seconds.
+// HExpireWithArgs - Sets the expiration time for specified fields in a hash in seconds.
 // It requires a key, an expiration duration, a struct with boolean flags for conditional expiration settings (NX, XX, GT, LT), and a list of fields.
 // The command constructs an argument list starting with "HEXPIRE", followed by the key, duration, any conditional flags, and the specified fields.
 // For more information - https://redis.io/commands/hexpire/

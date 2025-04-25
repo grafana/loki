@@ -63,8 +63,8 @@ func NewClient(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(&cfg))
+	unaryInterceptors, streamInterceptors := instrumentation(&cfg)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

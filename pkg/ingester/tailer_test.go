@@ -91,7 +91,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		go assert.NotPanics(t, func() {
 			defer routines.Done()
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			tailer.send(stream, labels.Labels{{Name: "type", Value: "test"}})
+			tailer.send(stream, labels.FromStrings("type", "test"))
 		})
 
 		go assert.NotPanics(t, func() {
@@ -234,9 +234,9 @@ func Test_IsMatching(t *testing.T) {
 		matchers []*labels.Matcher
 		matches  bool
 	}{
-		{"not in lbs", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}, false},
-		{"equal", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "job", Value: "foo"}}, true},
-		{"regex", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", ".+oo")}, true},
+		{"not in lbs", labels.FromStrings("job", "foo"), []*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}, false},
+		{"equal", labels.FromStrings("job", "foo"), []*labels.Matcher{{Type: labels.MatchEqual, Name: "job", Value: "foo"}}, true},
+		{"regex", labels.FromStrings("job", "foo"), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", ".+oo")}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.matches, isMatching(tt.lbs, tt.matchers))

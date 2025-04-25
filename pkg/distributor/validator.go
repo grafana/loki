@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -143,7 +144,11 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	return nil
 }
 
-// Validate labels returns an error if the labels are invalid
+func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
+	return ls.Has(constants.AggregatedMetricLabel)
+}
+
+// Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
 func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
 	if len(ls) == 0 {
 		// TODO: is this one correct?
@@ -152,7 +157,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 	}
 
 	// Skip validation for aggregated metric streams, as we create those for internal use
-	if ls.Has(push.AggregatedMetricLabel) {
+	if v.IsAggregatedMetricStream(ls) {
 		return nil
 	}
 
@@ -200,9 +205,11 @@ func (v Validator) reportDiscardedDataWithTracker(ctx context.Context, reason st
 }
 
 // ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
+// priority is: Per-tenant block > named policy block > Global policy block
 func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, policy string) (bool, int, string, error) {
-	if block, code, reason, err := v.shouldBlockGlobalPolicy(ctx, now); block {
-		return block, code, reason, err
+	if block, until, code := v.shouldBlockTenant(ctx, now); block {
+		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
+		return true, code, validation.BlockedIngestion, err
 	}
 
 	if block, until, code := v.shouldBlockPolicy(ctx, policy, now); block {
@@ -213,27 +220,21 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, po
 	return false, 0, "", nil
 }
 
-func (v Validator) shouldBlockGlobalPolicy(ctx validationContext, now time.Time) (bool, int, string, error) {
+func (v Validator) shouldBlockTenant(ctx validationContext, now time.Time) (bool, time.Time, int) {
 	if ctx.blockIngestionUntil.IsZero() {
-		return false, 0, "", nil
+		return false, time.Time{}, 0
 	}
 
 	if now.Before(ctx.blockIngestionUntil) {
-		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
-		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
+		return true, ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
 	}
 
-	return false, 0, "", nil
+	return false, time.Time{}, 0
 }
 
 // ShouldBlockPolicy checks if ingestion should be blocked for the given policy.
 // It returns true if ingestion should be blocked, along with the block until time and status code.
-func (v *Validator) shouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
-	// No policy provided, don't block
-	if policy == "" {
-		return false, time.Time{}, 0
-	}
-
+func (v Validator) shouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
 	// Check if this policy is blocked in tenant configs
 	blockUntil := v.Limits.BlockIngestionPolicyUntil(ctx.userID, policy)
 	if blockUntil.IsZero() {

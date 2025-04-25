@@ -6,7 +6,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+)
+
+type fakeColumn struct{ dataset.Column }
+
+var (
+	fakeMinColumn = &fakeColumn{}
+	fakeMaxColumn = &fakeColumn{}
 )
 
 func TestMatchStreamsTimeRangePredicate(t *testing.T) {
@@ -274,9 +282,39 @@ func TestMatchStreamsTimeRangePredicate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := matchStreamsPredicate(tt.pred, tt.stream)
+			predicate := convertStreamsTimePredicate(tt.pred.(TimeRangePredicate[StreamsPredicate]), fakeMinColumn, fakeMaxColumn)
+			result := evaluateStreamsPredicate(predicate, tt.stream)
 			require.Equal(t, tt.expected, result, "matchStreamsPredicate returned unexpected result")
 		})
+	}
+}
+
+func evaluateStreamsPredicate(p dataset.Predicate, s streams.Stream) bool {
+	switch p := p.(type) {
+	case dataset.AndPredicate:
+		return evaluateStreamsPredicate(p.Left, s) && evaluateStreamsPredicate(p.Right, s)
+	case dataset.OrPredicate:
+		return evaluateStreamsPredicate(p.Left, s) || evaluateStreamsPredicate(p.Right, s)
+	case dataset.NotPredicate:
+		return !evaluateStreamsPredicate(p.Inner, s)
+	case dataset.GreaterThanPredicate:
+		if p.Column == fakeMinColumn {
+			return s.MinTimestamp.After(time.Unix(0, p.Value.Int64()).UTC())
+		} else if p.Column == fakeMaxColumn {
+			return s.MaxTimestamp.After(time.Unix(0, p.Value.Int64()).UTC())
+		}
+		panic("unexpected column")
+
+	case dataset.LessThanPredicate:
+		if p.Column == fakeMinColumn {
+			return s.MinTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
+		} else if p.Column == fakeMaxColumn {
+			return s.MaxTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
+		}
+		panic("unexpected column")
+
+	default:
+		panic("unexpected predicate")
 	}
 }
 
@@ -425,8 +463,29 @@ func TestMatchTimestamp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := matchTimestamp(tt.pred, tt.ts)
+			predicate := convertLogsTimePredicate(tt.pred, nil)
+			result := evaluateRecordPredicate(predicate, tt.ts)
 			require.Equal(t, tt.expected, result, "matchTimestamp returned unexpected result")
 		})
+	}
+}
+
+func evaluateRecordPredicate(p dataset.Predicate, ts time.Time) bool {
+	switch p := p.(type) {
+	case dataset.AndPredicate:
+		return evaluateRecordPredicate(p.Left, ts) && evaluateRecordPredicate(p.Right, ts)
+	case dataset.OrPredicate:
+		return evaluateRecordPredicate(p.Left, ts) || evaluateRecordPredicate(p.Right, ts)
+	case dataset.NotPredicate:
+		return !evaluateRecordPredicate(p.Inner, ts)
+	case dataset.GreaterThanPredicate:
+		return ts.After(time.Unix(0, p.Value.Int64()))
+	case dataset.LessThanPredicate:
+		return ts.Before(time.Unix(0, p.Value.Int64()))
+	case dataset.EqualPredicate:
+		return ts.Equal(time.Unix(0, p.Value.Int64()))
+
+	default:
+		panic("unexpected predicate")
 	}
 }
