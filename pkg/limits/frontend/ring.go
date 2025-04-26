@@ -128,7 +128,7 @@ type zonePartitionConsumersResult struct {
 // in the replication set. If a zone has no active partition consumers, the
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
-// a psuedo-zone ("").
+// a pseudo-zone ("").
 func (g *RingStreamUsageGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
