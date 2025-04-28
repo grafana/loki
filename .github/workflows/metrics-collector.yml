@@ -7,6 +7,10 @@ jobs:
   main:
     if: github.owner == 'grafana'
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: Checkout Actions
         uses: actions/checkout@v4

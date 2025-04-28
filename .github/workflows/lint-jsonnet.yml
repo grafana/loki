@@ -8,6 +8,10 @@ jobs:
   check-mixin:
     name: Check mixin jsonnet files
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

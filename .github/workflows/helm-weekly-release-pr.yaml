@@ -14,6 +14,10 @@ permissions:
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     env:
       BUILD_IN_CONTAINER: false
     steps:
