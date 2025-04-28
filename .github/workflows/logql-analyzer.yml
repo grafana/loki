@@ -59,7 +59,7 @@ jobs:
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
 
     - name: "Build and push"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
@@ -73,7 +73,7 @@ jobs:
         tags: "grafana/logql-analyzer:${{ steps.prepare.outputs.release_version }}"
 
     - name: Log in to Google Artifact Registry
-      uses: grafana/shared-workflows/actions/login-to-gar@main
+      uses: grafana/shared-workflows/actions/login-to-gar@75804962c1ba608148988c1e2dc35fbb0ee21746
       with:
         registry: "us-docker.pkg.dev"
         environment: "prod"
