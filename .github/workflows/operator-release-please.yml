@@ -30,7 +30,7 @@ jobs:
           app-id: "${{ secrets.APP_ID }}"
           owner: "${{ github.repository_owner }}"
           private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-      - uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 // v4
+      - uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4
         id: release
         with:
           path: operator

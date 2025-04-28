@@ -73,7 +73,10 @@
                                             $.step.withWorkingDirectory('lib'),
 
   checkout:
-    $.step.new('checkout', 'actions/checkout@v4'),
+    $.step.new('checkout', 'actions/checkout@v4')
+    + $.step.with({
+      'persist-credentials': false,
+    }),
 
   cleanUpBuildCache:
     $.step.new('clean up build tools cache')
@@ -84,6 +87,7 @@
     + $.step.with({
       repository: '${{ env.RELEASE_REPO }}',
       path: 'release',
+      'persist-credentials': false,
     }),
   fetchReleaseLib:
     $.step.new('pull release library code', 'actions/checkout@v4')
@@ -91,6 +95,7 @@
       repository: 'grafana/loki-release',
       path: 'lib',
       ref: '${{ env.RELEASE_LIB_REF }}',
+      'persist-credentials': false,
     }),
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
@@ -107,11 +112,11 @@
     ],
   },
 
-  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@v2')
+  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f') // v2
               + $.step.with({
                 credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
               }),
-  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@v2')
+  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a') // v2
                        + $.step.with({
                          version: '>= 452.0.0',
                        }),

@@ -83,7 +83,7 @@ local lambdaPromtailJob =
     + step.with({
       'node-version': '20',
     }),
-    step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
+    step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
     step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0')
     + { id: 'get-secrets' }
     + step.with({
@@ -92,13 +92,13 @@ local lambdaPromtailJob =
         ECR_SECRET_KEY=aws-credentials:secret_access_key
       |||,
     }),
-    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@v4')
+    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502') // v4
     + step.with({
       'aws-access-key-id': '${{ env.ECR_ACCESS_KEY }}',
       'aws-secret-access-key': '${{ env.ECR_SECRET_KEY }}',
       'aws-region': 'us-east-1',
     }),
-    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@v2')
+    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076') // v2
     + step.with({
       'registry-type': 'public',
     }),
@@ -117,7 +117,7 @@ local lambdaPromtailJob =
       arch=$(echo ${{ matrix.arch }} | cut -d'/' -f2)
       echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
     |||),
-    step.new('Build and push', 'docker/build-push-action@v6')
+    step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
     + { id: 'build-push' }
     + { 'timeout-minutes': '${{ fromJSON(env.BUILD_TIMEOUT) }}' }
     + step.with({
@@ -255,7 +255,7 @@ local lambdaPromtailJob =
           BUILD_TIMEOUT: imageBuildTimeoutMin,
         })
         + job.withSteps([
-          step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
+          step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
           step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
