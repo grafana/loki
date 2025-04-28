@@ -22,7 +22,7 @@ jobs:
 
     - name: Retrieve GitHub App Credentials from Vault
       id: get-secrets
-      uses: grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.0.1
+      uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760
       with:
         repo_secrets: |
           APP_ID=loki-github-bot:app-id
