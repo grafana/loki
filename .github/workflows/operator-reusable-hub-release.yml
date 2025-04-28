@@ -60,6 +60,7 @@ jobs:
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.get_github_app_token.outputs.token }}
+          persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
         uses: actions/checkout@v4
@@ -67,7 +68,7 @@ jobs:
           repository: grafana/loki
           token: ${{ steps.get_github_app_token.outputs.token }}
           path: tmp/
-
+          persist-credentials: false
       - name: Update version
         env:
           VERSION: ${{ env.version }}

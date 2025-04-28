@@ -35,6 +35,7 @@ jobs:
         with:
           ref: main
           path: "release"
+          persist-credentials: false
 
       - name: Check main commits for prepare release commit
         id: check_commit
