@@ -35,8 +35,8 @@
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
       'id-token': 'read',
     },
     concurrency: {
@@ -106,8 +106,8 @@
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
       'id-token': 'read',
     },
     concurrency: {

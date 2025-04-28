@@ -973,6 +973,6 @@ name: "Prepare Patch Release PR"
     branches:
     - "release-[0-9]+.[0-9]+.x"
 permissions:
-  contents: "write"
+  contents: "read"
   id-token: "read"
-  pull-requests: "write"
+  pull-requests: "read"

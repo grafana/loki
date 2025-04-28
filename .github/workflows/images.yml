@@ -553,6 +553,6 @@
     - "main"
   "workflow_dispatch": {}
 "permissions":
-  "contents": "write"
-  "id-token": "write"
-  "pull-requests": "write"
+  "contents": "read"
+  "id-token": "read"
+  "pull-requests": "read"
