@@ -295,6 +295,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           git fetch --tags
           git checkout "${{ steps.extract_branch.outputs.branch }}"
           git checkout -b $BRANCH_NAME
+
+          # explicity set the github app token to override the release branch protection
+          git remote set-url origin "https://x-access-token:${{ steps.github_app_token.outputs.token }}@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
           
           echo "branch_exists=false" >> $GITHUB_OUTPUT

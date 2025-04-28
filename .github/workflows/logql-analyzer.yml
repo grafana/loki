@@ -23,6 +23,7 @@ jobs:
       with:
         fetch-tags: true
         path: loki
+        persist-credentials: false
 
     - name: prepare
       id: prepare

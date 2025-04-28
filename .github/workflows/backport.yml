@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: "grafana/grafana-github-actions"
+          persist-credentials: false
           path: ./actions
           ref: 066cbcd084b61558d99d13c76f835c49e31b4670
 
