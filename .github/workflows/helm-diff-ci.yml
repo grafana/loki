@@ -14,6 +14,10 @@ jobs:
   helm-diff:
     name: ${{ matrix.scenario.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     timeout-minutes: 10
     strategy:
       matrix:
@@ -98,6 +102,10 @@ jobs:
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     if: github.event.pull_request.head.repo.fork == false
     needs: [helm-diff]
     steps:

@@ -18,6 +18,10 @@ on:
 jobs:
   create-operator-pull-request:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - id: "get_github_app_token"
         name: Get GitHub App Token

@@ -14,6 +14,10 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,6 +28,10 @@ jobs:
       - run: nix run --print-build-logs .#lint
   packages:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - uses: actions/checkout@v4
         with:
