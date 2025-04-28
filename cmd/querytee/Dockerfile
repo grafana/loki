@@ -9,7 +9,7 @@ RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki-quer
 FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/cmd/querytee/querytee /usr/bin/querytee
 
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
 
-ENTRYPOINT [ "/usr/bin/querytee" ]
+ENTRYPOINT ["/usr/bin/querytee"]

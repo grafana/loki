@@ -5,32 +5,32 @@ ARG GO_VERSION=1.24
 # docker build -t grafana/loki -f cmd/loki/Dockerfile.debug .
 
 FROM golang:${GO_VERSION} as goenv
-RUN go env GOARCH > /goarch && \
-    go env GOARM > /goarm && \
-    go install github.com/go-delve/delve/cmd/dlv@latest
+RUN go env GOARCH >/goarch \
+    && go env GOARM >/goarm \
+    && go install github.com/go-delve/delve/cmd/dlv@latest
 
 FROM $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && \
-    GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-debug
+RUN make clean \
+    && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-debug
 
-FROM       gcr.io/distroless/base-nossl:debug
-COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
-COPY       --from=goenv /go/bin/dlv /usr/bin/dlv
-COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
-EXPOSE     3100
+FROM gcr.io/distroless/base-nossl:debug
+COPY --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
+COPY --from=goenv /go/bin/dlv /usr/bin/dlv
+COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
+EXPOSE 3100
 
 # Expose 40000 for delve
 EXPOSE 40000
 
-SHELL [ "/busybox/sh", "-c" ]
+SHELL ["/busybox/sh", "-c"]
 RUN ln -s /busybox/sh /bin/sh
 
 
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
 #   dlv exec ./hello -- server --config conf/config.toml`
-ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue", "--accept-multiclient" , "--api-version=2", "exec", "/usr/bin/loki-debug", "--"]
-CMD        ["-config.file=/etc/loki/local-config.yaml"]
+ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue", "--accept-multiclient", "--api-version=2", "exec", "/usr/bin/loki-debug", "--"]
+CMD ["-config.file=/etc/loki/local-config.yaml"]

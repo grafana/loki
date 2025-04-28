@@ -12,9 +12,9 @@ RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true IM
 FROM public.ecr.aws/ubuntu/ubuntu:noble
 # tzdata required for the timestamp stage to work
 # Install dependencies needed at runtime.
-RUN  apt-get update \
- &&  apt-get install -qy libsystemd-dev tzdata ca-certificates \
- &&  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN apt-get update \
+    && apt-get install -qy libsystemd-dev tzdata ca-certificates \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
 COPY clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 ENTRYPOINT ["/usr/bin/promtail"]
