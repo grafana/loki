@@ -98,7 +98,7 @@ local runner = import 'runner.libsonnet',
       common.setupNode,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
-      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'), // main
 
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
@@ -135,9 +135,12 @@ local runner = import 'runner.libsonnet',
 
       releaseStep('Process image digest')
       + step.withId('digest')
+      + step.withEnv({
+        OUTPUTS_DIGEST: '${{ steps.build-push.outputs.digest }}',
+      })
       + step.withRun(|||
         arch=$(echo ${{ matrix.arch }} | tr "/" "_")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
       |||),
     ]),
 
@@ -205,9 +208,14 @@ local runner = import 'runner.libsonnet',
 
       step.new('compress rootfs')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        OUTPUTS_VERSION: '${{ needs.version.outputs.version }}',
+        OUTPUTS_PLATFORM: '${{ steps.platform.outputs.platform }}',
+
+      })
       + step.withRun(|||
-        tar -cf release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
-        -C release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        tar -cf release/plugins/%s-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM}.tar \
+        -C release/plugins/%s-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM} \
         .
       ||| % [name, name]),
 
@@ -231,6 +239,10 @@ local runner = import 'runner.libsonnet',
       common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
+      + step.withEnv({
+        OUTPUTS_BRANCH: '${{ steps.extract_branch.outputs.branch }}',
+        OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+      })
       + step.withRun(|||
         npm install
 
@@ -245,8 +257,8 @@ local runner = import 'runner.libsonnet',
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
           npm exec -- release-please release-pr \
@@ -259,20 +271,20 @@ local runner = import 'runner.libsonnet',
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
 
         cat release.json
 
-        if [[ `jq length release.json` -gt 1 ]]; then
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
 
-        if [[ `jq length release.json` -eq 0 ]]; then
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -295,7 +307,7 @@ local runner = import 'runner.libsonnet',
       common.googleAuth,
       common.setupGoogleCloudSdk,
 
-      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@main')
+      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25') // main
       + step.withId('get-secrets')
       + step.with({
         common_secrets: |||

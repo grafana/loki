@@ -134,7 +134,7 @@
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -164,11 +164,13 @@
         "platforms": "${{ matrix.arch }}"
         "provenance": true
         "tags": "${{ steps.weekly-version.outputs.image_name }}"
-    - "id": "digest"
+    - "env":
+        "OUTPUTS_DIGEST": "${{ steps.build-push.outputs.digest }}"
+      "id": "digest"
       "name": "Process image digest"
       "run": |
         arch=$(echo ${{ matrix.arch }} | tr "/" "_")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
       "working-directory": "release"
     "strategy":
       "fail-fast": true
@@ -244,7 +246,7 @@
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -274,11 +276,13 @@
         "platforms": "${{ matrix.arch }}"
         "provenance": true
         "tags": "${{ steps.weekly-version.outputs.image_name }}"
-    - "id": "digest"
+    - "env":
+        "OUTPUTS_DIGEST": "${{ steps.build-push.outputs.digest }}"
+      "id": "digest"
       "name": "Process image digest"
       "run": |
         arch=$(echo ${{ matrix.arch }} | tr "/" "_")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
       "working-directory": "release"
     "strategy":
       "fail-fast": true
@@ -354,7 +358,7 @@
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -384,11 +388,13 @@
         "platforms": "${{ matrix.arch }}"
         "provenance": true
         "tags": "${{ steps.weekly-version.outputs.image_name }}"
-    - "id": "digest"
+    - "env":
+        "OUTPUTS_DIGEST": "${{ steps.build-push.outputs.digest }}"
+      "id": "digest"
       "name": "Process image digest"
       "run": |
         arch=$(echo ${{ matrix.arch }} | tr "/" "_")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
       "working-directory": "release"
     "strategy":
       "fail-fast": true
@@ -464,7 +470,7 @@
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -494,11 +500,13 @@
         "platforms": "${{ matrix.arch }}"
         "provenance": true
         "tags": "${{ steps.weekly-version.outputs.image_name }}"
-    - "id": "digest"
+    - "env":
+        "OUTPUTS_DIGEST": "${{ steps.build-push.outputs.digest }}"
+      "id": "digest"
       "name": "Process image digest"
       "run": |
         arch=$(echo ${{ matrix.arch }} | tr "/" "_")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
       "working-directory": "release"
     "strategy":
       "fail-fast": true
