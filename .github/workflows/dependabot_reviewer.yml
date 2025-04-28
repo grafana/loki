@@ -18,7 +18,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: false        
+          persist-credentials: false
 
       - name: Dependabot metadata
         id: metadata
