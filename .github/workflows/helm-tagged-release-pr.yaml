@@ -15,10 +15,12 @@ jobs:
       BUILD_IN_CONTAINER: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - uses: gabe565/setup-helm-docs-action@v1
         with:
           version: v1.11.2
-          persist-credentials: false
 
       - id: "get_github_app_token"
         name: "get github app token"
