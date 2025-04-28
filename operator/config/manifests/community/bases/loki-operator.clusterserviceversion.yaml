@@ -806,6 +806,14 @@ spec:
         path: template.ruler.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: |-
+          When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+          requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+          spikes, whether on the ingestion or query side.
+        displayName: Use resource requests as limits
+        path: template.useRequestsAsLimits
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Tenants defines the per-tenant authentication and authorization
           spec for the lokistack-gateway component.
         displayName: Tenants Configuration
