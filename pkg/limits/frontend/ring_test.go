@@ -81,8 +81,9 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 	}, {
 		// When there is one stream, and two instances each owning separate
-		// partitions, only the instance owning the partition for the stream hash
-		// should be queried.
+		// partitions, all instances should be queried. However, only the
+		// instance owning the partition for the stream hash should be queried
+		// for the requested stream hashes.
 		name: "one stream two instances",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
@@ -104,16 +105,29 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
+			Tenant: "test",
+		}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
 		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}, {
 			Tenant:        "test",
 			ActiveStreams: 1,
 			Rate:          10,
 		}},
 		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}, {
 			Addr: "instance-1",
 			Response: &logproto.GetStreamUsageResponse{
 				Tenant:        "test",
@@ -124,7 +138,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 	}, {
 		// When there is one stream, and two instances owning overlapping
 		// partitions, only the instance with the latest timestamp for the relevant
-		// partition should be queried.
+		// partition should be queried with the requested stream hash.
 		name: "one stream two instances, overlapping partition ownership",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
@@ -146,16 +160,29 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
+			Tenant: "test",
+		}, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
 		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}, {
 			Tenant:        "test",
 			ActiveStreams: 1,
 			Rate:          10,
 		}},
 		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}, {
 			Addr: "instance-1",
 			Response: &logproto.GetStreamUsageResponse{
 				Tenant:        "test",
