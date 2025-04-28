@@ -389,6 +389,6 @@ name: "create release"
     - "k[0-9]+"
     - "main"
 permissions:
-  contents: "write"
+  contents: "read"
   id-token: "read"
-  pull-requests: "write"
+  pull-requests: "read"
