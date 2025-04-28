@@ -89,6 +89,7 @@ jobs:
       - name: "publish release"
         env:
           GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          RELEASE_NAME: ${{ needs.releasePlease.outputs.release_name }}
         working-directory: "release"
         run: |
-          gh release edit "${{ needs.releasePlease.outputs.release_name }}" --draft=false --latest=false
+          gh release edit "$RELEASE_NAME" --draft=false --latest=false
