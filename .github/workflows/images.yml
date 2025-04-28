@@ -40,7 +40,7 @@
       "with":
         "node-version": "20"
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "id": "get-secrets"
       "name": "get-secrets"
       "uses": "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
@@ -49,13 +49,13 @@
           ECR_ACCESS_KEY=aws-credentials:access_key_id
           ECR_SECRET_KEY=aws-credentials:secret_access_key
     - "name": "Configure AWS credentials"
-      "uses": "aws-actions/configure-aws-credentials@v4"
+      "uses": "aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502" # v4
       "with":
         "aws-access-key-id": "${{ env.ECR_ACCESS_KEY }}"
         "aws-region": "us-east-1"
         "aws-secret-access-key": "${{ env.ECR_SECRET_KEY }}"
     - "name": "Login to Amazon ECR Public"
-      "uses": "aws-actions/amazon-ecr-login@v2"
+      "uses": "aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076" # v2
       "with":
         "registry-type": "public"
     - "id": "weekly-version"
@@ -74,7 +74,7 @@
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
       "with":
         "build-args": |
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
@@ -128,7 +128,7 @@
       "with":
         "node-version": 20
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
@@ -149,7 +149,7 @@
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
       "with":
         "build-args": |
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
@@ -187,7 +187,7 @@
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "name": "Publish multi-arch manifest"
@@ -236,7 +236,7 @@
       "with":
         "node-version": 20
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
@@ -257,7 +257,7 @@
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
       "with":
         "build-args": |
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
@@ -295,7 +295,7 @@
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "name": "Publish multi-arch manifest"
@@ -344,7 +344,7 @@
       "with":
         "node-version": 20
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
@@ -365,7 +365,7 @@
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
       "with":
         "build-args": |
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
@@ -403,7 +403,7 @@
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "name": "Publish multi-arch manifest"
@@ -452,7 +452,7 @@
       "with":
         "node-version": 20
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
@@ -473,7 +473,7 @@
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
       "with":
         "build-args": |
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
@@ -511,7 +511,7 @@
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "name": "Publish multi-arch manifest"

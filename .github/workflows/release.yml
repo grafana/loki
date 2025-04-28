@@ -36,11 +36,11 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f" # v2
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a" # v2
       with:
         version: ">= 452.0.0"
     - id: "get_github_app_token"
@@ -77,7 +77,7 @@ jobs:
         else
           echo "exists=true" >> $GITHUB_OUTPUT
         fi
-        
+
         if [[ "$isDraft" == "true" ]]; then
           echo "draft=true" >> $GITHUB_OUTPUT
         fi
@@ -104,7 +104,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0" # v2
       with:
         destination: "${{ env.PUBLISH_BUCKET }}"
         parent: false
@@ -152,27 +152,27 @@ jobs:
       run: |
         # Debug and clean the version variable
         echo "Original VERSION: $VERSION"
-        
+
         # Remove all quotes (both single and double)
         VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
         echo "After removing quotes: $VERSION"
-        
+
         # Extract version without the 'v' prefix if it exists
         VERSION="${VERSION#v}"
         echo "After removing v prefix: $VERSION"
-        
+
         # Extract major and minor versions
         MAJOR=$(echo $VERSION | cut -d. -f1)
         MINOR=$(echo $VERSION | cut -d. -f2)
         echo "MAJOR: $MAJOR, MINOR: $MINOR"
-        
+
         # Create branch name from template
         BRANCH_TEMPLATE="release-\${major}.\${minor}.x"
         BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
         BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
-        
+
         echo "Checking if branch already exists: $BRANCH_NAME"
-        
+
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
@@ -180,13 +180,13 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: ${{ needs.publishRelease.outputs.name }}"
-          
+
           # Create branch from the tag
           git fetch --tags
           git checkout "${{ steps.extract_branch.outputs.branch }}"
           git checkout -b $BRANCH_NAME
           git push -u origin $BRANCH_NAME
-          
+
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
@@ -208,17 +208,17 @@ jobs:
         path: "release"
         repository: "${{ env.RELEASE_REPO }}"
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f" # v2
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a" # v2
       with:
         version: ">= 452.0.0"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392" # v3
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - name: "Login to DockerHub (from vault)"
       uses: "grafana/shared-workflows/actions/dockerhub-login@main"
     - name: "download and prepare plugins"
@@ -246,17 +246,17 @@ jobs:
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f" # v2
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a" # v2
       with:
         version: ">= 452.0.0"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392" # v3
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
     - name: "Login to DockerHub (from vault)"
       uses: "grafana/shared-workflows/actions/dockerhub-login@main"
     - name: "download images"
