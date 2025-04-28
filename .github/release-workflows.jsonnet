@@ -117,12 +117,12 @@ local lambdaPromtailJob =
     + { id: 'prepare-tag' }
     + step.withEnv({
         MATRIX_ARCH: '${{ matrix.arch }}',
-        IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
-        IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
+        OUTPUTS_IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
+        OUTPUTS_IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
     })
     + step.withRun(|||
       arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
-      echo "IMAGE_TAG=${$IMAGE_NAME}:${IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
+      echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     |||),
     step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
     + { id: 'build-push' }

@@ -69,14 +69,14 @@
         echo "image_full_name=${{ env.IMAGE_PREFIX }}/lambda-promtail:$version" >> $GITHUB_OUTPUT
       "working-directory": "release"
     - "env":
-        "IMAGE_NAME": "${{ steps.weekly-version.outputs.image_name }}"
-        "IMAGE_VERSION": "${{ steps.weekly-version.outputs.image_version }}"
         "MATRIX_ARCH": "${{ matrix.arch }}"
+        "OUTPUTS_IMAGE_NAME": "${{ steps.weekly-version.outputs.image_name }}"
+        "OUTPUTS_IMAGE_VERSION": "${{ steps.weekly-version.outputs.image_version }}"
       "id": "prepare-tag"
       "name": "Prepare tag name"
       "run": |
         arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
-        echo "IMAGE_TAG=${$IMAGE_NAME}:${IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
+        echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
