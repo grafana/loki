@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-04-28T15:35:26Z"
+    createdAt: "2025-04-28T20:20:23Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -895,6 +895,9 @@ spec:
           When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
           requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
           spikes, whether on the ingestion or query side.
+
+
+          Note: This is currently a tech-preview feature.
         displayName: Use resource requests as limits
         path: template.useRequestsAsLimits
         x-descriptors:

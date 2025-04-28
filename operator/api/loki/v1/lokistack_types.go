@@ -365,6 +365,8 @@ type LokiTemplateSpec struct {
 	// requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
 	// spikes, whether on the ingestion or query side.
 	//
+	// Note: This is currently a tech-preview feature.
+	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Use resource requests as limits"
