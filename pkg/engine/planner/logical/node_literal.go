@@ -35,9 +35,9 @@ func NewLiteral(v any) *Literal {
 	case float64:
 		return &Literal{Literal: datatype.NewFloatLiteral(casted)}
 	case time.Time:
-		return &Literal{Literal: datatype.NewTimestampLiteral(casted.UnixNano())}
+		return &Literal{Literal: datatype.NewTimestampLiteral(casted)}
 	case time.Duration:
-		return &Literal{Literal: datatype.NewDurationLiteral(casted.Nanoseconds())}
+		return &Literal{Literal: datatype.NewDurationLiteral(casted)}
 	default:
 		return &Literal{Literal: datatype.NewNullLiteral()}
 	}
@@ -61,7 +61,7 @@ func (l Literal) String() string {
 
 // Value returns lit's value as untyped interface{}.
 func (l Literal) Value() any {
-	return l.Literal.Value()
+	return l.Literal.Any()
 }
 
 func (l *Literal) Schema() *schema.Schema {

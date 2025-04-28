@@ -88,3 +88,24 @@ type tBytes struct{}
 
 func (tBytes) ID() Type       { return INT64 }
 func (tBytes) String() string { return "bytes" }
+
+var (
+	names = map[string]DataType{
+		Null.String():      Null,
+		Bool.String():      Bool,
+		String.String():    String,
+		Integer.String():   Integer,
+		Float.String():     Float,
+		Timestamp.String(): Timestamp,
+		Duration.String():  Duration,
+		Bytes.String():     Bytes,
+	}
+)
+
+func FromString(dt string) DataType {
+	ty, ok := names[dt]
+	if !ok {
+		panic("invalid data type name")
+	}
+	return ty
+}

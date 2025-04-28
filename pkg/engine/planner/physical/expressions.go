@@ -151,9 +151,9 @@ func NewLiteral(value any) *LiteralExpr {
 	case float64:
 		return &LiteralExpr{Literal: datatype.NewFloatLiteral(casted)}
 	case time.Time:
-		return &LiteralExpr{Literal: datatype.NewTimestampLiteral(casted.UnixNano())}
+		return &LiteralExpr{Literal: datatype.NewTimestampLiteral(casted)}
 	case time.Duration:
-		return &LiteralExpr{Literal: datatype.NewDurationLiteral(casted.Nanoseconds())}
+		return &LiteralExpr{Literal: datatype.NewDurationLiteral(casted)}
 	default:
 		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
 	}

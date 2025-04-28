@@ -124,7 +124,7 @@ func convertLiteral(expr Expression) (string, error) {
 	if l.ValueType() != datatype.String {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
 	}
-	return l.Value().(string), nil
+	return l.Any().(string), nil
 }
 
 func convertColumnRef(expr Expression) (string, error) {

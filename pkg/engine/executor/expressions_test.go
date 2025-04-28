@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -16,10 +17,10 @@ import (
 
 var (
 	fields = []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64},
-		{Name: "value", Type: arrow.PrimitiveTypes.Float64},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean},
+		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
+		{Name: "value", Type: arrow.PrimitiveTypes.Float64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Float)},
+		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Bool)},
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -38,49 +39,46 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		name      string
 		value     any
 		arrowType arrow.Type
-		expected  any
 	}{
 		{
 			name:      "null",
 			value:     nil,
 			arrowType: arrow.NULL,
-			expected:  nil,
 		},
 		{
 			name:      "bool",
 			value:     true,
 			arrowType: arrow.BOOL,
-			expected:  true,
 		},
 		{
 			name:      "str",
 			value:     "loki",
 			arrowType: arrow.STRING,
-			expected:  "loki",
 		},
 		{
 			name:      "int",
-			value:     123456789,
+			value:     int64(123456789),
 			arrowType: arrow.INT64,
-			expected:  int64(123456789),
 		},
 		{
 			name:      "float",
 			value:     123.456789,
 			arrowType: arrow.FLOAT64,
-			expected:  123.456789,
 		},
 		{
 			name:      "timestamp",
-			value:     time.Unix(3600, 0),
+			value:     time.Unix(3600, 0).UTC(),
 			arrowType: arrow.INT64,
-			expected:  int64(3600000000000),
 		},
 		{
 			name:      "duration",
 			value:     time.Hour,
 			arrowType: arrow.INT64,
-			expected:  int64(3600000000000),
+		},
+		{
+			name:      "bytes",
+			value:     int64(1024),
+			arrowType: arrow.INT64,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,11 +89,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			rec := batch(n, time.Now())
 			colVec, err := e.eval(literal, rec)
 			require.NoError(t, err)
-			require.Equalf(t, tt.arrowType, colVec.Type().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ID().String())
+			require.Equalf(t, tt.arrowType, colVec.ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.ArrowType().ID().String())
 
 			for i := range n {
 				val := colVec.Value(i)
-				require.Equal(t, tt.expected, val)
+				require.Equal(t, tt.value, val)
 			}
 		})
 	}
@@ -118,10 +116,10 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		require.ErrorContains(t, err, errors.ErrKey.Error())
 	})
 
-	t.Run("string(log)", func(t *testing.T) {
+	t.Run("string(line)", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
-				Column: "log",
+				Column: "line",
 				Type:   types.ColumnTypeBuiltin,
 			},
 		}
@@ -130,7 +128,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		require.Equal(t, arrow.STRING, colVec.Type().ID())
+		require.Equal(t, arrow.STRING, colVec.ArrowType().ID())
 
 		for i := range n {
 			val := colVec.Value(i)
@@ -158,7 +156,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 		}
 
 		_, err := e.eval(expr, rec)
-		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,uint64): types do not match")
+		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,int64): types do not match")
 	})
 
 	t.Run("error if function for signature is not registered", func(t *testing.T) {
@@ -225,8 +223,8 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "log", Type: arrow.BinaryTypes.String},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64},
+			{Name: "line", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
+			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
 		},
 		nil, // No metadata
 	)

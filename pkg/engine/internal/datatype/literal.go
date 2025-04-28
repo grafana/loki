@@ -19,7 +19,11 @@ func (n *NullLiteral) Type() DataType {
 	return Null
 }
 
-// Value implements Literal.
+// Any implements Literal.
+func (n *NullLiteral) Any() any {
+	return nil
+}
+
 func (n *NullLiteral) Value() any {
 	return nil
 }
@@ -38,8 +42,12 @@ func (b *BoolLiteral) Type() DataType {
 	return Bool
 }
 
-// Value implements Literal.
-func (b *BoolLiteral) Value() any {
+// Any implements Literal.
+func (b *BoolLiteral) Any() any {
+	return b.v
+}
+
+func (b *BoolLiteral) Value() bool {
 	return b.v
 }
 
@@ -57,8 +65,12 @@ func (s *StringLiteral) Type() DataType {
 	return String
 }
 
-// Value implements Literal.
-func (s *StringLiteral) Value() any {
+// Any implements Literal.
+func (s *StringLiteral) Any() any {
+	return s.v
+}
+
+func (s *StringLiteral) Value() string {
 	return s.v
 }
 
@@ -76,8 +88,12 @@ func (i *IntegerLiteral) Type() DataType {
 	return Integer
 }
 
-// Value implements Literal.
-func (i *IntegerLiteral) Value() any {
+// Any implements Literal.
+func (i *IntegerLiteral) Any() any {
+	return i.v
+}
+
+func (i *IntegerLiteral) Value() int64 {
 	return i.v
 }
 
@@ -95,18 +111,22 @@ func (f *FloatLiteral) Type() DataType {
 	return Float
 }
 
-// Value implements Literal.
-func (f *FloatLiteral) Value() any {
+// Any implements Literal.
+func (f *FloatLiteral) Any() any {
+	return f.v
+}
+
+func (f *FloatLiteral) Value() float64 {
 	return f.v
 }
 
 type TimestampLiteral struct {
-	v int64
+	v time.Time
 }
 
 // String implements Literal.
 func (t *TimestampLiteral) String() string {
-	return time.Unix(0, t.v).UTC().Format(time.RFC3339Nano)
+	return t.v.UTC().Format(time.RFC3339Nano)
 }
 
 // Type implements Literal.
@@ -114,18 +134,22 @@ func (t *TimestampLiteral) Type() DataType {
 	return Timestamp
 }
 
-// Value implements Literal.
-func (t *TimestampLiteral) Value() any {
+// Any implements Literal.
+func (t *TimestampLiteral) Any() any {
+	return t.v.UTC()
+}
+
+func (t *TimestampLiteral) Value() time.Time {
 	return t.v
 }
 
 type DurationLiteral struct {
-	v int64
+	v time.Duration
 }
 
 // String implements Literal.
 func (d *DurationLiteral) String() string {
-	return fmt.Sprintf("%dns", d.v)
+	return d.v.String()
 }
 
 // Type implements Literal.
@@ -133,8 +157,12 @@ func (d *DurationLiteral) Type() DataType {
 	return Duration
 }
 
-// Value implements Literal.
-func (d *DurationLiteral) Value() any {
+// Any implements Literal.
+func (d *DurationLiteral) Any() any {
+	return d.v
+}
+
+func (d *DurationLiteral) Value() time.Duration {
 	return d.v
 }
 
@@ -152,15 +180,19 @@ func (b *BytesLiteral) Type() DataType {
 	return Bytes
 }
 
-// Value implements Literal.
-func (b *BytesLiteral) Value() any {
+// Any implements Literal.
+func (b *BytesLiteral) Any() any {
+	return b.v
+}
+
+func (b *BytesLiteral) Value() int64 {
 	return b.v
 }
 
 // Literal is holds a value of [any] typed as [DataType].
 type Literal interface {
 	fmt.Stringer
-	Value() any
+	Any() any
 	Type() DataType
 }
 
@@ -195,11 +227,11 @@ func NewFloatLiteral(v float64) *FloatLiteral {
 	return &FloatLiteral{v: v}
 }
 
-func NewTimestampLiteral(v int64) *TimestampLiteral {
+func NewTimestampLiteral(v time.Time) *TimestampLiteral {
 	return &TimestampLiteral{v: v}
 }
 
-func NewDurationLiteral(v int64) *DurationLiteral {
+func NewDurationLiteral(v time.Duration) *DurationLiteral {
 	return &DurationLiteral{v: v}
 }
 

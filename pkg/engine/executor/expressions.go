@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -24,10 +25,16 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}, nil
 
 	case *physical.ColumnExpr:
+		schema := input.Schema()
 		for i := range input.NumCols() {
 			if input.ColumnName(int(i)) == expr.Ref.Column {
+				dt, ok := schema.Field(int(i)).Metadata.GetValue(types.MetadataKeyColumnDataType)
+				if !ok {
+					continue
+				}
 				return &Array{
 					array: input.Column(int(i)),
+					dt:    datatype.FromString(dt),
 					rows:  input.NumRows(),
 				}, nil
 			}
@@ -40,7 +47,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			return nil, err
 		}
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type())
+		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.ArrowType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
@@ -57,13 +64,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// At the moment we only support functions that accept the same input types.
-		if lhs.Type().ID() != rhs.Type().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type(), rhs.Type())
+		if lhs.ArrowType().ID() != rhs.ArrowType().ID() {
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.ArrowType(), rhs.ArrowType())
 		}
 
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Type())
+		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.ArrowType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.ArrowType(), rhs.ArrowType(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
@@ -86,8 +93,10 @@ type ColumnVector interface {
 	ToArray() arrow.Array
 	// Value returns the value at the specified index position in the column vector.
 	Value(i int) any
-	// Type returns the Arrow data type of the column vector.
-	Type() arrow.DataType
+	// ArrowType returns the Arrow data type of the column vector.
+	ArrowType() arrow.DataType
+	// Type returns the Loki data type of the column vector.
+	Type() datatype.DataType
 	// Len returns the length of the vector
 	Len() int64
 }
@@ -103,7 +112,7 @@ var _ ColumnVector = (*Scalar)(nil)
 // ToArray implements ColumnVector.
 func (v *Scalar) ToArray() arrow.Array {
 	mem := memory.NewGoAllocator()
-	builder := array.NewBuilder(mem, v.Type())
+	builder := array.NewBuilder(mem, v.ArrowType())
 	defer builder.Release()
 
 	switch builder := builder.(type) {
@@ -112,22 +121,22 @@ func (v *Scalar) ToArray() arrow.Array {
 			builder.AppendNull()
 		}
 	case *array.BooleanBuilder:
-		value := v.value.Value().(bool)
+		value := v.value.Any().(bool)
 		for range v.rows {
 			builder.Append(value)
 		}
 	case *array.StringBuilder:
-		value := v.value.Value().(string)
+		value := v.value.Any().(string)
 		for range v.rows {
 			builder.Append(value)
 		}
 	case *array.Int64Builder:
-		value := v.value.Value().(int64)
+		value := v.value.Any().(int64)
 		for range v.rows {
 			builder.Append(value)
 		}
 	case *array.Float64Builder:
-		value := v.value.Value().(float64)
+		value := v.value.Any().(float64)
 		for range v.rows {
 			builder.Append(value)
 		}
@@ -137,11 +146,16 @@ func (v *Scalar) ToArray() arrow.Array {
 
 // Value implements ColumnVector.
 func (v *Scalar) Value(_ int) any {
-	return v.value.Value()
+	return v.value.Any()
 }
 
 // Type implements ColumnVector.
-func (v Scalar) Type() arrow.DataType {
+func (v *Scalar) Type() datatype.DataType {
+	return v.value.Type()
+}
+
+// ArrowType implements ColumnVector.
+func (v Scalar) ArrowType() arrow.DataType {
 	return datatype.ToArrow[v.value.Type()]
 }
 
@@ -153,6 +167,7 @@ func (v Scalar) Len() int64 {
 // Array represents a column of data, stored as an [arrow.Array].
 type Array struct {
 	array arrow.Array
+	dt    datatype.DataType
 	rows  int64
 }
 
@@ -186,7 +201,12 @@ func (a *Array) Value(i int) any {
 }
 
 // Type implements ColumnVector.
-func (a *Array) Type() arrow.DataType {
+func (v *Array) Type() datatype.DataType {
+	return v.dt
+}
+
+// ArrowType implements ColumnVector.
+func (a *Array) ArrowType() arrow.DataType {
 	return a.array.DataType()
 }
 

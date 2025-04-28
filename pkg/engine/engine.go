@@ -167,7 +167,7 @@ func collectRow(rec arrow.Record, i int, result *resultBuilder) {
 
 		// TODO(chaudum): We need to add metadata to columns to identify builtins, labels, metadata, and parsed.
 		field := rec.Schema().Field(colIdx)
-		colType, ok := field.Metadata.GetValue(types.ColumnTypeMetadataKey)
+		colType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
 
 		// Ignore column values that are NULL or invalid or don't have a column typ
 		if col.IsNull(i) || !col.IsValid(i) || !ok {

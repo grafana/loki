@@ -7,12 +7,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
 		}, nil),
 
 		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
@@ -48,20 +50,20 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64},
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
+			{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
 		}, nil),
 
 		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer idColBuilder.Release()
 
-			tsColBuilder := array.NewUint64Builder(memory.DefaultAllocator)
+			tsColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer tsColBuilder.Release()
 
 			for i := int64(0); i < sz; i++ {
 				idColBuilder.Append(offset + i)
-				tsColBuilder.Append(uint64(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
+				tsColBuilder.Append(int64(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
 			}
 
 			idData := idColBuilder.NewArray()

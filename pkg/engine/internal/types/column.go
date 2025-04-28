@@ -1,6 +1,8 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ColumnType denotes the column type for a [ColumnRef].
 type ColumnType int
@@ -21,7 +23,8 @@ const (
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
 	ColumnNameBuiltinLine      = "line"
-	ColumnTypeMetadataKey      = "column_type"
+	MetadataKeyColumnType      = "column_type"
+	MetadataKeyColumnDataType  = "column_datatype"
 )
 
 // String returns a human-readable representation of the column type.
