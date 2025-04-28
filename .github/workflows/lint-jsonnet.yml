@@ -29,6 +29,3 @@ jobs:
       - name: check compiled mixin has been updated
         run: |
           make BUILD_IN_CONTAINER=false loki-mixin-check
-      
-
-

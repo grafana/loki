@@ -44,7 +44,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4
 
       - name: Add required Helm repositories
         run: |
@@ -127,7 +127,7 @@ jobs:
           done
 
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
         with:
           header: "Helm Diff Output - Summary"
           skip_unchanged: true
