@@ -136,7 +136,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                      gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
                    |||),
 
-                   step.new('release artifacts', 'google-github-actions/upload-cloud-storage@v2')
+                   step.new('release artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0') // v2
                    + step.withIf('${{ fromJSON(env.PUBLISH_TO_GCS) }}')
                    + step.with({
                      path: 'release/dist',
@@ -161,12 +161,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         common.fetchReleaseLib,
         common.googleAuth,
         common.setupGoogleCloudSdk,
-        step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-        step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+        step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'), // v3
+        step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), //v3
       ] + (if getDockerCredsFromVault then [
              step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
            ] else [
-             step.new('Login to DockerHub (from secrets)', 'docker/login-action@v3')
+             step.new('Login to DockerHub (from secrets)', 'docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772') // v3
              + step.with({
                username: dockerUsername,
                password: '${{ secrets.DOCKER_PASSWORD }}',
@@ -196,12 +196,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         common.fetchReleaseRepo,
         common.googleAuth,
         common.setupGoogleCloudSdk,
-        step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-        step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+        step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'), // v3
+        step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), //v3
       ] + (if getDockerCredsFromVault then [
              step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
            ] else [
-             step.new('Login to DockerHub (from secrets)', 'docker/login-action@v3')
+             step.new('Login to DockerHub (from secrets)', 'docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772') // v3
              + step.with({
                username: dockerUsername,
                password: '${{ secrets.DOCKER_PASSWORD }}',
@@ -290,7 +290,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: ${{ needs.publishRelease.outputs.name }}"
-          
+
           # Create branch from the tag
           git fetch --tags
           git checkout "${{ steps.extract_branch.outputs.branch }}"
@@ -299,7 +299,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           # explicity set the github app token to override the release branch protection
           git remote set-url origin "https://x-access-token:${{ steps.github_app_token.outputs.token }}@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
-          
+
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi

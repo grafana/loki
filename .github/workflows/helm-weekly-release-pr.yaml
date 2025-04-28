@@ -18,6 +18,7 @@ jobs:
       BUILD_IN_CONTAINER: false
     steps:
       - uses: actions/checkout@v4
+      - uses: gabe565/setup-helm-docs-action@d5c35bdc9133cfbea3b671acadf50a29029e87c2 # v1
         with:
           persist-credentials: false
       - uses: gabe565/setup-helm-docs-action@v1
@@ -34,7 +35,7 @@ jobs:
       - name: "Login to DockerHub (from vault)"
         uses: "grafana/shared-workflows/actions/dockerhub-login@main"
 
-      - uses: imjasonh/setup-crane@v0.4
+      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
 
       - name: Update/regenerate files for standard release
         id: update
@@ -42,7 +43,7 @@ jobs:
           bash .github/workflows/scripts/helm-weekly-release.sh
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7
         with:
           token: ${{ steps.get_github_app_token.outputs.token }}
           title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"

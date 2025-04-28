@@ -18,11 +18,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: false        
+          persist-credentials: false
 
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2.3.0
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7 # v 2.3.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
