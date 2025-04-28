@@ -14,6 +14,10 @@ env:
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
       build_image: "grafana/loki-build-image:0.34.6"
@@ -66,15 +70,20 @@ jobs:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
         private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_VERSION: "${{ needs.dist.outputs.version }}"
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
@@ -88,14 +97,14 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "${{ needs.dist.outputs.version }}" \
+          --release-as "$OUTPUTS_VERSION" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
+          --target-branch "$OUTPUTS_BRANCH" \
+          --token "$OUTPUTS_TOKEN" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
-
+        
       working-directory: "lib"
   dist:
     needs:
@@ -122,7 +131,7 @@ jobs:
         version: ">= 452.0.0"
     - id: "get-secrets"
       name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@main"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
       with:
         common_secrets: |
           NFPM_SIGNING_KEY=packages-gpg:private-key
@@ -195,7 +204,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -259,7 +268,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -323,7 +332,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -393,7 +402,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -457,7 +466,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -527,7 +536,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -597,7 +606,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -670,7 +679,7 @@ jobs:
       run: |
         mkdir -p images
         mkdir -p plugins
-
+        
         platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -695,11 +704,14 @@ jobs:
         platforms: "${{ matrix.arch }}"
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - env:
+        OUTPUTS_PLATFORM: "${{ steps.platform.outputs.platform }}"
+        OUTPUTS_VERSION: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "compress rootfs"
       run: |
-        tar -cf release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
-        -C release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        tar -cf release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM}.tar \
+        -C release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM} \
         .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
@@ -750,7 +762,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -820,7 +832,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -890,19 +902,24 @@ jobs:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
         private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
-    - id: "version"
+    - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+      id: "version"
       name: "get release version"
       run: |
         npm install
-
+        
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
           npm exec -- release-please release-pr \
             --consider-all-branches \
@@ -914,8 +931,8 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
           npm exec -- release-please release-pr \
@@ -928,20 +945,20 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
-
+        
         cat release.json
-
-        if [[ `jq length release.json` -gt 1 ]]; then
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-
-        if [[ `jq length release.json` -eq 0 ]]; then
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
@@ -957,5 +974,5 @@ name: "Prepare Minor Release PR from Weekly"
     - "k[0-9]+"
 permissions:
   contents: "write"
-  id-token: "write"
+  id-token: "read"
   pull-requests: "write"

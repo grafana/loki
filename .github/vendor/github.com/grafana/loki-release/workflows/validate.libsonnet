@@ -73,6 +73,9 @@ local validationJob = _validationJob(false);
                     package: '${{fromJson(needs.collectPackages.outputs.packages)}}',
                   },
                 })
+                + job.withEnv({
+                    MATRIX_PACKAGE: '${{ matrix.package }}'
+                })
                 + job.withSteps([
                   common.fetchReleaseRepo,
                   common.fixDubiousOwnership,
@@ -83,7 +86,7 @@ local validationJob = _validationJob(false);
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${{ matrix.package }}/...
+                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),

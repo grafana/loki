@@ -9,6 +9,8 @@ env:
   USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
+    env:
+      SHA: "${{ needs.shouldRelease.outputs.sha }}"
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
     needs:
     - "shouldRelease"
@@ -18,6 +20,10 @@ jobs:
       isLatest: "${{ needs.shouldRelease.outputs.isLatest }}"
       name: "${{ needs.shouldRelease.outputs.name }}"
       sha: "${{ needs.shouldRelease.outputs.sha }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -53,38 +59,46 @@ jobs:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
         private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.shouldRelease.outputs.sha }}/dist .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/dist .
       working-directory: "release"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "check_release"
       name: "check if release exists"
       run: |
         set +e
-        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" ${{ needs.shouldRelease.outputs.name }} 2>&1)"
+        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $OUTPUTS_NAME 2>&1)"
         set -e
         if [[ "$isDraft" == "release not found" ]]; then
           echo "exists=false" >> $GITHUB_OUTPUT
         else
           echo "exists=true" >> $GITHUB_OUTPUT
         fi
-
+        
         if [[ "$isDraft" == "true" ]]; then
           echo "draft=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-    - id: "release"
+    - env:
+        OUTPUTS_BRANCH: "${{ needs.shouldRelease.outputs.branch }}"
+        OUTPUTS_PR_NUMBER: "${{ needs.shouldRelease.outputs.prNumber }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        SHA: "${{ needs.shouldRelease.outputs.sha }}"
+      id: "release"
       if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
       name: "create release"
       run: |
@@ -93,16 +107,17 @@ jobs:
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
-          --shas-to-tag "${{ needs.shouldRelease.outputs.prNumber }}:${{ needs.shouldRelease.outputs.sha }}"
+          --target-branch "$OUTPUTS_BRANCH" \
+          --token "$OUTPUTS_TOKEN" \
+          --shas-to-tag "$OUTPUTS_PR_NUMBER:${SHA}"
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "upload"
       name: "upload artifacts"
       run: |
-        gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
+        gh release upload --clobber $OUTPUTS_NAME dist/*
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
@@ -139,60 +154,65 @@ jobs:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
         private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_NAME: "${{ needs.publishRelease.outputs.name }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
         VERSION: "${{ needs.publishRelease.outputs.name }}"
       id: "create_branch"
       name: "create release branch"
       run: |
         # Debug and clean the version variable
         echo "Original VERSION: $VERSION"
-
+        
         # Remove all quotes (both single and double)
         VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
         echo "After removing quotes: $VERSION"
-
+        
         # Extract version without the 'v' prefix if it exists
         VERSION="${VERSION#v}"
         echo "After removing v prefix: $VERSION"
-
+        
         # Extract major and minor versions
         MAJOR=$(echo $VERSION | cut -d. -f1)
         MINOR=$(echo $VERSION | cut -d. -f2)
         echo "MAJOR: $MAJOR, MINOR: $MINOR"
-
+        
         # Create branch name from template
         BRANCH_TEMPLATE="release-\${major}.\${minor}.x"
         BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
         BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
-
+        
         echo "Checking if branch already exists: $BRANCH_NAME"
-
+        
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
           echo "branch_exists=true" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
-          echo "Creating branch: $BRANCH_NAME from tag: ${{ needs.publishRelease.outputs.name }}"
-
+          echo "Creating branch: $BRANCH_NAME from tag: $OUTPUTS_NAME"
+          
           # Create branch from the tag
           git fetch --tags
-          git checkout "${{ steps.extract_branch.outputs.branch }}"
+          git checkout "$OUTPUTS_BRANCH"
           git checkout -b $BRANCH_NAME
-
+        
           # explicity set the github app token to override the release branch protection
-          git remote set-url origin "https://x-access-token:${{ steps.github_app_token.outputs.token }}@github.com/${{ env.RELEASE_REPO }}"
+          git remote set-url origin "https://x-access-token:${OUTPUTS_TOKEN}@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
-
+          
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
@@ -228,11 +248,13 @@ jobs:
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
-    - name: "download and prepare plugins"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - env:
+        SHA: "${{ needs.createRelease.outputs.sha }}"
+      name: "download and prepare plugins"
       run: |
         echo "downloading images to $(pwd)/plugins"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/plugins .
         mkdir -p "release/clients/cmd/docker-driver"
     - name: "publish docker driver"
       uses: "./lib/actions/push-images"
@@ -267,11 +289,13 @@ jobs:
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
-    - name: "download images"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - env:
+        SHA: "${{ needs.createRelease.outputs.sha }}"
+      name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/images .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/images .
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -301,20 +325,24 @@ jobs:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
         private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_IS_LATEST: "${{ needs.createRelease.outputs.isLatest }}"
+        OUTPUTS_NAME: "${{ needs.createRelease.outputs.name }}"
       if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
       name: "publish release"
       run: |
-        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+        gh release edit $OUTPUTS_NAME --draft=false --latest=$OUTPUTS_IS_LATEST
       working-directory: "release"
   shouldRelease:
     outputs:
@@ -324,6 +352,10 @@ jobs:
       prNumber: "${{ steps.should_release.outputs.prNumber }}"
       sha: "${{ steps.should_release.outputs.sha }}"
       shouldRelease: "${{ steps.should_release.outputs.shouldRelease }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -358,5 +390,5 @@ name: "create release"
     - "main"
 permissions:
   contents: "write"
-  id-token: "write"
+  id-token: "read"
   pull-requests: "write"

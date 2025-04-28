@@ -144,9 +144,12 @@
 
   setToken: $.step.new('set github token')
             + $.step.withId('github_app_token')
+            + $.step.withEnv({
+                OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}'
+            })
             + $.step.withRun(|||
               if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-                echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+                echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
               else
                 echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
               fi
