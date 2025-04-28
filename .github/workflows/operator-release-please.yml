@@ -76,6 +76,7 @@ jobs:
       - name: "pull code to release"
         uses: "actions/checkout@v4"
         with:
+          persist-credentials: false
           path: "release"
       - name: "publish release"
         env:
