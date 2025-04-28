@@ -28,12 +28,14 @@
       "uses": "actions/checkout@v4"
       "with":
         "path": "lib"
+        "persist-credentials": false
         "ref": "${{ env.RELEASE_LIB_REF }}"
         "repository": "grafana/loki-release"
     - "name": "pull code to release"
       "uses": "actions/checkout@v4"
       "with":
         "path": "release"
+        "persist-credentials": false
         "repository": "${{ env.RELEASE_REPO }}"
     - "name": "setup node"
       "uses": "actions/setup-node@v4"

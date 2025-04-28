@@ -71,12 +71,14 @@ local lambdaPromtailJob =
     step.new('pull release library code', 'actions/checkout@v4')
     + step.with({
       path: 'lib',
+      'persist-credentials': false,
       ref: '${{ env.RELEASE_LIB_REF }}',
       repository: 'grafana/loki-release',
     }),
     step.new('pull code to release', 'actions/checkout@v4')
     + step.with({
       path: 'release',
+      'persist-credentials': false,
       repository: '${{ env.RELEASE_REPO }}',
     }),
     step.new('setup node', 'actions/setup-node@v4')
