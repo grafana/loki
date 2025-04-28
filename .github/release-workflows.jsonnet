@@ -195,6 +195,11 @@ local lambdaPromtailJob =
         branches: ['main'],
       },
     },
+    permissions: {
+      'id-token': 'read',
+      contents: 'read',
+      'pull-requests': 'read',
+    },
     jobs: {
       check: {
         uses: checkTemplate,
@@ -220,9 +225,9 @@ local lambdaPromtailJob =
       workflow_dispatch: {},
     },
     permissions: {
-      'id-token': 'write',
-      contents: 'write',
-      'pull-requests': 'write',
+      'id-token': 'read',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     jobs: {
       check: {

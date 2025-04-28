@@ -973,6 +973,6 @@ name: "Prepare Minor Release PR from Weekly"
     branches:
     - "k[0-9]+"
 permissions:
-  contents: "write"
+  contents: "read"
   id-token: "read"
-  pull-requests: "write"
+  pull-requests: "read"
