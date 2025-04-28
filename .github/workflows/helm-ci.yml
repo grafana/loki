@@ -11,12 +11,20 @@ env:
 
 jobs:
   call-lint:
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     uses: grafana/helm-charts/.github/workflows/linter.yml@main
     with:
       filter_regex_include: .*production/helm/loki/.*
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -8,6 +8,10 @@ jobs:
   syft-sbom:
 
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
 
     steps:
     - name: Checkout

@@ -3,6 +3,10 @@ on: [pull_request]
 jobs:
   check-release-changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
       with:

@@ -10,6 +10,10 @@ on:
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     env:
       RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
       BUILD_IN_CONTAINER: false

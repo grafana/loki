@@ -13,6 +13,10 @@ jobs:
   deploy-pr-preview:
     if: "!github.event.pull_request.head.repo.fork"
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     with:
       branch: ${{ github.head_ref }}
       event_number: ${{ github.event.number }}

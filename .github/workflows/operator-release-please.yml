@@ -8,14 +8,18 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
   # Necessary for grafana/shared-workflows/actions/dockerhub-login@main 
-  id-token: write
+  id-token: read
 
 jobs:
   releasePlease:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     outputs:
       release_created: ${{ steps.release.outputs.operator--release_created }}
       release_name: ${{ steps.release.outputs.operator--tag_name }}
@@ -64,6 +68,10 @@ jobs:
     - "releasePlease"
     - "publishImages"
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     if: ${{ needs.releasePlease.outputs.release_created }}
     steps:
       - id: "get_github_app_token"

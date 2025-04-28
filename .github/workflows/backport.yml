@@ -9,6 +9,10 @@ jobs:
   main:
     if: github.repository == 'grafana/loki'
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: Checkout Actions
         uses: actions/checkout@v4

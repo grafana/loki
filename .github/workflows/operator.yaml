@@ -13,6 +13,10 @@ jobs:
   docs:
     name: docs
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
@@ -28,6 +32,10 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
@@ -47,6 +55,10 @@ jobs:
   build-manager:
     name: Build Manager
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
@@ -62,6 +74,10 @@ jobs:
   build-broker:
     name: Build Broker
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
@@ -76,6 +92,10 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
     - name: Set up Go 1.x
