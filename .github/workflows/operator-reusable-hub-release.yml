@@ -64,6 +64,7 @@ jobs:
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.get_github_app_token.outputs.token }}
+          persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
         uses: actions/checkout@v4
@@ -71,7 +72,7 @@ jobs:
           repository: grafana/loki
           token: ${{ steps.get_github_app_token.outputs.token }}
           path: tmp/
-
+          persist-credentials: false
       - name: Update version
         env:
           VERSION: ${{ env.version }}
@@ -84,7 +85,7 @@ jobs:
 
       - name: Add OpenShift Supported versions to redhat catalog
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
-        uses: fjogeleit/yaml-update-action@main
+        uses: fjogeleit/yaml-update-action@b75e8a929eb61bff6b67a6114943c9468f0bd933 # v0.16.0
         with:
           valueFile: "operators/loki-operator/${{ env.version }}/metadata/annotations.yaml"
           propertyPath: "annotations['com.redhat.openshift.versions']"

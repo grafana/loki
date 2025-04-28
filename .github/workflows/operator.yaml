@@ -19,6 +19,8 @@ jobs:
       pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
@@ -38,12 +40,14 @@ jobs:
       pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
         go-version-file: ./operator/go.mod
     - name: Lint
-      uses: golangci/golangci-lint-action@v7
+      uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7
       with:
         version: v2.0.2
         args: --timeout=5m
@@ -61,6 +65,8 @@ jobs:
       pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
@@ -80,6 +86,8 @@ jobs:
       pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
@@ -98,6 +106,8 @@ jobs:
       pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
@@ -109,7 +119,7 @@ jobs:
       working-directory: ./operator
       run: make test-unit-prometheus
     - name: Send coverage
-      uses: shogo82148/actions-goveralls@v1
+      uses: shogo82148/actions-goveralls@e6875f831db61e6abffbd8df91a2eb6cd24b46c9 # v1
       with:
         working-directory: ./operator
         path-to-profile: profile.cov
