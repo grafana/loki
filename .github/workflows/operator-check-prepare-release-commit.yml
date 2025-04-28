@@ -45,12 +45,13 @@ jobs:
         id: check_commit
         env:
           GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          OUTPUTS_SEMVER: ${{ steps.pr_semver.outputs.semver }}
         working-directory: "release"
         run: |
-          COMMIT=$(gh search commits "chore(operator): prepare community release v${{ steps.pr_semver.outputs.semver }}")
+          COMMIT=$(gh search commits "chore(operator): prepare community release v${OUTPUTS_SEMVER}")
           if [ -n "$COMMIT" ]; then
             echo "Prepare release commit found."
           else
-            echo "No prepare release commit found for the release version ${{ steps.pr_semver.outputs.semver }}"
+            echo "No prepare release commit found for the release version $OUTPUTS_SEMVER"
             exit 1
           fi
