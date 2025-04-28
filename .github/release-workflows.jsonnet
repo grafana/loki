@@ -280,12 +280,12 @@ local lambdaPromtailJob =
             echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
             echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
             echo 'linux/arm   $IMAGE_DIGEST_ARM'
-            IMAGE=${IMAGE_NAME}:${IMAGE_TAG}
+            IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
-              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-              ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
             docker buildx imagetools inspect $IMAGE
           ||| % { name: '%s-image' % name }),
         ])
