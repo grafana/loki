@@ -56,7 +56,7 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
     1. Click **Create**.
     1. Click **Add Token**. Give the token a name and click **Create**.
    Save the token for later use.
-1. Collect `URL` and `User` for Prometheus and Loki 
+1. Collect `url` and `username` for Prometheus and Loki 
    1. Navigate to the Grafana Cloud Portal **Overview** page.
    1. Click the **Details** button for your Prometheus instance.
         1. From the **Sending metrics using Grafana Alloy** section, collect the instance **username** and **url**.
@@ -65,7 +65,7 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
         1. From the **Sending Logs to Grafana Cloud using Grafana Alloy** section, collect the instance **username** and **url**.
         2. Navigate back to the **Overview** page.
 
-2. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud
+1. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud
    ```bash
    kubectl create secret generic metrics -n meta \
     --from-literal=username=<PROMETHEUS-USER> \
