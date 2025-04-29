@@ -9,7 +9,7 @@ local setupValidationDeps = function(job) job {
     common.fetchReleaseLib,
     common.fixDubiousOwnership,
     step.new('install dependencies')
-    + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, \'golang\') }}')
+    + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
     + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
@@ -74,14 +74,14 @@ local validationJob = _validationJob(false);
                   },
                 })
                 + job.withEnv({
-                    MATRIX_PACKAGE: '${{ matrix.package }}'
+                  MATRIX_PACKAGE: '${{ matrix.package }}',
                 })
                 + job.withSteps([
                   common.fetchReleaseRepo,
                   common.fixDubiousOwnership,
                   common.fetchReleaseLib,
                   step.new('install dependencies')
-                  + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, \'golang\') }}')
+                  + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
                   + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
@@ -97,7 +97,7 @@ local validationJob = _validationJob(false);
                         common.fixDubiousOwnership,
                         common.fetchReleaseLib,
                         step.new('install dependencies')
-                        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, \'golang\') }}')
+                        + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
                         + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
                         step.new('test lambda-promtail package')
                         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
@@ -113,7 +113,7 @@ local validationJob = _validationJob(false);
                      common.fixDubiousOwnership,
                      common.fetchReleaseLib,
                      step.new('install dependencies')
-                     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, \'golang\') }}')
+                     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
                      + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
                      step.new('go mod tidy')
                      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
@@ -171,7 +171,7 @@ local validationJob = _validationJob(false);
       common.fixDubiousOwnership,
       common.fetchReleaseLib,
       step.new('install dependencies')
-      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, \'golang\') }}')
+      + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
       + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
       step.new('faillint')
       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
