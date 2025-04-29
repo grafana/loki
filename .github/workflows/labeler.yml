@@ -7,7 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write        
+      pull-requests: write       
+      id-token: write
     steps:
     - name: Checkout Actions
       uses: actions/checkout@v4
@@ -25,8 +26,8 @@ jobs:
       uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760
       with:
         repo_secrets: |
-          APP_ID=loki-github-bot:app-id
-          PRIVATE_KEY=loki-github-bot:private-key            
+          APP_ID=loki-gh-app:app-id
+          PRIVATE_KEY=loki-gh-app:private-key            
 
     - name: Generate GitHub App Token
       id: app-token
