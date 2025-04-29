@@ -408,7 +408,6 @@ func (r *Reader) Close() error {
 // This permits reusing a Reader rather than allocating a new one.
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
-	opts.Predicates = OrderPredicates(opts.Predicates)
 
 	// There's not much work Reset can do without a context, since it needs to
 	// retrieve page info. We'll defer this work to an init function. This also

@@ -191,7 +191,7 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 	readerOpts := dataset.ReaderOptions{
 		Dataset:    dset,
 		Columns:    columns,
-		Predicates: predicates,
+		Predicates: OrderPredicates(predicates),
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}

@@ -1,7 +1,9 @@
-package dataset
+package dataobj
 
 import (
 	"sort"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
 // SelectivityScore represents how selective a predicate is expected to be.
@@ -20,7 +22,7 @@ const (
 // TODO: a permutation-based approach would be more accurate as it would account
 // for the cost of processing a predicate and how a predicate's selectivity affects
 // the row count for subsequent predicates reducing their processing cost.
-func OrderPredicates(predicates []Predicate) []Predicate {
+func OrderPredicates(predicates []dataset.Predicate) []dataset.Predicate {
 	if len(predicates) <= 1 {
 		return predicates
 	}
@@ -45,22 +47,22 @@ func OrderPredicates(predicates []Predicate) []Predicate {
 
 // getPredicateSelectivity returns a selectivity score representing the estimated percentage
 // of rows that will match (0.0 to 1.0). Lower scores mean more selective (fewer matching rows).
-func getPredicateSelectivity(p Predicate) SelectivityScore {
+func getPredicateSelectivity(p dataset.Predicate) SelectivityScore {
 	if p == nil {
 		return matchAllSelectivity
 	}
 
 	switch p := p.(type) {
-	case EqualPredicate:
+	case dataset.EqualPredicate:
 		info := p.Column.ColumnInfo()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
 		}
 
 		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
-			var minValue, maxValue Value
+			var minValue, maxValue dataset.Value
 			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-				if CompareValues(p.Value, minValue) < 0 || CompareValues(p.Value, maxValue) > 0 {
+				if dataset.CompareValues(p.Value, minValue) < 0 || dataset.CompareValues(p.Value, maxValue) > 0 {
 					// no rows will match
 					return noMatchSelectivity
 				}
@@ -72,7 +74,7 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		matchingRows := float64(info.ValuesCount) / float64(info.Statistics.CardinalityCount)
 		return SelectivityScore(matchingRows / float64(info.RowsCount))
 
-	case InPredicate:
+	case dataset.InPredicate:
 		info := p.Column.ColumnInfo()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
@@ -80,12 +82,12 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 
 		valuesInRange := len(p.Values)
 		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
-			var minValue, maxValue Value
+			var minValue, maxValue dataset.Value
 			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
 				valuesInRange = 0
 
 				for _, v := range p.Values {
-					if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+					if dataset.CompareValues(v, minValue) >= 0 && dataset.CompareValues(v, maxValue) <= 0 {
 						valuesInRange++
 					}
 				}
@@ -102,10 +104,10 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		estimatedRows := matchingRows * float64(valuesInRange)
 		return SelectivityScore(min(estimatedRows/float64(info.RowsCount), 1.0))
 
-	case GreaterThanPredicate:
+	case dataset.GreaterThanPredicate:
 		var (
 			info               = p.Column.ColumnInfo()
-			minValue, maxValue Value
+			minValue, maxValue dataset.Value
 		)
 
 		if info.Statistics == nil || info.Statistics.MinValue == nil || info.Statistics.MaxValue == nil {
@@ -113,10 +115,10 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			if CompareValues(p.Value, minValue) < 0 {
+			if dataset.CompareValues(p.Value, minValue) < 0 {
 				return SelectivityScore(1.0)
 			}
-			if CompareValues(p.Value, maxValue) > 0 {
+			if dataset.CompareValues(p.Value, maxValue) > 0 {
 				return SelectivityScore(0.0)
 			}
 
@@ -128,10 +130,10 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 			return getBaseSelectivity(p)
 		}
 
-	case LessThanPredicate:
+	case dataset.LessThanPredicate:
 		var (
 			info               = p.Column.ColumnInfo()
-			minValue, maxValue Value
+			minValue, maxValue dataset.Value
 		)
 
 		if info.Statistics == nil || info.Statistics.MinValue == nil || info.Statistics.MaxValue == nil {
@@ -139,10 +141,10 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			if CompareValues(p.Value, minValue) < 0 {
+			if dataset.CompareValues(p.Value, minValue) < 0 {
 				return SelectivityScore(0.0)
 			}
-			if CompareValues(p.Value, maxValue) > 0 {
+			if dataset.CompareValues(p.Value, maxValue) > 0 {
 				return SelectivityScore(1.0)
 			}
 
@@ -154,20 +156,20 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 			return getBaseSelectivity(p)
 		}
 
-	case NotPredicate:
+	case dataset.NotPredicate:
 		s := getPredicateSelectivity(p.Inner)
 		return SelectivityScore(1 - float64(s)) // Invert selectivity for NOT predicates
 
-	case AndPredicate:
+	case dataset.AndPredicate:
 		// In some best case scenarios, we could multify selectivities and return s1 * s2
 		// However, predicates may be on the same or correlated columns,
 		// which would make multiplication an overestimate. We conservatively use min(s1, s2) instead.
 		return min(getPredicateSelectivity(p.Left), getPredicateSelectivity(p.Right))
-	case OrPredicate:
+	case dataset.OrPredicate:
 		// Conservative estimate assuming there is no overlap between the returned rows
 		return SelectivityScore(min(getPredicateSelectivity(p.Left)+getPredicateSelectivity(p.Right), 1.0))
 
-	case FuncPredicate:
+	case dataset.FuncPredicate:
 		// For custom functions, we cannot use the stats to estimate selectivity or to prune the rows.
 		// We might want these evaluated towards the end.
 		return SelectivityScore(0.7)
@@ -177,17 +179,17 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 }
 
 // getBaseSelectivity returns a conservative estimate when no stats are available
-func getBaseSelectivity(p Predicate) SelectivityScore {
+func getBaseSelectivity(p dataset.Predicate) SelectivityScore {
 	switch p.(type) {
 	// equality predicates are preferred
-	case EqualPredicate:
+	case dataset.EqualPredicate:
 		return SelectivityScore(0.1)
-	case InPredicate:
+	case dataset.InPredicate:
 		return SelectivityScore(0.3)
 	// range predicates are next
-	case GreaterThanPredicate, LessThanPredicate:
+	case dataset.GreaterThanPredicate, dataset.LessThanPredicate:
 		return SelectivityScore(0.5)
-	case FuncPredicate:
+	case dataset.FuncPredicate:
 		return SelectivityScore(0.7)
 	default:
 		return SelectivityScore(1.0)
@@ -195,24 +197,24 @@ func getBaseSelectivity(p Predicate) SelectivityScore {
 }
 
 // getRowEvaluationCost measures the cost of evaluating a row using the bytes that need to be processed.
-func getRowEvaluationCost(p Predicate) int64 {
+func getRowEvaluationCost(p dataset.Predicate) int64 {
 	if p == nil {
 		return 0
 	}
 
 	// Use a map to track unique columns and their sizes
-	columnSizes := make(map[Column]int64)
-	WalkPredicate(p, func(p Predicate) bool {
+	columnSizes := make(map[dataset.Column]int64)
+	dataset.WalkPredicate(p, func(p dataset.Predicate) bool {
 		switch p := p.(type) {
-		case EqualPredicate:
+		case dataset.EqualPredicate:
 			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
-		case InPredicate:
+		case dataset.InPredicate:
 			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
-		case GreaterThanPredicate:
+		case dataset.GreaterThanPredicate:
 			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
-		case LessThanPredicate:
+		case dataset.LessThanPredicate:
 			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
-		case FuncPredicate:
+		case dataset.FuncPredicate:
 			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
 		}
 		return true
