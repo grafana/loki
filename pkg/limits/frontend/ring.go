@@ -71,7 +71,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 		return nil, err
 	}
 
-	instancesToQuery := make(map[string][]uint64)
+	ownedStreamHeashes := make(map[string][]uint64)
 	for _, hash := range r.StreamHashes {
 		partitionID := int32(hash % uint64(g.numPartitions))
 		addr, ok := partitionConsumers[partitionID]
@@ -80,26 +80,28 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
 			continue
 		}
-		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
+		ownedStreamHeashes[addr] = append(ownedStreamHeashes[addr], hash)
 	}
 
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
+	responses := make([]GetStreamUsageResponse, len(rs.Instances))
 
-	// Query each instance for stream usage
-	i := 0
-	for addr, hashes := range instancesToQuery {
-		j := i
-		i++
+	// Query all healthy instances in parallel,
+	// send requested stream hahes only to owning instances.
+	for i, instance := range rs.Instances {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(addr)
+			client, err := g.pool.GetClientFor(instance.Addr)
 			if err != nil {
 				return err
 			}
 
-			protoReq := &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: hashes,
+			protoReq := &logproto.GetStreamUsageRequest{Tenant: r.Tenant}
+
+			// Only send stream hashes to the instance that owns them.
+			// This eliminates the need in downstream callers to filter
+			// duplicate unknown streams.
+			if hashes, ok := ownedStreamHeashes[instance.Addr]; ok {
+				protoReq.StreamHashes = hashes
 			}
 
 			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
@@ -107,7 +109,7 @@ func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs rin
 				return err
 			}
 
-			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
+			responses[i] = GetStreamUsageResponse{Addr: instance.Addr, Response: resp}
 			return nil
 		})
 	}
