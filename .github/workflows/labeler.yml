@@ -37,7 +37,6 @@ jobs:
         app-id: ${{ env.APP_ID }}
         private-key: ${{ env.PRIVATE_KEY }}
         owner: ${{ github.repository_owner }}
-        repositories: ${{ github.repository }}
 
     - uses: actions/labeler@v5
       with:
