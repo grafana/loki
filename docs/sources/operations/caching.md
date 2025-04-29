@@ -22,12 +22,12 @@ Since moving to the TSDB indexes the attached disks/persistent volumes are utili
 
 #### Chunks cache
 The chunks are cached using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in the Loki ingesters.
-The chunk cache is consulted by queriers each time a set of `chunkRef`s are calculated to serve the query, before going to storage layer.
+The chunk cache is consulted by queriers each time a set of `chunkRef`s are calculated to serve the query, before going to the storage layer.
 
 Query results are significantly smaller compared to chunks. As the Loki cluster gets bigger in ingested volume, the results cache can continue to perform, whereas the chunks cache will need to grow in proportion to demand more memory.
-To be able to support the growing needs of a cluster, in 2023 we introduced support for memcached-extstore. Exstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
+To be able to support the growing needs of a cluster, in 2023 we introduced support for memcached-extstore. Extstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
 
-Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offfering.
+Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offfering, Grafana Cloud.
 For more information on how to tune memcached-extstore please consult the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
 
 ## Before you begin
@@ -36,7 +36,7 @@ For more information on how to tune memcached-extstore please consult the open s
 - As of 2025-02-06, the `memcached:1.6.32-alpine` version of the library is recommended.
 - Consult the Loki ksonnet [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the ksonnet [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
 - Index caching is not required for the [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required) index format.
-- Please see [Size the cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/size/)  page for recommendations on scaling the cache.
+- For recommendations on scaling the cache, refer to the [Size the cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/size/) page.
 
 ## Steps
 
