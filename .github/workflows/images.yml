@@ -578,5 +578,5 @@
   "workflow_dispatch": {}
 "permissions":
   "contents": "read"
-  "id-token": "read"
+  "id-token": "write"
   "pull-requests": "read"
