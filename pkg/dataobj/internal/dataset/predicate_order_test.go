@@ -59,8 +59,9 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			name: "Equal with out of range value should have zero selectivity",
 			predicate: EqualPredicate{
 				Column: (&testColumn{
-					min: 0,
-					max: 50,
+					cardinality: 10,
+					min:         0,
+					max:         50,
 				}).ToMemColumn(t),
 				Value: Int64Value(100),
 			},

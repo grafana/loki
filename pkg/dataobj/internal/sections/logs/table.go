@@ -121,7 +121,8 @@ func (b *tableBuffer) StreamID(pageSize int) *dataset.ColumnBuilder {
 		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: true,
+			StoreRangeStats:       true,
+			StoreCardinalityStats: true,
 		},
 	})
 	if err != nil {
@@ -182,7 +183,6 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats:       true,
 			StoreCardinalityStats: true,
 		},
 	})

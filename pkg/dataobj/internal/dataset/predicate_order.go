@@ -52,15 +52,18 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 
 	switch p := p.(type) {
 	case EqualPredicate:
-		var (
-			minValue, maxValue Value
-			info               = p.Column.ColumnInfo()
-		)
+		info := p.Column.ColumnInfo()
+		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
+			return getBaseSelectivity(p)
+		}
 
-		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			if CompareValues(p.Value, minValue) < 0 || CompareValues(p.Value, maxValue) > 0 {
-				// no rows will match
-				return noMatchSelectivity
+		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
+			var minValue, maxValue Value
+			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
+				if CompareValues(p.Value, minValue) < 0 || CompareValues(p.Value, maxValue) > 0 {
+					// no rows will match
+					return noMatchSelectivity
+				}
 			}
 		}
 
@@ -70,37 +73,44 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		return SelectivityScore(matchingRows / float64(info.RowsCount))
 
 	case InPredicate:
-		var (
-			minValue, maxValue Value
-			info               = p.Column.ColumnInfo()
-			valuesInRange      = len(p.Values)
-		)
+		info := p.Column.ColumnInfo()
+		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
+			return getBaseSelectivity(p)
+		}
 
-		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			valuesInRange = 0
+		valuesInRange := len(p.Values)
+		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
+			var minValue, maxValue Value
+			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
+				valuesInRange = 0
 
-			for _, v := range p.Values {
-				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
-					valuesInRange++
+				for _, v := range p.Values {
+					if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+						valuesInRange++
+					}
 				}
-			}
 
-			if valuesInRange == 0 {
-				// no rows will matching
-				return noMatchSelectivity
+				if valuesInRange == 0 {
+					// no rows will match
+					return noMatchSelectivity
+				}
 			}
 		}
 
 		// Similar to equality but for multiple values
 		matchingRows := float64(info.ValuesCount) / float64(info.Statistics.CardinalityCount)
 		estimatedRows := matchingRows * float64(valuesInRange)
-		return SelectivityScore(estimatedRows / float64(info.RowsCount))
+		return SelectivityScore(min(estimatedRows/float64(info.RowsCount), 1.0))
 
 	case GreaterThanPredicate:
 		var (
 			info               = p.Column.ColumnInfo()
 			minValue, maxValue Value
 		)
+
+		if info.Statistics == nil || info.Statistics.MinValue == nil || info.Statistics.MaxValue == nil {
+			return getBaseSelectivity(p)
+		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
 			if CompareValues(p.Value, minValue) < 0 {
@@ -123,6 +133,10 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 			info               = p.Column.ColumnInfo()
 			minValue, maxValue Value
 		)
+
+		if info.Statistics == nil || info.Statistics.MinValue == nil || info.Statistics.MaxValue == nil {
+			return getBaseSelectivity(p)
+		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
 			if CompareValues(p.Value, minValue) < 0 {
@@ -151,7 +165,7 @@ func getPredicateSelectivity(p Predicate) SelectivityScore {
 		return min(getPredicateSelectivity(p.Left), getPredicateSelectivity(p.Right))
 	case OrPredicate:
 		// Conservative estimate assuming there is no overlap between the returned rows
-		return SelectivityScore(getPredicateSelectivity(p.Left) + getPredicateSelectivity(p.Right))
+		return SelectivityScore(min(getPredicateSelectivity(p.Left)+getPredicateSelectivity(p.Right), 1.0))
 
 	case FuncPredicate:
 		// For custom functions, we cannot use the stats to estimate selectivity or to prune the rows.
