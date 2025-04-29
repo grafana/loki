@@ -16,6 +16,7 @@ jobs:
   check:
     permissions:
       contents: "write"
+      id-token: "write"
       pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
@@ -111,10 +112,6 @@ jobs:
     outputs:
       version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
-    permissions:
-      contents: "read"
-      pull-requests: "read"
-      id-token: "write"
     steps:
     - name: "clean up build tools cache"
       run: "rm -rf /opt/hostedtoolcache"
@@ -977,4 +974,5 @@ name: "Prepare Minor Release PR from Weekly"
     - "k[0-9]+"
 permissions:
   contents: "read"
+  id-token: "read"
   pull-requests: "read"

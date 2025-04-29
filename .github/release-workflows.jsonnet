@@ -201,7 +201,7 @@ local lambdaPromtailJob =
       },
     },
     permissions: {
-      'id-token': 'read',
+      'id-token': 'write',
       contents: 'read',
       'pull-requests': 'read',
     },
@@ -230,7 +230,7 @@ local lambdaPromtailJob =
       workflow_dispatch: {},
     },
     permissions: {
-      'id-token': 'read',
+      'id-token': 'write',
       contents: 'read',
       'pull-requests': 'read',
     },
