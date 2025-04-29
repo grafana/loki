@@ -1269,25 +1269,27 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 
 	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 
-	if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok {
-		// However, unlike stream records, the distributor writes stream metadata
-		// records to one of a fixed number of partitions, the size of which is
-		// determined ahead of time. It does not use a ring. The reason for this
-		// is that we want to be able to scale components that consume metadata
-		// records independent of ingesters.
-		metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
-		metadata, err := kafka.EncodeStreamMetadata(
-			metadataPartitionID,
-			d.cfg.KafkaConfig.Topic,
-			tenant,
-			stream.HashKeyNoShard,
-			entriesSize,
-			structuredMetadataSize,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
+	if d.cfg.IngestLimitsEnabled {
+		if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok {
+			// However, unlike stream records, the distributor writes stream metadata
+			// records to one of a fixed number of partitions, the size of which is
+			// determined ahead of time. It does not use a ring. The reason for this
+			// is that we want to be able to scale components that consume metadata
+			// records independent of ingesters.
+			metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
+			metadata, err := kafka.EncodeStreamMetadata(
+				metadataPartitionID,
+				d.cfg.KafkaConfig.Topic,
+				tenant,
+				stream.HashKeyNoShard,
+				entriesSize,
+				structuredMetadataSize,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to marshal metadata: %w", err)
+			}
+			records = append(records, metadata)
 		}
-		records = append(records, metadata)
 	}
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))

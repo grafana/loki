@@ -71,20 +71,22 @@ local lambdaPromtailJob =
     step.new('pull release library code', 'actions/checkout@v4')
     + step.with({
       path: 'lib',
+      'persist-credentials': false,
       ref: '${{ env.RELEASE_LIB_REF }}',
       repository: 'grafana/loki-release',
     }),
     step.new('pull code to release', 'actions/checkout@v4')
     + step.with({
       path: 'release',
+      'persist-credentials': false,
       repository: '${{ env.RELEASE_REPO }}',
     }),
     step.new('setup node', 'actions/setup-node@v4')
     + step.with({
       'node-version': '20',
     }),
-    step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
-    step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0')
+    step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
+    step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')  // get-vault-secrets-v1.1.0
     + { id: 'get-secrets' }
     + step.with({
       repo_secrets: |||
@@ -92,13 +94,13 @@ local lambdaPromtailJob =
         ECR_SECRET_KEY=aws-credentials:secret_access_key
       |||,
     }),
-    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@v4')
+    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502') // v4
     + step.with({
       'aws-access-key-id': '${{ env.ECR_ACCESS_KEY }}',
       'aws-secret-access-key': '${{ env.ECR_SECRET_KEY }}',
       'aws-region': 'us-east-1',
     }),
-    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@v2')
+    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076') // v2
     + step.with({
       'registry-type': 'public',
     }),
@@ -113,11 +115,16 @@ local lambdaPromtailJob =
     |||),
     step.new('Prepare tag name')
     + { id: 'prepare-tag' }
+    + step.withEnv({
+        MATRIX_ARCH: '${{ matrix.arch }}',
+        OUTPUTS_IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
+        OUTPUTS_IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
+    })
     + step.withRun(|||
-      arch=$(echo ${{ matrix.arch }} | cut -d'/' -f2)
-      echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
+      arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
+      echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     |||),
-    step.new('Build and push', 'docker/build-push-action@v6')
+    step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
     + { id: 'build-push' }
     + { 'timeout-minutes': '${{ fromJSON(env.BUILD_TIMEOUT) }}' }
     + step.with({
@@ -193,6 +200,11 @@ local lambdaPromtailJob =
         branches: ['main'],
       },
     },
+    permissions: {
+      'id-token': 'read',
+      contents: 'read',
+      'pull-requests': 'read',
+    },
     jobs: {
       check: {
         uses: checkTemplate,
@@ -218,9 +230,9 @@ local lambdaPromtailJob =
       workflow_dispatch: {},
     },
     permissions: {
-      'id-token': 'write',
-      contents: 'write',
-      'pull-requests': 'write',
+      'id-token': 'read',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     jobs: {
       check: {
@@ -253,22 +265,27 @@ local lambdaPromtailJob =
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
+          IMAGE_DIGEST_AMD64: '${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}' % name,
+          IMAGE_DIGEST_ARM64: '${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}' % name,
+          IMAGE_DIGEST_ARM: '${{ needs.%(name)s.outputs.image_digest_linux_arm }}' % name,
+          OUTPUTS_IMAGE_NAME: '${{ needs.%(name)s.outputs.image_name }}' % name,
+          OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s.outputs.image_tag }}' % name,
         })
         + job.withSteps([
-          step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
-          step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+          step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
+          step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746'),  // main
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
-            echo 'linux/arm64 ${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}'
-            echo 'linux/amd64 ${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}'
-            echo 'linux/arm   ${{ needs.%(name)s.outputs.image_digest_linux_arm }}'
-            IMAGE=${{ needs.%(name)s.outputs.image_name }}:${{ needs.%(name)s.outputs.image_tag }}
+            echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
+            echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
+            echo 'linux/arm   $IMAGE_DIGEST_ARM'
+            IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
-              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_amd64 }} \
-              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm64 }} \
-              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm }}
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
             docker buildx imagetools inspect $IMAGE
           ||| % { name: '%s-image' % name }),
         ])
