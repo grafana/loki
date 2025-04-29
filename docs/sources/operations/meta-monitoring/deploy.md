@@ -65,7 +65,7 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
         1. From the **Sending Logs to Grafana Cloud using Grafana Alloy** section, collect the instance **username** and **url**.
         2. Navigate back to the **Overview** page.
 
-2. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud
+1. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud.
    ```bash
    kubectl create secret generic metrics -n meta \
     --from-literal=username=<PROMETHEUS-USER> \
