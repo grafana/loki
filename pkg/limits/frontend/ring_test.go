@@ -28,8 +28,10 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		// the value can be set to nil.
 		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
 		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs []error
 		expectedStreamUsageRequests       []*logproto.GetStreamUsageRequest
 		getStreamUsageResponses           []*logproto.GetStreamUsageResponse
+		getStreamUsageResponseErrs        []error
 		expectedResponses                 []GetStreamUsageResponse
 	}{{
 		// When there are no streams, no RPCs should be sent.
@@ -42,10 +44,12 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		numPartitions:                     1,
 		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{nil},
 		getAssignedPartitionsResponses:    []*logproto.GetAssignedPartitionsResponse{nil},
+		getAssignedPartitionsResponseErrs: []error{nil},
 		expectedStreamUsageRequests:       []*logproto.GetStreamUsageRequest{nil},
 		getStreamUsageResponses:           []*logproto.GetStreamUsageResponse{nil},
+		getStreamUsageResponseErrs:        []error{nil},
 	}, {
-		// When there is one stream, and one instance, the stream usage for that
+		// When there is one stream, and one instance, the usage for that
 		// stream should be queried from that instance.
 		name: "one stream",
 		getStreamUsageRequest: GetStreamUsageRequest{
@@ -62,6 +66,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				0: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
@@ -71,6 +76,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			ActiveStreams: 1,
 			Rate:          10,
 		}},
+		getStreamUsageResponseErrs: []error{nil},
 		expectedResponses: []GetStreamUsageResponse{{
 			Addr: "instance-0",
 			Response: &logproto.GetStreamUsageResponse{
@@ -81,8 +87,8 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 	}, {
 		// When there is one stream, and two instances each owning separate
-		// partitions, only the instance owning the partition for the stream hash
-		// should be queried.
+		// partitions, only the instance consuming the partition for the
+		// stream hash should be queried.
 		name: "one stream two instances",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
@@ -104,6 +110,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
@@ -113,6 +120,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			ActiveStreams: 1,
 			Rate:          10,
 		}},
+		getStreamUsageResponseErrs: []error{nil, nil},
 		expectedResponses: []GetStreamUsageResponse{{
 			Addr: "instance-1",
 			Response: &logproto.GetStreamUsageResponse{
@@ -123,8 +131,8 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 		}},
 	}, {
 		// When there is one stream, and two instances owning overlapping
-		// partitions, only the instance with the latest timestamp for the relevant
-		// partition should be queried.
+		// partitions, only the instance with the latest timestamp for the
+		// relevant partition should be queried.
 		name: "one stream two instances, overlapping partition ownership",
 		getStreamUsageRequest: GetStreamUsageRequest{
 			Tenant:       "test",
@@ -146,6 +154,7 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
 		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
 			Tenant:       "test",
 			StreamHashes: []uint64{0x1},
@@ -155,12 +164,258 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 			ActiveStreams: 1,
 			Rate:          10,
 		}},
+		getStreamUsageResponseErrs: []error{nil, nil},
 		expectedResponses: []GetStreamUsageResponse{{
 			Addr: "instance-1",
 			Response: &logproto.GetStreamUsageResponse{
 				Tenant:        "test",
 				ActiveStreams: 1,
 				Rate:          10,
+			},
+		}},
+	}, {
+		// When there is one stream, and two instances across two zones, the
+		// usage for that stream should be queried from the first zone (zones
+		// are sorted in alphabetical order to have a determinstic ordering
+		// during tests).
+		name: "one stream, two zones",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
+			Tenant:       "test",
+			StreamHashes: []uint64{1},
+		}, nil},
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}, nil},
+		getStreamUsageResponseErrs: []error{nil, nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-a-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}},
+	}, {
+		// When there is one stream, and two instances across two zones, and
+		// the first zone does not have a consumer for the relevant partition,
+		// it should fail over to the instance in the other zone.
+		name: "one stream, two zones, first zone has no assigned partitions, queries second zone",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				// instance-a-0 has not been assigned any partitions.
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
+			Tenant:       "test",
+			StreamHashes: []uint64{1},
+		}},
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		getStreamUsageResponseErrs:        []error{nil, nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-b-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}},
+	}, {
+		// When there is one stream, and two instances across two zones, and
+		// the instance in the first zone returns an error when querying its
+		// assigned partitions, it should fail over to the instance in the
+		// other zone.
+		name: "one stream, two zones, first zone returns error getting assigned partitions, queries second zone",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{nil, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, {
+			Tenant:       "test",
+			StreamHashes: []uint64{1},
+		}},
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}},
+		getAssignedPartitionsResponseErrs: []error{errors.New("an unexpected error occurred"), nil},
+		getStreamUsageResponseErrs:        []error{nil, nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-b-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}},
+	}, {
+		// When there is one stream, and two instances across two zones, and
+		// the instance in the first zone returns an error when querying the
+		// usage, it should fail over to the instance in the other zone.
+		name: "one stream, two zones, first zone returns error getting stream usage, queries second zone",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}, {
+			AssignedPartitions: map[int32]int64{
+				0: time.Now().UnixNano(),
+			},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{{
+			Tenant:       "test",
+			StreamHashes: []uint64{1},
+		}, {
+			Tenant:       "test",
+			StreamHashes: []uint64{1},
+		}},
+		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{nil, {
+			Tenant:        "test",
+			ActiveStreams: 1,
+			Rate:          10,
+		}},
+		getStreamUsageResponseErrs: []error{errors.New("an unexpected error occurred"), nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Addr: "instance-b-0",
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:        "test",
+				ActiveStreams: 1,
+				Rate:          10,
+			},
+		}},
+	}, {
+		//
+		name: "one stream, two zones, both zones return error getting assigned partitions",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses:    []*logproto.GetAssignedPartitionsResponse{nil, nil},
+		getAssignedPartitionsResponseErrs: []error{
+			errors.New("an unexpected error occurred"),
+			errors.New("an unexpected error occurred"),
+		},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, nil},
+		getStreamUsageResponses:     []*logproto.GetStreamUsageResponse{nil, nil},
+		getStreamUsageResponseErrs:  []error{nil, nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:         "test",
+				UnknownStreams: []uint64{1},
+			},
+		}},
+	}, {
+		//
+		name: "one stream, two zones, both zones return error getting stream usage",
+		getStreamUsageRequest: GetStreamUsageRequest{
+			Tenant:       "test",
+			StreamHashes: []uint64{1}, // Hash 1 maps to partition 1
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions:                     1,
+		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses:    []*logproto.GetAssignedPartitionsResponse{nil, nil},
+		getAssignedPartitionsResponseErrs: []error{
+			errors.New("an unexpected error occurred"),
+			errors.New("an unexpected error occurred"),
+		},
+		expectedStreamUsageRequests: []*logproto.GetStreamUsageRequest{nil, nil},
+		getStreamUsageResponses:     []*logproto.GetStreamUsageResponse{nil, nil},
+		getStreamUsageResponseErrs:  []error{nil, nil},
+		expectedResponses: []GetStreamUsageResponse{{
+			Response: &logproto.GetStreamUsageResponse{
+				Tenant:         "test",
+				UnknownStreams: []uint64{1},
 			},
 		}},
 	}}
@@ -183,8 +438,10 @@ func TestRingStreamUsageGatherer_GetStreamUsage(t *testing.T) {
 					t:                                     t,
 					expectedAssignedPartitionsRequest:     test.expectedAssignedPartitionsRequest[i],
 					getAssignedPartitionsResponse:         test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:      test.getAssignedPartitionsResponseErrs[i],
 					expectedStreamUsageRequest:            test.expectedStreamUsageRequests[i],
 					getStreamUsageResponse:                test.getStreamUsageResponses[i],
+					getStreamUsageResponseErr:             test.getStreamUsageResponseErrs[i],
 					expectedNumAssignedPartitionsRequests: expectedNumAssignedPartitionsRequests,
 					expectedNumStreamUsageRequests:        expectedNumStreamUsageRequests,
 				}
