@@ -32,7 +32,7 @@ For more information on how to tune memcached-extstore please consult the open s
 
 ## Before you begin
 
-- It is recommended to deploy separate Memcached clusters for these components.
+- It is recommended to deploy separate Memcached type as separate components (`memcached_frontend` and `memcached_chunks`).
 - As of 2025-02-06, the `memcached:1.6.32-alpine` version of the library is recommended.
 - Consult the Loki ksonnet [memcached](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/memcached.libsonnet) deployment and the ksonnet [memcached library](https://github.com/grafana/jsonnet-libs/tree/master/memcached).
 - Index caching is not required for the [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required) index format.
