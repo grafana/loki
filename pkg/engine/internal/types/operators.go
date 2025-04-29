@@ -42,6 +42,7 @@ const (
 	BinaryOpGte // Greater than or equal comparison (>=).
 	BinaryOpLt  // Less than comparison (<).
 	BinaryOpLte // Less than or equal comparison (<=).
+
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).

@@ -20,7 +20,8 @@ const (
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
-	ColumnNameBuiltinLog       = "log"
+	ColumnNameBuiltinLine      = "line"
+	ColumnTypeMetadataKey      = "column_type"
 )
 
 // String returns a human-readable representation of the column type.

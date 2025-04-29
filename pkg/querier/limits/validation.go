@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
@@ -58,7 +58,7 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 	matchers := selector.Matchers()
 
 	for _, matcher := range matchers {
-		if matcher.Name == push.AggregatedMetricLabel {
+		if matcher.Name == constants.AggregatedMetricLabel {
 			isAggregatedMetricQuery = true
 			break
 		}

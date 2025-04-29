@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.4.3
+    tag: 3.5.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -2955,6 +2955,8 @@ patternIngester:
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
   enabled: true
+  # -- Whether to enable the rules sidecar
+  sidecar: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
