@@ -183,6 +183,7 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats:       true,
 			StoreCardinalityStats: true,
 		},
 	})
