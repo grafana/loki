@@ -43,7 +43,7 @@ var (
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
-	errS3ForcePathStyleInvalid     = errors.New("force_path_style must be true or false")
+	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -420,10 +420,12 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	// Check if the user has specified force_path_style
 	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
 		strForcePathStyle := string(configForcePathStyle)
-		if strForcePathStyle != "true" && strForcePathStyle != "false" {
-			return nil, fmt.Errorf("%w: %s", errS3ForcePathStyleInvalid, storage.KeyAWSForcePathStyle)
+		switch strForcePathStyle {
+		case "true", "false":
+			forcePathStyle = strForcePathStyle == "true"
+		default:
+			return nil, fmt.Errorf("%w: %s", errS3ForcePathStyleInvalid, strForcePathStyle)
 		}
-		forcePathStyle = string(configForcePathStyle) == "true"
 	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
