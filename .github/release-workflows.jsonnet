@@ -85,7 +85,7 @@ local lambdaPromtailJob =
     + step.with({
       'node-version': '20',
     }),
-    step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
+    step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
     step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')  // get-vault-secrets-v1.1.0
     + { id: 'get-secrets' }
     + step.with({
@@ -94,13 +94,13 @@ local lambdaPromtailJob =
         ECR_SECRET_KEY=aws-credentials:secret_access_key
       |||,
     }),
-    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502') // v4
+    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502')  // v4
     + step.with({
       'aws-access-key-id': '${{ env.ECR_ACCESS_KEY }}',
       'aws-secret-access-key': '${{ env.ECR_SECRET_KEY }}',
       'aws-region': 'us-east-1',
     }),
-    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076') // v2
+    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076')  // v2
     + step.with({
       'registry-type': 'public',
     }),
@@ -116,15 +116,15 @@ local lambdaPromtailJob =
     step.new('Prepare tag name')
     + { id: 'prepare-tag' }
     + step.withEnv({
-        MATRIX_ARCH: '${{ matrix.arch }}',
-        OUTPUTS_IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
-        OUTPUTS_IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
+      MATRIX_ARCH: '${{ matrix.arch }}',
+      OUTPUTS_IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
+      OUTPUTS_IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
     })
     + step.withRun(|||
       arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
       echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     |||),
-    step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
+    step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
     + { id: 'build-push' }
     + { 'timeout-minutes': '${{ fromJSON(env.BUILD_TIMEOUT) }}' }
     + step.with({
@@ -270,7 +270,7 @@ local lambdaPromtailJob =
           OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s.outputs.image_tag }}' % name,
         })
         + job.withSteps([
-          step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
+          step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
           step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746'),  // main
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
