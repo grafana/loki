@@ -39,7 +39,7 @@ Before deploying the Kubernetes Monitoring Helm chart, you need to set up severa
 1. Create a namespace for the monitoring stack:
 
    ```bash
-   kubectl create namespace monitoring
+   kubectl create namespace meta
    ```
 
 ### Authentication
