@@ -221,6 +221,10 @@ jobs:
     needs:
     - "createRelease"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+      pull-requests: "read"
+      id-token: "write"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -268,6 +272,10 @@ jobs:
     needs:
     - "createRelease"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+      pull-requests: "read"
+      id-token: "write"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -390,5 +398,4 @@ name: "create release"
     - "main"
 permissions:
   contents: "read"
-  id-token: "read"
   pull-requests: "read"

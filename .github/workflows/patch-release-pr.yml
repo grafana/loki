@@ -112,6 +112,10 @@ jobs:
     outputs:
       version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+      pull-requests: "read"
+      id-token: "write"
     steps:
     - name: "clean up build tools cache"
       run: "rm -rf /opt/hostedtoolcache"
@@ -974,5 +978,4 @@ name: "Prepare Patch Release PR"
     - "release-[0-9]+.[0-9]+.x"
 permissions:
   contents: "read"
-  id-token: "read"
   pull-requests: "read"
