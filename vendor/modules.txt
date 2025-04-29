@@ -536,6 +536,12 @@ github.com/bboreham/go-loser
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
+# github.com/bits-and-blooms/bitset v1.10.0
+## explicit; go 1.16
+github.com/bits-and-blooms/bitset
+# github.com/bits-and-blooms/bloom/v3 v3.7.0
+## explicit; go 1.16
+github.com/bits-and-blooms/bloom/v3
 # github.com/bmatcuk/doublestar/v4 v4.8.1
 ## explicit; go 1.16
 github.com/bmatcuk/doublestar/v4
@@ -1748,9 +1754,6 @@ github.com/sirupsen/logrus
 # github.com/sony/gobreaker/v2 v2.1.0
 ## explicit; go 1.22.0
 github.com/sony/gobreaker/v2
-# github.com/spaolacci/murmur3 v1.1.0
-## explicit
-github.com/spaolacci/murmur3
 # github.com/spf13/afero v1.14.0
 ## explicit; go 1.23.0
 github.com/spf13/afero
@@ -1846,12 +1849,6 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
-# github.com/willf/bitset v1.1.11
-## explicit; go 1.14
-github.com/willf/bitset
-# github.com/willf/bloom v2.0.3+incompatible
-## explicit
-github.com/willf/bloom
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16
@@ -2807,7 +2804,7 @@ zombiezen.com/go/sqlite
 zombiezen.com/go/sqlite/sqlitex
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
-# github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.5
+# github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.6
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc

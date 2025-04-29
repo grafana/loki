@@ -847,3 +847,12 @@ else
 	@echo "Checking diff"
 	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif
+
+.PHONY: update-loki-release-sha
+update-loki-release-sha:
+	@echo "Updating loki-release SHA in .github/jsonnetfile.json"
+	@NEW_SHA=$$(curl -s https://api.github.com/repos/grafana/loki-release/commits/main | jq -r .sha); \
+	jq --arg new_sha "$$NEW_SHA" '.dependencies[] |= if .source.git.remote == "https://github.com/grafana/loki-release.git" then .version = $$new_sha else . end' .github/jsonnetfile.json > .github/jsonnetfile.json.tmp && \
+	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
+	@echo "Updated successfully"
+	@$(MAKE) release-workflows

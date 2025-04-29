@@ -696,7 +696,7 @@ func WeightedParallelism(
 	regPart := int(otherDur) * regMaxQueryParallelism / totalDur
 
 	if combined := regPart + tsdbPart; combined > 0 {
-		return int(combined)
+		return combined
 	}
 
 	// As long as the actual config is not zero,

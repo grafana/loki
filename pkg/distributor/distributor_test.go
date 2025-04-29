@@ -2645,9 +2645,7 @@ func TestDistributor_SkipMetadataHashes(t *testing.T) {
 				}},
 			}},
 		},
-		// For now, metadata records are still written when
-		// limits are disabled in distributors.
-		expectedMetadataRecords: 1,
+		expectedMetadataRecords: 0,
 	}, {
 		name:                "limits are enabled",
 		ingestLimitsEnabled: true,
