@@ -64,7 +64,7 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 
 			for i := int64(0); i < sz; i++ {
 				idColBuilder.Append(offset + i)
-				tsColBuilder.Append(int64(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
+				tsColBuilder.Append(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano())
 			}
 
 			idData := idColBuilder.NewArray()

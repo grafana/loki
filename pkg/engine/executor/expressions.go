@@ -37,7 +37,6 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				ct, ok := md.GetValue(types.MetadataKeyColumnType)
 				if !ok {
 					ct = types.ColumnTypeAmbiguous.String()
-					continue
 				}
 				return &Array{
 					array: input.Column(int(i)),
@@ -218,8 +217,8 @@ func (a *Array) Value(i int) any {
 }
 
 // Type implements ColumnVector.
-func (v *Array) Type() datatype.DataType {
-	return v.dt
+func (a *Array) Type() datatype.DataType {
+	return a.dt
 }
 
 // ArrowType implements ColumnVector.
