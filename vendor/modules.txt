@@ -565,8 +565,8 @@ github.com/charmbracelet/bubbles/runeutil
 github.com/charmbracelet/bubbles/spinner
 github.com/charmbracelet/bubbles/textinput
 github.com/charmbracelet/bubbles/viewport
-# github.com/charmbracelet/bubbletea v1.3.4
-## explicit; go 1.18
+# github.com/charmbracelet/bubbletea v1.3.5
+## explicit; go 1.23.0
 github.com/charmbracelet/bubbletea
 # github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc
 ## explicit; go 1.18
