@@ -43,6 +43,10 @@ local weeklyImageJobs = {
 local lambdaPromtailJob =
   job.new()
   + job.withNeeds(['check'])
+  + job.withPermissions({
+    contents: 'read',
+    'id-token': 'write',
+  })
   + job.withEnv({
     BUILD_TIMEOUT: imageBuildTimeoutMin,
     GO_VERSION: goVersion,
