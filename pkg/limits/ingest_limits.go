@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,6 +103,9 @@ type IngestLimits struct {
 	// metrics
 	metrics *metrics
 
+	// limits
+	limits Limits
+
 	// Track stream metadata
 	metadata StreamMetadata
 
@@ -121,13 +123,14 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
 		metadata:         NewStreamMetadata(cfg.NumPartitions),
 		metrics:          newMetrics(reg),
+		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
 	}
 
@@ -279,40 +282,6 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		// stop
 		case err := <-s.lifecyclerWatcher.Chan():
 			return fmt.Errorf("lifecycler failed: %w", err)
-		default:
-			fetches := s.client.PollRecords(ctx, 100)
-			if fetches.IsClientClosed() {
-				return nil
-			}
-
-			if errs := fetches.Errors(); len(errs) > 0 {
-				for _, err := range errs {
-					level.Error(s.logger).Log("msg", "error fetching records", "err", err.Err.Error())
-				}
-				continue
-			}
-
-			// Process the fetched records
-			var sizeBytes int
-
-			iter := fetches.RecordIter()
-			for !iter.Done() {
-				record := iter.Next()
-				sizeBytes += len(record.Value)
-
-				// Update the estimated consumption lag.
-				s.metrics.kafkaConsumptionLag.Observe(time.Since(record.Timestamp).Seconds())
-
-				metadata, err := kafka.DecodeStreamMetadata(record)
-				if err != nil {
-					level.Error(s.logger).Log("msg", "error decoding metadata", "err", err)
-					continue
-				}
-
-				s.updateMetadata(metadata, string(record.Key), record.Partition, record.Timestamp)
-			}
-
-			s.metrics.kafkaReadBytesTotal.Add(float64(sizeBytes))
 		}
 	}
 }
@@ -375,11 +344,6 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	return allErrs.Err()
 }
 
-// ExceedsLimits implements the logproto.IngestLimitsServer interface.
-func (s *IngestLimits) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	return &logproto.ExceedsLimitsResponse{}, nil
-}
-
 // GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
@@ -389,62 +353,72 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetA
 	return &resp, nil
 }
 
-// GetStreamUsage implements the logproto.IngestLimitsServer interface.
+// ExceedsLimits implements the logproto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
-	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-
-	// Calculate the rate window cutoff in nanoseconds
-	rateWindowCutoff := time.Now().Add(-s.cfg.RateWindow).UnixNano()
-
-	// Count total active streams for the tenant
-	// across all assigned partitions and record
-	// the streams that have been seen within the
-	// window
+func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	var (
-		activeStreams uint64
-		totalSize     uint64
+		lastSeenAt = time.Now()
+		// Use the provided lastSeenAt timestamp as the last seen time
+		recordTime = lastSeenAt.UnixNano()
+		// Get the bucket for this timestamp using the configured interval duration
+		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		// Calculate the rate window cutoff for cleaning up old buckets
+		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+
+		// Calculate the cutoff for the window size
+		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
+
+		incoming = make(map[int32][]Stream)
+
+		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
 	)
 
-	// If the stream is written into a partition we are
-	// assigned to and has been seen within the window,
-	// it is an active stream.
-	unknownStreams := req.StreamHashes
+	for _, stream := range req.Streams {
+		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
-	s.metadata.Usage(req.Tenant, func(partitionID int32, stream Stream) {
-		if assigned := s.partitionManager.Has(partitionID); !assigned {
-			return
+		incoming[partitionID] = append(incoming[partitionID], Stream{
+			Hash:       stream.StreamHash,
+			LastSeenAt: recordTime,
+			TotalSize:  stream.EntriesSize + stream.StructuredMetadataSize,
+		})
+	}
+
+	exceedLimits := s.metadata.TryStore(req.Tenant, incoming, maxActiveStreams, cutoff, bucketStart, rateWindowCutoff)
+
+	var results []*logproto.ExceedsLimitsResult
+	for reason, streamHashes := range exceedLimits {
+		for _, streamHash := range streamHashes {
+			results = append(results, &logproto.ExceedsLimitsResult{
+				StreamHash: streamHash,
+				Reason:     uint32(reason),
+			})
 		}
+	}
 
-		if stream.LastSeenAt < cutoff {
-			return
-		}
-
-		activeStreams++
-
-		// Calculate size only within the rate window
-		for _, bucket := range stream.RateBuckets {
-			if bucket.Timestamp >= rateWindowCutoff {
-				totalSize += bucket.Size
-			}
-		}
-
-		for i, streamHash := range unknownStreams {
-			if stream.Hash == streamHash {
-				unknownStreams = append(unknownStreams[:i], unknownStreams[i+1:]...)
+	var ingestedBytes uint64
+	for _, stream := range req.Streams {
+		exceeded := false
+		for _, exceed := range results {
+			if exceed.StreamHash == stream.StreamHash {
+				exceeded = true
 				break
 			}
 		}
-	})
 
-	// Calculate rate using only data from within the rate window
-	rate := float64(totalSize) / s.cfg.RateWindow.Seconds()
+		if !exceeded {
+			ingestedBytes += stream.EntriesSize + stream.StructuredMetadataSize
+		}
+	}
+	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	return &logproto.GetStreamUsageResponse{
-		Tenant:         req.Tenant,
-		ActiveStreams:  activeStreams,
-		UnknownStreams: unknownStreams,
-		Rate:           uint64(rate),
+	return &logproto.ExceedsLimitsResponse{
+		Tenant:  req.Tenant,
+		Results: results,
 	}, nil
+}
+
+// GetStreamUsage implements the logproto.IngestLimitsServer interface.
+// It returns the number of active streams for a tenant and the status of requested streams.
+func (s *IngestLimits) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
+	return nil, nil
 }

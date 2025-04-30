@@ -77,7 +77,7 @@ message ExceedsLimitsResponse {
 
 message ExceedsLimitsResult {
   uint64 streamHash = 1;
-  string reason = 2;
+  uint32 reason = 2;
 }
 
 service IngestLimits {

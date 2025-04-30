@@ -113,11 +113,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     1,
 			}},
 		},
 		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"test"}},
+		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -140,14 +140,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     1,
 			}},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"test"}},
+		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -250,11 +250,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     1,
 			}},
 		},
 		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"test"}},
+		expectedReasons:       map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
