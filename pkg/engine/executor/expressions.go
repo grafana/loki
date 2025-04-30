@@ -14,7 +14,7 @@ import (
 
 type expressionEvaluator struct{}
 
-func (e *expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
@@ -35,36 +35,61 @@ func (e *expressionEvaluator) eval(expr physical.Expression, input arrow.Record)
 		return nil, fmt.Errorf("unknown column %s: %w", expr.Ref.String(), errors.ErrKey)
 
 	case *physical.UnaryExpr:
-		_, err := e.eval(expr.Left, input)
+		lhr, err := e.eval(expr.Left, input)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to evaluate unary expression: %w", errors.ErrNotImplemented)
+
+		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type())
+		if err != nil {
+			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
+		}
+		return fn.Evaluate(lhr)
 
 	case *physical.BinaryExpr:
-		_, err := e.eval(expr.Left, input)
+		lhs, err := e.eval(expr.Left, input)
 		if err != nil {
 			return nil, err
 		}
-		_, err = e.eval(expr.Right, input)
+		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to evaluate binary expression: %w", errors.ErrNotImplemented)
 
+		// At the moment we only support functions that accept the same input types.
+		if lhs.Type().ID() != rhs.Type().ID() {
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type(), rhs.Type())
+		}
+
+		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Type())
+		if err != nil {
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
+		}
+		return fn.Evaluate(lhs, rhs)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
 }
+
+// newFunc returns a new function that can evaluate an input against a binded expression.
+func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+	return func(input arrow.Record) (ColumnVector, error) {
+		return e.eval(expr, input)
+	}
+}
+
+type evalFunc func(input arrow.Record) (ColumnVector, error)
 
 // ColumnVector represents columnar values from evaluated expressions.
 type ColumnVector interface {
 	// ToArray returns the underlying Arrow array representation of the column vector.
 	ToArray() arrow.Array
 	// Value returns the value at the specified index position in the column vector.
-	Value(i int64) any
+	Value(i int) any
 	// Type returns the Arrow data type of the column vector.
 	Type() arrow.DataType
+	// Len returns the length of the vector
+	Len() int64
 }
 
 // Scalar represents a single value repeated any number of times.
@@ -102,7 +127,7 @@ func (v *Scalar) ToArray() arrow.Array {
 }
 
 // Value implements ColumnVector.
-func (v *Scalar) Value(_ int64) any {
+func (v *Scalar) Value(_ int) any {
 	return v.value.Value
 }
 
@@ -124,11 +149,18 @@ func (v Scalar) Type() arrow.DataType {
 	}
 }
 
+// Len implements ColumnVector.
+func (v Scalar) Len() int64 {
+	return v.rows
+}
+
 // Array represents a column of data, stored as an [arrow.Array].
 type Array struct {
 	array arrow.Array
 	rows  int64
 }
+
+var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
@@ -136,8 +168,25 @@ func (a *Array) ToArray() arrow.Array {
 }
 
 // Value implements ColumnVector.
-func (a *Array) Value(i int64) any {
-	return a.array.ValueStr(int(i))
+func (a *Array) Value(i int) any {
+	if a.array.IsNull(i) || !a.array.IsValid(i) {
+		return nil
+	}
+
+	switch arr := a.array.(type) {
+	case *array.Boolean:
+		return arr.Value(i)
+	case *array.String:
+		return arr.Value(i)
+	case *array.Int64:
+		return arr.Value(i)
+	case *array.Uint64:
+		return arr.Value(i)
+	case *array.Float64:
+		return arr.Value(i)
+	default:
+		return nil
+	}
 }
 
 // Type implements ColumnVector.
@@ -145,4 +194,7 @@ func (a *Array) Type() arrow.DataType {
 	return a.array.DataType()
 }
 
-var _ ColumnVector = (*Array)(nil)
+// Len implements ColumnVector.
+func (a *Array) Len() int64 {
+	return int64(a.array.Len())
+}

@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/backoff"
 
@@ -220,7 +221,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		})
 
 		if len(services) < serviceLimit {
-			services = append(services, lbls.Get(push.AggregatedMetricLabel))
+			services = append(services, lbls.Get(constants.AggregatedMetricLabel))
 		}
 	}
 
