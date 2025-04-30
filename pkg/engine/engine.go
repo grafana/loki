@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -28,9 +29,10 @@ var (
 )
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limits, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	return &QueryEngine{
 		logger:    logger,
+		metrics:   newMetrics(reg),
 		limits:    limits,
 		metastore: metastore,
 		opts:      opts,
@@ -40,6 +42,7 @@ func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limi
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
 type QueryEngine struct {
 	logger    log.Logger
+	metrics   *metrics
 	limits    logql.Limits
 	metastore metastore.Metastore
 	opts      logql.EngineOpts
@@ -66,27 +69,37 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "engine", "v2")
 
+	t := time.Now() // start stopwatch for logical planning
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
+		e.metrics.subqueries.WithLabelValues(status, statusNotImplemented).Inc()
 		return builder.empty(), ErrNotSupported
 	}
+	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
+	durLogicalPlanning := time.Since(t)
 
+	t = time.Now() // start stopwatch for physcial planning
 	executionContext := physical.NewContext(ctx, e.metastore, params.Start(), params.End())
 	planner := physical.NewPlanner(executionContext)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
+		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	plan, err = planner.Optimize(plan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
+		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
+	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
+	durPhysicalPlanning := time.Since(t)
 
 	level.Info(logger).Log("msg", "execute query with new engine", "query", params.QueryString())
 
+	t = time.Now() // start stopwatch for execution
 	cfg := executor.Config{
 		BatchSize: int64(e.opts.BatchSize),
 	}
@@ -94,11 +107,24 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	defer pipeline.Close()
 
 	if err := collectResult(ctx, pipeline, builder); err != nil {
+		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
 		return builder.empty(), err
 	}
 
 	statsCtx := stats.FromContext(ctx)
 	builder.setStats(statsCtx.Result(time.Since(start), 0, builder.len()))
+
+	e.metrics.subqueries.WithLabelValues(status, statusSuccess).Inc()
+	e.metrics.execution.Observe(time.Since(t).Seconds())
+	durExecution := time.Since(t)
+
+	level.Debug(e.logger).Log(
+		"msg", "subquery execution durations",
+		"query", params.QueryString(),
+		"logical_planning", durLogicalPlanning,
+		"physical_planning", durPhysicalPlanning,
+		"execution", durExecution,
+	)
 
 	return builder.build(), nil
 }

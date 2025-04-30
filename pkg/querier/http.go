@@ -55,13 +55,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, metastore, limits, logger),
+		engineV2: engine.New(cfg.Engine, metastore, limits, reg, logger),
 		logger:   logger,
 	}
 }
