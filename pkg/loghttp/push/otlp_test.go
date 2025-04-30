@@ -1194,16 +1194,16 @@ func TestOTLPExporterMetric(t *testing.T) {
 
 			// Create a modified version of otlpToLokiPushRequest that uses our test metric
 			testOtlpToLokiPushRequest := func(
-				ctx context.Context,
+				_ context.Context,
 				ld plog.Logs,
 				userID string,
-				otlpConfig OTLPConfig,
-				discoverServiceName []string,
-				tracker UsageTracker,
-				stats *Stats,
-				logPushRequestStreams bool,
-				logger log.Logger,
-				streamResolver StreamResolver,
+				_ OTLPConfig,
+				_ []string,
+				_ UsageTracker,
+				_ *Stats,
+				_ bool,
+				_ log.Logger,
+				_ StreamResolver,
 			) *logproto.PushRequest {
 				req := &logproto.PushRequest{}
 
