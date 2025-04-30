@@ -45,6 +45,24 @@ func (ct ColumnType) String() string {
 	}
 }
 
+// FromString returns the [ColumnType] from its string representation.
+func (ColumnType) FromString(ct string) ColumnType {
+	switch ct {
+	case "builtin":
+		return ColumnTypeBuiltin
+	case "label":
+		return ColumnTypeLabel
+	case "metadata":
+		return ColumnTypeMetadata
+	case "parsed":
+		return ColumnTypeParsed
+	case "ambiguous":
+		return ColumnTypeAmbiguous
+	default:
+		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
+}
+
 // A ColumnRef referenes a column within a table relation.
 type ColumnRef struct {
 	Column string     // Name of the column being referenced.

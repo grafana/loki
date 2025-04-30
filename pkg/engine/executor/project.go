@@ -6,13 +6,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
 	// Get the column names from the projection expressions
 	columnNames := make([]string, len(columns))
-	columnMeta := make([]arrow.Metadata, len(columns))
 
 	for i, col := range columns {
 		if colExpr, ok := col.(*physical.ColumnExpr); ok {
@@ -43,7 +43,7 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 			if err != nil {
 				return failureState(err)
 			}
-			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.ArrowType()})
+			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.ArrowType(), Metadata: datatype.ColumnMetadata(vec.ColumnType(), vec.Type())})
 			projected = append(projected, vec.ToArray())
 		}
 

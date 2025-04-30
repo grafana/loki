@@ -22,19 +22,27 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		return &Scalar{
 			value: expr.Literal,
 			rows:  input.NumRows(),
+			ct:    types.ColumnTypeAmbiguous,
 		}, nil
 
 	case *physical.ColumnExpr:
 		schema := input.Schema()
 		for i := range input.NumCols() {
+			md := schema.Field(int(i)).Metadata
 			if input.ColumnName(int(i)) == expr.Ref.Column {
-				dt, ok := schema.Field(int(i)).Metadata.GetValue(types.MetadataKeyColumnDataType)
+				dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
 				if !ok {
+					continue
+				}
+				ct, ok := md.GetValue(types.MetadataKeyColumnType)
+				if !ok {
+					ct = types.ColumnTypeAmbiguous.String()
 					continue
 				}
 				return &Array{
 					array: input.Column(int(i)),
 					dt:    datatype.FromString(dt),
+					ct:    types.ColumnType(0).FromString(ct),
 					rows:  input.NumRows(),
 				}, nil
 			}
@@ -97,6 +105,8 @@ type ColumnVector interface {
 	ArrowType() arrow.DataType
 	// Type returns the Loki data type of the column vector.
 	Type() datatype.DataType
+	// ColumnType returns the type of column the vector originates from.
+	ColumnType() types.ColumnType
 	// Len returns the length of the vector
 	Len() int64
 }
@@ -105,6 +115,7 @@ type ColumnVector interface {
 type Scalar struct {
 	value datatype.Literal
 	rows  int64
+	ct    types.ColumnType
 }
 
 var _ ColumnVector = (*Scalar)(nil)
@@ -155,12 +166,17 @@ func (v *Scalar) Type() datatype.DataType {
 }
 
 // ArrowType implements ColumnVector.
-func (v Scalar) ArrowType() arrow.DataType {
+func (v *Scalar) ArrowType() arrow.DataType {
 	return datatype.ToArrow[v.value.Type()]
 }
 
+// ColumnType implements ColumnVector.
+func (v *Scalar) ColumnType() types.ColumnType {
+	return v.ct
+}
+
 // Len implements ColumnVector.
-func (v Scalar) Len() int64 {
+func (v *Scalar) Len() int64 {
 	return v.rows
 }
 
@@ -168,6 +184,7 @@ func (v Scalar) Len() int64 {
 type Array struct {
 	array arrow.Array
 	dt    datatype.DataType
+	ct    types.ColumnType
 	rows  int64
 }
 
@@ -208,6 +225,11 @@ func (v *Array) Type() datatype.DataType {
 // ArrowType implements ColumnVector.
 func (a *Array) ArrowType() arrow.DataType {
 	return a.array.DataType()
+}
+
+// ColumnType implements ColumnVector.
+func (a *Array) ColumnType() types.ColumnType {
+	return a.ct
 }
 
 // Len implements ColumnVector.
