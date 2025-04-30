@@ -22,6 +22,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
