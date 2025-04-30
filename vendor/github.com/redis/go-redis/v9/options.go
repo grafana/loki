@@ -214,9 +214,10 @@ func (opt *Options) init() {
 		opt.ConnMaxIdleTime = 30 * time.Minute
 	}
 
-	if opt.MaxRetries == -1 {
+	switch opt.MaxRetries {
+	case -1:
 		opt.MaxRetries = 0
-	} else if opt.MaxRetries == 0 {
+	case 0:
 		opt.MaxRetries = 3
 	}
 	switch opt.MinRetryBackoff {
@@ -276,6 +277,7 @@ func NewDialer(opt *Options) func(context.Context, string, string) (net.Conn, er
 //     URL attributes (scheme, host, userinfo, resp.), query parameters using these
 //     names will be treated as unknown parameters
 //   - unknown parameter names will result in an error
+//   - use "skip_verify=true" to ignore TLS certificate validation
 //
 // Examples:
 //
@@ -496,6 +498,9 @@ func setupConnParams(u *url.URL, o *Options) (*Options, error) {
 	if q.err != nil {
 		return nil, q.err
 	}
+	if o.TLSConfig != nil && q.has("skip_verify") {
+		o.TLSConfig.InsecureSkipVerify = q.bool("skip_verify")
+	}
 
 	// any parameters left?
 	if r := q.remaining(); len(r) > 0 {
@@ -527,6 +532,7 @@ func newConnPool(
 		PoolFIFO:        opt.PoolFIFO,
 		PoolSize:        opt.PoolSize,
 		PoolTimeout:     opt.PoolTimeout,
+		DialTimeout:     opt.DialTimeout,
 		MinIdleConns:    opt.MinIdleConns,
 		MaxIdleConns:    opt.MaxIdleConns,
 		MaxActiveConns:  opt.MaxActiveConns,
