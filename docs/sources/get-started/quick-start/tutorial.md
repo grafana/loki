@@ -55,7 +55,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
 
 **To deploy the Loki stack locally, follow these steps:**
 
-1. Clone the Loki fundamentals repository and checkout the getting-started branch:
+1. Clone the Loki fundamentals repository and check out the getting-started branch:
 
      ```bash
      git clone https://github.com/grafana/loki-fundamentals.git -b getting-started
@@ -98,7 +98,7 @@ If you have only the getting started demo deployed in your Docker environment, y
 
 {{< figure max-width="100%" src="/media/docs/loki/get-started-drill-down-container.png" caption="Grafana Drilldown Service View" alt="Grafana Drilldown Service View" >}}
 
-We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, see [Get started with Grafana Logs Drilldown](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/) page.
+We will not cover the rest of the Grafana Logs Drilldown features in this quickstart guide. For more information on how to use the Grafana Logs Drilldown feature, refer to [Get started with Grafana Logs Drilldown](https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/get-started/).
 
 <!-- INTERACTIVE page step2.md END -->
 
