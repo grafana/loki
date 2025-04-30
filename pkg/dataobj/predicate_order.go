@@ -126,9 +126,8 @@ func getPredicateSelectivity(p dataset.Predicate) SelectivityScore {
 			position := float64(p.Value.Int64()-minValue.Int64()) /
 				float64(maxValue.Int64()-minValue.Int64())
 			return SelectivityScore(1.0 - position)
-		} else {
-			return getBaseSelectivity(p)
 		}
+		return getBaseSelectivity(p)
 
 	case dataset.LessThanPredicate:
 		var (
@@ -152,9 +151,8 @@ func getPredicateSelectivity(p dataset.Predicate) SelectivityScore {
 			position := float64(p.Value.Int64()-minValue.Int64()) /
 				float64(maxValue.Int64()-minValue.Int64())
 			return SelectivityScore(position)
-		} else {
-			return getBaseSelectivity(p)
 		}
+		return getBaseSelectivity(p)
 
 	case dataset.NotPredicate:
 		s := getPredicateSelectivity(p.Inner)

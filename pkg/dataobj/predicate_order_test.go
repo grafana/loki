@@ -3,9 +3,10 @@ package dataobj
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/stretchr/testify/require"
 )
 
 func TestGetPredicateSelectivity(t *testing.T) {
