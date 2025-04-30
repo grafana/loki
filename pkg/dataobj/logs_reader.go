@@ -177,18 +177,20 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
-	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
+	var predicates []dataset.Predicate
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs); p != nil {
+		predicates = append(predicates, p)
+	}
 	if r.predicate != nil {
-		predicate = dataset.AndPredicate{
-			Left:  predicate,
-			Right: translateLogsPredicate(r.predicate, columns, columnDescs),
+		if p := translateLogsPredicate(r.predicate, columns, columnDescs); p != nil {
+			predicates = append(predicates, p)
 		}
 	}
 
 	readerOpts := dataset.ReaderOptions{
-		Dataset:   dset,
-		Columns:   columns,
-		Predicate: predicate,
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: predicates,
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
