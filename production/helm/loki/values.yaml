@@ -207,7 +207,9 @@ loki:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
         memcached_client:
-          addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+          host: {{ .host }}
+          service: {{ .clientService }}
+          addresses: {{ .addresses }}
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
@@ -255,8 +257,10 @@ loki:
             writeback_buffer: {{ .writebackBuffer }}
             writeback_size_limit: {{ .writebackSizeLimit }}
           memcached_client:
+            host: {{ .host }}
+            service: {{ .clientService }}
+            addresses: {{ .addresses }}
             consistent_hash: true
-            addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
             timeout: {{ .timeout }}
             update_interval: 1m
       {{- end }}
@@ -3172,7 +3176,10 @@ overridesExporter:
   appProtocol:
     grpc: ""
 
+# you can use your self memcacherd by set enable: false and host + service
 memcached:
+  # -- Specified whether the memcached should be enabled
+  enabled: true
   image:
     # -- Memcached Docker image repository
     repository: memcached
@@ -3223,6 +3230,12 @@ memcachedExporter:
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
+  # -- Hostname for memcached service to use.
+  host: ""
+  # -- SRV service used to discover memcache servers.
+  clientService: "memcached"
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3321,6 +3334,12 @@ resultsCache:
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
+  # -- Hostname for memcached service to use.
+  host: ""
+  # -- SRV service used to discover memcache servers.
+  clientService: "memcached"
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
