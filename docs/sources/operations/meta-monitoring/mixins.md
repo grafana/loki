@@ -103,21 +103,23 @@ The rules and alerts need to be installed into a Prometheus instance, Mimir or a
 You can find the YAML files for alerts and rules in the following directories in the Loki repo:
 
 For microservices mode:
+
 * `production/loki-mixin-compiled/alerts.yaml` (Optional)
 * `production/loki-mixin-compiled/rules.yaml` (Required)
-
 
 You use `mimirtool` to load the mixin alerts and rules definitions into a Prometheus instance, Mimir, or a Grafana Enterprise Metrics cluster. The following examples show how to load the mixin alerts and rules into a Grafana Cloud instance.
 
 1. Download [mimirtool](https://github.com/grafana/mimir/releases).
 
 1. Export the authentication credentials for connecting to your Grafana Cloud Mimir instance.
+
    ```bash
    export MIMIR_ADDRESS=<CLOUD-MIMIR-URL>
    export MIMIR_API_USER=<CLOUD-MIMIR-USER>
    export MIMIR_API_KEY=<CLOUD-MIMIR-API-KEY>
    export MIMIR_TENANT_ID=<CLOUD-MIMIR-USER> # Same as MIMIR_API_USER when using Grafana Cloud
    ```
+
    The best place to locate these credentials is to:
    1. Sign into [Grafana Cloud](https://grafana.com/auth/sign-in/) and create a new access policy.
        1. In the main menu, select **Security > Access Policies**.
@@ -127,13 +129,12 @@ You use `mimirtool` to load the mixin alerts and rules definitions into a Promet
           - Rules: Write & Read
        1. Click **Create**.
        1. Click **Add Token**. Give the token a name and click **Create**.
-   1.  Collect `URL` and `user` for Prometheus
+   1. Collect `URL` and `user` for Prometheus
        1. Navigate to the Grafana Cloud Portal **Overview** page.
        1. Click the **Details** button for your Alerts instance.
        1. From the **Configuring your Alerting Stacks** section, collect the instance **User** and **URL** for **Metrics Authentication Settings**.
 
-
-1. Using the same terminal we exported the Mimir enviroment variables into earlier, run the following command to load the recording rules:
+1. Using the same terminal we exported the Mimir environment variables into earlier, run the following command to load the recording rules:
 
     ```bash
     mimirtool rules load rules.yaml
@@ -152,6 +153,7 @@ Refer to the [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimi
 After you have installed the Loki mixin dashboards, alerts, and recording rules, you can now monitor your production Loki cluster using Grafana. Make sure you review the mixins when you upgrade Loki to make sure you are using the latest version of the mixin.
 
 You can now move onto:
+
 * **Send Logs:** Ready to start sending your own logs to Loki, there a several methods you can use. For more information, refer to [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
 * **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 * **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information refer to [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).
