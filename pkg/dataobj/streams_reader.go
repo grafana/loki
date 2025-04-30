@@ -144,10 +144,15 @@ func (r *StreamsReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
+	var predicates []dataset.Predicate
+	if p := translateStreamsPredicate(r.predicate, columns, columnDescs); p != nil {
+		predicates = append(predicates, p)
+	}
+
 	readerOpts := dataset.ReaderOptions{
-		Dataset:   dset,
-		Columns:   columns,
-		Predicate: translateStreamsPredicate(r.predicate, columns, columnDescs),
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: predicates,
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
