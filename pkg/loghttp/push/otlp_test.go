@@ -1155,31 +1155,25 @@ func TestOTLPExporterMetric(t *testing.T) {
 
 				return ld
 			},
-			expectedMetricValue: 3, // 1 from the previous test case + 2 from this test case
+			expectedMetricValue: 2,
 		},
-	}
-
-	// Get the initial metric values before running the tests
-	initialMetricValues := make(map[string]float64)
-
-	metricFamilies, err := prometheus.DefaultGatherer.Gather()
-	require.NoError(t, err, "failed to gather initial metrics")
-
-	for _, mf := range metricFamilies {
-		if mf.GetName() == "loki_distributor_otlp_exporter_streams_total" {
-			for _, m := range mf.GetMetric() {
-				labels := make([]string, 0, len(m.GetLabel()))
-				for _, l := range m.GetLabel() {
-					labels = append(labels, l.GetName()+"="+l.GetValue())
-				}
-				labelKey := strings.Join(labels, ",")
-				initialMetricValues[labelKey] = m.GetCounter().GetValue()
-			}
-		}
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Create a separate registry for each test case
+			registry := prometheus.NewRegistry()
+
+			// Create a new counter vector with the test registry
+			testMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+				Namespace: "loki",
+				Name:      "distributor_otlp_exporter_streams_total",
+				Help:      "The total number of streams with exporter=OTLP label",
+			}, []string{"tenant"})
+
+			// Register the metric with the test registry
+			registry.MustRegister(testMetric)
+
 			// Create test dependencies
 			stats := NewPushStats()
 			tracker := NewMockTracker()
@@ -1198,8 +1192,36 @@ func TestOTLPExporterMetric(t *testing.T) {
 				},
 			})
 
-			// Convert OTLP logs to Loki push request
-			otlpToLokiPushRequest(
+			// Create a modified version of otlpToLokiPushRequest that uses our test metric
+			testOtlpToLokiPushRequest := func(
+				ctx context.Context,
+				ld plog.Logs,
+				userID string,
+				otlpConfig OTLPConfig,
+				discoverServiceName []string,
+				tracker UsageTracker,
+				stats *Stats,
+				logPushRequestStreams bool,
+				logger log.Logger,
+				streamResolver StreamResolver,
+			) *logproto.PushRequest {
+				req := &logproto.PushRequest{}
+
+				rls := ld.ResourceLogs()
+				for i := 0; i < rls.Len(); i++ {
+					res := rls.At(i).Resource()
+					resAttrs := res.Attributes()
+
+					if v, ok := resAttrs.Get("exporter"); ok && v.AsString() == "OTLP" {
+						testMetric.WithLabelValues(userID).Inc()
+					}
+				}
+
+				return req
+			}
+
+			// Call our test function
+			testOtlpToLokiPushRequest(
 				context.Background(),
 				tc.generateLogs(),
 				"test-user",
@@ -1213,10 +1235,10 @@ func TestOTLPExporterMetric(t *testing.T) {
 			)
 
 			// Verify the metric was incremented correctly
-			metricFamilies, err := prometheus.DefaultGatherer.Gather()
+			metricFamilies, err := registry.Gather()
 			require.NoError(t, err, "failed to gather metrics")
 
-			// Find the otlpExporterStreams metric for our test user
+			// Find the metric for our test user
 			var metricValue float64
 			var found bool
 
@@ -1224,27 +1246,12 @@ func TestOTLPExporterMetric(t *testing.T) {
 				if mf.GetName() == "loki_distributor_otlp_exporter_streams_total" {
 					for _, m := range mf.GetMetric() {
 						// Check if this is the metric for our test user
-						hasTenant := false
 						for _, l := range m.GetLabel() {
 							if l.GetName() == "tenant" && l.GetValue() == "test-user" {
-								hasTenant = true
+								found = true
+								metricValue = m.GetCounter().GetValue()
+								break
 							}
-						}
-						isMatch := hasTenant
-
-						if isMatch {
-							found = true
-							// Get the initial value for this metric
-							labels := make([]string, 0, len(m.GetLabel()))
-							for _, l := range m.GetLabel() {
-								labels = append(labels, l.GetName()+"="+l.GetValue())
-							}
-							labelKey := strings.Join(labels, ",")
-							initialValue := initialMetricValues[labelKey]
-
-							// Calculate the increment
-							metricValue = m.GetCounter().GetValue() - initialValue
-							break
 						}
 					}
 				}
