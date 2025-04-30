@@ -260,12 +260,10 @@ local lambdaPromtailJob =
     } + {
       ['%s-manifest' % name]:
         job.new() +
-        {
-          permissions: {
-            contents: 'read',
-            'id-token': 'write',
-          },
-        }
+        job.withPermissions({
+          contents: 'read',
+          'id-token': 'write',
+        })
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
