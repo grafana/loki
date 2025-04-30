@@ -206,6 +206,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
 
+		// Check if the stream has the exporter=OTLP label and increment the metric
+		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
+			otlpExporterStreams.WithLabelValues(userID).Inc()
+		}
+
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}

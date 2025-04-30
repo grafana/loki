@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -1088,4 +1089,172 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
 	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
 	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
+}
+
+func TestOTLPExporterMetric(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create test cases
+	testCases := []struct {
+		name                string
+		generateLogs        func() plog.Logs
+		expectedMetricValue int
+	}{
+		{
+			name: "no exporter label",
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				rl.Resource().Attributes().PutStr("service.name", "test-service")
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("test log without exporter label")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedMetricValue: 0,
+		},
+		{
+			name: "with exporter=OTLP label",
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				rl := ld.ResourceLogs().AppendEmpty()
+				rl.Resource().Attributes().PutStr("service.name", "test-service")
+				// Add the exporter=OTLP label
+				rl.Resource().Attributes().PutStr("exporter", "OTLP")
+				sl := rl.ScopeLogs().AppendEmpty()
+				log := sl.LogRecords().AppendEmpty()
+				log.Body().SetStr("test log with exporter=OTLP label")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedMetricValue: 1,
+		},
+		{
+			name: "with multiple streams with exporter=OTLP label",
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+
+				// First resource with exporter=OTLP
+				rl1 := ld.ResourceLogs().AppendEmpty()
+				rl1.Resource().Attributes().PutStr("service.name", "service-1")
+				rl1.Resource().Attributes().PutStr("exporter", "OTLP")
+				sl1 := rl1.ScopeLogs().AppendEmpty()
+				log1 := sl1.LogRecords().AppendEmpty()
+				log1.Body().SetStr("test log 1 with exporter=OTLP label")
+				log1.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+
+				// Second resource with exporter=OTLP
+				rl2 := ld.ResourceLogs().AppendEmpty()
+				rl2.Resource().Attributes().PutStr("service.name", "service-2")
+				rl2.Resource().Attributes().PutStr("exporter", "OTLP")
+				sl2 := rl2.ScopeLogs().AppendEmpty()
+				log2 := sl2.LogRecords().AppendEmpty()
+				log2.Body().SetStr("test log 2 with exporter=OTLP label")
+				log2.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+
+				return ld
+			},
+			expectedMetricValue: 3, // 1 from the previous test case + 2 from this test case
+		},
+	}
+
+	// Get the initial metric values before running the tests
+	initialMetricValues := make(map[string]float64)
+
+	metricFamilies, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err, "failed to gather initial metrics")
+
+	for _, mf := range metricFamilies {
+		if mf.GetName() == "loki_distributor_otlp_exporter_streams_total" {
+			for _, m := range mf.GetMetric() {
+				labels := make([]string, 0, len(m.GetLabel()))
+				for _, l := range m.GetLabel() {
+					labels = append(labels, l.GetName()+"="+l.GetValue())
+				}
+				labelKey := strings.Join(labels, ",")
+				initialMetricValues[labelKey] = m.GetCounter().GetValue()
+			}
+		}
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create test dependencies
+			stats := NewPushStats()
+			tracker := NewMockTracker()
+			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+			// All logs will use the same policy for simplicity
+			streamResolver.policyForOverride = func(_ labels.Labels) string {
+				return "test-policy"
+			}
+
+			// Create a custom OTLP config that includes "exporter" in the list of attributes to be indexed as labels
+			customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+				DefaultOTLPResourceAttributesAsIndexLabels: []string{
+					"service.name",
+					"exporter", // Add "exporter" to the list of attributes to be indexed as labels
+				},
+			})
+
+			// Convert OTLP logs to Loki push request
+			otlpToLokiPushRequest(
+				context.Background(),
+				tc.generateLogs(),
+				"test-user",
+				customOTLPConfig,
+				[]string{}, // No service name discovery needed
+				tracker,
+				stats,
+				false,
+				log.NewNopLogger(),
+				streamResolver,
+			)
+
+			// Verify the metric was incremented correctly
+			metricFamilies, err := prometheus.DefaultGatherer.Gather()
+			require.NoError(t, err, "failed to gather metrics")
+
+			// Find the otlpExporterStreams metric for our test user
+			var metricValue float64
+			var found bool
+
+			for _, mf := range metricFamilies {
+				if mf.GetName() == "loki_distributor_otlp_exporter_streams_total" {
+					for _, m := range mf.GetMetric() {
+						// Check if this is the metric for our test user
+						hasTenant := false
+						for _, l := range m.GetLabel() {
+							if l.GetName() == "tenant" && l.GetValue() == "test-user" {
+								hasTenant = true
+							}
+						}
+						isMatch := hasTenant
+
+						if isMatch {
+							found = true
+							// Get the initial value for this metric
+							labels := make([]string, 0, len(m.GetLabel()))
+							for _, l := range m.GetLabel() {
+								labels = append(labels, l.GetName()+"="+l.GetValue())
+							}
+							labelKey := strings.Join(labels, ",")
+							initialValue := initialMetricValues[labelKey]
+
+							// Calculate the increment
+							metricValue = m.GetCounter().GetValue() - initialValue
+							break
+						}
+					}
+				}
+			}
+
+			if tc.expectedMetricValue > 0 {
+				require.True(t, found, "metric not found")
+			}
+
+			require.Equal(t, float64(tc.expectedMetricValue), metricValue, "metric value mismatch")
+		})
+	}
 }
