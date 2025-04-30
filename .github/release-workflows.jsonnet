@@ -247,6 +247,10 @@ local lambdaPromtailJob =
       ['%s-image' % name]:
         weeklyImageJobs[name]
         + job.withNeeds(['check'])
+        + job.withPermissions({
+          contents: 'read',
+          'id-token': 'write',
+        })
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
           RELEASE_REPO: 'grafana/loki',
