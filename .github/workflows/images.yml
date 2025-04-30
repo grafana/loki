@@ -22,6 +22,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
@@ -116,6 +119,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
@@ -199,6 +205,9 @@
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto.outputs.image_tag }}"
     "needs":
     - "loki-canary-boringcrypto-image"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
@@ -233,6 +242,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
@@ -316,6 +328,9 @@
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary.outputs.image_tag }}"
     "needs":
     - "loki-canary-image"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
@@ -350,6 +365,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
@@ -433,6 +451,9 @@
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki.outputs.image_tag }}"
     "needs":
     - "loki-image"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"
@@ -467,6 +488,9 @@
       "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
       "image_name": "${{ steps.weekly-version.outputs.image_name }}"
       "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
@@ -550,6 +574,9 @@
       "OUTPUTS_IMAGE_TAG": "${{ needs.promtail.outputs.image_tag }}"
     "needs":
     - "promtail-image"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Set up Docker buildx"

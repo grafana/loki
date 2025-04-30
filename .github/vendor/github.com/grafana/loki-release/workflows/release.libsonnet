@@ -14,6 +14,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
 {
   createReleasePR:
     job.new()
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseRepo,
       common.fetchReleaseLib,
@@ -81,6 +84,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                  + job.withIf('${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}')
                  + job.withEnv({
                    SHA: '${{ needs.shouldRelease.outputs.sha }}',
+                 })
+                 + job.withPermissions({
+                   'id-token': 'write',
                  })
                  + job.withSteps([
                    common.fetchReleaseRepo,
@@ -250,6 +256,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
   publishRelease: function(dependencies=['createRelease'])
     job.new()
     + job.withNeeds(dependencies)
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseRepo,
       common.fetchAppCredentials,
@@ -272,6 +281,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
   createReleaseBranch: function(branchTemplate='release-v\\${major}.\\${minor}.x')
     job.new()
     + job.withNeeds(['publishRelease'])  // always need createRelease for version info
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseRepo,
       common.extractBranchName,

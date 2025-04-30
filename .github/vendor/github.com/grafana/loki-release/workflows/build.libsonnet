@@ -229,13 +229,12 @@ local runner = import 'runner.libsonnet',
     ]),
 
   version:
-    job.new() {
-      permissions: {
-        contents: 'write',
-        'pull-requests': 'write',
-        'id-token': 'write',
-      },
-    }
+    job.new()
+    + job.withPermissions({
+      contents: 'write',
+      'pull-requests': 'write',
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
