@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 
 	"github.com/go-kit/log"
@@ -28,7 +30,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, nil, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, nil, nil, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -155,6 +157,17 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
+func injectOrgID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func buildHandler(api *QuerierAPI) http.Handler {
+	return injectOrgID(NewQuerierHTTPHandler(NewQuerierHandler(api)))
+}
+
 func TestSeriesHandler(t *testing.T) {
 	t.Run("instant queries set a step of 0", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
@@ -179,18 +192,64 @@ func TestSeriesHandler(t *testing.T) {
 
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(q)
-		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
+		api := setupAPI(t, q, false)
+		handler := buildHandler(api)
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
 		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
 		require.JSONEq(t, expected, res.Body.String())
+	})
+
+	t.Run("ignores __aggregated_metric__ series, when possible, unless explicitly requested", func(t *testing.T) {
+		ret := func() *logproto.SeriesResponse {
+			return &logproto.SeriesResponse{
+				Series: []logproto.SeriesIdentifier{},
+			}
+		}
+
+		q := newQuerierMock()
+		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		for _, tt := range []struct {
+			match          string
+			expectedGroups []string
+		}{
+			{
+				// we can't add the negated __aggregated_metric__ matcher to an empty matcher set,
+				// as that will produce an invalid query
+				match:          "{}",
+				expectedGroups: []string{},
+			},
+			{
+				match:          `{foo="bar"}`,
+				expectedGroups: []string{fmt.Sprintf(`{foo="bar", %s=""}`, constants.AggregatedMetricLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service"}`, constants.AggregatedMetricLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service"}`, constants.AggregatedMetricLabel)},
+			},
+		} {
+			req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
+				"?start=0"+
+				"&end=1"+
+				fmt.Sprintf("&match=%s", url.QueryEscape(tt.match)), nil)
+			req.Header.Set("X-Scope-OrgID", "test-org")
+			_ = makeRequest(t, handler, req)
+			q.AssertCalled(t, "Series", mock.Anything, &logproto.SeriesRequest{
+				Start:  time.Unix(0, 0).UTC(),
+				End:    time.Unix(1, 0).UTC(),
+				Groups: tt.expectedGroups,
+			})
+		}
 	})
 }
 
@@ -212,7 +271,7 @@ func TestVolumeHandler(t *testing.T) {
 			t.Run(fmt.Sprintf("%s queries return label volumes from the querier", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				res, err := api.VolumeHandler(context.Background(), tc.req)
 				require.NoError(t, err)
@@ -230,7 +289,7 @@ func TestVolumeHandler(t *testing.T) {
 			t.Run(fmt.Sprintf("%s queries return nothing when a store doesn't support label volumes", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, nil)
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				res, err := api.VolumeHandler(context.Background(), tc.req)
 				require.NoError(t, err)
@@ -246,7 +305,7 @@ func TestVolumeHandler(t *testing.T) {
 				querier := newQuerierMock()
 				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, err)
 
-				api := setupAPI(querier)
+				api := setupAPI(t, querier, false)
 
 				_, err = api.VolumeHandler(context.Background(), tc.req)
 				require.ErrorContains(t, err, "something bad")
@@ -255,6 +314,33 @@ func TestVolumeHandler(t *testing.T) {
 				require.Len(t, calls, 1)
 			})
 		}
+	})
+}
+
+func TestLabelsHandler(t *testing.T) {
+	t.Run("remove __aggregated_metric__ label from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.AggregatedMetricLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
+			"?start=0"+
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
+
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
 	})
 }
 
@@ -267,7 +353,12 @@ func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptes
 	return w
 }
 
-func setupAPI(querier *querierMock) *QuerierAPI {
-	api := NewQuerierAPI(Config{}, querier, nil, nil, log.NewNopLogger())
+func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) *QuerierAPI {
+	defaultLimits := defaultLimitsTestConfig()
+	defaultLimits.MetricAggregationEnabled = enableMetricAggregation
+	limits, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+
+	api := NewQuerierAPI(Config{}, querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
