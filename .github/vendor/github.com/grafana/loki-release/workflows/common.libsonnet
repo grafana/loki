@@ -64,6 +64,9 @@
     withSecrets: function(secrets) {
       secrets: secrets,
     },
+    withPermissions: function(permissions) {
+      permissions+: permissions,
+    },
   },
 
   releaseStep: function(name, uses=null) $.step.new(name, uses) +

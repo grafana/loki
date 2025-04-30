@@ -76,7 +76,13 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets) + $.common.job.withNeeds(['version']),
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets)
+            + $.common.job.withNeeds(['version'])
+            + $.common.job.withPermissions({
+              contents: 'write',
+              'pull-requests': 'write',
+              'id-token': 'write',
+            }),
     } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(['version']), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
