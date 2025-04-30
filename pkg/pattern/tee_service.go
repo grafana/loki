@@ -18,10 +18,10 @@ import (
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -437,7 +437,7 @@ func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream
 			continue
 		}
 
-		if lbls.Has(push.AggregatedMetricLabel) {
+		if lbls.Has(constants.AggregatedMetricLabel) {
 			continue
 		}
 

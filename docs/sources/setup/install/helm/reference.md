@@ -3073,7 +3073,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.4.1"
+    "tag": "3.4.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3247,7 +3247,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.4.1"
+"3.4.2"
 </pre>
 </td>
 		</tr>
@@ -6159,7 +6159,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.4.2"
+"3.5.0"
 </pre>
 </td>
 		</tr>
@@ -10507,6 +10507,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "sidecar": false,
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -10787,6 +10788,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.sidecar</td>
+			<td>bool</td>
+			<td>Whether to enable the rules sidecar</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the ruler to shutdown before it is killed</td>
@@ -10908,7 +10918,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.2"
+"1.30.3"
 </pre>
 </td>
 		</tr>

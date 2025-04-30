@@ -158,6 +158,6 @@ func dumpRequest(req *http.Request, httpHeadersToExclude map[string]bool) ([]byt
 		return nil, err
 	}
 
-	ret := bytes.Replace(b.Bytes(), []byte("\r\n"), []byte("; "), -1)
+	ret := bytes.ReplaceAll(b.Bytes(), []byte("\r\n"), []byte("; "))
 	return ret, nil
 }

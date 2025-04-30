@@ -2132,12 +2132,16 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		ContentDisposition: objectMeta.ContentDisposition,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
-		ObjectTagging:      args.ObjectTagging,
-		TaggingDirective:   args.TaggingDirective,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {
 			initArgs.StorageClass = args.StorageClass
+		}
+		if len(args.ObjectTagging) != 0 {
+			initArgs.ObjectTagging = args.ObjectTagging
+		}
+		if len(args.TaggingDirective) != 0 {
+			initArgs.TaggingDirective = args.TaggingDirective
 		}
 	}
 	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, destBucketName, destObjectName, objectMeta.ContentType, &initArgs, c.BosContext)

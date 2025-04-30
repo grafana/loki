@@ -26,9 +26,11 @@ type OwnerType struct {
 }
 
 type BucketSummaryType struct {
-	Name         string `json:"name"`
-	Location     string `json:"location"`
-	CreationDate string `json:"creationDate"`
+	Name            string `json:"name"`
+	Location        string `json:"location"`
+	CreationDate    string `json:"creationDate"`
+	LccLocation     string `json:"lccLocation,omitempty"`
+	EnableDedicated bool   `json:"enableDedicated,omitempty"`
 }
 
 // ListBucketsResult defines the result structure of ListBuckets api.

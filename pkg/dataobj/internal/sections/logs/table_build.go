@@ -31,7 +31,7 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 
 		for _, md := range record.Metadata {
 			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.StringValue(md.Value))
+			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(md.Value))
 		}
 	}
 

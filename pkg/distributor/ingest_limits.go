@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -154,4 +155,24 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*logproto.Ex
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil
+}
+
+func firstReasonForHashes(reasonsForHashes map[uint64][]string) string {
+	for _, reasons := range reasonsForHashes {
+		return humanizeReasonForHash(reasons[0])
+	}
+	return "unknown reason"
+}
+
+// TODO(grobinson): Move this to the same place where the consts
+// are defined.
+func humanizeReasonForHash(s string) string {
+	switch s {
+	case limits_frontend.ReasonExceedsMaxStreams:
+		return "max streams exceeded"
+	case limits_frontend.ReasonExceedsRateLimit:
+		return "rate limit exceeded"
+	default:
+		return s
+	}
 }
