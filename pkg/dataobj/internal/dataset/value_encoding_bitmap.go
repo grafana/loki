@@ -145,13 +145,7 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 	case enc.runLength > 0 && uv != enc.runValue: // RLE with different value; the run ended.
 		// If the run lasted less than 8 values, we switch to the BITPACK state.
 		if enc.runLength < 8 {
-			// Copy over the existing run to the set and then add the new value.
-			enc.setSize = byte(enc.runLength)
-			for i := byte(0); i < enc.setSize; i++ {
-				enc.set[i] = enc.runValue
-			}
-
-			enc.runLength = 0
+			enc.switchToBitpack()
 			enc.set[enc.setSize] = uv
 			enc.setSize++
 
@@ -182,6 +176,78 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 	default:
 		panic("dataset.bitmapEncoder: invalid state")
 	}
+}
+
+func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
+	if v.Type() != datasetmd.VALUE_TYPE_UINT64 {
+		return fmt.Errorf("invalid value type %s", v.Type())
+	}
+	uv := v.Uint64()
+
+	switch {
+	case enc.runLength == 0 && enc.setSize == 0: // Ready; start a new run.
+		enc.runValue = uv
+		fallthrough
+	case enc.runLength > 0 && uv == enc.runValue: // RLE with matching value; continue the run.
+		if enc.runLength+n >= maxRunLength {
+			n -= (maxRunLength - enc.runLength) // remaining count
+			enc.runLength = maxRunLength
+			if err := enc.flushRLE(); err != nil {
+				return err
+			}
+
+			if n > 0 {
+				return enc.EncodeN(v, n)
+			}
+		} else {
+			enc.runLength += n
+		}
+
+		return nil
+
+	case enc.runLength > 0 && uv != enc.runValue: // RLE with different value; the run ended.
+		if enc.runLength >= 8 {
+			if err := enc.flushRLE(); err != nil {
+				return err
+			}
+
+			return enc.EncodeN(v, n)
+		}
+
+		enc.switchToBitpack()
+		fallthrough
+	case enc.setSize > 0:
+		// Fill up remaining slots with the new value
+		for n > 0 && enc.setSize < 8 {
+			enc.set[enc.setSize] = uv
+			enc.setSize++
+			n--
+		}
+
+		if enc.setSize == 8 {
+			if err := enc.flushBitpacked(); err != nil {
+				return err
+			}
+		}
+
+		if n > 0 {
+			return enc.EncodeN(v, n)
+		}
+
+		return nil
+	default:
+		panic("dataset.bitmapEncoder: invalid state")
+	}
+}
+
+func (enc *bitmapEncoder) switchToBitpack() {
+	// Copy over the existing run to the set and then add the new value.
+	enc.setSize = byte(enc.runLength)
+	for i := byte(0); i < enc.setSize; i++ {
+		enc.set[i] = enc.runValue
+	}
+
+	enc.runLength = 0
 }
 
 // Flush writes any remaining values to the underlying [streamio.Writer].

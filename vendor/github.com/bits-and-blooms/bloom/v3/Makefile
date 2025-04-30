@@ -1,7 +1,7 @@
 # MAKEFILE
 #
 # @author      Nicola Asuni <info@tecnick.com>
-# @link        https://github.com/willf/bloom
+# @link        https://github.com/bits-and-blooms/bloom
 # ------------------------------------------------------------------------------
 
 # List special make targets that are not associated with files
@@ -11,13 +11,13 @@
 SHELL=/bin/bash
 
 # CVS path (path to the parent dir containing the project)
-CVSPATH=github.com/willf
+CVSPATH=github.com/bits-and-blooms
 
 # Project owner
-OWNER=willf
+OWNER=bits-and-blooms
 
 # Project vendor
-VENDOR=willf
+VENDOR=bits-and-blooms
 
 # Project name
 PROJECT=bloom
@@ -185,7 +185,7 @@ deps:
 	GOPATH=$(GOPATH) go get github.com/opennota/check/cmd/varcheck
 	GOPATH=$(GOPATH) go get github.com/kisielk/errcheck
 	GOPATH=$(GOPATH) go get honnef.co/go/tools/cmd/gosimple
-	GOPATH=$(GOPATH) go get github.com/GoASTScanner/gas
+	GOPATH=$(GOPATH) go get github.com/securego/gosec
 
 # Remove any build artifact
 clean:
