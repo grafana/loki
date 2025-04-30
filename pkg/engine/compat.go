@@ -3,10 +3,11 @@ package engine
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func newResultBuilder() *resultBuilder {

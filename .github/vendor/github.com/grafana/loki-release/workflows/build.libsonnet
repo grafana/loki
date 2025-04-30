@@ -31,7 +31,7 @@ local runner = import 'runner.libsonnet',
       common.setupNode,
       common.googleAuth,
 
-      step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
+      step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
 
       releaseStep('Parse image platform')
       + step.withId('platform')
@@ -43,7 +43,7 @@ local runner = import 'runner.libsonnet',
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and export', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
+      step.new('Build and export', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
@@ -57,7 +57,7 @@ local runner = import 'runner.libsonnet',
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
-      step.new('Upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0') // v2
+      step.new('Upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
@@ -97,8 +97,8 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseRepo,
       common.setupNode,
 
-      step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), // v3
-      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'), // main
+      step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
+      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),  // main
 
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
@@ -117,7 +117,7 @@ local runner = import 'runner.libsonnet',
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
+      step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
       + step.withId('build-push')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
@@ -168,8 +168,8 @@ local runner = import 'runner.libsonnet',
       common.setupNode,
       common.googleAuth,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'), // v3
-      step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'), //v3
+      step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
+      step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
 
       releaseStep('parse image platform')
       + step.withId('platform')
@@ -187,7 +187,7 @@ local runner = import 'runner.libsonnet',
         fi
       |||),
 
-      step.new('Build and export', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1') // v6
+      step.new('Build and export', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
@@ -219,7 +219,7 @@ local runner = import 'runner.libsonnet',
         .
       ||| % [name, name]),
 
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0') // v2
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
@@ -230,11 +230,17 @@ local runner = import 'runner.libsonnet',
 
   version:
     job.new()
+    + job.withPermissions({
+      contents: 'write',
+      'pull-requests': 'write',
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
       common.extractBranchName,
+      common.fetchAppCredentials,
       common.githubAppToken,
       common.setToken,
       releaseLibStep('get release version')
@@ -307,7 +313,7 @@ local runner = import 'runner.libsonnet',
       common.googleAuth,
       common.setupGoogleCloudSdk,
 
-      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25') // main
+      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25')  // main
       + step.withId('get-secrets')
       + step.with({
         common_secrets: |||
@@ -355,7 +361,7 @@ local runner = import 'runner.libsonnet',
         ||| % [buildImage, buildImage, std.join(' ', makeTargets)]
       ),
 
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0') // v2
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',
