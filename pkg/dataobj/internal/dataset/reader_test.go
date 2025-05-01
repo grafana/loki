@@ -39,7 +39,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 		Columns: columns,
 		Predicates: []Predicate{
 			GreaterThanPredicate{
-				Column: columns[3], // birth_year column
+				Column: columns[4], // birth_year column
 				Value:  Int64Value(1985),
 			},
 		},
@@ -75,7 +75,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		// which is out of range of at least one page.
 		Predicates: []Predicate{
 			EqualPredicate{
-				Column: columns[0], // first_name column
+				Column: columns[1], // first_name column
 				Value:  ByteArrayValue([]byte("Henry")),
 			},
 		},
@@ -101,10 +101,10 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	// Create a predicate that only returns people born after 1985
 	r := NewReader(ReaderOptions{
 		Dataset: dset,
-		Columns: []Column{columns[3]},
+		Columns: []Column{columns[4]},
 		Predicates: []Predicate{
 			GreaterThanPredicate{
-				Column: columns[3], // birth_year column
+				Column: columns[4], // birth_year column
 				Value:  Int64Value(1985),
 			},
 		},
@@ -154,7 +154,7 @@ func Test_Reader_Stats(t *testing.T) {
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{GreaterThanPredicate{
-			Column: columns[3], // birth_year column
+			Column: columns[4], // birth_year column
 			Value:  Int64Value(1985),
 		}},
 	})

@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
+var ErrBoundExceeded = errors.New("pageReader: bound exceeded")
+
 type pageReader struct {
 	page        Page
 	value       datasetmd.ValueType
@@ -45,8 +47,8 @@ func newPageReader(p Page, value datasetmd.ValueType, compression datasetmd.Comp
 
 // Read reads up to the next len(v) values from the page into v. It returns the
 // number of values read and any error encountered. At the end of the page,
-// Read returns 0, io.EOF.
-func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
+// Read returns 0, io.EOF. If a BoundFunc is provided and returns false, returns ErrBoundExceeded.
+func (pr *pageReader) Read(ctx context.Context, v []Value, bounds BoundsChecker) (n int, err error) {
 	// We need to initialize our readers before we can read from the page.
 	//
 	// If we've seeked backwards and our page row is now ahead of the row we want
@@ -63,22 +65,20 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 	// reading garbage values into v.
 	for pr.pageRow < pr.nextRow {
 		maxCount := min(len(v), int(pr.nextRow-pr.pageRow))
-		_, err := pr.read(v[:maxCount])
+		_, err := pr.read(v[:maxCount], bounds)
 		if err != nil {
 			return n, err
 		}
 	}
 
-	n, err = pr.read(v)
+	n, err = pr.read(v, bounds)
 	pr.nextRow += int64(n)
 	return n, err
 }
 
 // read reads up to the next len(v) values from the page into v, without
-// considering the current row offset.
-//
-// read advances pr.pageRow but not pr.nextRow.
-func (pr *pageReader) read(v []Value) (n int, err error) {
+// considering the current row offset. If a BoundFunc is provided and returns false, returns ErrBoundExceeded.
+func (pr *pageReader) read(v []Value, bounds BoundsChecker) (n int, err error) {
 	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
 	pr.presenceBuf = pr.presenceBuf[:len(v)]
 
@@ -139,8 +139,21 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 			if valuesIndex >= valuesCount {
 				return n, fmt.Errorf("unexpected end of values")
 			}
-			v[i] = pr.valuesBuf[valuesIndex]
+
+			vv := pr.valuesBuf[valuesIndex]
+
+			// TODO(ashwanth): we are applying bounds after decoding values.
+			// There is an opportunity here to decode fewer values by passing the bounds function to the value decoders.
+			if bounds != nil && !bounds.Check(vv) {
+				// Making a read call after encoutering ErrBoundExceeded can result in unexpected behavior.
+				// Since the decoders have already read n values in a given call.
+				pr.pageRow += int64(i)
+				return i, ErrBoundExceeded
+			}
+
+			v[i] = vv
 			valuesIndex++
+
 		default:
 			v[i] = Value{}
 		}

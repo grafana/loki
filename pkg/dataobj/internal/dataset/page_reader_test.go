@@ -40,7 +40,7 @@ func Test_pageReader(t *testing.T) {
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
 	pr := newPageReader(page, opts.Value, opts.Compression)
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -63,14 +63,14 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
 	pr := newPageReader(page, opts.Value, opts.Compression)
-	_, err := readPage(pr, 4)
+	_, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	// Seek back to the start of the page and read all values again.
 	_, err = pr.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -93,13 +93,13 @@ func Test_pageReader_Reset(t *testing.T) {
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
 	pr := newPageReader(page, opts.Value, opts.Compression)
-	_, err := readPage(pr, 4)
+	_, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	// Reset and read all values again.
 	pr.Reset(page, opts.Value, opts.Compression)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -126,11 +126,35 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	_, err := pr.Seek(4, io.SeekStart)
 	require.NoError(t, err)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(pr, 4, nil)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
 	require.Equal(t, pageReaderTestStrings[4:], actual)
+}
+
+func Test_pageReader_WithBounds(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+
+	sortedStrings := []string{"a", "b", "c", "d", "e", "f", "g"}
+	page := buildPage(t, opts, sortedStrings)
+	require.Equal(t, len(sortedStrings), page.Info.RowCount)
+	require.Equal(t, len(sortedStrings), page.Info.ValuesCount)
+
+	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
+	t.Log("Compressed size: ", page.Info.CompressedSize)
+
+	pr := newPageReader(page, opts.Value, opts.Compression)
+	actualValues, err := readPage(pr, 4, BoundsForEqual(ByteArrayValue([]byte("e")), datasetmd.SORT_DIRECTION_ASCENDING))
+	require.ErrorIs(t, err, ErrBoundExceeded)
+
+	actual := convertToStrings(t, actualValues)
+	require.Equal(t, sortedStrings[:5], actual)
 }
 
 func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
@@ -148,7 +172,7 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	return page
 }
 
-func readPage(pr *pageReader, batchSize int) ([]Value, error) {
+func readPage(pr *pageReader, batchSize int, bounds BoundsChecker) ([]Value, error) {
 	var (
 		all []Value
 
@@ -165,7 +189,7 @@ func readPage(pr *pageReader, batchSize int) ([]Value, error) {
 		// ownership semantics.
 		clear(batch)
 
-		n, err := pr.Read(context.Background(), batch)
+		n, err := pr.Read(context.Background(), batch, bounds)
 		if n > 0 {
 			all = append(all, batch[:n]...)
 		}

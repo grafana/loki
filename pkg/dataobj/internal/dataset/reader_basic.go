@@ -35,8 +35,8 @@ func newBasicReader(set []Column) *basicReader {
 
 // Read is a convenience wrapper around [basicReader.ReadColumns] that reads up
 // to the next len(s) rows across the entire column set owned by [basicReader].
-func (pr *basicReader) Read(ctx context.Context, s []Row) (n int, err error) {
-	return pr.ReadColumns(ctx, pr.columns, s)
+func (pr *basicReader) Read(ctx context.Context, s []Row, bounds *ColumnBounds) (n int, err error) {
+	return pr.ReadColumns(ctx, pr.columns, s, bounds)
 }
 
 // ReadColumns reads up to the next len(s) rows from a subset of columns and
@@ -49,7 +49,7 @@ func (pr *basicReader) Read(ctx context.Context, s []Row) (n int, err error) {
 //
 // After calling ReadColumns, additional columns in s can be filled using
 // [basicReader.Fill].
-func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Row, bounds *ColumnBounds) (n int, err error) {
 	if len(columns) == 0 {
 		return 0, fmt.Errorf("no columns to read")
 	}
@@ -63,7 +63,7 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 		s[i].Index = int(pr.nextRow + int64(i))
 	}
 
-	n, err = pr.fill(ctx, columns, s)
+	n, err = pr.fill(ctx, columns, s, bounds)
 	pr.nextRow += int64(n)
 	return n, err
 }
@@ -89,13 +89,13 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 // calls.
 //
 // Fill does not advance the offset of the basicReader.
-func (pr *basicReader) Fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+func (pr *basicReader) Fill(ctx context.Context, columns []Column, s []Row, bounds *ColumnBounds) (n int, err error) {
 	if len(columns) == 0 {
 		return 0, fmt.Errorf("no columns to fill")
 	}
 
 	for partition := range partitionRows(s) {
-		pn, err := pr.fill(ctx, columns, partition)
+		pn, err := pr.fill(ctx, columns, partition, bounds)
 		n += pn
 		if err != nil {
 			return n, err
@@ -132,7 +132,7 @@ func partitionRows(s []Row) iter.Seq[[]Row] {
 
 // fill implements fill for a single slice of rows that are consecutive and
 // have no gaps between them.
-func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row, bounds *ColumnBounds) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -158,12 +158,22 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 			// atEOF is true if all columns report EOF. We default to true and set it
 			// to false if any column returns a non-EOF error.
 			atEOF = true
+
+			boundsExceeded bool
+			boundsLimit    int
 		)
 
 		for _, column := range columns {
 			columnIndex, ok := pr.columnLookup[column]
 			if !ok {
 				return n, fmt.Errorf("column %v is not owned by basicReader", column)
+			}
+
+			rowsToRead := len(s) - n
+			// when bounds exceed for any of the columns, we need to limit filling
+			// to the rows that satisfy the bounds.
+			if boundsExceeded {
+				rowsToRead = boundsLimit
 			}
 
 			// We want to allow readers to reuse memory of [Value]s in s while
@@ -173,7 +183,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 			//
 			// If we didn't do this, then memory backing [Value]s are owned by both
 			// basicReader and the caller, which can lead to memory reuse bugs.
-			pr.buf = reuseRowsBuffer(pr.buf, s[n:], columnIndex)
+			pr.buf = reuseRowsBuffer(pr.buf, s[n:n+rowsToRead], columnIndex)
 
 			r := pr.readers[columnIndex]
 			_, err := r.Seek(startRow, io.SeekStart)
@@ -181,8 +191,8 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				return n, fmt.Errorf("seeking to row %d in column %d: %w", startRow, columnIndex, err)
 			}
 
-			cn, err := r.Read(ctx, pr.buf[:len(s)-n])
-			if err != nil && !errors.Is(err, io.EOF) {
+			cn, err := r.Read(ctx, pr.buf[:rowsToRead], bounds.Checker(column))
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, ErrBoundExceeded) {
 				// If reading a column fails, we return immediately without advancing
 				// our row offset for this batch. This retains the state of the reader
 				// and ensures that every call to Read reads every column.
@@ -192,9 +202,26 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				// column will seek backwards to startRow, which requires starting
 				// over from the top of a page.
 				return n, fmt.Errorf("reading column %d: %w", columnIndex, err)
+			} else if errors.Is(err, ErrBoundExceeded) {
+				atEOF = false
+
+				if cn == 0 {
+					boundsExceeded = true
+					boundsLimit = 0
+					break // no need to read more columns
+				}
+
+				if boundsExceeded {
+					// there can be multiple columns that exceed bounds, so we take the minimum
+					boundsLimit = min(boundsLimit, cn)
+				} else {
+					boundsExceeded = true
+					boundsLimit = cn
+				}
 			} else if err == nil {
 				atEOF = false
 			}
+
 			maxRead = max(maxRead, cn)
 			for i := range cn {
 				s[n+i].Values[columnIndex] = pr.buf[i]
@@ -207,10 +234,23 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 			return n, io.EOF
 		}
 
+		// limit to the rows that satisfy the bounds.
+		if boundsExceeded {
+			if boundsLimit == 0 {
+				return n, ErrBoundExceeded
+			}
+
+			maxRead = boundsLimit
+		}
+
 		// Some columns may have read fewer rows than maxRead. These columns need
 		// to fill in the remainder of the rows (up to maxRead) with NULL values;
 		// otherwise there may be non-NULL values from a previous call to Read that
 		// would give corrupted results.
+		//
+		// With bounds, some columns may contain more rows than maxRead. There
+		// is not need to explcitly set these values to NULL, as the reader only looks
+		// at the maxRead rows.
 		for _, column := range columns {
 			columnIndex := pr.columnLookup[column]
 			r := pr.readers[columnIndex]
@@ -235,6 +275,10 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 		n += maxRead
 		startRow += int64(maxRead)
+
+		if boundsExceeded {
+			return n, ErrBoundExceeded
+		}
 	}
 
 	return n, nil
@@ -257,6 +301,7 @@ func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
 		if value.IsNil() {
 			continue
 		}
+
 		dst = append(dst, value)
 	}
 

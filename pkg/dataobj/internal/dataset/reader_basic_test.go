@@ -13,6 +13,7 @@ import (
 )
 
 type testPerson struct {
+	id         int64
 	firstName  string
 	middleName string // May be empty
 	lastName   string
@@ -20,33 +21,54 @@ type testPerson struct {
 }
 
 var basicReaderTestData = []testPerson{
-	{"John", "Robert", "Smith", 1980},
-	{"Jane", "", "Doe", 1985},
-	{"Alice", "Marie", "Johnson", 1990},
-	{"Bob", "", "Williams", 1975},
-	{"Carol", "Lynn", "Brown", 1982},
-	{"David", "", "Miller", 1988},
-	{"Eve", "Grace", "Davis", 1979},
-	{"Frank", "", "Wilson", 1983},
-	{"Grace", "Elizabeth", "Taylor", 1987},
-	{"Henry", "", "Anderson", 1981},
+	{1, "John", "Robert", "Smith", 1980},
+	{2, "Jane", "", "Doe", 1985},
+	{3, "Alice", "Marie", "Johnson", 1990},
+	{4, "Bob", "", "Williams", 1975},
+	{5, "Carol", "Lynn", "Brown", 1982},
+	{6, "David", "", "Miller", 1988},
+	{7, "Eve", "Grace", "Davis", 1979},
+	{8, "Frank", "", "Wilson", 1983},
+	{9, "Grace", "Elizabeth", "Taylor", 1987},
+	{10, "Henry", "", "Anderson", 1981},
 }
 
 func Test_basicReader_ReadAll(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
 
+func Test_basicReader_Bounds(t *testing.T) {
+	columns := buildTestColumns(t)
+	require.Len(t, columns, 5)
+
+	br := newBasicReader(columns)
+	defer br.Close()
+
+	// Bounds hit after some rows
+	actualRows, err := readBasicReader(br, 3, &ColumnBounds{column: columns[0], boundsChecker: BoundsForEqual(Int64Value(5), datasetmd.SORT_DIRECTION_ASCENDING)})
+	require.ErrorIs(t, err, ErrBoundExceeded)
+	require.Len(t, actualRows, 5)
+	require.Equal(t, basicReaderTestData[:5], convertToTestPersons(actualRows))
+
+	br.Reset(columns)
+
+	// Empty result set - all rows exceed bounds
+	actualRows, err = readBasicReader(br, 3, &ColumnBounds{column: columns[0], boundsChecker: BoundsForEqual(Int64Value(-1), datasetmd.SORT_DIRECTION_ASCENDING)})
+	require.ErrorIs(t, err, ErrBoundExceeded)
+	require.Empty(t, actualRows)
+}
+
 func Test_basicReader_ReadFromOffset(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
@@ -55,40 +77,40 @@ func Test_basicReader_ReadFromOffset(t *testing.T) {
 	_, err := br.Seek(4, io.SeekStart)
 	require.NoError(t, err)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData[4:], convertToTestPersons(actualRows))
 }
 
 func Test_basicReader_SeekToStart(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
 
 	// First read everything
-	_, err := readBasicReader(br, 3)
+	_, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 
 	// Seek back to start and read again
 	_, err = br.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
 
 func Test_basicReader_ReadColumns(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
 
-	// Read only birth_year and middle_name columns (indices 3 and 1)
-	subset := []Column{columns[3], columns[1]}
+	// Read only birth_year and middle_name columns (indices 4 and 2)
+	subset := []Column{columns[4], columns[2]}
 
 	var (
 		batch = make([]Row, 3)
@@ -100,23 +122,24 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 		// implementation of readBasicReader for more details.
 		clear(batch)
 
-		n, err := br.ReadColumns(context.Background(), subset, batch)
+		n, err := br.ReadColumns(context.Background(), subset, batch, nil)
 		for _, row := range batch[:n] {
 			// Verify that the row has space for all columns
-			require.Len(t, row.Values, 4)
+			require.Len(t, row.Values, 5)
 
-			// Verify that unread columns (first_name and last_name) are nil
-			require.True(t, row.Values[0].IsNil(), "first_name should be nil")
-			require.True(t, row.Values[2].IsNil(), "last_name should be nil")
+			// Verify that unread columns (id, first_name and last_name) are nil
+			require.True(t, row.Values[0].IsNil(), "id should be nil")
+			require.True(t, row.Values[1].IsNil(), "first_name should be nil")
+			require.True(t, row.Values[3].IsNil(), "last_name should be nil")
 
 			// Verify that read columns match the test data
 			testPerson := basicReaderTestData[row.Index]
 			if testPerson.middleName != "" {
-				require.Equal(t, testPerson.middleName, string(row.Values[1].ByteArray()), "middle_name mismatch")
+				require.Equal(t, testPerson.middleName, string(row.Values[2].ByteArray()), "middle_name mismatch")
 			} else {
-				require.True(t, row.Values[1].IsNil(), "middle_name should be nil")
+				require.True(t, row.Values[2].IsNil(), "middle_name should be nil")
 			}
-			require.Equal(t, testPerson.birthYear, row.Values[3].Int64(), "birth_year mismatch")
+			require.Equal(t, testPerson.birthYear, row.Values[4].Int64(), "birth_year mismatch")
 
 			all = append(all, row)
 		}
@@ -131,7 +154,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 
 func Test_basicReader_Fill(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
@@ -146,21 +169,22 @@ func Test_basicReader_Fill(t *testing.T) {
 	}
 
 	// Fill only the firstName column
-	n, err := br.Fill(context.Background(), []Column{columns[0]}, buf)
+	n, err := br.Fill(context.Background(), []Column{columns[1]}, buf, nil)
 	require.NoError(t, err)
 	require.Equal(t, len(buf), n)
 
 	// Verify the filled values
 	for _, row := range buf {
 		// Check that only firstName is filled
-		require.False(t, row.Values[0].IsNil(), "firstName should not be nil")
-		require.True(t, row.Values[1].IsNil(), "middleName should be nil")
-		require.True(t, row.Values[2].IsNil(), "lastName should be nil")
-		require.True(t, row.Values[3].IsNil(), "birthYear should be nil")
+		require.True(t, row.Values[0].IsNil(), "id should be nil")
+		require.False(t, row.Values[1].IsNil(), "firstName should not be nil")
+		require.True(t, row.Values[2].IsNil(), "middleName should be nil")
+		require.True(t, row.Values[3].IsNil(), "lastName should be nil")
+		require.True(t, row.Values[4].IsNil(), "birthYear should be nil")
 
 		// Verify the firstName value
 		expectedPerson := basicReaderTestData[row.Index]
-		require.Equal(t, expectedPerson.firstName, string(row.Values[0].ByteArray()),
+		require.Equal(t, expectedPerson.firstName, string(row.Values[1].ByteArray()),
 			"firstName mismatch at index %d", row.Index)
 	}
 }
@@ -217,19 +241,19 @@ func Test_partitionRows(t *testing.T) {
 
 func Test_basicReader_Reset(t *testing.T) {
 	columns := buildTestColumns(t)
-	require.Len(t, columns, 4)
+	require.Len(t, columns, 5)
 
 	br := newBasicReader(columns)
 	defer br.Close()
 
 	// First read everything
-	_, err := readBasicReader(br, 3)
+	_, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 
 	// Reset and read again
 	br.Reset(columns)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicReader(br, 3, nil)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
@@ -247,6 +271,7 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 	t.Helper()
 
 	// Create builders for each column
+	idBuilder := buildInt64Column(t, "id")
 	firstNameBuilder := buildStringColumn(t, "first_name")
 	middleNameBuilder := buildStringColumn(t, "middle_name")
 	lastNameBuilder := buildStringColumn(t, "last_name")
@@ -254,6 +279,7 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 
 	// Add data to each column
 	for i, p := range basicReaderTestData {
+		require.NoError(t, idBuilder.Append(i, Int64Value(p.id)))
 		require.NoError(t, firstNameBuilder.Append(i, ByteArrayValue([]byte(p.firstName))))
 		require.NoError(t, middleNameBuilder.Append(i, ByteArrayValue([]byte(p.middleName))))
 		require.NoError(t, lastNameBuilder.Append(i, ByteArrayValue([]byte(p.lastName))))
@@ -261,6 +287,8 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 	}
 
 	// Flush all columns
+	id, err := idBuilder.Flush()
+	require.NoError(t, err)
 	firstName, err := firstNameBuilder.Flush()
 	require.NoError(t, err)
 	middleName, err := middleNameBuilder.Flush()
@@ -270,7 +298,7 @@ func buildTestDataset(t *testing.T) (Dataset, []Column) {
 	birthYear, err := birthYearBuilder.Flush()
 	require.NoError(t, err)
 
-	dset := FromMemory([]*MemColumn{firstName, middleName, lastName, birthYear})
+	dset := FromMemory([]*MemColumn{id, firstName, middleName, lastName, birthYear})
 
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
@@ -309,7 +337,7 @@ func buildInt64Column(t *testing.T, name string) *ColumnBuilder {
 }
 
 // readBasicReader reads all rows from a basicReader using the given batch size.
-func readBasicReader(br *basicReader, batchSize int) ([]Row, error) {
+func readBasicReader(br *basicReader, batchSize int, bounds *ColumnBounds) ([]Row, error) {
 	var (
 		all []Row
 
@@ -326,7 +354,7 @@ func readBasicReader(br *basicReader, batchSize int) ([]Row, error) {
 		// ownership semantics.
 		clear(batch)
 
-		n, err := br.Read(context.Background(), batch)
+		n, err := br.Read(context.Background(), batch, bounds)
 		all = append(all, batch[:n]...)
 		if errors.Is(err, io.EOF) {
 			return all, nil
@@ -343,12 +371,13 @@ func convertToTestPersons(rows []Row) []testPerson {
 	for _, row := range rows {
 		var p testPerson
 
-		p.firstName = string(row.Values[0].ByteArray())
-		if !row.Values[1].IsNil() {
-			p.middleName = string(row.Values[1].ByteArray())
+		p.id = row.Values[0].Int64()
+		p.firstName = string(row.Values[1].ByteArray())
+		if !row.Values[2].IsNil() {
+			p.middleName = string(row.Values[2].ByteArray())
 		}
-		p.lastName = string(row.Values[2].ByteArray())
-		p.birthYear = row.Values[3].Int64()
+		p.lastName = string(row.Values[3].ByteArray())
+		p.birthYear = row.Values[4].Int64()
 
 		out = append(out, p)
 	}

@@ -165,7 +165,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	r := newPageReader(page, opts.Value, opts.Compression)
 	for {
 		var values [1]Value
-		n, err := r.Read(context.Background(), values[:])
+		n, err := r.Read(context.Background(), values[:], nil)
 		if err != nil && !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
 		} else if n == 0 && errors.Is(err, io.EOF) {

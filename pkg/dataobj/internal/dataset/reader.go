@@ -24,6 +24,8 @@ type ReaderOptions struct {
 	// are considered non-predicate columns.
 	Columns []Column
 
+	Bounds *ColumnBounds // Optional bounds to apply to the columns.
+
 	// Predicates filter the data returned by a Reader. Predicates are optional; if
 	// nil, all rows from Columns are returned.
 	//
@@ -53,6 +55,7 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
+	bounds *ColumnBounds     // Optional bounds to apply to the columns.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -134,7 +137,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
-		count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
+		count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize], r.bounds)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if count == 0 && errors.Is(err, io.EOF) {
@@ -170,7 +173,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 			r.dl.Mask(maskedRange)
 		}
 
-		count, err := r.inner.Fill(ctx, secondary, s[:passCount])
+		count, err := r.inner.Fill(ctx, secondary, s[:passCount], r.bounds)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if count != passCount {
@@ -222,7 +225,7 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		var count int
 		// read the requested number of rows for the first predicate.
 		if i == 0 {
-			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
+			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize], r.opts.Bounds)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return 0, 0, err
 			} else if count == 0 && errors.Is(err, io.EOF) {
@@ -231,7 +234,7 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 
 			rowsRead = count
 		} else if len(columns) > 0 {
-			count, err = r.inner.Fill(ctx, columns, s[:readSize])
+			count, err = r.inner.Fill(ctx, columns, s[:readSize], nil)
 			if err != nil && !errors.Is(err, io.EOF) {
 				return rowsRead, 0, err
 			} else if count != readSize {
@@ -437,9 +440,20 @@ func (r *Reader) init(ctx context.Context) error {
 	if err := r.validatePredicate(); err != nil {
 		return err
 	}
-
 	if err := r.initDownloader(ctx); err != nil {
 		return err
+	}
+
+	if r.opts.Bounds != nil {
+		idx, ok := r.origColumnLookup[r.opts.Bounds.column]
+		if !ok {
+			return fmt.Errorf("column %v not found in Reader columns", r.opts.Bounds.column)
+		}
+
+		r.bounds = &ColumnBounds{
+			column:        r.dl.AllColumns()[idx],
+			boundsChecker: r.opts.Bounds.boundsChecker,
+		}
 	}
 
 	if r.inner == nil {
