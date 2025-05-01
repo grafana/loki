@@ -141,6 +141,8 @@ jobs:
     outputs:
       branchExists: "${{ steps.create_branch.outputs.branch_exists }}"
       branchName: "${{ steps.create_branch.outputs.branch_name }}"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -325,6 +327,8 @@ jobs:
     - "publishDockerPlugins"
     outputs:
       name: "${{ needs.createRelease.outputs.name }}"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"

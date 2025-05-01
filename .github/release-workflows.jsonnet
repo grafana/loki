@@ -43,6 +43,10 @@ local weeklyImageJobs = {
 local lambdaPromtailJob =
   job.new()
   + job.withNeeds(['check'])
+  + job.withPermissions({
+    contents: 'read',
+    'id-token': 'write',
+  })
   + job.withEnv({
     BUILD_TIMEOUT: imageBuildTimeoutMin,
     GO_VERSION: goVersion,
@@ -247,6 +251,10 @@ local lambdaPromtailJob =
       ['%s-image' % name]:
         weeklyImageJobs[name]
         + job.withNeeds(['check'])
+        + job.withPermissions({
+          contents: 'read',
+          'id-token': 'write',
+        })
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
           RELEASE_REPO: 'grafana/loki',
@@ -259,7 +267,11 @@ local lambdaPromtailJob =
       'lambda-promtail-image': lambdaPromtailJob,
     } + {
       ['%s-manifest' % name]:
-        job.new()
+        job.new() +
+        job.withPermissions({
+          contents: 'read',
+          'id-token': 'write',
+        })
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
