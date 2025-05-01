@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [CHANGE] Updated rollout-operator to 2.28.0 to allow setting extraArgs
 
 ## 6.29.0
 
