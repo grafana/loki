@@ -14,7 +14,7 @@ killercoda:
 <!-- INTERACTIVE page intro.md START -->
 # Loki Tutorial
 
-This quick start guide will walk you through deploying Loki in single binary mode (also known as [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode)) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki stack**.
+This quickstart guide will walk you through deploying Loki in single binary mode (also known as [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode)) using Docker Compose. Grafana Loki is only one component of the Grafana observability stack for logs. In this tutorial we will refer to this stack as the **Loki stack**.
 
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki stack" alt="Loki stack" >}}
 
@@ -439,7 +439,7 @@ To summarize the configuration file:
 * **pattern_ingester**: Enables pattern ingesters which are used to discover log patterns. Mostly used by Grafana Logs Drilldown.
 * **ruler**: Enables the ruler component of Loki. This is used to create alerts based on log queries.
 * **frontend**: Defines the encoding format for the frontend. In this case it is set to `protobuf`.
-* **compactor**: Defines the compactor configuration. Used to compact the index and mange chunk retention.
+* **compactor**: Defines the compactor configuration. Used to compact the index and manage chunk retention.
 
 The above configuration file is a basic configuration file for Loki. For more advanced configuration options, refer to the [Loki Configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/) documentation.
 
@@ -449,10 +449,10 @@ The above configuration file is a basic configuration file for Loki. For more ad
 
 ### Grafana Loki Data source
 
-The final piece of the puzzle is the Grafana Loki datasource. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a datasource;
-* **Direct**: This is where you define the datasource in the Grafana UI.
-* **Provisioning**: This is where you define the datasource in a configuration file and have Grafana automatically create the datasource.
-* **API**: This is where you use the Grafana API to create the datasource.
+The final piece of the puzzle is the Grafana Loki data source. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a data source;
+* **Direct**: This is where you define the data source in the Grafana UI.
+* **Provisioning**: This is where you define the data source in a configuration file and have Grafana automatically create the data source.
+* **API**: This is where you use the Grafana API to create the data source.
 
 In this case we are using the provisioning method. Instead of mounting the Grafana configuration directory, we have defined the data source in this portion of the `docker-compose.yml` file:
 
@@ -488,8 +488,8 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
     networks:
       - loki
 ```
-Within the entrypoint section of the `docker-compose.yml` file, we have defined a file called `run.sh` this runs on startup and creates the datasource configuration file `ds.yaml` in the Grafana provisioning directory. 
-This file defines the Loki datasource and tells Grafana to use it. Since Loki is running in the same Docker network as Grafana, we can use the service name `loki` as the URL.
+Within the entrypoint section of the `docker-compose.yml` file, we have defined a file called `run.sh` this runs on startup and creates the data source configuration file `ds.yaml` in the Grafana provisioning directory. 
+This file defines the Loki data source and tells Grafana to use it. Since Loki is running in the same Docker network as Grafana, we can use the service name `loki` as the URL.
 
 <!-- INTERACTIVE page step8.md END -->
 
