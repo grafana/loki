@@ -126,7 +126,7 @@ local lambdaPromtailJob =
     })
     + step.withRun(|||
       arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
-      echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
+      echo "IMAGE_TAG=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     |||),
     step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
     + { id: 'build-push' }
@@ -275,11 +275,11 @@ local lambdaPromtailJob =
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
-          IMAGE_DIGEST_AMD64: '${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}' % name,
-          IMAGE_DIGEST_ARM64: '${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}' % name,
-          IMAGE_DIGEST_ARM: '${{ needs.%(name)s.outputs.image_digest_linux_arm }}' % name,
-          OUTPUTS_IMAGE_NAME: '${{ needs.%(name)s.outputs.image_name }}' % name,
-          OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s.outputs.image_tag }}' % name,
+          IMAGE_DIGEST_AMD64: '${{ needs.%(name)s-image.outputs.image_digest_linux_amd64 }}' % name,
+          IMAGE_DIGEST_ARM64: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm64 }}' % name,
+          IMAGE_DIGEST_ARM: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm }}' % name,
+          OUTPUTS_IMAGE_NAME: '${{ needs.%(name)s-image.outputs.image_name }}' % name,
+          OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s-image.outputs.image_tag }}' % name,
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
@@ -287,10 +287,10 @@ local lambdaPromtailJob =
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
-            echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
-            echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
-            echo 'linux/arm   $IMAGE_DIGEST_ARM'
-            IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
+            echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+            echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+            echo "linux/arm   $IMAGE_DIGEST_ARM"
+            IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
               ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
