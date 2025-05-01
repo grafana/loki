@@ -912,6 +912,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables to add to the admin-api pods
+  extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the admin-api pods
   extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
