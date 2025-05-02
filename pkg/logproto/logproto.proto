@@ -81,8 +81,11 @@ message ExceedsLimitsResult {
 }
 
 service IngestLimits {
-  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
+
+  // Deprecated.
+  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
 }
 
 message GetStreamUsageRequest {
