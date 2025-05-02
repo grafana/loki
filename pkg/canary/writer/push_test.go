@@ -27,48 +27,120 @@ const (
 	testPassword = "secret"
 )
 
-func Test_Push(t *testing.T) {
-	// create dummy loki server
-	responses := make(chan response, 1) // buffered not to block the response handler
-	backoff := backoff.Config{
-		MinBackoff: 300 * time.Millisecond,
-		MaxBackoff: 5 * time.Minute,
-		MaxRetries: 10,
+type testConfig struct {
+	responses chan response
+	backoff   backoff.Config
+	mock      *httptest.Server
+}
+
+// basic testing to make sure we create the correct pusher or buffered pusher
+func Test_CreatePusher(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
+
+	// -1 should not return a pusher
+	_, err := newPush(testCfg, -1)
+	require.Error(t, err)
+
+	push, err := newPush(testCfg, 0)
+	require.NoError(t, err)
+
+	if _, ok := push.(*Push); !ok {
+		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 0")
 	}
 
-	// mock loki server
-	mock := httptest.NewServer(createServerHandler(responses))
-	require.NotNil(t, mock)
-	defer mock.Close()
+	push, err = newPush(testCfg, 1)
+	require.NoError(t, err)
+	if _, ok := push.(*Push); !ok {
+		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 1")
+	}
+
+	push, err = newPush(testCfg, 20)
+	require.NoError(t, err)
+
+	if _, ok := push.(*BatchedPush); !ok {
+		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 20")
+	}
+}
+
+// basic test with a few diff HTTP settings
+func Test_Push(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
 
 	// without TLS
-	push, err := NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", false, nil, "", "", "", "", "", &backoff, log.NewNopLogger())
+	push, err := newPush(testCfg, 1)
 	require.NoError(t, err)
 	ts, payload := testPayload()
 	push.WriteEntry(ts, payload)
-	resp := <-responses
-	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
+	resp := <-testCfg.responses
+	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
 
 	// with basic Auth
-	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", false, nil, "", "", "", testUsername, testPassword, &backoff, log.NewNopLogger())
+	push, err = newPushWithCredentials(testCfg, testUsername, testPassword, 1)
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	push.WriteEntry(ts, payload)
-	resp = <-responses
-	assertResponse(t, resp, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
+	resp = <-testCfg.responses
+	assertResponse(t, resp, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
 
 	// with custom labels
-	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "pod", "abc", false, nil, "", "", "", testUsername, testPassword, &backoff, log.NewNopLogger())
+	push, err = newPushWithCredentialsAndStreamNameValue(testCfg, testUsername, testPassword, "pod", "abc", 1)
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	push.WriteEntry(ts, payload)
-	resp = <-responses
-	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload)
+	resp = <-testCfg.responses
+	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
+}
+
+// test batching log lines and ensure the testing resp contains 10 entries
+func Test_BasicPushWithBatching(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
+
+	// test batching 10 logs at-a-time
+	push, err := newPush(testCfg, 10)
+	require.NoError(t, err)
+
+	ts, payload := testPayload()
+	for range 10 {
+		ts, payload = testPayload()
+		push.WriteEntry(ts, payload)
+	}
+	resp := <-testCfg.responses
+	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 10)
+}
+
+// test batching log lines in groups of 5
+// we need to ensure the responses are in groups of 5, even
+// as we iteratively add more and more logs...
+func Test_LongRunningPushWithBatching(t *testing.T) {
+}
+
+func Test_PushWithBatchingTerminate(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
+
+	_, err := newPush(testCfg, 5)
+	require.NoError(t, err)
+
+	// go func() {
+	// 	resp := <-testCfg.responses
+	// 	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 10)
+	// }()
 }
 
 // Test helpers
 
-func assertResponse(t *testing.T, resp response, testAuth bool, labels model.LabelSet, ts time.Time, payload string) {
+func assertResponse(t *testing.T, resp response, testAuth bool, labels model.LabelSet, ts time.Time, payload string, streamCount int) {
 	t.Helper()
 
 	// assert metadata
@@ -86,16 +158,17 @@ func assertResponse(t *testing.T, resp response, testAuth bool, labels model.Lab
 	assert.Equal(t, defaultContentType, resp.contentType)
 	assert.Equal(t, defaultUserAgent, resp.userAgent)
 
-	// assert stream labels
-	require.Len(t, resp.pushReq.Streams, 1)
-	assert.Equal(t, labels.String(), resp.pushReq.Streams[0].Labels)
-	assert.Equal(t, uint64(labels.Fingerprint()), resp.pushReq.Streams[0].Hash)
+	// assert stream count and labels
+	lastStream := resp.pushReq.Streams[len(resp.pushReq.Streams)-1]
+
+	require.Len(t, resp.pushReq.Streams, streamCount)
+	assert.Equal(t, labels.String(), lastStream.Labels)
+	assert.Equal(t, uint64(labels.Fingerprint()), lastStream.Hash)
 
 	// assert log entry
-	require.Len(t, resp.pushReq.Streams, 1)
 	require.Len(t, resp.pushReq.Streams[0].Entries, 1)
-	assert.Equal(t, payload, resp.pushReq.Streams[0].Entries[0].Line)
-	assert.Equal(t, ts, resp.pushReq.Streams[0].Entries[0].Timestamp)
+	assert.Equal(t, payload, lastStream.Entries[0].Line)
+	assert.Equal(t, ts, lastStream.Entries[0].Timestamp)
 }
 
 type response struct {
@@ -115,9 +188,7 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 			return
 		}
 
-		var (
-			username, password string
-		)
+		var username, password string
 
 		basicAuth := req.Header.Get("Authorization")
 		if basicAuth != "" {
@@ -169,4 +240,62 @@ func testPayload() (time.Time, string) {
 	payload := fmt.Sprintf(LogEntry, fmt.Sprint(ts.UnixNano()), "pppppp")
 
 	return ts, payload
+}
+
+// create a new `testConfig` struct with mock objects for
+// testing the ability to push logs
+func newTestConfig(t *testing.T) testConfig {
+	t.Helper()
+
+	// create dummy loki server
+	responses := make(chan response, 1) // buffered not to block the response handler
+	backoff := backoff.Config{
+		MinBackoff: 300 * time.Millisecond,
+		MaxBackoff: 5 * time.Minute,
+		MaxRetries: 10,
+	}
+
+	// mock loki server
+	mock := httptest.NewServer(createServerHandler(responses))
+	require.NotNil(t, mock)
+
+	return testConfig{
+		responses: responses,
+		backoff:   backoff,
+		mock:      mock,
+	}
+}
+
+// create a new `EventWriter` with standard everything...
+func newPush(testCfg testConfig, logBatchSize int) (EntryWriter, error) {
+	return newPushWithCredentials(testCfg, "", "", logBatchSize)
+}
+
+// create a new `EventWriter` with credentials
+func newPushWithCredentials(testCfg testConfig, username, password string, logBatchSize int) (EntryWriter, error) {
+	return newPushWithCredentialsAndStreamNameValue(testCfg, username, password, "stream", "stdout", logBatchSize)
+}
+
+// create a new `EventWriter` with custom credentials and labels
+func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
+	return NewPush(
+		testCfg.mock.Listener.Addr().String(),
+		"test1",
+		2*time.Second,
+		config.DefaultHTTPClientConfig,
+		"name",
+		"loki-canary",
+		streamName,
+		streamValue,
+		false,
+		nil,
+		"",
+		"",
+		"",
+		username,
+		password,
+		&testCfg.backoff,
+		logBatchSize,
+		log.NewNopLogger(),
+	)
 }
