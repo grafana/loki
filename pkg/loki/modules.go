@@ -505,7 +505,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
-		t.Overrides,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
