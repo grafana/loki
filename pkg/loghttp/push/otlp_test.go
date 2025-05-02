@@ -27,7 +27,7 @@ import (
 func TestOTLPToLokiPushRequest(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
 	defaultServiceDetection := []string{
-		"service",
+		"servicess",
 		"app",
 		"application",
 		"name",
