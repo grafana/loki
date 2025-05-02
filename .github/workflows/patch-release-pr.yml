@@ -7,18 +7,18 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "70753eaad98f6670df093562d5335d9c981b364b"
+  RELEASE_LIB_REF: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@70753eaad98f6670df093562d5335d9c981b364b"
+    uses: "grafana/loki-release/.github/workflows/check.yml@1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "70753eaad98f6670df093562d5335d9c981b364b"
+      release_lib_ref: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -39,11 +39,13 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
@@ -107,6 +109,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
@@ -165,12 +168,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -227,12 +232,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -289,12 +296,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -353,12 +362,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -415,12 +426,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -479,12 +492,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -543,12 +558,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -607,12 +624,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -671,12 +690,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -736,12 +757,14 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"

@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "70753eaad98f6670df093562d5335d9c981b364b"
+  RELEASE_LIB_REF: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -24,11 +24,13 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
@@ -119,6 +121,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "auth gcs"
@@ -154,6 +157,7 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
@@ -192,11 +196,13 @@ jobs:
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - id: "extract_branch"

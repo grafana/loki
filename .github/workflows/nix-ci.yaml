@@ -8,9 +8,15 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@6ed004b9ccb68dbc28e7c85bee15fa93dbd214ac  # v22
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix run .#lint

@@ -76,7 +76,10 @@
                                             $.step.withWorkingDirectory('lib'),
 
   checkout:
-    $.step.new('checkout', 'actions/checkout@v4'),
+    $.step.new('checkout', 'actions/checkout@v4')
+    + $.step.with({
+      'persist-credentials': false,
+    }),
 
   cleanUpBuildCache:
     $.step.new('clean up build tools cache')
@@ -87,6 +90,7 @@
     + $.step.with({
       repository: '${{ env.RELEASE_REPO }}',
       path: 'release',
+      'persist-credentials': false,
     }),
   fetchReleaseLib:
     $.step.new('pull release library code', 'actions/checkout@v4')
@@ -94,6 +98,7 @@
       repository: 'grafana/loki-release',
       path: 'lib',
       ref: '${{ env.RELEASE_LIB_REF }}',
+      'persist-credentials': false,
     }),
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
