@@ -519,7 +519,7 @@ func (p *stubStreamExtractor) Process(
 	structuredMetadata ...labels.Label,
 ) ([]ExtractedSample, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
-	builder.Add(StructuredMetadataLabel, structuredMetadata...)
+	builder.Add(StructuredMetadataLabel, structuredMetadata)
 	result := []ExtractedSample{
 		{Value: 1.0, Labels: builder.LabelsResult()},
 	}
@@ -532,7 +532,7 @@ func (p *stubStreamExtractor) ProcessString(
 	structuredMetadata ...labels.Label,
 ) ([]ExtractedSample, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
-	builder.Add(StructuredMetadataLabel, structuredMetadata...)
+	builder.Add(StructuredMetadataLabel, structuredMetadata)
 	result := []ExtractedSample{
 		{Value: 1.0, Labels: builder.LabelsResult()},
 	}

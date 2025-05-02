@@ -124,7 +124,7 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMet
 
 func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -234,7 +234,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 
 func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -297,7 +297,7 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 		}
 	}
 
-	return sp.extractor.Process(ts, line, structuredMetadata)
+	return sp.extractor.Process(ts, line, structuredMetadata...)
 }
 
 func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
@@ -312,7 +312,7 @@ func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structu
 		}
 	}
 
-	return sp.extractor.ProcessString(ts, line, labels.EmptyLabels())
+	return sp.extractor.ProcessString(ts, line, labels.EmptyLabels()...)
 }
 
 func convertFloat(v string) (float64, error) {
