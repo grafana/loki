@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "a80190c0695e9faadecb5927b76e195264201025"
+  RELEASE_LIB_REF: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -80,7 +80,7 @@ jobs:
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/dist .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/dist .
       working-directory: "release"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
@@ -89,7 +89,7 @@ jobs:
       name: "check if release exists"
       run: |
         set +e
-        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $OUTPUTS_NAME 2>&1)"
+        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $(echo $OUTPUTS_NAME | tr -d '"') 2>&1)"
         set -e
         if [[ "$isDraft" == "release not found" ]]; then
           echo "exists=false" >> $GITHUB_OUTPUT
@@ -115,9 +115,9 @@ jobs:
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "$OUTPUTS_BRANCH" \
-          --token "$OUTPUTS_TOKEN" \
-          --shas-to-tag "$OUTPUTS_PR_NUMBER:${SHA}"
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
+          --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
@@ -125,7 +125,7 @@ jobs:
       id: "upload"
       name: "upload artifacts"
       run: |
-        gh release upload --clobber $OUTPUTS_NAME dist/*
+        gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
@@ -166,7 +166,7 @@ jobs:
       name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/images .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/images .
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:

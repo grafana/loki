@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "a80190c0695e9faadecb5927b76e195264201025"
+  RELEASE_LIB_REF: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@a80190c0695e9faadecb5927b76e195264201025"
+    uses: "grafana/loki-release/.github/workflows/check.yml@4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "a80190c0695e9faadecb5927b76e195264201025"
+      release_lib_ref: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -106,12 +106,12 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "$OUTPUTS_VERSION" \
+          --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "$OUTPUTS_BRANCH" \
-          --token "$OUTPUTS_TOKEN" \
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
