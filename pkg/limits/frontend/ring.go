@@ -48,7 +48,7 @@ func NewRingGatherer(
 }
 
 // ExceedsLimits implements ExceedsLimitsGatherer.
-func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
+func (g *RingGatherer) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
 	// TODO(grobinson): Implement me.
 	return nil, nil
 }
