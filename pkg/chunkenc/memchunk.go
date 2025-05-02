@@ -1731,7 +1731,7 @@ func newSampleIterator(
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractors[0],
 		stats:            stats.FromContext(ctx),
-		cur:              []logproto.Sample{},
+		curr:             []logproto.Sample{},
 		currLabels:       []log.LabelsResult{},
 	}
 }
@@ -1742,20 +1742,26 @@ type sampleBufferedIterator struct {
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
 
-	cur        []logproto.Sample
+	curr       []logproto.Sample
 	currLabels []log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	if len(e.cur) > 1 {
-		e.cur = e.cur[1:]
+	// sample at e.curr[0] is the current sample
+	// since there is more than one sample, shift the remaining samples down by one
+	// to make e.curr[1] the new current sample
+	if len(e.curr) > 1 {
+		e.curr = e.curr[1:]
 		e.currLabels = e.currLabels[1:]
 
 		return true
 	}
 
-	if len(e.cur) == 1 {
-		e.cur = e.cur[:0]
+	// sample at e.curr[0] is the current sample
+	// since there is only one sample (the current one), we need to shift it out
+	// and clear the slice
+	if len(e.curr) == 1 {
+		e.curr = e.curr[:0]
 		e.currLabels = e.currLabels[:0]
 	}
 
@@ -1773,7 +1779,7 @@ func (e *sampleBufferedIterator) Next() bool {
 			// multilple samples from the same line can't have the same line hash or they will be deduplicated
 			// so they must have unique labels, which we'll use to create a unique line hash
 			lblString := sample.Labels.String()
-			e.cur = append(e.cur, logproto.Sample{
+			e.curr = append(e.curr, logproto.Sample{
 				Timestamp: e.currTs,
 				Value:     sample.Value,
 				Hash:      util.UniqueSampleHash(lblString, e.currLine),
@@ -1798,7 +1804,7 @@ func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.cur[0]
+	return e.curr[0]
 }
 
 // validateBlock validates block by doing following checks:
