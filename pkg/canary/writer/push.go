@@ -149,10 +149,9 @@ func NewPush(
 		}
 		go bp.run()
 		return bp, nil
-	} else {
-		go p.run()
-		return p, nil
 	}
+	go p.run()
+	return p, nil
 }
 
 type entry struct {

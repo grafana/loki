@@ -120,7 +120,7 @@ func Test_BasicPushWithBatching(t *testing.T) {
 // test batching log lines in groups of 5
 // we need to ensure the responses are in groups of 5, even
 // as we iteratively add more and more logs...
-func Test_LongRunningPushWithBatching(t *testing.T) {
+func Test_LongRunningPushWithBatching(_ *testing.T) {
 }
 
 func Test_PushWithBatchingTerminate(t *testing.T) {
