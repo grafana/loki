@@ -112,6 +112,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
 
+	// Track if request used the Loki OTLP exporter label
+	var usingLokiExporter bool
+
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
 		res := rls.At(i).Resource()
@@ -206,9 +209,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
 
-		// Check if the stream has the exporter=OTLP label and increment the metric
+		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
 		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
-			otlpExporterStreams.WithLabelValues(userID).Inc()
+			usingLokiExporter = true
 		}
 
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
@@ -372,6 +375,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		if len(stream.Entries) > 0 || len(stream.Labels) > 0 {
 			pr.Streams = append(pr.Streams, stream)
 		}
+	}
+
+	// Increment exporter streams metric once per request if seen
+	if usingLokiExporter {
+		otlpExporterStreams.WithLabelValues(userID).Inc()
 	}
 
 	return pr
