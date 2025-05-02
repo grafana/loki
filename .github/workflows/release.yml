@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
+  RELEASE_LIB_REF: "a97a3b2a09b8b5bfaff777efe77f21e1fa89bd8f"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -66,7 +66,7 @@ jobs:
       with:
         app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.APP_PRIVATE_KEY }}"
+        private-key: "${{ env.PRIVATE_KEY }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -201,7 +201,7 @@ jobs:
       with:
         app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.APP_PRIVATE_KEY }}"
+        private-key: "${{ env.PRIVATE_KEY }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"

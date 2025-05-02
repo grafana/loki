@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
+  RELEASE_LIB_REF: "a97a3b2a09b8b5bfaff777efe77f21e1fa89bd8f"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
+    uses: "grafana/loki-release/.github/workflows/check.yml@a97a3b2a09b8b5bfaff777efe77f21e1fa89bd8f"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "4d23e0e10127c87f2f1335c892821cbcb9c7c4e4"
+      release_lib_ref: "a97a3b2a09b8b5bfaff777efe77f21e1fa89bd8f"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -78,7 +78,7 @@ jobs:
       with:
         app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.APP_PRIVATE_KEY }}"
+        private-key: "${{ env.PRIVATE_KEY }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -817,7 +817,7 @@ jobs:
       with:
         app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.APP_PRIVATE_KEY }}"
+        private-key: "${{ env.PRIVATE_KEY }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
