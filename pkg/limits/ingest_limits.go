@@ -378,6 +378,11 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	return allErrs.Err()
 }
 
+// ExceedsLimits implements the logproto.IngestLimitsServer interface.
+func (s *IngestLimits) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+	return &logproto.ExceedsLimitsResponse{}, nil
+}
+
 // GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
