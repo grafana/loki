@@ -10,6 +10,11 @@ set -e
 # Set default source directory to GitHub workspace if not provided
 SRC_DIR=${SRC_DIR:-${GITHUB_WORKSPACE}}
 
+# Debug information
+echo "Current directory: $(pwd)"
+echo "SRC_DIR: ${SRC_DIR}"
+echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
+
 install_dist_dependencies() {
     # Install Ruby and development dependencies needed for FPM
     apt-get install -y ruby ruby-dev rubygems build-essential
@@ -19,6 +24,15 @@ install_dist_dependencies() {
 
     # Install RPM build tools
     apt-get install -y rpm
+}
+
+install_loki_release_dependencies() {
+    # Install gotestsum
+    echo "Installing gotestsum"
+    curl -sSfL https://github.com/gotestyourself/gotestsum/releases/download/v1.9.0/gotestsum_1.9.0_linux_amd64.tar.gz | tar -xz -C /usr/local/bin gotestsum
+
+    # Install faillint
+    go install github.com/fatih/faillint@latest
 }
 
 # Update package lists
@@ -51,9 +65,16 @@ apt-get install -qq -y jsonnet
 go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@latest
 
 # Update jsonnet bundles
-cd "${SRC_DIR}/.github" && jb update -q
+if [ -d "${SRC_DIR}/.github" ]; then
+    cd "${SRC_DIR}/.github" && jb update -q
+else
+    echo "Warning: ${SRC_DIR}/.github directory not found, skipping jsonnet bundle update"
+fi
 
 # Check if "dist" parameter is passed
 if [ "$1" = "dist" ]; then
     install_dist_dependencies
+fi
+if [ "$1" = "loki-release" ]; then
+    install_loki_release_dependencies
 fi

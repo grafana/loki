@@ -9,13 +9,13 @@
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildArtifactsBucket='loki-build-artifacts',
-    buildImage='grafana/loki-build-image:0.34.0',
+    buildImage='golang:1.24',
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
     dryRun=false,
     dockerUsername='grafana',
-    golangCiLintVersion='v1.60.3',
+    golangCiLintVersion='v1.64.5',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -35,9 +35,8 @@
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
-      'id-token': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     concurrency: {
       group: 'create-release-pr-${{ github.sha }}',
@@ -59,7 +58,13 @@
     } else {},
     local validationSteps = ['check'],
     jobs: {
-      check: {} + $.job.withUses(checkTemplate)
+      check: {
+               permissions: {
+                 contents: 'write',
+                 'pull-requests': 'write',
+                 'id-token': 'write',
+               },
+             } + $.job.withUses(checkTemplate)
              + $.job.with({
                skip_validation: skipValidation,
                build_image: buildImage,
@@ -71,7 +76,13 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets) + $.common.job.withNeeds(['version']),
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets)
+            + $.common.job.withNeeds(['version'])
+            + $.common.job.withPermissions({
+              contents: 'write',
+              'pull-requests': 'write',
+              'id-token': 'write',
+            }),
     } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(['version']), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
@@ -100,9 +111,8 @@
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
-      'id-token': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     concurrency: {
       group: 'create-release-${{ github.sha }}',
@@ -120,8 +130,20 @@
       PUBLISH_TO_GCS: false,
     },
     jobs: {
-      shouldRelease: $.release.shouldRelease,
-      createRelease: $.release.createRelease,
+      shouldRelease: $.release.shouldRelease {
+        permissions: {
+          contents: 'write',
+          'pull-requests': 'write',
+          'id-token': 'write',
+        },
+      },
+      createRelease: $.release.createRelease {
+        permissions: {
+          contents: 'write',
+          'pull-requests': 'write',
+          'id-token': 'write',
+        },
+      },
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
     } + (if publishDockerPlugins then {
            publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir, getDockerCredsFromVault, dockerUsername),
@@ -149,7 +171,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.60.3',
+            default: 'v1.64.5',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -170,9 +192,8 @@
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
-      'id-token': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     concurrency: {
       group: 'check-${{ github.sha }}',
@@ -200,7 +221,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.60.3',
+            default: 'v1.64.5',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -221,15 +242,14 @@
         secrets: {
           GCS_SERVICE_ACCOUNT_KEY: {
             description: 'GCS service account key',
-            required: true,
+            required: false,
           },
         },
       },
     },
     permissions: {
-      contents: 'write',
-      'pull-requests': 'write',
-      'id-token': 'write',
+      contents: 'read',
+      'pull-requests': 'read',
     },
     concurrency: {
       group: 'check-${{ github.sha }}',
