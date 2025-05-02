@@ -97,6 +97,9 @@ type TenantTopicConfig struct {
 
 	// Strategy determines how topics are created and partitioned
 	Strategy string `yaml:"strategy"`
+
+	// TargetThroughputPerPartition is the target throughput per partition in bytes
+	TargetThroughputPerPartition flagext.Bytes `yaml:"target_throughput_per_partition"`
 }
 
 // Validate ensures the config is valid
@@ -125,6 +128,8 @@ func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
 	f.StringVar(&cfg.Strategy, "distributor.tenant-topic-tee.strategy", "simple", "Topic strategy to use. Valid values are 'simple' or 'automatic'")
+	cfg.TargetThroughputPerPartition = 10 << 20 // 10MB
+	f.Var(&cfg.TargetThroughputPerPartition, "distributor.tenant-topic-tee.target-throughput-per-partition", "Target throughput per partition in bytes for the automatic strategy")
 }
 
 // PartitionResolver resolves the topic and partition for a given tenant and stream
@@ -339,7 +344,7 @@ func NewTenantTopicWriter(
 }
 
 func (t *TenantTopicWriter) partitionsForRateLimit(bytesRateLimit float64) uint32 {
-	targetThroughputPerPartition := float64(10 << 20) // 10 MB
+	targetThroughputPerPartition := float64(t.cfg.TargetThroughputPerPartition)
 
 	target := uint32(math.Round(bytesRateLimit / targetThroughputPerPartition))
 
