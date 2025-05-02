@@ -79,6 +79,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/tail"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
@@ -504,7 +505,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
-		t.Overrides,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -1453,9 +1453,9 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		// storage_config.use_thanos_objstore is true so we're using
 		// ruler_storage. Is it one of the local backend spellings
 		// 'filesystem' or 'local'?
-		if t.Cfg.RulerStorage.Backend == "local" {
+		if t.Cfg.RulerStorage.Backend == local.Name {
 			localStoreDir = t.Cfg.RulerStorage.Local.Directory
-		} else if t.Cfg.RulerStorage.Backend == "filesystem" {
+		} else if t.Cfg.RulerStorage.Backend == bucket.Filesystem {
 			localStoreDir = t.Cfg.RulerStorage.Filesystem.Directory
 		}
 	} else if t.Cfg.Ruler.StoreConfig.Type == "local" {
