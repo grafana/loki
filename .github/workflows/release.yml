@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
+  RELEASE_LIB_REF: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -18,6 +18,10 @@ jobs:
       isLatest: "${{ needs.shouldRelease.outputs.isLatest }}"
       name: "${{ needs.shouldRelease.outputs.name }}"
       sha: "${{ needs.shouldRelease.outputs.sha }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -151,6 +155,8 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -190,6 +196,10 @@ jobs:
       prNumber: "${{ steps.should_release.outputs.prNumber }}"
       sha: "${{ steps.should_release.outputs.sha }}"
       shouldRelease: "${{ steps.should_release.outputs.shouldRelease }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -222,6 +232,5 @@ name: "create release"
     - "release-[0-9]+.[0-9]+.x"
     - "k[0-9]+"
 permissions:
-  contents: "write"
-  id-token: "write"
-  pull-requests: "write"
+  contents: "read"
+  pull-requests: "read"

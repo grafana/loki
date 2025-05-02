@@ -14,6 +14,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
 {
   createReleasePR:
     job.new()
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseRepo,
       common.fetchReleaseLib,
@@ -75,6 +78,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
   createRelease: job.new()
                  + job.withNeeds(['shouldRelease'])
                  + job.withIf('${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}')
+                 + job.withPermissions({
+                   'id-token': 'write',
+                 })
                  + job.withSteps([
                    common.fetchReleaseRepo,
                    common.fetchReleaseLib,
@@ -188,6 +194,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
 
   publishRelease: job.new()
                   + job.withNeeds(['createRelease', 'publishImages'])
+                  + job.withPermissions({
+                    'id-token': 'write',
+                  })
                   + job.withSteps([
                     common.fetchReleaseRepo,
                     common.githubAppToken,

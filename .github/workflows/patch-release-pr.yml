@@ -7,18 +7,22 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
+  RELEASE_LIB_REF: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    uses: "grafana/loki-release/.github/workflows/check.yml@3b3850672c4f5a7826f3504e400b929fb9414ccf"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "1aa4b2d5dde08f58dc7a225d3944ebb63c4b9c9a"
+      release_lib_ref: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -33,6 +37,8 @@ jobs:
     - "loki-canary-boringcrypto"
     - "promtail"
     - "querytee"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -101,6 +107,10 @@ jobs:
     - "version"
     outputs:
       version: "${{ needs.version.outputs.version }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "clean up build tools cache"
@@ -751,6 +761,10 @@ jobs:
     outputs:
       pr_created: "${{ steps.version.outputs.pr_created }}"
       version: "${{ steps.version.outputs.version }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
@@ -849,6 +863,5 @@ name: "create release PR"
     branches:
     - "release-[0-9]+.[0-9]+.x"
 permissions:
-  contents: "write"
-  id-token: "write"
-  pull-requests: "write"
+  contents: "read"
+  pull-requests: "read"
