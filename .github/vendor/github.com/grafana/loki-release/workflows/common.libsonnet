@@ -64,6 +64,9 @@
     withSecrets: function(secrets) {
       secrets: secrets,
     },
+    withPermissions: function(permissions) {
+      permissions+: permissions,
+    },
   },
 
   releaseStep: function(name, uses=null) $.step.new(name, uses) +
@@ -107,11 +110,11 @@
     ],
   },
 
-  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@v2')
+  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f')  // v2
               + $.step.with({
                 credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
               }),
-  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@v2')
+  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a')  // v2
                        + $.step.with({
                          version: '>= 452.0.0',
                        }),
@@ -126,6 +129,16 @@
                        + $.step.withRun(|||
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
+
+  fetchAppCredentials: $.step.new('fetch app credentials from vault', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')
+                       + $.step.withId('fetch_app_credentials')
+                       + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
+                       + $.step.with({
+                         repo_secrets: |||
+                           APP_ID=loki-gh-app:app-id
+                           PRIVATE_KEY=loki-gh-app:private-key
+                         |||,
+                       }),
 
   githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
                   + $.step.withId('get_github_app_token')

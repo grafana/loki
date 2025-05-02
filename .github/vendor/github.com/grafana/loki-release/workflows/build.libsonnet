@@ -29,8 +29,8 @@ local releaseLibStep = common.releaseLibStep;
       common.setupNode,
       common.googleAuth,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
+      step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
 
       releaseStep('parse image platform')
       + step.withId('platform')
@@ -42,7 +42,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and export', 'docker/build-push-action@v5')
+      step.new('Build and export', 'docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25')  // v5
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
@@ -56,7 +56,7 @@ local releaseLibStep = common.releaseLibStep;
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
@@ -83,9 +83,9 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.setupNode,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
-      step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+      step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
+      step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
+      step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),
 
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
@@ -93,7 +93,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and push', 'docker/build-push-action@v5')
+      step.new('Build and push', 'docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25')  // v5
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
         context: context,
@@ -180,7 +180,7 @@ local releaseLibStep = common.releaseLibStep;
       common.fetchReleaseRepo,
       common.googleAuth,
       common.setupGoogleCloudSdk,
-      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@main')
+      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25')  // main
       + step.withId('get-secrets')
       + step.with({
         common_secrets: |||
@@ -225,7 +225,7 @@ local releaseLibStep = common.releaseLibStep;
         ||| % [buildImage, std.join(' ', makeTargets)]
       ),
 
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/dist',

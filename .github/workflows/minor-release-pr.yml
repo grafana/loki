@@ -7,18 +7,18 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "6a48e31c22d2a7c1298561845f545b012bf44e28"
+  RELEASE_LIB_REF: "70753eaad98f6670df093562d5335d9c981b364b"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
-    uses: "grafana/loki-release/.github/workflows/check.yml@6a48e31c22d2a7c1298561845f545b012bf44e28"
+    uses: "grafana/loki-release/.github/workflows/check.yml@70753eaad98f6670df093562d5335d9c981b364b"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "6a48e31c22d2a7c1298561845f545b012bf44e28"
+      release_lib_ref: "70753eaad98f6670df093562d5335d9c981b364b"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -109,16 +109,16 @@ jobs:
         path: "release"
         repository: "${{ env.RELEASE_REPO }}"
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
     - id: "get-secrets"
       name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@main"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
       with:
         common_secrets: |
           NFPM_SIGNING_KEY=packages-gpg:private-key
@@ -151,7 +151,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
         path: "release/dist"
@@ -177,13 +177,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -198,7 +198,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -208,7 +208,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -239,13 +239,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -260,7 +260,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -270,7 +270,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -301,13 +301,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -322,7 +322,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -332,7 +332,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -365,13 +365,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -386,7 +386,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -396,7 +396,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -427,13 +427,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -448,7 +448,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -458,7 +458,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -491,13 +491,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -512,7 +512,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -522,7 +522,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -555,13 +555,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -576,7 +576,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -586,7 +586,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -619,13 +619,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -640,7 +640,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -650,7 +650,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/promtail:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -683,13 +683,13 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -704,7 +704,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -714,7 +714,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"

@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "6a48e31c22d2a7c1298561845f545b012bf44e28"
+  RELEASE_LIB_REF: "70753eaad98f6670df093562d5335d9c981b364b"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -36,11 +36,11 @@ jobs:
       with:
         node-version: 20
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
     - id: "get_github_app_token"
@@ -104,7 +104,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.PUBLISH_BUCKET }}"
         parent: false
@@ -122,19 +122,19 @@ jobs:
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
     - name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
