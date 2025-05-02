@@ -16,7 +16,7 @@
   "packageRules": [
     {
       // Disable updates for all branches - we only want security updates
-      "matchBaseBranches": ["release-3.3.x", "release-3.2.x", "release-2.9.x"],
+      "matchBaseBranches": ["release-3.3.x", "release-3.2.x", "release-2.9.x"], 
       "enabled": false
     },
     {

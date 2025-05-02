@@ -14,7 +14,7 @@ jobs:
       pull-requests: "write"
     strategy:
       matrix:
-        go-version: [ '1.22.12', '1.23.6', '1.24.0' ]
+        go-version: [ '1.22.2', '1.23.1' ]
     steps:
       - uses: actions/checkout@v4
         with:
