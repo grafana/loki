@@ -80,7 +80,7 @@ jobs:
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/dist .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/dist .
       working-directory: "release"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
@@ -89,7 +89,7 @@ jobs:
       name: "check if release exists"
       run: |
         set +e
-        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $OUTPUTS_NAME 2>&1)"
+        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $(echo $OUTPUTS_NAME | tr -d '"') 2>&1)"
         set -e
         if [[ "$isDraft" == "release not found" ]]; then
           echo "exists=false" >> $GITHUB_OUTPUT
@@ -115,9 +115,9 @@ jobs:
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "$OUTPUTS_BRANCH" \
-          --token "$OUTPUTS_TOKEN" \
-          --shas-to-tag "$OUTPUTS_PR_NUMBER:${SHA}"
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
+          --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
@@ -125,7 +125,7 @@ jobs:
       id: "upload"
       name: "upload artifacts"
       run: |
-        gh release upload --clobber $OUTPUTS_NAME dist/*
+        gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
@@ -220,15 +220,15 @@ jobs:
           echo "branch_exists=true" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
-          echo "Creating branch: $BRANCH_NAME from tag: $OUTPUTS_NAME"
+          echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
           
           # Create branch from the tag
           git fetch --tags
-          git checkout "$OUTPUTS_BRANCH"
+          git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
         
           # explicity set the github app token to override the release branch protection
-          git remote set-url origin "https://x-access-token:${OUTPUTS_TOKEN}@github.com/${{ env.RELEASE_REPO }}"
+          git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
           
           echo "branch_exists=false" >> $GITHUB_OUTPUT
@@ -272,7 +272,7 @@ jobs:
       name: "download and prepare plugins"
       run: |
         echo "downloading images to $(pwd)/plugins"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/plugins .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/plugins .
         mkdir -p "release/clients/cmd/docker-driver"
     - name: "publish docker driver"
       uses: "./lib/actions/push-images"
@@ -313,7 +313,7 @@ jobs:
       name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/images .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/images .
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -370,7 +370,7 @@ jobs:
       if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
       name: "publish release"
       run: |
-        gh release edit $OUTPUTS_NAME --draft=false --latest=$OUTPUTS_IS_LATEST
+        gh release edit $(echo $OUTPUTS_NAME | tr -d '"') --draft=false --latest=$(echo $OUTPUTS_IS_LATEST | tr -d '"')
       working-directory: "release"
   shouldRelease:
     outputs:
