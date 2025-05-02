@@ -111,7 +111,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: nil,
 					},
 				},
-				StreamLabelsSize:         21,
+				StreamLabelsSize:         20,
 				MostRecentEntryTimestamp: now,
 			},
 		},
