@@ -230,16 +230,13 @@ func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Clie
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
-	if s.State() != services.Running && s.State() != services.Stopping {
-		return fmt.Errorf("ingest limits not ready: %v", s.State())
+	if s.State() != services.Running {
+		return fmt.Errorf("service is not running: %v", s.State())
 	}
-
 	err := s.lifecycler.CheckReady(ctx)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "ingest limits not ready", "err", err)
-		return err
+		return fmt.Errorf("lifecycler not ready: %w", err)
 	}
-
 	return nil
 }
 
@@ -376,6 +373,11 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	allErrs.Add(failureCase)
 
 	return allErrs.Err()
+}
+
+// ExceedsLimits implements the logproto.IngestLimitsServer interface.
+func (s *IngestLimits) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+	return &logproto.ExceedsLimitsResponse{}, nil
 }
 
 // GetAssignedPartitions implements the logproto.IngestLimitsServer interface.

@@ -128,41 +128,6 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, limits Limits, l
 	return f, nil
 }
 
-// starting implements services.Service.
-func (f *Frontend) starting(ctx context.Context) (err error) {
-	defer func() {
-		if err == nil {
-			return
-		}
-		stopErr := services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
-		if stopErr != nil {
-			level.Error(f.logger).Log("msg", "failed to stop subservices", "err", stopErr)
-		}
-	}()
-
-	level.Info(f.logger).Log("msg", "starting subservices")
-	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
-		return fmt.Errorf("failed to start subservices: %w", err)
-	}
-
-	return nil
-}
-
-// running implements services.Service.
-func (f *Frontend) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-f.subservicesWatcher.Chan():
-		return fmt.Errorf("ingest limits frontend subservice failed: %w", err)
-	}
-}
-
-// stopping implements services.Service.
-func (f *Frontend) stopping(_ error) error {
-	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
-}
-
 // ExceedsLimits implements logproto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	streamHashes := make([]uint64, 0, len(req.Streams))
@@ -233,17 +198,49 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {
-	if f.State() != services.Running && f.State() != services.Stopping {
-		return fmt.Errorf("ingest limits frontend not ready: %v", f.State())
+	if f.State() != services.Running {
+		return fmt.Errorf("service is not running: %v", f.State())
 	}
-
 	err := f.lifecycler.CheckReady(ctx)
 	if err != nil {
-		level.Error(f.logger).Log("msg", "ingest limits frontend not ready", "err", err)
-		return err
+		return fmt.Errorf("lifecycler not ready: %w", err)
+	}
+	return nil
+}
+
+// starting implements services.Service.
+func (f *Frontend) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		stopErr := services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
+		if stopErr != nil {
+			level.Error(f.logger).Log("msg", "failed to stop subservices", "err", stopErr)
+		}
+	}()
+
+	level.Info(f.logger).Log("msg", "starting subservices")
+	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
+		return fmt.Errorf("failed to start subservices: %w", err)
 	}
 
 	return nil
+}
+
+// running implements services.Service.
+func (f *Frontend) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-f.subservicesWatcher.Chan():
+		return fmt.Errorf("ingest limits frontend subservice failed: %w", err)
+	}
+}
+
+// stopping implements services.Service.
+func (f *Frontend) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest
