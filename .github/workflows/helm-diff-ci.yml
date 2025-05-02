@@ -11,17 +11,44 @@ permissions:
   pull-requests: write
 
 jobs:
-  single-binary-diff:
-    name: Single Binary Scenario
+  helm-diff:
+    name: ${{ matrix.scenario.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     timeout-minutes: 10
+    strategy:
+      matrix:
+        scenario:
+          - name: Distributed Scenario
+            values_file: default-distributed-values.yaml
+            use_k3d: true
+          - name: Default Values Scenario
+            values_file: default-values.yaml
+            use_k3d: true
+          - name: Ingress Values Scenario
+            values_file: ingress-values.yaml
+            use_k3d: true
+          - name: Legacy Monitoring Values Scenario
+            values_file: legacy-monitoring-values.yaml
+            use_k3d: true
+          - name: Simple Scalable AWS Kube IRSA Values Scenario
+            values_file: simple-scalable-aws-kube-irsa-values.yaml
+            use_k3d: false
+          - name: Simple Thanos Values Scenario
+            values_file: simple-thanos-values.yaml
+            use_k3d: false
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4
 
       - name: Add required Helm repositories
         run: |
@@ -31,9 +58,11 @@ jobs:
           helm repo update
 
       - name: Setup K3D
+        if: ${{ matrix.scenario.use_k3d }}
         uses: ./.github/actions/setup-k3d
 
       - name: Setup Helm plugins
+        if: ${{ matrix.scenario.use_k3d }}
         run: |
           helm plugin install https://github.com/databus23/helm-diff
 
@@ -41,221 +70,20 @@ jobs:
         run: |
           helm dependency build production/helm/loki
 
-      - name: Install latest helm release
-        run: |
-          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/default-single-binary-values.yaml
-
-      - name: Run helm diff
-        id: helm-diff
+      # Conditional steps based on whether K3D is used
+      - name: Run diff with K3D
+        if: ${{ matrix.scenario.use_k3d }}
         env:
           HELM_DIFF_USE_UPGRADE_DRY_RUN: true
         run: |
-          helm diff upgrade loki-release -f production/helm/loki/scenarios/default-single-binary-values.yaml production/helm/loki | tee helm_diff_output.txt
+          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }}
+          helm diff upgrade loki-release -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} production/helm/loki | tee helm_diff_output.txt
 
-      - name: Convert Helm Diff Output to Markdown
-        id: convert_diff
+      - name: Run diff without K3D
+        if: ${{ !matrix.scenario.use_k3d }}
         run: |
-          cat helm_diff_output.txt >> formatted_diff_output.md
-
-      - name: Upload diff output as artifact
-        id: upload_diff
-        uses: actions/upload-artifact@v4
-        with:
-          name: single-binary-diff-output
-          path: formatted_diff_output.md
-          retention-days: 2
-
-  default-values-diff:
-    name: Default Values Scenario
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Add required Helm repositories
-        run: |
-          helm repo add minio https://charts.min.io/
-          helm repo add grafana https://grafana.github.io/helm-charts
-          helm repo add grafana-operator https://grafana.github.io/helm-charts
-          helm repo update
-
-      - name: Setup K3D
-        uses: ./.github/actions/setup-k3d
-
-      - name: Setup Helm plugins
-        run: |
-          helm plugin install https://github.com/databus23/helm-diff
-
-      - name: Build helm dependencies
-        run: |
-          helm dependency build production/helm/loki
-
-      - name: Install latest helm release
-        run: |
-          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/default-values.yaml
-
-      - name: Run helm diff
-        id: helm-diff
-        env:
-          HELM_DIFF_USE_UPGRADE_DRY_RUN: true
-        run: |
-          helm diff upgrade loki-release -f production/helm/loki/scenarios/default-values.yaml production/helm/loki | tee helm_diff_output.txt
-
-      - name: Convert Helm Diff Output to Markdown
-        id: convert_diff
-        run: |
-          cat helm_diff_output.txt >> formatted_diff_output.md
-
-      - name: Upload diff output as artifact
-        uses: actions/upload-artifact@v4
-        id: upload_diff
-        with:
-          name: default-values-diff-output
-          path: formatted_diff_output.md
-          retention-days: 2
-
-  ingress-values-diff:
-    name: Ingress Values Scenario
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Add required Helm repositories
-        run: |
-          helm repo add minio https://charts.min.io/
-          helm repo add grafana https://grafana.github.io/helm-charts
-          helm repo add grafana-operator https://grafana.github.io/helm-charts
-          helm repo update
-
-      - name: Setup K3D
-        uses: ./.github/actions/setup-k3d
-
-      - name: Setup Helm plugins
-        run: |
-          helm plugin install https://github.com/databus23/helm-diff
-
-      - name: Build helm dependencies
-        run: |
-          helm dependency build production/helm/loki
-
-      - name: Install latest helm release
-        run: |
-          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/ingress-values.yaml
-
-      - name: Run helm diff
-        id: helm-diff
-        env:
-          HELM_DIFF_USE_UPGRADE_DRY_RUN: true
-        run: |
-          helm diff upgrade loki-release -f production/helm/loki/scenarios/ingress-values.yaml production/helm/loki | tee helm_diff_output.txt
-
-      - name: Convert Helm Diff Output to Markdown
-        id: convert_diff
-        run: |
-          cat helm_diff_output.txt >> formatted_diff_output.md
-
-      - name: Upload diff output as artifact
-        uses: actions/upload-artifact@v4
-        id: upload_diff
-        with:
-          name: ingress-diff-output
-          path: formatted_diff_output.md
-          retention-days: 2
-
-  legacy-monitoring-values-diff:
-    name: Legacy Monitoring Values Scenario
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Add required Helm repositories
-        run: |
-          helm repo add minio https://charts.min.io/
-          helm repo add grafana https://grafana.github.io/helm-charts
-          helm repo add grafana-operator https://grafana.github.io/helm-charts
-          helm repo update
-
-      - name: Setup K3D
-        uses: ./.github/actions/setup-k3d
-
-      - name: Setup Helm plugins
-        run: |
-          helm plugin install https://github.com/databus23/helm-diff
-
-      - name: Build helm dependencies
-        run: |
-          helm dependency build production/helm/loki
-
-      - name: Install latest helm release
-        run: |
-          helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/legacy-monitoring-values.yaml
-
-      - name: Run helm diff
-        id: helm-diff
-        env:
-          HELM_DIFF_USE_UPGRADE_DRY_RUN: true
-        run: |
-          helm diff upgrade loki-release -f production/helm/loki/scenarios/legacy-monitoring-values.yaml production/helm/loki | tee helm_diff_output.txt
-
-      - name: Convert Helm Diff Output to Markdown
-        id: convert_diff
-        run: |
-          cat helm_diff_output.txt >> formatted_diff_output.md
-
-      - name: Upload diff output as artifact
-        uses: actions/upload-artifact@v4
-        id: upload_diff
-        with:
-          name: legacy-monitoring-diff-output
-          path: formatted_diff_output.md
-          retention-days: 2
-
-  simple-scalable-aws-kube-irsa-values-diff:
-    name: Simple Scalable AWS Kube IRSA Values Scenario
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Add required Helm repositories
-        run: |
-          helm repo add minio https://charts.min.io/
-          helm repo add grafana https://grafana.github.io/helm-charts
-          helm repo add grafana-operator https://grafana.github.io/helm-charts
-          helm repo update
-
-      - name: Build helm dependencies
-        run: |
-          helm dependency build production/helm/loki
-
-      - name: Generate latest manifests
-        run: |
-          helm template loki-release grafana/loki -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml > release-manifest.yaml
-
-      - name: Generate current manifest
-        run: |
-          helm template loki-release production/helm/loki -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml > current-manifest.yaml
-
-      - name: Compare manifests
-        run: |
+          helm template loki-release grafana/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} > release-manifest.yaml
+          helm template loki-release production/helm/loki -f production/helm/loki/scenarios/${{ matrix.scenario.values_file }} > current-manifest.yaml
           diff current-manifest.yaml release-manifest.yaml > helm_diff_output.txt || true
 
       - name: Convert Helm Diff Output to Markdown
@@ -267,21 +95,19 @@ jobs:
         uses: actions/upload-artifact@v4
         id: upload_diff
         with:
-          name: simple-scalable-aws-kube-irsa-diff-output
+          name: ${{ matrix.scenario.name }}-diff-output
           path: formatted_diff_output.md
           retention-days: 2
 
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     if: github.event.pull_request.head.repo.fork == false
-    needs:
-      - single-binary-diff
-      - default-values-diff
-      - ingress-values-diff
-      - legacy-monitoring-values-diff
-      - simple-scalable-aws-kube-irsa-values-diff
-
+    needs: [helm-diff]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -289,86 +115,27 @@ jobs:
           persist-credentials: false
 
       - uses: actions/download-artifact@v4
-        with:
-          name: single-binary-diff-output
-          path: single-binary-diff
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: default-values-diff-output
-          path: default-values-diff
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: ingress-diff-output
-          path: ingress-values-diff
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: legacy-monitoring-diff-output
-          path: legacy-monitoring-values-diff
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: simple-scalable-aws-kube-irsa-diff-output
-          path: simple-scalable-aws-kube-irsa-values-diff
 
       - name: Combine diff outputs
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
 
-          echo "<details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo "<summary>Single Binary Scenario</summary>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo '```diff' >> formatted_diff_output.md
-          cat single-binary-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
-          echo "</details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
+          for scenario in */formatted_diff_output.md; do
+            scenario_name=$(dirname "$scenario")
 
-          echo "<details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo "<summary>Default Values Scenario</summary>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo '```diff' >> formatted_diff_output.md
-          cat default-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
-          echo "</details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-
-          echo "<details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo "<summary>Ingress Values Scenario</summary>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo '```diff' >> formatted_diff_output.md
-          cat ingress-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
-          echo "</details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-
-          echo "<details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo "<summary>Legacy Monitoring Scenario</summary>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo '```diff' >> formatted_diff_output.md
-          cat legacy-monitoring-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
-          echo "</details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-
-          echo "<details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo "<summary>Simple Scalable AWS Kube IRSA Scenario</summary>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
-          echo '```diff' >> formatted_diff_output.md
-          cat simple-scalable-aws-kube-irsa-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
-          echo "</details>" >> formatted_diff_output.md
-          echo "" >> formatted_diff_output.md
+            echo "<details>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+            echo "<summary>${scenario_name}</summary>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+            echo '```diff' >> formatted_diff_output.md
+            cat "$scenario" >> formatted_diff_output.md
+            echo '```' >> formatted_diff_output.md
+            echo "</details>" >> formatted_diff_output.md
+            echo "" >> formatted_diff_output.md
+          done
 
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
         with:
           header: "Helm Diff Output - Summary"
           skip_unchanged: true

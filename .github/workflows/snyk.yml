@@ -12,5 +12,9 @@ on:
 jobs:
   snyk-scan-ci:
     uses: 'grafana/security-github-actions/.github/workflows/snyk_monitor.yml@main'
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     secrets:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
