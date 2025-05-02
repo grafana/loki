@@ -15,93 +15,6 @@ const (
 	DefaultLogBatchTimeout = 30 // every 'n' seconds, force the batch to flush if it's not empty
 )
 
-// `logBatch` is a wrapper struct providing locking around the
-// array of log lines which are batched before being sent.
-//
-// This struct implements a number of array access functions
-// which first acquire the lock and then access the
-// internal array structure.  All lock releases are done
-// via `defer`
-type logBatch struct {
-	sync.Mutex
-	lines []entry
-}
-
-// lock the array and push the `entry` to the internal array
-func (bf *logBatch) append(e entry) {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-	bf.lines = append(bf.lines, e)
-}
-
-// lock the array and allow iteration across entries
-// in the array
-func (bf *logBatch) entries(yield func(entry) bool) {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-
-	for _, e := range bf.lines {
-		if !yield(e) {
-			return
-		}
-	}
-}
-
-// lock the array and remove everything in it
-func (bf *logBatch) clear() {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-
-	bf.lines = bf.lines[:0]
-}
-
-// lock the array and return the # of entries
-func (bf *logBatch) length() int {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-	return len(bf.lines)
-}
-
-// lock the array and return the first entry
-func (bf *logBatch) first() (*entry, bool) {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-
-	if len(bf.lines) == 0 {
-		return nil, false
-	}
-	return &bf.lines[0], true
-}
-
-// lock the array and return the last entry
-func (bf *logBatch) last() (*entry, bool) {
-	bf.Lock()
-	defer func() {
-		bf.Unlock()
-	}()
-
-	if len(bf.lines) == 0 {
-		return nil, false
-	}
-	return &bf.lines[len(bf.lines)-1], true
-}
-
-func newLogsBatch(bufferSize int) logBatch {
-	return logBatch{
-		lines: make([]entry, 0, bufferSize),
-	}
-}
-
 // BatchedPush is an extension of a Push writer.  This Writer implements
 // the standard `EntryWriter` functions, but implements a different push mechanism
 // from the standard push.
@@ -122,10 +35,10 @@ type BatchedPush struct {
 
 // `buildPayload` receives the array of log lines and converts them
 // to a serialized byte array which may be pushed to the loki endpoint.
-func (p *BatchedPush) buildPayload(logs *logBatch) ([]byte, error) {
-	streams := make([]logproto.Stream, 0, logs.length())
+func (p *BatchedPush) buildPayload(logs []entry) ([]byte, error) {
+	streams := make([]logproto.Stream, 0, len(logs))
 
-	for e := range logs.entries {
+	for _, e := range logs {
 		streams = append(streams, p.pusher.buildStream(e))
 	}
 
@@ -156,7 +69,7 @@ func (p *BatchedPush) run() {
 	}()
 
 	// lockable structure to keep track of log lines as we receive from the channel
-	logs := newLogsBatch(p.logBatchSize)
+	logs := make([]entry, 0, p.logBatchSize)
 
 	// use a channel to flush the logs array every 30s at minimum
 	forceFlush := make(chan bool, 1)
@@ -169,35 +82,26 @@ func (p *BatchedPush) run() {
 	// Loki.  This may be invoked when receiving from the different channels
 	flush := func() {
 		// shortcuts -- if somehow there are no logs, or we can't get the first item, return
-		if logs.length() == 0 {
+		if len(logs) == 0 {
 			return
 		}
 
-		firstLog, ok := logs.first()
-		if !ok {
-			return
-		}
+		firstLog := logs[0]
 
 		oldestTs := firstLog.ts.UnixNano()
-		newestTs := oldestTs
-		lastLog, ok := logs.last()
-
-		if ok {
-			newestTs = lastLog.ts.UnixNano()
-		}
-
-		linesSent := logs.length()
+		newestTs := logs[len(logs)-1]
+		linesSent := len(logs)
 
 		// We will use a timeout within each attempt to send
 		backoff := backoff.New(context.Background(), *p.pusher.backoff)
 
-		payload, err := p.buildPayload(&logs)
+		payload, err := p.buildPayload(logs)
 
 		// we don't want the log array to grow out-of-bound from repeated failures and
 		// we will log a warning if lines get dropped
 		// therefore, immediately clear the logs -- we have the serialized content to send to the
 		// loki instance, so don't hang on them - the channel can keep appending
-		logs.clear()
+		logs = logs[:0]
 
 		if err != nil {
 			level.Error(p.pusher.logger).Log("msg", "failed to build payload", "err", err)
@@ -224,23 +128,34 @@ func (p *BatchedPush) run() {
 		}
 	}
 
+	var lock sync.Mutex
+	withLock := func(runner func()) {
+		lock.Lock()
+		defer func() {
+			lock.Unlock()
+		}()
+		runner()
+	}
+
 	for {
 		select {
 		case <-p.pusher.quit:
 			// flush whatever is remaining before we terminate
-			flush()
+			withLock(flush)
 			cancel()
 			return
 		case <-forceFlush:
 			// force a flush if we've exceeded the min duration
 			// we don't want to keep logs for too long if the
 			// channel is open byt we don't receive more logs
-			flush()
+			withLock(flush)
 		case e := <-p.pusher.entries:
-			logs.append(e)
-			if logs.length() >= p.logBatchSize {
-				flush()
-			}
+			withLock(func() {
+				logs = append(logs, e)
+				if len(logs) >= p.logBatchSize {
+					flush()
+				}
+			})
 		}
 	}
 }
