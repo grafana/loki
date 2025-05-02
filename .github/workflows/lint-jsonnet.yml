@@ -8,9 +8,15 @@ jobs:
   check-mixin:
     name: Check mixin jsonnet files
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: setup go
         uses: actions/setup-go@v5
         with:
@@ -27,6 +33,3 @@ jobs:
       - name: check compiled mixin has been updated
         run: |
           make BUILD_IN_CONTAINER=false loki-mixin-check
-      
-
-
