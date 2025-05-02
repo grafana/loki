@@ -335,26 +335,33 @@ func newSampleIterator(ctx context.Context,
 				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
-				value, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
+				statistics.AddDecompressedLines(1)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 				if !ok {
 					continue
 				}
 				statistics.AddPostFilterLines(1)
 
-				// Get or create series for the parsed labels
-				labelString := parsedLabels.String()
-				s, exists := series[labelString]
-				if !exists {
-					s = createNewSeries(labelString, streamHash)
-					series[labelString] = s
-				}
+				for _, sample := range samples {
 
-				// Add sample to the series
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: timestamp,
-					Value:     value,
-					Hash:      0,
-				})
+					parsedLabels := sample.Labels
+					value := sample.Value
+
+					// Get or create series for the parsed labels
+					labelString := parsedLabels.String()
+					s, exists := series[labelString]
+					if !exists {
+						s = createNewSeries(labelString, streamHash)
+						series[labelString] = s
+					}
+
+					// Add sample to the series
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: timestamp,
+						Value:     value,
+						Hash:      0,
+					})
+				}
 			}
 		}
 	}

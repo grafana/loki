@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
-	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -323,8 +323,8 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
 
 			for _, extractor := range extractor {
-				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata)
-				if !ok {
+				samples, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				if !ok || len(samples) == 0 {
 					return nil
 				}
 				var (
@@ -332,22 +332,27 @@ func (hb *unorderedHeadBlock) SampleIterator(
 					s     *logproto.Series
 				)
 
-				lblStr := lbls.String()
-				s, found = series[lblStr]
-				if !found {
-					baseHash := extractor.BaseLabels().Hash()
-					s = &logproto.Series{
-						Labels:     lblStr,
-						Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-						StreamHash: baseHash,
+				for _, sample := range samples {
+					value := sample.Value
+					lbls := sample.Labels
+
+					lblStr := lbls.String()
+					s, found = series[lblStr]
+					if !found {
+						baseHash := extractor.BaseLabels().Hash()
+						s = &logproto.Series{
+							Labels:     lblStr,
+							Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+							StreamHash: baseHash,
+						}
+						series[lblStr] = s
 					}
-					series[lblStr] = s
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: ts,
+						Value:     value,
+						Hash:      util.UniqueSampleHash(lblStr, unsafeGetBytes(line)),
+					})
 				}
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: ts,
-					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(line)),
-				})
 				if extractor.ReferencedStructuredMetadata() {
 					setQueryReferencedStructuredMetadata = true
 				}
