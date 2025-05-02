@@ -16,18 +16,21 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v1.6.0
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7 # v 2.3.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Approve the dependabot PR
+      - name: Approve and auto-merge the dependabot PR
         run: |
+          gh pr merge --auto --squash "$PR_URL"
           gh pr review $PR_URL \
           --approve -b "Auto approve dependencies bump PR"
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          GITHUB_TOKEN: "${{ secrets.GH_BOT_ACCESS_TOKEN }}"

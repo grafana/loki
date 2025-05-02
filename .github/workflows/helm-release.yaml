@@ -10,6 +10,10 @@ on:
 jobs:
   call-update-helm-repo:
     uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@main
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     with:
       charts_dir: production/helm
       cr_configfile: production/helm/cr.yaml
