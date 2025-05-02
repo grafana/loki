@@ -1,2 +1,0 @@
-"uses": "grafana/loki-release/.github/workflows/release-prepare.yml@31d67c597422f2522d5f46187c19f1e89c0dc394"
-"release_lib_ref": "31d67c597422f2522d5f46187c19f1e89c0dc394" 
