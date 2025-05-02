@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "f3dd13ceb32c78d185541b76dbc44a56ec05d196"
+  RELEASE_LIB_REF: "a80190c0695e9faadecb5927b76e195264201025"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@f3dd13ceb32c78d185541b76dbc44a56ec05d196"
+    uses: "grafana/loki-release/.github/workflows/check.yml@a80190c0695e9faadecb5927b76e195264201025"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "f3dd13ceb32c78d185541b76dbc44a56ec05d196"
+      release_lib_ref: "a80190c0695e9faadecb5927b76e195264201025"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -63,19 +63,29 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "fetch_app_credentials"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "fetch app credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: |
+          APP_ID=loki-gh-app:app-id
+          PRIVATE_KEY=loki-gh-app:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "actions/create-github-app-token@v1"
       with:
-        app-id: "${{ secrets.APP_ID }}"
+        app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+        private-key: "${{ env.APP_PRIVATE_KEY }}"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
@@ -792,19 +802,29 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "fetch_app_credentials"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "fetch app credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: |
+          APP_ID=loki-gh-app:app-id
+          PRIVATE_KEY=loki-gh-app:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "actions/create-github-app-token@v1"
       with:
-        app-id: "${{ secrets.APP_ID }}"
+        app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+        private-key: "${{ env.APP_PRIVATE_KEY }}"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi

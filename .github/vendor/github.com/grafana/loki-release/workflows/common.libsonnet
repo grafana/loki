@@ -149,17 +149,20 @@
                   + $.step.withId('get_github_app_token')
                   + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                   + $.step.with({
-                    'app-id': '${{ secrets.APP_ID }}',
-                    'private-key': '${{ secrets.APP_PRIVATE_KEY }}',
+                    'app-id': '${{ env.APP_ID }}',
+                    'private-key': '${{ env.APP_PRIVATE_KEY }}',
                     // By setting owner, we should get access to all repositories in current owner's installation: https://github.com/marketplace/actions/create-github-app-token#create-a-token-for-all-repositories-in-the-current-owners-installation
                     owner: '${{ github.repository_owner }}',
                   }),
 
   setToken: $.step.new('set github token')
             + $.step.withId('github_app_token')
+            + $.step.withEnv({
+              OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
+            })
             + $.step.withRun(|||
               if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-                echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+                echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
               else
                 echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
               fi
