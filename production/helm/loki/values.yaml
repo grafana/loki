@@ -284,6 +284,7 @@ loki:
 
     {{- if .Values.loki.ui.enabled }}
     ui:
+      enabled: {{ .Values.loki.ui.enabled }}
       discovery:
         join_peers:
           - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
