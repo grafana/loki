@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
+  RELEASE_LIB_REF: "f3dd13ceb32c78d185541b76dbc44a56ec05d196"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@3b3850672c4f5a7826f3504e400b929fb9414ccf"
+    uses: "grafana/loki-release/.github/workflows/check.yml@f3dd13ceb32c78d185541b76dbc44a56ec05d196"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
+      release_lib_ref: "f3dd13ceb32c78d185541b76dbc44a56ec05d196"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -80,6 +80,9 @@ jobs:
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_VERSION: "${{ needs.dist.outputs.version }}"
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
@@ -93,12 +96,12 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "${{ needs.dist.outputs.version }}" \
+          --release-as "$OUTPUTS_VERSION" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
+          --target-branch "$OUTPUTS_BRANCH" \
+          --token "$OUTPUTS_TOKEN" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
@@ -805,7 +808,10 @@ jobs:
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
-    - id: "version"
+    - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+      id: "version"
       name: "get release version"
       run: |
         npm install
@@ -821,8 +827,8 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
           npm exec -- release-please release-pr \
@@ -835,8 +841,8 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
         

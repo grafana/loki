@@ -122,6 +122,10 @@ local releaseLibStep = common.releaseLibStep;
       common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
+      + step.withEnv({
+        OUTPUTS_BRANCH: '${{ steps.extract_branch.outputs.branch }}',
+        OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+      })
       + step.withRun(|||
         npm install
 
@@ -136,8 +140,8 @@ local releaseLibStep = common.releaseLibStep;
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
           npm exec -- release-please release-pr \
@@ -150,8 +154,8 @@ local releaseLibStep = common.releaseLibStep;
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
 

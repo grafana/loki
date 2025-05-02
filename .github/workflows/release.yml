@@ -4,11 +4,13 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "3b3850672c4f5a7826f3504e400b929fb9414ccf"
+  RELEASE_LIB_REF: "f3dd13ceb32c78d185541b76dbc44a56ec05d196"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
+    env:
+      SHA: "${{ needs.shouldRelease.outputs.sha }}"
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
     needs:
     - "shouldRelease"
@@ -68,15 +70,16 @@ jobs:
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.shouldRelease.outputs.sha }}/dist .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/dist .
       working-directory: "release"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "check_release"
       name: "check if release exists"
       run: |
         set +e
-        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" ${{ needs.shouldRelease.outputs.name }} 2>&1)"
+        isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $OUTPUTS_NAME 2>&1)"
         set -e
         if [[ "$isDraft" == "release not found" ]]; then
           echo "exists=false" >> $GITHUB_OUTPUT
@@ -88,7 +91,12 @@ jobs:
           echo "draft=true" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-    - id: "release"
+    - env:
+        OUTPUTS_BRANCH: "${{ needs.shouldRelease.outputs.branch }}"
+        OUTPUTS_PR_NUMBER: "${{ needs.shouldRelease.outputs.prNumber }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        SHA: "${{ needs.shouldRelease.outputs.sha }}"
+      id: "release"
       if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
       name: "create release"
       run: |
@@ -97,16 +105,17 @@ jobs:
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
-          --target-branch "${{ needs.shouldRelease.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
-          --shas-to-tag "${{ needs.shouldRelease.outputs.prNumber }}:${{ needs.shouldRelease.outputs.sha }}"
+          --target-branch "$OUTPUTS_BRANCH" \
+          --token "$OUTPUTS_TOKEN" \
+          --shas-to-tag "$OUTPUTS_PR_NUMBER:${SHA}"
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "upload"
       name: "upload artifacts"
       run: |
-        gh release upload --clobber ${{ needs.shouldRelease.outputs.name }} dist/*
+        gh release upload --clobber $OUTPUTS_NAME dist/*
       working-directory: "release"
     - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
@@ -142,10 +151,12 @@ jobs:
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - name: "Login to DockerHub (from vault)"
       uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
-    - name: "download images"
+    - env:
+        SHA: "${{ needs.createRelease.outputs.sha }}"
+      name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/images .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/images .
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -183,10 +194,12 @@ jobs:
         fi
     - env:
         GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_IS_LATEST: "${{ needs.createRelease.outputs.isLatest }}"
+        OUTPUTS_NAME: "${{ needs.createRelease.outputs.name }}"
       if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
       name: "publish release"
       run: |
-        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+        gh release edit $OUTPUTS_NAME  --draft=false --latest=$OUTPUTS_IS_LATEST
       working-directory: "release"
   shouldRelease:
     outputs:
