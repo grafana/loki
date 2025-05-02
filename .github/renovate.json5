@@ -9,14 +9,14 @@
   "prHourlyLimit": 4,
   "baseBranches": [
     "main",
-    "release-3.5.x", // Update when a new release is out, 2 minors, 1 major.
-    "release-3.4.x", // Also ensure to update the 'packageRules' section to match
+    "release-3.3.x", // Update when a new release is out, 2 minors, 1 major.
+    "release-3.2.x", // Also ensure to update the 'packageRules' section to match
     "release-2.9.x"
   ],
   "packageRules": [
     {
       // Disable updates for all branches - we only want security updates
-      "matchBaseBranches": ["release-3.5.x", "release-3.4.x", "release-2.9.x"],
+      "matchBaseBranches": ["release-3.3.x", "release-3.2.x", "release-2.9.x"],
       "enabled": false
     },
     {
@@ -30,26 +30,6 @@
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["golang", "grafana/loki-build-image"],
       "enabled": false
-    },
-    {
-      // Disable updates driven by Kustomize, used by the operator
-      "matchManagers": ["kustomize"],
-      "enabled": false
-    },
-    {
-      // Disable certain npm updates for compatibility reasons
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["tailwindcss"],
-      "enabled": false
-    },
-    {
-      // Auto-merge the rest of the npm updates
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["!tailwindcss"],
-      "matchBaseBranches": ["main"],
-      "enabled": true,
-      "autoApprove": true,
-      "automerge": true
     },
     {
       // Don't automatically merge GitHub Actions updates
@@ -104,12 +84,12 @@
     "addLabels": [
       "area/security"
     ],
-    "automerge": false, 
-    "autoApprove": false
+    "automerge": true, 
+    "autoApprove": true
   },
   "osvVulnerabilityAlerts": true,
-  "prConcurrentLimit": 15,
-  "rebaseWhen": "auto",
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "conflicted",
   "branchPrefix": "deps-update/",
   "postUpdateOptions": [
     "gomodTidy"

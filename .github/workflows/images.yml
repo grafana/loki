@@ -2,15 +2,15 @@
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@main"
     "with":
-      "build_image": "grafana/loki-build-image:0.34.6"
-      "golang_ci_lint_version": "v1.64.5"
+      "build_image": "grafana/loki-build-image:0.34.5"
+      "golang_ci_lint_version": "v1.60.3"
       "release_lib_ref": "main"
       "skip_validation": false
       "use_github_app_token": true
   "lambda-promtail-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.1"
+      "GO_VERSION": "1.23.7"
       "IMAGE_PREFIX": "public.ecr.aws/grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -107,7 +107,7 @@
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.1"
+      "GO_VERSION": "1.23.7"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -230,7 +230,7 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.1"
+      "GO_VERSION": "1.23.7"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -353,7 +353,7 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.1"
+      "GO_VERSION": "1.23.7"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -476,7 +476,7 @@
   "promtail-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.1"
+      "GO_VERSION": "1.23.7"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
