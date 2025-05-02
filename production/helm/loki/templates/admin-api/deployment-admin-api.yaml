@@ -102,11 +102,11 @@ spec:
             {{- toYaml .Values.adminApi.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.adminApi.containerSecurityContext | nindent 12 }}
+          {{- with (concat .Values.global.extraEnv .Values.adminApi.extraEnv) | uniq }}
           env:
-            {{- if .Values.adminApi.env }}
-            {{ toYaml .Values.adminApi.env | nindent 12 }}
-            {{- end }}
-          {{- with .Values.adminApi.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.adminApi.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}

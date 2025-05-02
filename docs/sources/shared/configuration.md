@@ -2609,6 +2609,10 @@ tenant_topic:
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
   [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd

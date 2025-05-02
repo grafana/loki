@@ -3,9 +3,11 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
@@ -318,15 +320,36 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 		return q.Querier.DetectedLabels(ctx, req)
 	}
 
-	level.Debug(q.logger).Log(
-		"msg", "detected labels requested for multiple tenants, but not yet supported. returning static labels",
-		"tenantIDs", strings.Join(tenantIDs, ","),
-	)
+	responses := make([]*logproto.DetectedLabelsResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.DetectedLabels(singleContext, req)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	// Collect all detected labels from all tenants
+	var allLabels []*logproto.DetectedLabel
+	for _, resp := range responses {
+		allLabels = append(allLabels, resp.DetectedLabels...)
+	}
+
+	// Use the storage package's MergeLabels function to merge HyperLogLog sketches
+	mergedLabels, err := detected.MergeLabels(allLabels)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sort by cardinality for consistent output
+	sort.Slice(mergedLabels, func(i, j int) bool {
+		return mergedLabels[i].Cardinality < mergedLabels[j].Cardinality
+	})
 
 	return &logproto.DetectedLabelsResponse{
-		DetectedLabels: []*logproto.DetectedLabel{
-			{Label: "multi_tenant_querier_not_implemented"},
-		},
+		DetectedLabels: mergedLabels,
 	}, nil
 }
 
