@@ -746,7 +746,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualDropped := tt.metadata.TryStore("tenant1", tt.streams, tt.maxActiveStreams, cutoff, bucketStart, bucketCutOff)
+			actualDropped := tt.metadata.StoreIf("tenant1", tt.streams, tt.maxActiveStreams, cutoff, bucketStart, bucketCutOff)
 
 			actualStored := make(map[string]map[int32][]Stream)
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {

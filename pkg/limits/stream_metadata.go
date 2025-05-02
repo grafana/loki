@@ -24,9 +24,9 @@ type StreamMetadata interface {
 	// e.g. the total active streams and the total size of the streams.
 	Usage(tenant string, fn UsageFunc)
 
-	// TryStore tries to store the stream metadata for a specific tenant per partition,
+	// StoreIf tries to store the stream metadata for a specific tenant per partition,
 	// until the partition limit is reached. It returns a map of reason to stream hashes.
-	TryStore(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64
+	StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
 	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
@@ -108,7 +108,7 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 	}
 }
 
-func (s *streamMetadata) TryStore(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64 {
+func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64 {
 	i := s.getStripeIdx(tenant)
 
 	s.locks[i].Lock()

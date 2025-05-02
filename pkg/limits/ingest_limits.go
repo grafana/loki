@@ -383,7 +383,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *logproto.ExceedsL
 		})
 	}
 
-	exceedLimits := s.metadata.TryStore(req.Tenant, incoming, maxActiveStreams, cutoff, bucketStart, rateWindowCutoff)
+	exceedLimits := s.metadata.StoreIf(req.Tenant, incoming, maxActiveStreams, cutoff, bucketStart, rateWindowCutoff)
 
 	var results []*logproto.ExceedsLimitsResult
 	for reason, streamHashes := range exceedLimits {
