@@ -8,14 +8,16 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
-  # Necessary for grafana/shared-workflows/actions/dockerhub-login@main 
-  id-token: write
+  contents: read
+  pull-requests: read
 
 jobs:
   releasePlease:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     outputs:
       release_created: ${{ steps.release.outputs.operator--release_created }}
       release_name: ${{ steps.release.outputs.operator--tag_name }}
@@ -30,7 +32,7 @@ jobs:
           app-id: "${{ secrets.APP_ID }}"
           owner: "${{ github.repository_owner }}"
           private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4
         id: release
         with:
           path: operator
@@ -43,16 +45,20 @@ jobs:
     needs:
       - "releasePlease"
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - name: "Set up QEMU"
-        uses: "docker/setup-qemu-action@v3"
+        uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392" # v3
       - name: "Set up docker buildx"
-        uses: "docker/setup-buildx-action@v3"
+        uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2" # v3
       - name: "Login to DockerHub (from vault)"
-        uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+        uses: "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
       - name: "Build and push"
         timeout-minutes: ${{ env.BUILD_TIMEOUT }}
-        uses: "docker/build-push-action@v6"
+        uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1" # v6
         with:
           context: "operator"
           file: "Dockerfile"
@@ -64,6 +70,10 @@ jobs:
     - "releasePlease"
     - "publishImages"
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     if: ${{ needs.releasePlease.outputs.release_created }}
     steps:
       - id: "get_github_app_token"
@@ -76,10 +86,12 @@ jobs:
       - name: "pull code to release"
         uses: "actions/checkout@v4"
         with:
+          persist-credentials: false
           path: "release"
       - name: "publish release"
         env:
           GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          RELEASE_NAME: ${{ needs.releasePlease.outputs.release_name }}
         working-directory: "release"
         run: |
-          gh release edit "${{ needs.releasePlease.outputs.release_name }}" --draft=false --latest=false
+          gh release edit "$RELEASE_NAME" --draft=false --latest=false
