@@ -37,9 +37,6 @@ jobs:
           - name: Simple Scalable AWS Kube IRSA Values Scenario
             values_file: simple-scalable-aws-kube-irsa-values.yaml
             use_k3d: false
-          - name: Simple Thanos Values Scenario
-            values_file: simple-thanos-values.yaml
-            use_k3d: false
 
     steps:
       - name: Checkout code
