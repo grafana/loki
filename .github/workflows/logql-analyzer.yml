@@ -48,7 +48,7 @@ jobs:
 
     - id: "get-github-app-token"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "actions/create-github-app-token@v2"
       with:
         app-id: "${{ secrets.APP_ID }}"
         owner: "${{ github.repository_owner }}"
