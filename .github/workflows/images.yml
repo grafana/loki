@@ -79,7 +79,7 @@
       "name": "Prepare tag name"
       "run": |
         arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
-        echo "IMAGE_TAG=${$OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
+        echo "IMAGE_TAG=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
@@ -198,11 +198,11 @@
   "loki-canary-boringcrypto-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-boringcrypto.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto-image.outputs.image_tag }}"
     "needs":
     - "loki-canary-boringcrypto-image"
     "permissions":
@@ -217,10 +217,10 @@
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
-        echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
-        echo 'linux/arm   $IMAGE_DIGEST_ARM'
-        IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
+        echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+        echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+        echo "linux/arm   $IMAGE_DIGEST_ARM"
+        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -321,11 +321,11 @@
   "loki-canary-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.loki-canary.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-image.outputs.image_tag }}"
     "needs":
     - "loki-canary-image"
     "permissions":
@@ -340,10 +340,10 @@
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
-        echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
-        echo 'linux/arm   $IMAGE_DIGEST_ARM'
-        IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
+        echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+        echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+        echo "linux/arm   $IMAGE_DIGEST_ARM"
+        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -444,11 +444,11 @@
   "loki-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.loki.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.loki.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.loki.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.loki.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.loki.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.loki-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.loki-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.loki-image.outputs.image_digest_linux_arm64 }}"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
     "needs":
     - "loki-image"
     "permissions":
@@ -463,10 +463,10 @@
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
-        echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
-        echo 'linux/arm   $IMAGE_DIGEST_ARM'
-        IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
+        echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+        echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+        echo "linux/arm   $IMAGE_DIGEST_ARM"
+        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -567,11 +567,11 @@
   "promtail-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.promtail.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.promtail.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.promtail.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.promtail.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.promtail.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.promtail-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.promtail-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.promtail-image.outputs.image_digest_linux_arm64 }}"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.promtail-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.promtail-image.outputs.image_tag }}"
     "needs":
     - "promtail-image"
     "permissions":
@@ -586,10 +586,10 @@
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo 'linux/arm64 $IMAGE_DIGEST_ARM64'
-        echo 'linux/amd64 $IMAGE_DIGEST_AMD64'
-        echo 'linux/arm   $IMAGE_DIGEST_ARM'
-        IMAGE=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}
+        echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+        echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+        echo "linux/arm   $IMAGE_DIGEST_ARM"
+        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \

@@ -85,11 +85,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomPlanner.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.bloomPlanner.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomPlanner.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomPlanner.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
