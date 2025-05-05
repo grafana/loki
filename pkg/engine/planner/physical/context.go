@@ -99,7 +99,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 			if err != nil {
 				return nil, err
 			}
-			value, err := convertLiteral(expr.Right)
+			value, err := convertLiteralToString(expr.Right)
 			if err != nil {
 				return nil, err
 			}
@@ -116,7 +116,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 	}
 }
 
-func convertLiteral(expr Expression) (string, error) {
+func convertLiteralToString(expr Expression) (string, error) {
 	l, ok := expr.(*LiteralExpr)
 	if !ok {
 		return "", fmt.Errorf("expected literal expression, got %T", expr)

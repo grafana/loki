@@ -155,7 +155,7 @@ func NewLiteral(value any) *LiteralExpr {
 	case time.Duration:
 		return &LiteralExpr{Literal: datatype.NewDurationLiteral(casted)}
 	default:
-		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
+		panic(fmt.Sprintf("invalid literal value type %T", value))
 	}
 }
 
