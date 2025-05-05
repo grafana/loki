@@ -355,7 +355,7 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetA
 
 // ExceedsLimits implements the logproto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = time.Now()
 		// Use the provided lastSeenAt timestamp as the last seen time

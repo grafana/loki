@@ -121,7 +121,6 @@ func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, err
 	return m.rs, nil
 }
 
-
 func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
