@@ -12,13 +12,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/util/topk"
-	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 )
 
 type dataobjScan struct {

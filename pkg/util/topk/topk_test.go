@@ -6,8 +6,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/util/topk"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
 // ExampleHeap_greatest shows how to use a [topk.Heap] to get the top-k greatest

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thanos-io/objstore"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
-	"github.com/thanos-io/objstore"
 )
 
 type Config struct {
