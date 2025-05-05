@@ -12,8 +12,8 @@ import (
 )
 
 type httpExceedsLimitsRequest struct {
-	TenantID     string   `json:"tenantID"`
-	StreamHashes []uint64 `json:"streamHashes"`
+	Tenant  string                     `json:"tenant"`
+	Streams []*logproto.StreamMetadata `json:"streams"`
 }
 
 type httpExceedsLimitsResponse struct {
@@ -28,32 +28,24 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.TenantID == "" {
-		http.Error(w, "tenantID is required", http.StatusBadRequest)
+	if req.Tenant == "" {
+		http.Error(w, "tenant is required", http.StatusBadRequest)
 		return
 	}
 
-	streams := make([]*logproto.StreamMetadata, 0, len(req.StreamHashes))
-	for _, streamHash := range req.StreamHashes {
-		streams = append(streams, &logproto.StreamMetadata{
-			StreamHash: streamHash,
-		})
-	}
-	protoReq := &logproto.ExceedsLimitsRequest{
-		Tenant:  req.TenantID,
-		Streams: streams,
-	}
-
-	ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(r.Context(), req.TenantID))
+	ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(r.Context(), req.Tenant))
 	if err != nil {
 		http.Error(w, "failed to inject org ID", http.StatusInternalServerError)
 		return
 	}
 
-	resp, err := f.ExceedsLimits(ctx, protoReq)
+	resp, err := f.ExceedsLimits(ctx, &logproto.ExceedsLimitsRequest{
+		Tenant:  req.Tenant,
+		Streams: req.Streams,
+	})
 	if err != nil {
-		level.Error(f.logger).Log("msg", "failed to check limits", "err", err)
-		http.Error(w, "an unexpected error occurred while checking limits", http.StatusInternalServerError)
+		level.Error(f.logger).Log("msg", "failed to check if request exceeds limits", "err", err)
+		http.Error(w, "an unexpected error occurred while checking if request exceeds limits", http.StatusInternalServerError)
 		return
 	}
 
