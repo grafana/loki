@@ -24,7 +24,7 @@ type StreamMetadata interface {
 	// e.g. the total active streams and the total size of the streams.
 	Usage(tenant string, fn UsageFunc)
 
-	// StoreIf tries to store the stream metadata for a specific tenant per partition,
+	// StoreIf tries to store a list of streams for a specific tenant and partition,
 	// until the partition limit is reached. It returns a map of reason to stream hashes
 	// and the total ingested bytes.
 	StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) (map[Reason][]uint64, uint64)
