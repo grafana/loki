@@ -150,7 +150,7 @@
                   + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                   + $.step.with({
                     'app-id': '${{ env.APP_ID }}',
-                    'private-key': '${{ env.APP_PRIVATE_KEY }}',
+                    'private-key': '${{ env.PRIVATE_KEY }}',
                     // By setting owner, we should get access to all repositories in current owner's installation: https://github.com/marketplace/actions/create-github-app-token#create-a-token-for-all-repositories-in-the-current-owners-installation
                     owner: '${{ github.repository_owner }}',
                   }),
