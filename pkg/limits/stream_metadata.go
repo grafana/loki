@@ -157,10 +157,7 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 
 				// If the stream is stored and expired, reset the stream
 				if found && stored.LastSeenAt < cutoff {
-					stored.LastSeenAt = stream.LastSeenAt
-					stored.TotalSize = 0
-					stored.RateBuckets = []RateBucket{}
-					s.stripes[i][tenant][partitionID][stream.Hash] = stored
+					s.stripes[i][tenant][partitionID][stream.Hash] = Stream{Hash: stream.Hash, LastSeenAt: stream.LastSeenAt}
 				}
 			}
 

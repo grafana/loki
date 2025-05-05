@@ -12,7 +12,7 @@ const (
 	ReasonExceedsRateLimit
 )
 
-func (r Reason) Humanize() string {
+func (r Reason) String() string {
 	switch r {
 	case ReasonExceedsMaxStreams:
 		return "max streams exceeded"

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -111,6 +113,9 @@ type IngestLimits struct {
 
 	// Track partition assignments
 	partitionManager *PartitionManager
+
+	// Used for tests.
+	clock quartz.Clock
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -132,6 +137,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
+		clock:            quartz.NewReal(),
 	}
 
 	// Initialize internal metadata metrics
@@ -159,7 +165,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
@@ -179,7 +185,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
 
 	var (
 		recorded            = make(map[string]int)
@@ -296,7 +302,7 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+			cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
 			s.metadata.Evict(cutoff)
 		}
 	}
@@ -357,7 +363,7 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetA
 // It returns the number of active streams for a tenant and the status of requested streams.
 func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	var (
-		lastSeenAt = time.Now()
+		lastSeenAt = s.clock.Now()
 		// Use the provided lastSeenAt timestamp as the last seen time
 		recordTime = lastSeenAt.UnixNano()
 		// Calculate the cutoff for the window size
@@ -374,6 +380,12 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 
 	for _, stream := range req.Streams {
 		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+
+		// TODO(periklis): Do we need to report this as an error to the frontend?
+		if assigned := s.partitionManager.Has(partitionID); !assigned {
+			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition_id", partitionID)
+			continue
+		}
 
 		streams[partitionID] = append(streams[partitionID], Stream{
 			Hash:       stream.StreamHash,

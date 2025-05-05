@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -113,7 +114,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     1,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedStreams: []KeyedStream{},
@@ -140,7 +141,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     1,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedStreams: []KeyedStream{{
@@ -250,7 +251,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     1,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedExceedsLimits: true,

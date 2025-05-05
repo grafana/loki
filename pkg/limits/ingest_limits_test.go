@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
@@ -18,11 +19,15 @@ import (
 )
 
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
+	clock := quartz.NewMock(t)
+	now := clock.Now()
+
 	tests := []struct {
 		name string
 
 		// Setup data.
 		assignedPartitionIDs []int32
+		numPartitions        int
 		metadata             *streamMetadata
 		windowSize           time.Duration
 		rateWindow           time.Duration
@@ -41,13 +46,14 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "tenant not found",
 			// setup data
 			assignedPartitionIDs: []int32{0},
+			numPartitions:        1,
 			metadata: &streamMetadata{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
-								0x4: {Hash: 0x4, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
-								0x5: {Hash: 0x5, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
+								0x4: {Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},
+								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 2000}}},
 							},
 						},
 					},
@@ -74,15 +80,16 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "all existing streams still active",
 			// setup data
 			assignedPartitionIDs: []int32{0},
+			numPartitions:        1,
 			metadata: &streamMetadata{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
-								1: {Hash: 1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
-								2: {Hash: 2, LastSeenAt: time.Now().UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
-								3: {Hash: 3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
-								4: {Hash: 4, LastSeenAt: time.Now().UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},
+								1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},
+								2: {Hash: 2, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 2000}}},
+								3: {Hash: 3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 3000}}},
+								4: {Hash: 4, LastSeenAt: now.UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 4000}}},
 							},
 						},
 					},
@@ -108,14 +115,15 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "keep existing active streams and drop new streams",
 			// setup data
 			assignedPartitionIDs: []int32{0},
+			numPartitions:        1,
 			metadata: &streamMetadata{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
-								0x3: {Hash: 0x3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
-								0x5: {Hash: 0x5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
+								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},
+								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 3000}}},
+								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -143,14 +151,15 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "update existing active streams and drop new streams",
 			// setup data
 			assignedPartitionIDs: []int32{0},
+			numPartitions:        1,
 			metadata: &streamMetadata{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
-								0x3: {Hash: 0x3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
-								0x5: {Hash: 0x5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
+								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},
+								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 3000}}},
+								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -181,16 +190,17 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "update active streams and re-activate expired streams",
 			// setup data
 			assignedPartitionIDs: []int32{0},
+			numPartitions:        1,
 			metadata: &streamMetadata{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: time.Now().UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 1000}}},
-								0x2: {Hash: 0x2, LastSeenAt: time.Now().Add(-120 * time.Minute).UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 2000}}},
-								0x3: {Hash: 0x3, LastSeenAt: time.Now().UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 3000}}},
-								0x4: {Hash: 0x4, LastSeenAt: time.Now().Add(-120 * time.Minute).UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 4000}}},
-								0x5: {Hash: 0x5, LastSeenAt: time.Now().UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: time.Now().UnixNano(), Size: 5000}}},
+								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 1000}}},
+								0x2: {Hash: 0x2, LastSeenAt: now.Add(-120 * time.Minute).UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 2000}}},
+								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 3000}}},
+								0x4: {Hash: 0x4, LastSeenAt: now.Add(-120 * time.Minute).UnixNano(), TotalSize: 4000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 4000}}},
+								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []RateBucket{{Timestamp: now.UnixNano(), Size: 5000}}},
 							},
 						},
 					},
@@ -217,6 +227,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			name: "drop streams per partition limit",
 			// setup data
 			assignedPartitionIDs: []int32{0, 1},
+			numPartitions:        2,
 			metadata: &streamMetadata{
 				locks: make([]stripeLock, 2),
 				stripes: []map[string]map[int32]map[uint64]Stream{
@@ -243,6 +254,36 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
 		},
+		{
+			name: "skip streams assigned to partitions not owned by instance but enforce limit",
+			// setup data
+			assignedPartitionIDs: []int32{0},
+			numPartitions:        2,
+			metadata: &streamMetadata{
+				locks: make([]stripeLock, 2),
+				stripes: []map[string]map[int32]map[uint64]Stream{
+					make(map[string]map[int32]map[uint64]Stream),
+					make(map[string]map[int32]map[uint64]Stream),
+				},
+			},
+			windowSize:       time.Hour,
+			rateWindow:       5 * time.Minute,
+			bucketDuration:   time.Minute,
+			maxActiveStreams: 3,
+			// request data
+			tenantID: "tenant1",
+			streams: []*logproto.StreamMetadata{
+				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
+				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned
+				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
+				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned  but exceeds stream limit
+			},
+			// expect data
+			expectedIngestedBytes: 1010,
+			expectedResults: []*logproto.ExceedsLimitsResult{
+				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -254,7 +295,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 
 			s := &IngestLimits{
 				cfg: Config{
-					NumPartitions:  len(tt.assignedPartitionIDs),
+					NumPartitions:  tt.numPartitions,
 					WindowSize:     tt.windowSize,
 					RateWindow:     tt.rateWindow,
 					BucketDuration: tt.bucketDuration,
@@ -278,6 +319,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				limits:           limits,
 				metadata:         tt.metadata,
 				partitionManager: NewPartitionManager(log.NewNopLogger()),
+				clock:            clock,
 			}
 
 			// Assign the Partition IDs.
@@ -312,7 +354,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 }
 
 func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
-	now := time.Now()
+	clock := quartz.NewMock(t)
+	now := clock.Now()
 
 	limits := &testutil.MockLimits{
 		MaxGlobalStreams: 5,
@@ -362,6 +405,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		partitionManager: NewPartitionManager(log.NewNopLogger()),
 		metrics:          newMetrics(prometheus.NewRegistry()),
 		limits:           limits,
+		clock:            clock,
 	}
 
 	// Assign the Partition IDs.

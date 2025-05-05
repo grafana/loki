@@ -131,7 +131,7 @@ func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams
 	reasonsForHashes := make(map[uint64][]string)
 	for _, result := range resp.Results {
 		reasons := reasonsForHashes[result.StreamHash]
-		humanized := limits.Reason(result.Reason).Humanize()
+		humanized := limits.Reason(result.Reason).String()
 		reasons = append(reasons, humanized)
 		reasonsForHashes[result.StreamHash] = reasons
 	}

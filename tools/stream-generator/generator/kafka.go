@@ -62,7 +62,7 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distr
 		var results string
 		reasonCounts := make(map[string]int)
 		for _, rejectedStream := range resp.Results {
-			reason := limits.Reason(rejectedStream.Reason).Humanize()
+			reason := limits.Reason(rejectedStream.Reason).String()
 			reasonCounts[reason]++
 		}
 		for reason, count := range reasonCounts {
