@@ -16,20 +16,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// mockStreamUsageGatherer mocks a StreamUsageGatherer. It avoids having to
+// mockExceedsLimitsGatherer mocks an ExeceedsLimitsGatherer. It avoids having to
 // set up a mock ring to test the frontend.
-type mockStreamUsageGatherer struct {
+type mockExceedsLimitsGatherer struct {
 	t *testing.T
 
-	expectedRequest *GetStreamUsageRequest
-	responses       []GetStreamUsageResponse
+	expectedExceedsLimitsRequest *logproto.ExceedsLimitsRequest
+	exceedsLimitsResponses       []*logproto.ExceedsLimitsResponse
 }
 
-func (g *mockStreamUsageGatherer) GetStreamUsage(_ context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	if expected := g.expectedRequest; expected != nil {
-		require.Equal(g.t, *expected, r)
+func (g *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
+	if expected := g.expectedExceedsLimitsRequest; expected != nil {
+		require.Equal(g.t, expected, req)
 	}
-	return g.responses, nil
+	return g.exceedsLimitsResponses, nil
 }
 
 // mockIngestLimitsClient mocks logproto.IngestLimitsClient.
@@ -42,13 +42,27 @@ type mockIngestLimitsClient struct {
 	expectedStreamUsageRequest        *logproto.GetStreamUsageRequest
 
 	// The mocked responses.
-	getAssignedPartitionsResponse *logproto.GetAssignedPartitionsResponse
-	getStreamUsageResponse        *logproto.GetStreamUsageResponse
+	getAssignedPartitionsResponse    *logproto.GetAssignedPartitionsResponse
+	getAssignedPartitionsResponseErr error
+	getStreamUsageResponse           *logproto.GetStreamUsageResponse
+	getStreamUsageResponseErr        error
+
+	// The expected request counts.
+	expectedNumAssignedPartitionsRequests int
+	expectedNumStreamUsageRequests        int
+
+	// The actual request counts.
+	numAssignedPartitionsRequests int
+	numStreamUsageRequests        int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
 	if expected := m.expectedAssignedPartitionsRequest; expected != nil {
 		require.Equal(m.t, expected, r)
+	}
+	m.numAssignedPartitionsRequests++
+	if err := m.getAssignedPartitionsResponseErr; err != nil {
+		return nil, err
 	}
 	return m.getAssignedPartitionsResponse, nil
 }
@@ -57,7 +71,16 @@ func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.G
 	if expected := m.expectedStreamUsageRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
+	m.numStreamUsageRequests++
+	if err := m.getStreamUsageResponseErr; err != nil {
+		return nil, err
+	}
 	return m.getStreamUsageResponse, nil
+}
+
+func (m *mockIngestLimitsClient) AssertExpectedNumRequests() {
+	require.Equal(m.t, m.expectedNumAssignedPartitionsRequests, m.numAssignedPartitionsRequests)
+	require.Equal(m.t, m.expectedNumStreamUsageRequests, m.numStreamUsageRequests)
 }
 
 func (m *mockIngestLimitsClient) Close() error {
@@ -115,7 +138,7 @@ func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 	return 1000
 }
 
-func newMockRingWithClientPool(_ *testing.T, name string, clients []logproto.IngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
+func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
 		rs: ring.ReplicationSet{

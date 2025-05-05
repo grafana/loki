@@ -26,7 +26,7 @@ func TestExpressionTypes(t *testing.T) {
 			name: "BinaryExpression",
 			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  &ColumnExpr{ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
 				Right: &LiteralExpr{Value: types.StringLiteral("foo")},
 			},
 			expected: ExprTypeBinary,
@@ -38,7 +38,7 @@ func TestExpressionTypes(t *testing.T) {
 		},
 		{
 			name:     "ColumnExpression",
-			expr:     &ColumnExpr{ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
+			expr:     &ColumnExpr{Ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
 			expected: ExprTypeColumn,
 		},
 	}

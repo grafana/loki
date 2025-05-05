@@ -2,8 +2,11 @@ package bench
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,11 +16,14 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
+
+var slowTests = flag.Bool("slow-tests", false, "run slow tests")
 
 const testTenant = "test-tenant"
 
@@ -25,7 +31,7 @@ const testTenant = "test-tenant"
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
-func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.Engine, *GeneratorConfig) {
+func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngine, *GeneratorConfig) {
 	tb.Helper()
 	entries, err := os.ReadDir(DefaultDataDir)
 	if err != nil || len(entries) == 0 {
@@ -66,6 +72,101 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.Engine, *G
 		level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn()))
 
 	return engine, config
+}
+
+// TestStorageEquality ensures that for each test case, all known storages
+// return the same query result.
+func TestStorageEquality(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), testTenant)
+
+	if !*slowTests {
+		t.Skip("test skipped because -slow-tests flag is not set")
+	}
+
+	type store struct {
+		Name   string
+		Cases  []TestCase
+		Engine *logql.QueryEngine
+	}
+
+	generateStore := func(name string) *store {
+		engine, config := setupBenchmarkWithStore(t, name)
+		cases := config.GenerateTestCases()
+
+		return &store{
+			Name:   name,
+			Cases:  cases,
+			Engine: engine,
+		}
+	}
+
+	// Generate a list of stores. The first store name provided here is the one
+	// that acts as the baseline.
+	var stores []*store
+	for _, name := range []string{"chunk", "dataobj"} {
+		store := generateStore(name)
+		stores = append(stores, store)
+	}
+	if len(stores) < 2 {
+		t.Skipf("not enough stores to compare; need at least 2, got %d", len(stores))
+	}
+
+	baseStore := stores[0]
+	for _, baseCase := range baseStore.Cases {
+		t.Run(baseCase.Name(), func(t *testing.T) {
+			defer func() {
+				if t.Failed() {
+					t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+				}
+			}()
+
+			t.Logf("Query information:\n%s", baseCase.Description())
+
+			params, err := logql.NewLiteralParams(
+				baseCase.Query,
+				baseCase.Start,
+				baseCase.End,
+				baseCase.Step,
+				0,
+				baseCase.Direction,
+				1000,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			expected, err := baseStore.Engine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+
+			// Find matching test case in other stores and then compare results.
+			for _, store := range stores[1:] {
+				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
+					return tc == baseCase
+				})
+				if idx == -1 {
+					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
+					continue
+				}
+
+				actual, err := store.Engine.Query(params).Exec(ctx)
+				if assert.NoError(t, err) {
+					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
+				}
+			}
+		})
+	}
+}
+
+// testNameRegex converts the test name into an argument that can be passed to
+// -test.run.
+func testNameRegex(name string) string {
+	// -test.run accepts a sequence of regexes separated by '/'. To pass a
+	// literal test name, we need to escape the regex characters in the name.
+	var newParts []string
+	for part := range strings.SplitSeq(name, "/") {
+		newParts = append(newParts, regexp.QuoteMeta(part))
+	}
+	return strings.Join(newParts, "/")
 }
 
 func TestLogQLQueries(t *testing.T) {
@@ -132,7 +233,7 @@ func BenchmarkLogQL(b *testing.B) {
 		cases := config.GenerateTestCases()
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("query=%s/store=%s", c.Name(), storeType), func(b *testing.B) {
+			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
 				params, err := logql.NewLiteralParams(
 					c.Query,
 					c.Start,
@@ -150,8 +251,11 @@ func BenchmarkLogQL(b *testing.B) {
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					_, err := q.Exec(ctx)
+					r, err := q.Exec(ctx)
 					require.NoError(b, err)
+					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
+					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
+					b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
 				}
 			})
 		}

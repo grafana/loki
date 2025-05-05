@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -11,6 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
+
+var errUnimplemented = errors.New("query contains unimplemented features")
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -24,6 +27,18 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	expr := query.GetExpression()
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
+		case syntax.SampleExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+			err = errUnimplemented
+			return false // do not traverse children
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 		case *syntax.LineFilterExpr:
@@ -130,7 +145,7 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 
 func convertLineFilter(filter syntax.LineFilter) Value {
 	return &BinOp{
-		Left:  logColumnRef(),
+		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
 	}
@@ -139,9 +154,9 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	switch op {
 	case log.LineMatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpMatchSubstr
 	case log.LineMatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNotMatchSubstr
 	case log.LineMatchRegexp:
 		return types.BinaryOpMatchRe
 	case log.LineMatchNotRegexp:
@@ -159,16 +174,16 @@ func timestampColumnRef() *ColumnRef {
 	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
-func logColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinLog, types.ColumnTypeBuiltin)
+func lineColumnRef() *ColumnRef {
+	return NewColumnRef(types.ColumnNameBuiltinLine, types.ColumnTypeBuiltin)
 }
 
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
 	switch op {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchStr
+		return types.BinaryOpMatchSubstr
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchStr
+		return types.BinaryOpNotMatchSubstr
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
@@ -182,7 +197,7 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	switch e := expr.(type) {
 	case *log.BinaryLabelFilter:
 		op := types.BinaryOpOr
-		if e.And == true {
+		if e.And {
 			op = types.BinaryOpAnd
 		}
 		left, err := convertLabelFilter(e.Left)

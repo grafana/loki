@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -56,16 +57,21 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant", "aggregated_metric", "policy"})
 
+	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_otlp_exporter_streams_total",
+		Help:      "The total number of streams with exporter=OTLP label",
+	}, []string{"tenant"})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const (
-	applicationJSON       = "application/json"
-	LabelServiceName      = "service_name"
-	ServiceUnknown        = "unknown_service"
-	AggregatedMetricLabel = "__aggregated_metric__"
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
 )
 
 var (
@@ -158,8 +164,19 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative log lines bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 			entriesSize += size
 		}
 	}
@@ -168,10 +185,21 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 
-			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
-			structuredMetadataBytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+				structuredMetadataBytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative structured metadata bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 
 			entriesSize += size
 			structuredMetadataSize += size
@@ -202,6 +230,14 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
+
+	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
+	// Therefore, if the header is included, only log the first address
+	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	if agentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
@@ -287,7 +323,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
-		if lbs.Has(AggregatedMetricLabel) {
+		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
 

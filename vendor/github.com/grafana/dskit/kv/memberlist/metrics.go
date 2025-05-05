@@ -189,6 +189,13 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Number of dropped notifications in WatchPrefix function",
 	}, []string{"prefix"})
 
+	m.numberOfKeyNotifications = promauto.With(m.registerer).NewGauge(prometheus.GaugeOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "pending_key_notifications",
+		Help:      "Number of pending notifications in WatchPrefix function",
+	})
+
 	if m.registerer == nil {
 		return
 	}

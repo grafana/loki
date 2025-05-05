@@ -268,7 +268,7 @@ func markForDelete(
 			// We would now check if the end time of the tableInterval is out of retention period so that
 			// we can drop the chunk entry from this table without removing the chunk from the store.
 			if c.Through.After(tableInterval.End) {
-				if expiration.DropFromIndex(s.UserID(), c, nil, tableInterval.End, now) {
+				if expiration.DropFromIndex(s.UserID(), c, labels.EmptyLabels(), tableInterval.End, now) {
 					modified = true
 					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
@@ -280,7 +280,11 @@ func markForDelete(
 			empty = false
 			seriesMap.MarkSeriesNotDeleted(s.SeriesID(), s.UserID())
 		}
-		return iterCtx.Err()
+		if err := iterCtx.Err(); err != nil {
+			return err
+		}
+
+		return expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName)
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
@@ -438,8 +442,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
-		if filterFunc(ts, s, structuredMetadata...) {
+	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+		if filterFunc(ts, s, structuredMetadata) {
 			linesDeleted = true
 			return true
 		}

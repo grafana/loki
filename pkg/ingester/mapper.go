@@ -59,7 +59,7 @@ func (m *FpMapper) MapFP(fp model.Fingerprint, metric labels.Labels) model.Finge
 	// Then check the most likely case: This fp belongs to a series that is
 	// already in memory.
 	s := m.fpToLabels(fp)
-	if s != nil {
+	if !s.IsEmpty() {
 		// FP exists in memory, but is it for the same metric?
 		if labels.Equal(metric, s) {
 			// Yupp. We are done.
@@ -143,10 +143,10 @@ func (m *FpMapper) nextMappedFP() model.Fingerprint {
 // and indexes as it might become really large, causing a lot of hashing effort
 // in maps and a lot of storage overhead in indexes.
 func metricToUniqueString(m labels.Labels) string {
-	parts := make([]string, 0, len(m))
-	for _, pair := range m {
-		parts = append(parts, pair.Name+separatorString+pair.Value)
-	}
+	parts := make([]string, 0, m.Len())
+	m.Range(func(l labels.Label) {
+		parts = append(parts, l.Name+separatorString+l.Value)
+	})
 	sort.Strings(parts)
 	return strings.Join(parts, separatorString)
 }

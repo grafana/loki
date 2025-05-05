@@ -11,8 +11,8 @@ type Literal struct {
 }
 
 // String returns the string representation of the literal value.
-func (e *Literal) String() string {
-	switch v := e.Value.(type) {
+func (l *Literal) String() string {
+	switch v := l.Value.(type) {
 	case nil:
 		return "NULL"
 	case bool:
@@ -33,8 +33,8 @@ func (e *Literal) String() string {
 }
 
 // ValueType returns the kind of value represented by the literal.
-func (e *Literal) ValueType() ValueType {
-	switch e.Value.(type) {
+func (l *Literal) ValueType() ValueType {
+	switch l.Value.(type) {
 	case nil:
 		return ValueTypeNull
 	case bool:
@@ -52,6 +52,51 @@ func (e *Literal) ValueType() ValueType {
 	default:
 		return ValueTypeInvalid
 	}
+}
+
+// IsNull returns true if lit is a [ValueTypeNull] value.
+func (l Literal) IsNull() bool {
+	return l.ValueType() == ValueTypeNull
+}
+
+// Str returns the value as a string. It panics if lit is not a [ValueTypeString].
+func (l Literal) Str() string {
+	if expect, actual := ValueTypeStr, l.ValueType(); expect != actual {
+		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
+	}
+	return l.Value.(string)
+}
+
+// Int64 returns the value as an int64. It panics if lit is not a [ValueTypeFloat].
+func (l Literal) Float() float64 {
+	if expect, actual := ValueTypeFloat, l.ValueType(); expect != actual {
+		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
+	}
+	return l.Value.(float64)
+}
+
+// Int returns the value as an int64. It panics if lit is not a [ValueTypeInt].
+func (l Literal) Int() int64 {
+	if expect, actual := ValueTypeInt, l.ValueType(); expect != actual {
+		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
+	}
+	return l.Value.(int64)
+}
+
+// Timestamp returns the value as a uint64. It panics if lit is not a [ValueTypeTimestamp].
+func (l Literal) Timestamp() uint64 {
+	if expect, actual := ValueTypeTimestamp, l.ValueType(); expect != actual {
+		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
+	}
+	return l.Value.(uint64)
+}
+
+// ByteArray returns the value as a byte slice. It panics if lit is not a [ValueTypeByteArray].
+func (l Literal) ByteArray() []byte {
+	if expect, actual := ValueTypeByteArray, l.ValueType(); expect != actual {
+		panic(fmt.Sprintf("literal type is %s, not %s", actual, expect))
+	}
+	return l.Value.([]byte)
 }
 
 // Convenience function for creating a NULL literal.

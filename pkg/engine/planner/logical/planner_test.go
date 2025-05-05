@@ -102,10 +102,10 @@ func TestConvertAST_Success(t *testing.T) {
 %11 = MATCH_STR ambiguous.bar "baz"
 %12 = OR %10 %11
 %13 = SELECT %9 [predicate=%12]
-%14 = MATCH_STR builtin.log "metric.go"
-%15 = MATCH_STR builtin.log "foo"
+%14 = MATCH_STR builtin.line "metric.go"
+%15 = MATCH_STR builtin.line "foo"
 %16 = AND %14 %15
-%17 = NOT_MATCH_RE builtin.log "(a|b|c)"
+%17 = NOT_MATCH_RE builtin.line "(a|b|c)"
 %18 = AND %16 %17
 %19 = SELECT %13 [predicate=%18]
 %20 = LIMIT %19 [skip=0, fetch=1000]
@@ -120,15 +120,84 @@ RETURN %20
 	t.Logf("\n%s\n", sb.String())
 }
 
-func TestConvertAST_UnsupportedFeature(t *testing.T) {
-	q := &query{
-		statement: `{cluster="prod", namespace=~"loki-.*"} |= "metric.go" | retry > 2`,
-		start:     1000,
-		end:       2000,
-		direction: logproto.FORWARD,
-		limit:     1000,
+func TestCanExecuteQuery(t *testing.T) {
+	for _, tt := range []struct {
+		statement string
+		expected  bool
+	}{
+		{
+			statement: `{env="prod"}`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | tenant="loki"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | tenant="loki" != "foo"`,
+			expected:  true,
+		},
+		{
+			statement: `{env="prod"} | json`,
+		},
+		{
+			statement: `{env="prod"} | json foo="bar"`,
+		},
+		{
+			statement: `{env="prod"} | logfmt`,
+		},
+		{
+			statement: `{env="prod"} | logfmt foo="bar"`,
+		},
+		{
+			statement: `{env="prod"} | pattern "<_> foo=<foo> <_>"`,
+		},
+		{
+			statement: `{env="prod"} | regexp ".* foo=(?P<foo>.+) .*"`,
+		},
+		{
+			statement: `{env="prod"} | unpack`,
+		},
+		{
+			statement: `{env="prod"} |= "metrics.go" | logfmt`,
+		},
+		{
+			statement: `{env="prod"} | line_format "{.cluster}"`,
+		},
+		{
+			statement: `{env="prod"} | label_format cluster="us"`,
+		},
+		{
+			statement: `{env="prod"} |= "metric.go" | retry > 2`,
+		},
+		{
+			statement: `sum(rate({env="prod"}[1m]))`,
+		},
+	} {
+		t.Run(tt.statement, func(t *testing.T) {
+			q := &query{
+				statement: tt.statement,
+				start:     1000,
+				end:       2000,
+				direction: logproto.FORWARD,
+				limit:     1000,
+			}
+
+			logicalPlan, err := BuildPlan(q)
+			if tt.expected {
+				require.NoError(t, err)
+			} else {
+				require.Nil(t, logicalPlan)
+				require.ErrorContains(t, err, "failed to convert AST into logical plan")
+			}
+		})
 	}
-	logicalPlan, err := BuildPlan(q)
-	require.Nil(t, logicalPlan)
-	require.ErrorContains(t, err, "failed to convert AST into logical plan: not implemented: *log.NumericLabelFilter")
 }

@@ -366,6 +366,7 @@ type completeMultipartUploadResult struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumType      string
 }
 
 // CompletePart sub container lists individual part numbers and their

@@ -15,8 +15,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
@@ -112,6 +112,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
 
+	// Track if request used the Loki OTLP exporter label
+	var usingLokiExporter bool
+
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
 		res := rls.At(i).Resource()
@@ -205,6 +208,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
+
+		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
+		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
+			usingLokiExporter = true
+		}
 
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
@@ -369,6 +377,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 	}
 
+	// Increment exporter streams metric once per request if seen
+	if usingLokiExporter {
+		otlpExporterStreams.WithLabelValues(userID).Inc()
+	}
+
 	return pr
 }
 
@@ -486,7 +499,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = prometheus.NormalizeLabel(keyWithPrefix)
+	keyWithPrefix = otlptranslator.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

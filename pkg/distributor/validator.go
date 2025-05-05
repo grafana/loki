@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -144,7 +145,7 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 }
 
 func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
-	return ls.Has(push.AggregatedMetricLabel)
+	return ls.Has(constants.AggregatedMetricLabel)
 }
 
 // Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream

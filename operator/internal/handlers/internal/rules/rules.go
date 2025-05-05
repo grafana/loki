@@ -6,7 +6,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -166,7 +165,7 @@ func selectRulesNamespaces(ctx context.Context, k k8s.Client, stackNs string, rs
 		return nsList, kverrors.Wrap(err, "failed to create LokiRule namespace selector", "namespaceSelector", rs.NamespaceSelector)
 	}
 
-	var nsl v1.NamespaceList
+	var nsl corev1.NamespaceList
 	err = k.List(ctx, &nsl, &client.MatchingLabelsSelector{Selector: nsSelector})
 	if err != nil {
 		return nsList, kverrors.Wrap(err, "failed to list namespaces for selector", "namespaceSelector", rs.NamespaceSelector)

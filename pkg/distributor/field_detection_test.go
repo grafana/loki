@@ -118,6 +118,55 @@ func Test_DetectLogLevels(t *testing.T) {
 			},
 		}, sm)
 	})
+
+	t.Run("detected_level structured metadata takes precedence over other level detection methods", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		// Create a write request with multiple potential level sources:
+		// 1. A JSON log line with level=error
+		// 2. A log level in stream labels (level=debug)
+		// 3. OTLP severity number in structured metadata
+		// 4. A severity field in structured metadata
+		// 5. The detected_level field in structured metadata (should take precedence)
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`}, false, false, false)
+		writeReq.Streams[0].Entries[0].Line = `{"msg":"this is a test message", "level":"error"}`
+		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  loghttp_push.OTLPSeverityNumber,
+				Value: fmt.Sprintf("%d", plog.SeverityNumberWarn),
+			},
+			{
+				Name:  "severity",
+				Value: constants.LogLevelCritical,
+			},
+			{
+				Name:  constants.LevelLabel, // detected_level
+				Value: constants.LogLevelTrace,
+			},
+		}
+
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar", level="debug"}`, topVal.Streams[0].Labels)
+
+		// Verify that detected_level from structured metadata is preserved and used
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
+
+		detectedLevelLbls := make([]logproto.LabelAdapter, 0, len(sm))
+		for _, sm := range sm {
+			if sm.Name == constants.LevelLabel {
+				detectedLevelLbls = append(detectedLevelLbls, sm)
+			}
+		}
+
+		require.Len(t, detectedLevelLbls, 1)
+		require.Contains(t, detectedLevelLbls, logproto.LabelAdapter{
+			Name:  constants.LevelLabel,
+			Value: constants.LogLevelTrace,
+		})
+	})
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
@@ -493,9 +542,9 @@ func Test_DetectGenericFields(t *testing.T) {
 	}{
 		{
 			name: "no match",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               "log line does not match",
 				StructuredMetadata: push.LabelsAdapter{},
@@ -504,10 +553,10 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "stream label matches",
-			labels: labels.Labels{
-				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
-				{Name: "tenant_id", Value: "fake"},
-			},
+			labels: labels.FromStrings(
+				"trace_id", "8c5f2ecbade6f01d",
+				"tenant_id", "fake",
+			),
 			entry: push.Entry{
 				Line:               "log line does not match",
 				StructuredMetadata: push.LabelsAdapter{},
@@ -519,9 +568,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "metadata matches",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line: "log line does not match",
 				StructuredMetadata: push.LabelsAdapter{
@@ -536,9 +585,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "logline (logfmt) matches",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               `msg="this log line matches" trace_id="8c5f2ecbade6f01d" org_id=fake duration=1h`,
 				StructuredMetadata: push.LabelsAdapter{},
@@ -550,9 +599,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "logline (logfmt) matches multiple fields",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               `msg="this log line matches" tenant_id="fake_a" org_id=fake_b duration=1h`,
 				StructuredMetadata: push.LabelsAdapter{},
@@ -563,9 +612,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "logline (json) matches",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               `{"msg": "this log line matches", "trace_id": "8c5f2ecbade6f01d", "org_id": "fake", "duration": "1s"}`,
 				StructuredMetadata: push.LabelsAdapter{},
@@ -577,9 +626,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "logline (json) matches multiple fields",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               `{"msg": "this log line matches", "tenant_id": "fake_a", "org_id": "fake_b", "duration": "1s"}`,
 				StructuredMetadata: push.LabelsAdapter{},
@@ -590,9 +639,9 @@ func Test_DetectGenericFields(t *testing.T) {
 		},
 		{
 			name: "logline matches jsonpath",
-			labels: labels.Labels{
-				{Name: "env", Value: "prod"},
-			},
+			labels: labels.FromStrings(
+				"env", "prod",
+			),
 			entry: push.Entry{
 				Line:               `{"product": {"details": "product details", "id": "P2024/01"}}`,
 				StructuredMetadata: push.LabelsAdapter{},

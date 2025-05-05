@@ -16,7 +16,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+	otlptranslate "github.com/prometheus/otlptranslator"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
@@ -621,7 +621,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	t.Run("with kafka, any failure fails the request", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
 		distributors, _ := prepare(t, 1, 0, limits, nil)
@@ -638,7 +638,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 	})
 
 	t.Run("with kafka, no failures is successful", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
 		distributors, _ := prepare(t, 1, 0, limits, nil)
@@ -653,11 +653,11 @@ func TestDistributorPushToKafka(t *testing.T) {
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, kafkaWriter.pushed)
+		require.Equal(t, uint64(1), kafkaWriter.pushes)
 	})
 
 	t.Run("with kafka and ingesters, both must complete", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
 		distributors, ingesters := prepare(t, 1, 3, limits, nil)
@@ -676,7 +676,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, kafkaWriter.pushed)
+		require.Equal(t, uint64(1), kafkaWriter.pushes)
 
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
@@ -901,7 +901,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
+			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
 		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
@@ -912,7 +912,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
-			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
+			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i+2))
 		}
 	})
 }
@@ -1306,16 +1306,10 @@ func TestParseStreamLabels(t *testing.T) {
 				limits.MaxLabelNamesPerSeries = 1
 				return limits
 			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  loghttp_push.LabelServiceName,
-					Value: loghttp_push.ServiceUnknown,
-				},
-			},
+			expectedLabels: labels.FromStrings(
+				"foo", "bar",
+				loghttp_push.LabelServiceName, loghttp_push.ServiceUnknown,
+			),
 		},
 	} {
 		limits := tc.generateLimits()
@@ -2018,28 +2012,32 @@ func makeWriteRequest(lines, size int) *logproto.PushRequest {
 	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`}, false, false, false)
 }
 
-type mockKafkaWriter struct {
-	failOnWrite bool
-	pushed      int
+type mockKafkaProducer struct {
+	failOnWrite     bool
+	pushes          uint64
+	records         []*kgo.Record
+	recordsPerTopic map[string][]*kgo.Record
+	mu              sync.Mutex
 }
 
-func (m *mockKafkaWriter) ProduceSync(_ context.Context, _ []*kgo.Record) kgo.ProduceResults {
+func (m *mockKafkaProducer) ProduceSync(_ context.Context, records []*kgo.Record) kgo.ProduceResults {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.failOnWrite {
-		return kgo.ProduceResults{
-			{
-				Err: kgo.ErrRecordTimeout,
-			},
-		}
+		return kgo.ProduceResults{{Err: kgo.ErrRecordTimeout}}
 	}
-	m.pushed++
-	return kgo.ProduceResults{
-		{
-			Err: nil,
-		},
+	m.pushes++
+	m.records = append(m.records, records...)
+	if m.recordsPerTopic == nil {
+		m.recordsPerTopic = make(map[string][]*kgo.Record)
 	}
+	for _, r := range records {
+		m.recordsPerTopic[r.Topic] = append(m.recordsPerTopic[r.Topic], r)
+	}
+	return kgo.ProduceResults{{Err: nil}}
 }
 
-func (m *mockKafkaWriter) Close() {}
+func (m *mockKafkaProducer) Close() {}
 
 type mockPartitionRingReader struct {
 	ring *ring.PartitionRing
@@ -2389,66 +2387,236 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	require.Equal(t, "policy1", policy)
 }
 
-func TestExceedsLimits(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
-	distributors, _ := prepare(t, 1, 0, limits, nil)
-	d := distributors[0]
-
-	ctx := context.Background()
-	streams := []KeyedStream{{
-		HashKeyNoShard: 1,
-		Stream: logproto.Stream{
-			Labels: "{foo=\"bar\"}",
+func TestDistributor_PushIngestLimits(t *testing.T) {
+	tests := []struct {
+		name                      string
+		ingestLimitsEnabled       bool
+		ingestLimitsDryRunEnabled bool
+		tenant                    string
+		streams                   logproto.PushRequest
+		expectedLimitsCalls       uint64
+		expectedLimitsRequest     *logproto.ExceedsLimitsRequest
+		limitsResponse            *logproto.ExceedsLimitsResponse
+		limitsResponseErr         error
+		expectedErr               string
+	}{{
+		name:                "limits are not checked when disabled",
+		ingestLimitsEnabled: false,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+			}},
 		},
+		expectedLimitsCalls: 0,
+	}, {
+		name:                "limits are checked",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponse: &logproto.ExceedsLimitsResponse{
+			Tenant:  "test",
+			Results: []*logproto.ExceedsLimitsResult{},
+		},
+	}, {
+		name:                "max stream limit is exceeded",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponse: &logproto.ExceedsLimitsResponse{
+			Tenant: "test",
+			Results: []*logproto.ExceedsLimitsResult{{
+				StreamHash: 0x90eb45def17f924,
+				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+			}},
+		},
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
+	}, {
+		name:                "rate limit is exceeded",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponse: &logproto.ExceedsLimitsResponse{
+			Tenant: "test",
+			Results: []*logproto.ExceedsLimitsResult{{
+				StreamHash: 0x90eb45def17f924,
+				Reason:     limits_frontend.ReasonExceedsRateLimit,
+			}},
+		},
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
+	}, {
+		name:                "one of two streams exceed max stream limit, request is accepted",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}, {
+				Labels: "{bar=\"baz\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "qux",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}, {
+				StreamHash:             0x11561609feba8cf6,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponse: &logproto.ExceedsLimitsResponse{
+			Tenant: "test",
+			Results: []*logproto.ExceedsLimitsResult{{
+				StreamHash: 1,
+				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+			}},
+		},
+	}, {
+		name:                      "dry-run does not enforce limits",
+		ingestLimitsEnabled:       true,
+		ingestLimitsDryRunEnabled: true,
+		tenant:                    "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponse: &logproto.ExceedsLimitsResponse{
+			Tenant: "test",
+			Results: []*logproto.ExceedsLimitsResult{{
+				StreamHash: 1,
+				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+			}},
+		},
+	}, {
+		name:                "error checking limits",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x90eb45def17f924,
+				EntriesSize:            0x3,
+				StructuredMetadataSize: 0x0,
+			}},
+		},
+		limitsResponseErr: errors.New("failed to check limits"),
 	}}
 
-	t.Run("no limits should be checked when disabled", func(t *testing.T) {
-		d.cfg.IngestLimitsEnabled = false
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			t.Fail() // Should not be called.
-			return nil, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			distributors, _ := prepare(t, 1, 3, limits, nil)
+			d := distributors[0]
+			d.cfg.IngestLimitsEnabled = test.ingestLimitsEnabled
+			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
-	t.Run("error should be returned if limits cannot be checked", func(t *testing.T) {
-		d.cfg.IngestLimitsEnabled = true
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return nil, errors.New("failed to check limits")
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.EqualError(t, err, "failed to check limits")
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
+			mockClient := mockIngestLimitsFrontendClient{
+				t:               t,
+				expectedRequest: test.expectedLimitsRequest,
+				response:        test.limitsResponse,
+				responseErr:     test.limitsResponseErr,
+			}
+			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			d.ingestLimits = l
 
-	t.Run("stream exceeds limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return &logproto.ExceedsLimitsResponse{
-				Tenant: "test",
-				RejectedStreams: []*logproto.RejectedStream{{
-					StreamHash: 1,
-					Reason:     "test",
-				}},
-			}, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.True(t, exceedsLimits)
-		require.Equal(t, []string{"stream {foo=\"bar\"} was rejected because \"test\""}, reasons)
-	})
-
-	t.Run("stream does not exceed limits", func(t *testing.T) {
-		doExceedsLimitsFn := func(_ context.Context, _ string, _ []KeyedStream) (*logproto.ExceedsLimitsResponse, error) {
-			return &logproto.ExceedsLimitsResponse{}, nil
-		}
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, "test", streams, doExceedsLimitsFn)
-		require.Nil(t, err)
-		require.False(t, exceedsLimits)
-		require.Nil(t, reasons)
-	})
+			ctx = user.InjectOrgID(context.Background(), test.tenant)
+			resp, err := d.Push(ctx, &test.streams)
+			if test.expectedErr != "" {
+				require.EqualError(t, err, test.expectedErr)
+				require.Nil(t, resp)
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, success, resp)
+			}
+			require.Equal(t, test.expectedLimitsCalls, mockClient.calls.Load())
+		})
+	}
 }
