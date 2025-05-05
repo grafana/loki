@@ -226,6 +226,20 @@ func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 		_ = logsEnc.Discard()
 	}()
 
+	// Add sort order information to the logs section metadata
+	if err := logsEnc.SetColumnSortInfo([]*logsmd.ColumnSortInfo{
+		{
+			ColumnType: logsmd.COLUMN_TYPE_STREAM_ID,
+			Direction:  logsmd.SORT_DIRECTION_ASCENDING,
+		},
+		{
+			ColumnType: logsmd.COLUMN_TYPE_TIMESTAMP,
+			Direction:  logsmd.SORT_DIRECTION_ASCENDING,
+		},
+	}); err != nil {
+		return fmt.Errorf("setting column sort order info: %w", err)
+	}
+
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
 		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))

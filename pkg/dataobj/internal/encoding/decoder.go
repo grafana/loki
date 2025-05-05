@@ -48,6 +48,10 @@ type (
 		// Columns describes the set of columns in the provided section.
 		Columns(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnDesc, error)
 
+		// SortInfo describes the sort order information for the provided section.
+		// Returns nil if no sort order information is available.
+		SortInfo(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnSortInfo, error)
+
 		// Pages retrieves the set of pages for the provided columns. The order of
 		// page lists emitted by the sequence matches the order of columns
 		// provided: the first page list corresponds to the first column, and so
