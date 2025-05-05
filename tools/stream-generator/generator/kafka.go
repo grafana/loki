@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,7 +62,8 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distr
 		var results string
 		reasonCounts := make(map[string]int)
 		for _, rejectedStream := range resp.Results {
-			reasonCounts[rejectedStream.Reason]++
+			reason := limits.Reason(rejectedStream.Reason).Humanize()
+			reasonCounts[reason]++
 		}
 		for reason, count := range reasonCounts {
 			results += fmt.Sprintf("%s: %d, ", reason, count)
