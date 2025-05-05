@@ -360,30 +360,29 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 		lastSeenAt = time.Now()
 		// Use the provided lastSeenAt timestamp as the last seen time
 		recordTime = lastSeenAt.UnixNano()
+		// Calculate the cutoff for the window size
+		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
 		// Get the bucket for this timestamp using the configured interval duration
 		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
-		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-
-		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
-
-		incoming = make(map[int32][]Stream)
-
+		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+		// Calculate the max active streams per tenant per partition
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
+		// Create a map of streams per partition
+		streams = make(map[int32][]Stream)
 	)
 
 	for _, stream := range req.Streams {
 		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
-		incoming[partitionID] = append(incoming[partitionID], Stream{
+		streams[partitionID] = append(streams[partitionID], Stream{
 			Hash:       stream.StreamHash,
 			LastSeenAt: recordTime,
 			TotalSize:  stream.EntriesSize + stream.StructuredMetadataSize,
 		})
 	}
 
-	exceedLimits := s.metadata.StoreIf(req.Tenant, incoming, maxActiveStreams, cutoff, bucketStart, rateWindowCutoff)
+	exceedLimits, ingestedBytes := s.metadata.StoreIf(req.Tenant, streams, maxActiveStreams, cutoff, bucketStart, bucketCutoff)
 
 	var results []*logproto.ExceedsLimitsResult
 	for reason, streamHashes := range exceedLimits {
@@ -395,20 +394,6 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 		}
 	}
 
-	var ingestedBytes uint64
-	for _, stream := range req.Streams {
-		exceeded := false
-		for _, exceed := range results {
-			if exceed.StreamHash == stream.StreamHash {
-				exceeded = true
-				break
-			}
-		}
-
-		if !exceeded {
-			ingestedBytes += stream.EntriesSize + stream.StructuredMetadataSize
-		}
-	}
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
 	return &logproto.ExceedsLimitsResponse{

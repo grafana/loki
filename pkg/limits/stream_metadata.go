@@ -26,7 +26,7 @@ type StreamMetadata interface {
 
 	// StoreIf tries to store the stream metadata for a specific tenant per partition,
 	// until the partition limit is reached. It returns a map of reason to stream hashes.
-	StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64
+	StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) (map[Reason][]uint64, uint64)
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
 	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
@@ -108,7 +108,7 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 	}
 }
 
-func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) map[Reason][]uint64 {
+func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) (map[Reason][]uint64, uint64) {
 	i := s.getStripeIdx(tenant)
 
 	s.locks[i].Lock()
@@ -118,7 +118,10 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 		s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
 	}
 
-	exceedLimits := make(map[Reason][]uint64)
+	var (
+		exceedLimits  = make(map[Reason][]uint64)
+		ingestedBytes uint64
+	)
 	for partitionID, streams := range streams {
 		if _, ok := s.stripes[i][tenant][partitionID]; !ok {
 			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
@@ -161,10 +164,12 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 			}
 
 			s.storeStream(i, tenant, partitionID, stream.Hash, stream.TotalSize, stream.LastSeenAt, bucketStart, bucketCutOff)
+
+			ingestedBytes += stream.TotalSize
 		}
 	}
 
-	return exceedLimits
+	return exceedLimits, ingestedBytes
 }
 
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {

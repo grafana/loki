@@ -495,7 +495,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestStreamMetadata_TryStore(t *testing.T) {
+func TestStreamMetadata_StoreIf(t *testing.T) {
 	now := time.Now()
 	cutoff := now.Add(-60 * time.Minute).UnixNano()
 	bucketStart := now.Truncate(time.Minute).UnixNano()
@@ -510,8 +510,9 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 		maxActiveStreams uint64
 
 		// expectations
-		expectedStored  map[string]map[int32][]Stream
-		expectedDropped map[Reason][]uint64
+		expectedStored        map[string]map[int32][]Stream
+		expectedDropped       map[Reason][]uint64
+		expectedIngestedBytes uint64
 	}{
 		{
 			name: "no streams",
@@ -542,6 +543,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 2000,
 		},
 		{
 			name: "all stream within limit per partition",
@@ -568,6 +570,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 2000,
 		},
 		{
 			name: "some streams dropped",
@@ -589,6 +592,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 1000,
 			expectedDropped: map[Reason][]uint64{
 				ReasonExceedsMaxStreams: {0x1},
 			},
@@ -620,6 +624,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 2000,
 			expectedDropped: map[Reason][]uint64{
 				ReasonExceedsMaxStreams: {0x1, 0x3},
 			},
@@ -659,6 +664,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 2000,
 			expectedDropped: map[Reason][]uint64{
 				ReasonExceedsMaxStreams: {0x3},
 			},
@@ -707,6 +713,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					},
 				},
 			},
+			expectedIngestedBytes: 4000,
 			expectedDropped: map[Reason][]uint64{
 				ReasonExceedsMaxStreams: {0x2, 0x5},
 			},
@@ -733,6 +740,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
 				},
 			},
+			expectedIngestedBytes: 2000,
 			expectedStored: map[string]map[int32][]Stream{
 				"tenant1": {
 					0: []Stream{
@@ -746,7 +754,7 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualDropped := tt.metadata.StoreIf("tenant1", tt.streams, tt.maxActiveStreams, cutoff, bucketStart, bucketCutOff)
+			actualDropped, actualIngestedBytes := tt.metadata.StoreIf("tenant1", tt.streams, tt.maxActiveStreams, cutoff, bucketStart, bucketCutOff)
 
 			actualStored := make(map[string]map[int32][]Stream)
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {
@@ -769,6 +777,8 @@ func TestStreamMetadata_TryStore(t *testing.T) {
 				require.Contains(t, actualDropped, reason)
 				require.ElementsMatch(t, streamHashes, actualDropped[reason])
 			}
+
+			require.Equal(t, tt.expectedIngestedBytes, actualIngestedBytes)
 		})
 	}
 }
