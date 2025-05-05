@@ -54,7 +54,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			return nil, err
 		}
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.ArrowType())
+		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type().ArrowType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
@@ -71,13 +71,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// At the moment we only support functions that accept the same input types.
-		if lhs.ArrowType().ID() != rhs.ArrowType().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.ArrowType(), rhs.ArrowType())
+		if lhs.Type().ArrowType().ID() != rhs.Type().ArrowType().ID() {
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type().ArrowType(), rhs.Type().ArrowType())
 		}
 
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.ArrowType())
+		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Type().ArrowType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.ArrowType(), rhs.ArrowType(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type().ArrowType(), rhs.Type().ArrowType(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
@@ -100,8 +100,6 @@ type ColumnVector interface {
 	ToArray() arrow.Array
 	// Value returns the value at the specified index position in the column vector.
 	Value(i int) any
-	// ArrowType returns the Arrow data type of the column vector.
-	ArrowType() arrow.DataType
 	// Type returns the Loki data type of the column vector.
 	Type() datatype.DataType
 	// ColumnType returns the type of column the vector originates from.
@@ -122,7 +120,7 @@ var _ ColumnVector = (*Scalar)(nil)
 // ToArray implements ColumnVector.
 func (v *Scalar) ToArray() arrow.Array {
 	mem := memory.NewGoAllocator()
-	builder := array.NewBuilder(mem, v.ArrowType())
+	builder := array.NewBuilder(mem, v.Type().ArrowType())
 	defer builder.Release()
 
 	switch builder := builder.(type) {
@@ -162,11 +160,6 @@ func (v *Scalar) Value(_ int) any {
 // Type implements ColumnVector.
 func (v *Scalar) Type() datatype.DataType {
 	return v.value.Type()
-}
-
-// ArrowType implements ColumnVector.
-func (v *Scalar) ArrowType() arrow.DataType {
-	return datatype.ToArrow[v.value.Type()]
 }
 
 // ColumnType implements ColumnVector.
@@ -219,11 +212,6 @@ func (a *Array) Value(i int) any {
 // Type implements ColumnVector.
 func (a *Array) Type() datatype.DataType {
 	return a.dt
-}
-
-// ArrowType implements ColumnVector.
-func (a *Array) ArrowType() arrow.DataType {
-	return a.array.DataType()
 }
 
 // ColumnType implements ColumnVector.

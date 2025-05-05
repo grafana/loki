@@ -43,7 +43,7 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 			if err != nil {
 				return failureState(err)
 			}
-			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.ArrowType(), Metadata: datatype.ColumnMetadata(vec.ColumnType(), vec.Type())})
+			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.Type().ArrowType(), Metadata: datatype.ColumnMetadata(vec.ColumnType(), vec.Type())})
 			projected = append(projected, vec.ToArray())
 		}
 

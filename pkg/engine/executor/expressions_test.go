@@ -89,7 +89,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			rec := batch(n, time.Now())
 			colVec, err := e.eval(literal, rec)
 			require.NoError(t, err)
-			require.Equalf(t, tt.arrowType, colVec.ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.ArrowType().ID().String())
+			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
 
 			for i := range n {
 				val := colVec.Value(i)
@@ -128,7 +128,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		require.Equal(t, arrow.STRING, colVec.ArrowType().ID())
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 
 		for i := range n {
 			val := colVec.Value(i)

@@ -36,6 +36,7 @@ func (t Type) String() string {
 type DataType interface {
 	fmt.Stringer
 	ID() Type
+	ArrowType() arrow.DataType
 }
 
 var (
@@ -51,43 +52,51 @@ var (
 
 type tNull struct{}
 
-func (tNull) ID() Type       { return NULL }
-func (tNull) String() string { return "null" }
+func (tNull) ID() Type                  { return NULL }
+func (tNull) String() string            { return "null" }
+func (tNull) ArrowType() arrow.DataType { return ArrowType.Null }
 
 type tBool struct{}
 
-func (tBool) ID() Type       { return BOOL }
-func (tBool) String() string { return "bool" }
+func (tBool) ID() Type                  { return BOOL }
+func (tBool) String() string            { return "bool" }
+func (tBool) ArrowType() arrow.DataType { return ArrowType.Bool }
 
 type tString struct{}
 
-func (tString) ID() Type       { return STRING }
-func (tString) String() string { return "string" }
+func (tString) ID() Type                  { return STRING }
+func (tString) String() string            { return "string" }
+func (tString) ArrowType() arrow.DataType { return ArrowType.String }
 
 type tInteger struct{}
 
-func (tInteger) ID() Type       { return INT64 }
-func (tInteger) String() string { return "integer" }
+func (tInteger) ID() Type                  { return INT64 }
+func (tInteger) String() string            { return "integer" }
+func (tInteger) ArrowType() arrow.DataType { return ArrowType.Integer }
 
 type tFloat struct{}
 
-func (tFloat) ID() Type       { return FLOAT64 }
-func (tFloat) String() string { return "float" }
+func (tFloat) ID() Type                  { return FLOAT64 }
+func (tFloat) String() string            { return "float" }
+func (tFloat) ArrowType() arrow.DataType { return ArrowType.Float }
 
 type tTimestamp struct{}
 
-func (tTimestamp) ID() Type       { return INT64 }
-func (tTimestamp) String() string { return "timestamp" }
+func (tTimestamp) ID() Type                  { return INT64 }
+func (tTimestamp) String() string            { return "timestamp" }
+func (tTimestamp) ArrowType() arrow.DataType { return ArrowType.Integer }
 
 type tDuration struct{}
 
-func (tDuration) ID() Type       { return INT64 }
-func (tDuration) String() string { return "duration" }
+func (tDuration) ID() Type                  { return INT64 }
+func (tDuration) String() string            { return "duration" }
+func (tDuration) ArrowType() arrow.DataType { return ArrowType.Integer }
 
 type tBytes struct{}
 
-func (tBytes) ID() Type       { return INT64 }
-func (tBytes) String() string { return "bytes" }
+func (tBytes) ID() Type                  { return INT64 }
+func (tBytes) String() string            { return "bytes" }
+func (tBytes) ArrowType() arrow.DataType { return ArrowType.Integer }
 
 var (
 	names = map[string]DataType{
