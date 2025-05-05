@@ -136,16 +136,16 @@ podLogs:
     - job
     - level
     - namespace
-    - pod
     - service_name
     - cluster
   gatherMethod: kubernetesApi
   namespaces:
     - meta
     - loki
+  structuredMetadata:
+    pod:
 
 # Collectors
-
 # The Alloy Singleton is a single instance of the Alloy Collector that is deployed in the cluster.
 alloy-singleton:
   enabled: true

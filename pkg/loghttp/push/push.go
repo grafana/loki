@@ -57,16 +57,21 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant", "aggregated_metric", "policy"})
 
+	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_otlp_exporter_streams_total",
+		Help:      "The total number of streams with exporter=OTLP label",
+	}, []string{"tenant"})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const (
-	applicationJSON       = "application/json"
-	LabelServiceName      = "service_name"
-	ServiceUnknown        = "unknown_service"
-	AggregatedMetricLabel = "__aggregated_metric__"
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
 )
 
 var (
@@ -160,7 +165,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size > 0 {
+			if size >= 0 {
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 			} else {
@@ -181,7 +186,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size > 0 {
+			if size >= 0 {
 				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
 				bytesReceivedStats.Inc(size)
@@ -318,7 +323,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
-		if lbs.Has(AggregatedMetricLabel) {
+		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
 

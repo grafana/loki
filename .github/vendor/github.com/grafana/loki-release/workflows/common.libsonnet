@@ -59,10 +59,13 @@
       container: container,
     },
     withEnv: function(env) {
-      env: env,
+      env+: env,
     },
     withSecrets: function(secrets) {
       secrets: secrets,
+    },
+    withPermissions: function(permissions) {
+      permissions+: permissions,
     },
   },
 
@@ -73,7 +76,10 @@
                                             $.step.withWorkingDirectory('lib'),
 
   checkout:
-    $.step.new('checkout', 'actions/checkout@v4'),
+    $.step.new('checkout', 'actions/checkout@v4')
+    + $.step.with({
+      'persist-credentials': false,
+    }),
 
   cleanUpBuildCache:
     $.step.new('clean up build tools cache')
@@ -84,6 +90,7 @@
     + $.step.with({
       repository: '${{ env.RELEASE_REPO }}',
       path: 'release',
+      'persist-credentials': false,
     }),
   fetchReleaseLib:
     $.step.new('pull release library code', 'actions/checkout@v4')
@@ -91,6 +98,7 @@
       repository: 'grafana/loki-release',
       path: 'lib',
       ref: '${{ env.RELEASE_LIB_REF }}',
+      'persist-credentials': false,
     }),
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
@@ -107,11 +115,11 @@
     ],
   },
 
-  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@v2')
+  googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f')  // v2
               + $.step.with({
                 credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
               }),
-  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@v2')
+  setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a')  // v2
                        + $.step.with({
                          version: '>= 452.0.0',
                        }),
@@ -127,21 +135,33 @@
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
 
+  fetchAppCredentials: $.step.new('fetch app credentials from vault', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')
+                       + $.step.withId('fetch_app_credentials')
+                       + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
+                       + $.step.with({
+                         repo_secrets: |||
+                           APP_ID=loki-gh-app:app-id
+                           PRIVATE_KEY=loki-gh-app:private-key
+                         |||,
+                       }),
   githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
                   + $.step.withId('get_github_app_token')
                   + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                   + $.step.with({
-                    'app-id': '${{ secrets.APP_ID }}',
-                    'private-key': '${{ secrets.APP_PRIVATE_KEY }}',
+                    'app-id': '${{ env.APP_ID }}',
+                    'private-key': '${{ env.PRIVATE_KEY }}',
                     // By setting owner, we should get access to all repositories in current owner's installation: https://github.com/marketplace/actions/create-github-app-token#create-a-token-for-all-repositories-in-the-current-owners-installation
                     owner: '${{ github.repository_owner }}',
                   }),
 
   setToken: $.step.new('set github token')
             + $.step.withId('github_app_token')
+            + $.step.withEnv({
+              OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
+            })
             + $.step.withRun(|||
               if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-                echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+                echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
               else
                 echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
               fi
