@@ -41,7 +41,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				return &Array{
 					array: input.Column(int(i)),
 					dt:    datatype.FromString(dt),
-					ct:    types.ColumnType(0).FromString(ct),
+					ct:    types.ColumnTypeFromString(ct),
 					rows:  input.NumRows(),
 				}, nil
 			}

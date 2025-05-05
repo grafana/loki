@@ -27,36 +27,25 @@ const (
 	MetadataKeyColumnDataType  = "column_datatype"
 )
 
+var ctNames = [6]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous"}
+
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {
-	switch ct {
-	case ColumnTypeBuiltin:
-		return "builtin"
-	case ColumnTypeLabel:
-		return "label"
-	case ColumnTypeMetadata:
-		return "metadata"
-	case ColumnTypeParsed:
-		return "parsed"
-	case ColumnTypeAmbiguous:
-		return "ambiguous"
-	default:
-		return fmt.Sprintf("ColumnType(%d)", ct)
-	}
+	return ctNames[ct]
 }
 
-// FromString returns the [ColumnType] from its string representation.
-func (ColumnType) FromString(ct string) ColumnType {
+// ColumnTypeFromString returns the [ColumnType] from its string representation.
+func ColumnTypeFromString(ct string) ColumnType {
 	switch ct {
-	case "builtin":
+	case ctNames[1]:
 		return ColumnTypeBuiltin
-	case "label":
+	case ctNames[2]:
 		return ColumnTypeLabel
-	case "metadata":
+	case ctNames[3]:
 		return ColumnTypeMetadata
-	case "parsed":
+	case ctNames[4]:
 		return ColumnTypeParsed
-	case "ambiguous":
+	case ctNames[5]:
 		return ColumnTypeAmbiguous
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
