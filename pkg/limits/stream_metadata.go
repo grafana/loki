@@ -15,6 +15,11 @@ type AllFunc = func(tenant string, partitionID int32, stream Stream)
 // Note: The collect function should not modify the stream metadata.
 type UsageFunc = func(partitionID int32, stream Stream)
 
+// CondFunc is a function that is called for each stream in the metadata.
+// It is used to check if the stream should be stored.
+// It returns true if the stream should be stored, false otherwise.
+type CondFunc = func(acc float64, stream Stream) bool
+
 // StreamMetadata represents the ingest limits interface for the stream metadata.
 type StreamMetadata interface {
 	// All iterates over all streams and applies the given function.
@@ -24,10 +29,9 @@ type StreamMetadata interface {
 	// e.g. the total active streams and the total size of the streams.
 	Usage(tenant string, fn UsageFunc)
 
-	// StoreIf tries to store a list of streams for a specific tenant and partition,
-	// until the partition limit is reached. It returns a map of reason to stream hashes
-	// and the total ingested bytes.
-	StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) (map[Reason][]uint64, uint64)
+	// StoreCond tries to store a list of streams for a specific tenant and partition,
+	// until the partition limit is reached. It returns the total ingested bytes.
+	StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) uint64
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
 	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
@@ -109,7 +113,7 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 	}
 }
 
-func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxActiveStreams uint64, cutoff, bucketStart, bucketCutOff int64) (map[Reason][]uint64, uint64) {
+func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) uint64 {
 	i := s.getStripeIdx(tenant)
 
 	s.locks[i].Lock()
@@ -119,10 +123,7 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 		s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
 	}
 
-	var (
-		exceedLimits  = make(map[Reason][]uint64)
-		ingestedBytes uint64
-	)
+	var ingestedBytes uint64
 	for partitionID, streams := range streams {
 		if _, ok := s.stripes[i][tenant][partitionID]; !ok {
 			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
@@ -149,9 +150,7 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 				// Count up the new stream before updating
 				newStreams++
 
-				// Drop streams that exceed the limit
-				if activeStreams+newStreams > int(maxActiveStreams) {
-					exceedLimits[ReasonExceedsMaxStreams] = append(exceedLimits[ReasonExceedsMaxStreams], stream.Hash)
+				if !cond(float64(activeStreams+newStreams), stream) {
 					continue
 				}
 
@@ -167,7 +166,7 @@ func (s *streamMetadata) StoreIf(tenant string, streams map[int32][]Stream, maxA
 		}
 	}
 
-	return exceedLimits, ingestedBytes
+	return ingestedBytes
 }
 
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
@@ -287,4 +286,16 @@ func (s *streamMetadata) getStripeIdx(tenant string) int {
 	h := fnv.New32()
 	h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
+}
+
+// streamLimitExceeded returns a CondFunc that checks if the number of active streams
+// exceeds the given limit. If it does, the stream is added to the results map.
+func streamLimitExceeded(limit uint64, results map[Reason][]uint64) CondFunc {
+	return func(acc float64, stream Stream) bool {
+		if acc > float64(limit) {
+			results[ReasonExceedsMaxStreams] = append(results[ReasonExceedsMaxStreams], stream.Hash)
+			return false
+		}
+		return true
+	}
 }

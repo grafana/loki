@@ -495,7 +495,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestStreamMetadata_StoreIf(t *testing.T) {
+func TestStreamMetadata_StoreCond(t *testing.T) {
 	now := time.Now()
 	cutoff := now.Add(-60 * time.Minute).UnixNano()
 	bucketStart := now.Truncate(time.Minute).UnixNano()
@@ -754,7 +754,10 @@ func TestStreamMetadata_StoreIf(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualDropped, actualIngestedBytes := tt.metadata.StoreIf("tenant1", tt.streams, tt.maxActiveStreams, cutoff, bucketStart, bucketCutOff)
+			actualDropped := make(map[Reason][]uint64)
+			cond := streamLimitExceeded(tt.maxActiveStreams, actualDropped)
+
+			actualIngestedBytes := tt.metadata.StoreCond("tenant1", tt.streams, cutoff, bucketStart, bucketCutOff, cond)
 
 			actualStored := make(map[string]map[int32][]Stream)
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {

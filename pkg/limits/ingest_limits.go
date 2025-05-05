@@ -394,10 +394,13 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 		})
 	}
 
-	exceedLimits, ingestedBytes := s.metadata.StoreIf(req.Tenant, streams, maxActiveStreams, cutoff, bucketStart, bucketCutoff)
+	storeRes := make(map[Reason][]uint64)
+	cond := streamLimitExceeded(maxActiveStreams, storeRes)
+
+	ingestedBytes := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
 
 	var results []*logproto.ExceedsLimitsResult
-	for reason, streamHashes := range exceedLimits {
+	for reason, streamHashes := range storeRes {
 		for _, streamHash := range streamHashes {
 			results = append(results, &logproto.ExceedsLimitsResult{
 				StreamHash: streamHash,
