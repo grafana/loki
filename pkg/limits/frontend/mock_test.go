@@ -39,21 +39,21 @@ type mockIngestLimitsClient struct {
 
 	// The requests expected to be received.
 	expectedAssignedPartitionsRequest *logproto.GetAssignedPartitionsRequest
-	expectedStreamUsageRequest        *logproto.GetStreamUsageRequest
+	expectedExceedsLimitsRequest      *logproto.ExceedsLimitsRequest
 
 	// The mocked responses.
 	getAssignedPartitionsResponse    *logproto.GetAssignedPartitionsResponse
 	getAssignedPartitionsResponseErr error
-	getStreamUsageResponse           *logproto.GetStreamUsageResponse
-	getStreamUsageResponseErr        error
+	exceedsLimitsResponse            *logproto.ExceedsLimitsResponse
+	exceedsLimitsResponseErr         error
 
 	// The expected request counts.
 	expectedNumAssignedPartitionsRequests int
-	expectedNumStreamUsageRequests        int
+	expectedNumExceedsLimitsRequests      int
 
 	// The actual request counts.
 	numAssignedPartitionsRequests int
-	numStreamUsageRequests        int
+	numExceedsLimitsRequests      int
 }
 
 func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
@@ -67,20 +67,20 @@ func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *log
 	return m.getAssignedPartitionsResponse, nil
 }
 
-func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
-	if expected := m.expectedStreamUsageRequest; expected != nil {
+func (m *mockIngestLimitsClient) ExceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest, _ ...grpc.CallOption) (*logproto.ExceedsLimitsResponse, error) {
+	if expected := m.expectedExceedsLimitsRequest; expected != nil {
 		require.Equal(m.t, expected, r)
 	}
-	m.numStreamUsageRequests++
-	if err := m.getStreamUsageResponseErr; err != nil {
+	m.numExceedsLimitsRequests++
+	if err := m.exceedsLimitsResponseErr; err != nil {
 		return nil, err
 	}
-	return m.getStreamUsageResponse, nil
+	return m.exceedsLimitsResponse, nil
 }
 
 func (m *mockIngestLimitsClient) AssertExpectedNumRequests() {
 	require.Equal(m.t, m.expectedNumAssignedPartitionsRequests, m.numAssignedPartitionsRequests)
-	require.Equal(m.t, m.expectedNumStreamUsageRequests, m.numStreamUsageRequests)
+	require.Equal(m.t, m.expectedNumExceedsLimitsRequests, m.numExceedsLimitsRequests)
 }
 
 func (m *mockIngestLimitsClient) Close() error {

@@ -48,9 +48,58 @@ func NewRingGatherer(
 }
 
 // ExceedsLimits implements ExceedsLimitsGatherer.
-func (g *RingGatherer) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
-	// TODO(grobinson): Implement me.
-	return nil, nil
+func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
+	if len(req.Streams) == 0 {
+		return nil, nil
+	}
+	rs, err := g.ring.GetAllHealthy(LimitsRead)
+	if err != nil {
+		return nil, err
+	}
+	partitionConsumers, err := g.getPartitionConsumers(ctx, rs.Instances)
+	if err != nil {
+		return nil, err
+	}
+	ownedStreams := make(map[string][]*logproto.StreamMetadata)
+	for _, s := range req.Streams {
+		partitionID := int32(s.StreamHash % uint64(g.numPartitions))
+		addr, ok := partitionConsumers[partitionID]
+		if !ok {
+			// TODO(grobinson): Drop streams when ok is false.
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
+			continue
+		}
+		ownedStreams[addr] = append(ownedStreams[addr], s)
+	}
+	errg, ctx := errgroup.WithContext(ctx)
+	responseCh := make(chan *logproto.ExceedsLimitsResponse, len(ownedStreams))
+	for addr, streams := range ownedStreams {
+		errg.Go(func() error {
+			client, err := g.pool.GetClientFor(addr)
+			if err != nil {
+				level.Error(g.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
+				return err
+			}
+			resp, err := client.(logproto.IngestLimitsClient).ExceedsLimits(ctx, &logproto.ExceedsLimitsRequest{
+				Tenant:  req.Tenant,
+				Streams: streams,
+			})
+			if err != nil {
+				return err
+			}
+			responseCh <- resp
+			return nil
+		})
+	}
+	if err = errg.Wait(); err != nil {
+		return nil, err
+	}
+	close(responseCh)
+	responses := make([]*logproto.ExceedsLimitsResponse, 0, len(rs.Instances))
+	for resp := range responseCh {
+		responses = append(responses, resp)
+	}
+	return responses, nil
 }
 
 type zonePartitionConsumersResult struct {
