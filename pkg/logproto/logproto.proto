@@ -77,12 +77,15 @@ message ExceedsLimitsResponse {
 
 message ExceedsLimitsResult {
   uint64 streamHash = 1;
-  string reason = 2;
+  uint32 reason = 2;
 }
 
 service IngestLimits {
-  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
+
+  // Deprecated.
+  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
 }
 
 message GetStreamUsageRequest {

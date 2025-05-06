@@ -5,17 +5,22 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 type Config struct {
 	BatchSize int64 `yaml:"batch_size"`
+	Bucket    objstore.Bucket
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 	c := &Context{
 		plan:      plan,
 		batchSize: cfg.BatchSize,
+		bucket:    cfg.Bucket,
 	}
 	if plan == nil {
 		return errorPipeline(errors.New("plan is nil"))
@@ -32,6 +37,7 @@ type Context struct {
 	batchSize int64
 	plan      *physical.Plan
 	evaluator expressionEvaluator
+	bucket    objstore.Bucket
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -57,16 +63,38 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 }
 
-func (c *Context) executeDataObjScan(_ context.Context, _ *physical.DataObjScan) Pipeline {
-	return errorPipeline(errNotImplemented)
+func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+	predicates := make([]dataobj.LogsPredicate, 0, len(node.Predicates))
+
+	for _, p := range node.Predicates {
+		conv, err := buildLogsPredicate(p)
+		if err != nil {
+			return errorPipeline(err)
+		}
+		predicates = append(predicates, conv)
+	}
+
+	return newDataobjScanPipeline(ctx, dataobjScanOptions{
+		Object:      dataobj.FromBucket(c.bucket, string(node.Location)),
+		StreamIDs:   node.StreamIDs,
+		Predicates:  predicates,
+		Projections: node.Projections,
+
+		Direction: node.Direction,
+		Limit:     node.Limit,
+	})
 }
 
-func (c *Context) executeSortMerge(_ context.Context, _ *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
-	return errorPipeline(errNotImplemented)
+	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
+	if err != nil {
+		return errorPipeline(err)
+	}
+	return pipeline
 }
 
 func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
@@ -81,16 +109,17 @@ func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs 
 	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
-func (c *Context) executeFilter(_ context.Context, _ *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
+	// TODO: support multiple inputs
 	if len(inputs) > 1 {
 		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return errorPipeline(errNotImplemented)
+	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
 func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {

@@ -1,6 +1,8 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ColumnType denotes the column type for a [ColumnRef].
 type ColumnType int
@@ -20,26 +22,33 @@ const (
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
-	ColumnNameBuiltinLog       = "log"
+	ColumnNameBuiltinLine      = "line"
+	MetadataKeyColumnType      = "column_type"
+	MetadataKeyColumnDataType  = "column_datatype"
 )
+
+var ctNames = [6]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous"}
 
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {
+	return ctNames[ct]
+}
+
+// ColumnTypeFromString returns the [ColumnType] from its string representation.
+func ColumnTypeFromString(ct string) ColumnType {
 	switch ct {
-	case ColumnTypeInvalid:
-		return typeInvalid
-	case ColumnTypeBuiltin:
-		return "builtin"
-	case ColumnTypeLabel:
-		return "label"
-	case ColumnTypeMetadata:
-		return "metadata"
-	case ColumnTypeParsed:
-		return "parsed"
-	case ColumnTypeAmbiguous:
-		return "ambiguous"
+	case ctNames[1]:
+		return ColumnTypeBuiltin
+	case ctNames[2]:
+		return ColumnTypeLabel
+	case ctNames[3]:
+		return ColumnTypeMetadata
+	case ctNames[4]:
+		return ColumnTypeParsed
+	case ctNames[5]:
+		return ColumnTypeAmbiguous
 	default:
-		return fmt.Sprintf("ColumnType(%d)", ct)
+		panic(fmt.Sprintf("invalid column type: %s", ct))
 	}
 }
 

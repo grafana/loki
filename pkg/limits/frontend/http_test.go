@@ -7,70 +7,68 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/grafana/dskit/limiter"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestFrontend_ServeHTTP(t *testing.T) {
 	tests := []struct {
-		name                          string
-		limits                        Limits
-		expectedGetStreamUsageRequest *GetStreamUsageRequest
-		getStreamUsageResponses       []GetStreamUsageResponse
-		request                       httpExceedsLimitsRequest
-		expected                      httpExceedsLimitsResponse
+		name                         string
+		expectedExceedsLimitsRequest *logproto.ExceedsLimitsRequest
+		exceedsLimitsResponses       []*logproto.ExceedsLimitsResponse
+		request                      httpExceedsLimitsRequest
+		expected                     httpExceedsLimitsResponse
 	}{{
 		name: "within limits",
-		limits: &mockLimits{
-			maxGlobalStreams: 1,
-			ingestionRate:    100,
+		expectedExceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x1,
+				EntriesSize:            0x2,
+				StructuredMetadataSize: 0x3,
+			}},
 		},
-		expectedGetStreamUsageRequest: &GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-		},
-		getStreamUsageResponses: []GetStreamUsageResponse{{
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 1,
-				Rate:          10,
-			},
-		}},
+		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{}},
 		request: httpExceedsLimitsRequest{
-			TenantID:     "test",
-			StreamHashes: []uint64{0x1},
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x1,
+				EntriesSize:            0x2,
+				StructuredMetadataSize: 0x3,
+			}},
 		},
 		// expected should be default value.
 	}, {
 		name: "exceeds limits",
-		limits: &mockLimits{
-			maxGlobalStreams: 1,
-			ingestionRate:    100,
+		expectedExceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x1,
+				EntriesSize:            0x2,
+				StructuredMetadataSize: 0x3,
+			}},
 		},
-		expectedGetStreamUsageRequest: &GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-		},
-		getStreamUsageResponses: []GetStreamUsageResponse{{
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 2,
-				Rate:          200,
-			},
+		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
+			Results: []*logproto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
+			}},
 		}},
 		request: httpExceedsLimitsRequest{
-			TenantID:     "test",
-			StreamHashes: []uint64{0x1},
+			Tenant: "test",
+			Streams: []*logproto.StreamMetadata{{
+				StreamHash:             0x1,
+				EntriesSize:            0x2,
+				StructuredMetadataSize: 0x3,
+			}},
 		},
 		expected: httpExceedsLimitsResponse{
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     "exceeds_rate_limit",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 	}}
@@ -78,14 +76,11 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := Frontend{
-				limits:      test.limits,
-				rateLimiter: limiter.NewRateLimiter(newRateLimitsAdapter(test.limits), time.Second),
-				streamUsage: &mockStreamUsageGatherer{
-					t:               t,
-					expectedRequest: test.expectedGetStreamUsageRequest,
-					responses:       test.getStreamUsageResponses,
+				gatherer: &mockExceedsLimitsGatherer{
+					t:                            t,
+					expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
+					exceedsLimitsResponses:       test.exceedsLimitsResponses,
 				},
-				metrics: newMetrics(prometheus.NewRegistry()),
 			}
 			ts := httptest.NewServer(&f)
 			defer ts.Close()

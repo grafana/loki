@@ -79,6 +79,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/tail"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
@@ -446,6 +447,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 
 	ingestLimits, err := limits.NewIngestLimits(
 		t.Cfg.IngestLimits,
+		t.Overrides,
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -504,7 +506,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
-		t.Overrides,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -622,7 +623,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		ms = metastore.NewObjectMetastore(store)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, ms, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, ms, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1425,15 +1426,45 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isTarget(Read)
-	storageNotConfigured := (t.Cfg.StorageConfig.UseThanosObjstore && t.Cfg.RulerStorage.IsDefaults()) || t.Cfg.Ruler.StoreConfig.IsDefaults()
+	var storageNotConfigured bool
+	var storagekey string
+	if t.Cfg.StorageConfig.UseThanosObjstore {
+		storageNotConfigured = t.Cfg.RulerStorage.IsDefaults()
+		storagekey = "ruler_storage"
+	} else {
+		storageNotConfigured = t.Cfg.Ruler.StoreConfig.IsDefaults()
+		storagekey = "ruler.storage"
+	}
 	if (t.Cfg.isTarget(All) || legacyReadMode || t.Cfg.isTarget(Backend)) && storageNotConfigured {
-		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.")
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured; ruler will not be started.",
+			"config_key", storagekey)
 		return
 	}
 
-	// Make sure storage directory exists if using filesystem store
-	if t.Cfg.Ruler.StoreConfig.Type == "local" && t.Cfg.Ruler.StoreConfig.Local.Directory != "" {
-		err := chunk_util.EnsureDirectory(t.Cfg.Ruler.StoreConfig.Local.Directory)
+	// To help reduce user confusion, warn if the user has configured both the legacy ruler.storage and the new ruler_storage is overriding it, or vice versa.
+	if t.Cfg.StorageConfig.UseThanosObjstore && !t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Warn(util_log.Logger).Log("msg", "ruler.storage exists and is not empty, but will be ignored in favour of ruler_storage because storage_config.use_thanos_objstore is true.")
+	} else if !t.Cfg.StorageConfig.UseThanosObjstore && !t.Cfg.RulerStorage.IsDefaults() {
+		level.Warn(util_log.Logger).Log("msg", "ruler_storage exists and is not empty, but will be ignored in favour of ruler.storage because storage_config.use_thanos_objstore is false.")
+	}
+
+	// Make sure storage directory exists if using a filesystem store
+	var localStoreDir string
+	if t.Cfg.StorageConfig.UseThanosObjstore {
+		// storage_config.use_thanos_objstore is true so we're using
+		// ruler_storage. Is it one of the local backend spellings
+		// 'filesystem' or 'local'?
+		if t.Cfg.RulerStorage.Backend == local.Name {
+			localStoreDir = t.Cfg.RulerStorage.Local.Directory
+		} else if t.Cfg.RulerStorage.Backend == bucket.Filesystem {
+			localStoreDir = t.Cfg.RulerStorage.Filesystem.Directory
+		}
+	} else if t.Cfg.Ruler.StoreConfig.Type == "local" {
+		// Legacy ruler.storage.local.directory
+		localStoreDir = t.Cfg.Ruler.StoreConfig.Local.Directory
+	}
+	if localStoreDir != "" {
+		err := chunk_util.EnsureDirectory(localStoreDir)
 		if err != nil {
 			return nil, err
 		}

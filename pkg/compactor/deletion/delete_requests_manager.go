@@ -70,6 +70,7 @@ func NewDeleteRequestsManager(workingDir string, store DeleteRequestsStore, dele
 		return nil, err
 	}
 
+	dm.wg.Add(1)
 	go dm.loop()
 
 	if err := dm.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
@@ -83,7 +84,6 @@ func (d *DeleteRequestsManager) loop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	d.wg.Add(1)
 	defer d.wg.Done()
 
 	for {
@@ -111,6 +111,9 @@ func (d *DeleteRequestsManager) Stop() {
 }
 
 func (d *DeleteRequestsManager) storeSeriesProgress() error {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
 	if len(d.processedSeries) == 0 {
 		return nil
 	}
@@ -507,6 +510,9 @@ func (d *DeleteRequestsManager) DropFromIndex(_ []byte, _ retention.Chunk, _ lab
 }
 
 func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
 	userIDStr := unsafeGetString(userID)
 	if d.deleteRequestsToProcess[userIDStr] == nil {
 		return nil

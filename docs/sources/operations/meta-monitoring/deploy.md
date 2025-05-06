@@ -22,7 +22,7 @@ We recommend running a production cluster of Loki in distributed mode using Kube
 
 ## Preparing your environment
 
-Before deploying the Kubernetes Monitoring Helm chart, you need to set up several components in your environment. 
+Before deploying the Kubernetes Monitoring Helm chart, you need to set up several components in your environment.
 
 1. Add the Grafana Helm repository:
 
@@ -39,14 +39,14 @@ Before deploying the Kubernetes Monitoring Helm chart, you need to set up severa
 1. Create a namespace for the monitoring stack:
 
    ```bash
-   kubectl create namespace monitoring
+   kubectl create namespace meta
    ```
 
 ### Authentication
 
 The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separate LGTM stack for monitoring. You will need to provide the necessary credentials to the Helm chart to authenticate with your Grafana Cloud account or LGTM stack. In this procedure, we will use Grafana Cloud as an example.
 
-1. Create a new Cloud Access Policy in Grafana Cloud.     
+1. Create a new Cloud Access Policy in Grafana Cloud.
     1. Sign into [Grafana Cloud](https://grafana.com/auth/sign-in/).
     1. In the main menu, select **Security > Access Policies**.
     1. Click **Create access policy**.
@@ -56,16 +56,17 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
     1. Click **Create**.
     1. Click **Add Token**. Give the token a name and click **Create**.
    Save the token for later use.
-1. Collect `URL` and `User` for Prometheus and Loki 
+1. Collect `url` and `username` for Prometheus and Loki.
    1. Navigate to the Grafana Cloud Portal **Overview** page.
    1. Click the **Details** button for your Prometheus instance.
-        1. From the **Using a self-hosted Grafana instance with Grafana Cloud Metrics** section, collect the instance **User** and **URL**.
+        1. From the **Sending metrics using Grafana Alloy** section, collect the instance **username** and **url**.
         1. Navigate back to the **Overview** page.
    1. Click the **Details** button for your Loki instance.
-        1. From the **Using Grafana with Logs** section, collect the instance **User** and **URL**.
-        1. Navigate back to the **Overview** page.
+        1. From the **Sending Logs to Grafana Cloud using Grafana Alloy** section, collect the instance **username** and **url**.
+        2. Navigate back to the **Overview** page.
 
-1. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud
+1. Create the Kubernetes Secrets with the collected credentials from Grafana Cloud.
+
    ```bash
    kubectl create secret generic metrics -n meta \
     --from-literal=username=<PROMETHEUS-USER> \
@@ -75,11 +76,13 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
     --from-literal=username=<LOKI-USER> \
     --from-literal=password=<CLOUD-TOKEN>
    ```
-Note that the Kubernetes Monitoring Helm supports many different authentication methods based upon your requriments including:
+
+Note that the Kubernetes Monitoring Helm supports many different authentication methods based upon your requirements including:
+
 - Bearer Tokens
 - OAuth2
 - SigV4
-- External Secerets
+- External Secrets
   
 For further information on how to configure these methods, see the [Kubernetes Monitoring Helm examples](https://github.com/grafana/k8s-monitoring-helm/tree/main/charts/k8s-monitoring/docs/examples/auth).
 
@@ -94,6 +97,7 @@ Now that you have prepared your environment and collected the necessary credenti
    ```
 
 1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints.
+
    ```yaml
    destinations:
      - name: prometheus
@@ -119,13 +123,17 @@ Now that you have prepared your environment and collected the necessary credenti
            create: false
            name: logs
            namespace: meta
+
    ```
-2. (Optional) Update the cluster name to a human-readable name to identify your cluster in Grafana Cloud.
+
+1. (Optional) Update the cluster name to a human-readable name to identify your cluster in Grafana Cloud.
+
    ```yaml
    # Global Label to be added to all telemetry data. Should reflect a recognizable name for the cluster.
     cluster:
         name: loki-meta-monitoring-cluster
    ```
+
 1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:
 
     ```yaml
@@ -148,7 +156,9 @@ Now that you have prepared your environment and collected the necessary credenti
    ```bash
     kubectl get pods -n meta
     ```
+
     You should see a list of pods running in the `meta` namespace.
+
     ```console
     NAME                                           READY   STATUS    RESTARTS ...        
     meta-loki-alloy-singleton-6d7f8d8b86-sg4wx     2/2     Running   0        ...       
@@ -161,6 +171,3 @@ Now that you have prepared your environment and collected the necessary credenti
 ## Next Steps
 
 You have successfully deployed the Kubernetes Monitoring Helm chart to monitor your Loki cluster. You can now move onto the next step of deploying the Loki mixin to visualize the metrics and logs from your Loki cluster. For more information, see [Install the Loki Mixin](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins).
-
-
-
