@@ -140,8 +140,8 @@
                        + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                        + $.step.with({
                          repo_secrets: |||
-                           APP_ID=loki-gh-app:app-id
-                           PRIVATE_KEY=loki-gh-app:private-key
+                           APP_ID=${{ env.GITHUB_APP }}:app-id
+                           PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
                          |||,
                        }),
   githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
