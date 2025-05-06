@@ -19,16 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-const (
-	// ReasonExceedsMaxStreams is returned when a tenant exceeds the maximum
-	// number of active streams as per their per-tenant limit.
-	ReasonExceedsMaxStreams = "exceeds_max_streams"
-
-	// ReasonExceedsRateLimit is returned when a tenant exceeds their maximum
-	// rate limit as per their per-tenant limit.
-	ReasonExceedsRateLimit = "exceeds_rate_limit"
-)
-
 // Frontend is the limits-frontend service, and acts a service wrapper for
 // all components needed to run the limits-frontend.
 type Frontend struct {
