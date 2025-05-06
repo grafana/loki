@@ -181,7 +181,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.metadata.All(func(tenant string, partitionID int32, stream Stream) {
+	s.metadata.All(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
