@@ -114,6 +114,8 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
 		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
 	}
+	buf.Reset()
+
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
 		s.mtx.RLock()

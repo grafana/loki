@@ -842,6 +842,10 @@ func NewBufferedLabelsBuilder(labels labels.Labels) *BufferedLabelsBuilder {
 	return &BufferedLabelsBuilder{buf: labels[:0]}
 }
 
+func (b *BufferedLabelsBuilder) Reset() {
+	b.buf = b.buf[:0]
+}
+
 func (b *BufferedLabelsBuilder) Add(label labels.Label) {
 	b.buf = append(b.buf, label)
 }
