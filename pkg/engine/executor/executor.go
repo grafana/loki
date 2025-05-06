@@ -12,7 +12,7 @@ import (
 )
 
 type Config struct {
-	BatchSize int64 `yaml:"batch_size"`
+	BatchSize int64
 	Bucket    objstore.Bucket
 }
 
@@ -64,6 +64,10 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 }
 
 func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+	if c.bucket == nil {
+		return errorPipeline(errors.New("no object store bucket configured"))
+	}
+
 	predicates := make([]dataobj.LogsPredicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
