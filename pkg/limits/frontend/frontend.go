@@ -108,10 +108,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 	for _, resp := range resps {
 		results = append(results, resp.Results...)
 	}
-	return &logproto.ExceedsLimitsResponse{
-		Tenant:  req.Tenant,
-		Results: results,
-	}, nil
+	return &logproto.ExceedsLimitsResponse{results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

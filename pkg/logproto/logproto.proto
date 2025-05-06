@@ -71,8 +71,7 @@ message ExceedsLimitsRequest {
 }
 
 message ExceedsLimitsResponse {
-  string tenant = 1;
-  repeated ExceedsLimitsResult results = 2;
+  repeated ExceedsLimitsResult results = 1;
 }
 
 message ExceedsLimitsResult {

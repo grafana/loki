@@ -411,10 +411,7 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	return &logproto.ExceedsLimitsResponse{
-		Tenant:  req.Tenant,
-		Results: results,
-	}, nil
+	return &logproto.ExceedsLimitsResponse{results}, nil
 }
 
 // GetStreamUsage implements the logproto.IngestLimitsServer interface.
