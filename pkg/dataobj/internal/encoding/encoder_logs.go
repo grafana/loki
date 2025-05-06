@@ -21,9 +21,9 @@ type LogsEncoder struct {
 	closed      bool // true if LogsEncoder has been closed.
 
 	data      *bytes.Buffer
-	columns   []*logsmd.ColumnDesc     // closed columns.
-	sortInfo  []*logsmd.ColumnSortInfo // sort order information
-	curColumn *logsmd.ColumnDesc       // curColumn is the currently open column.
+	columns   []*logsmd.ColumnDesc        // closed columns.
+	sortInfo  []*datasetmd.ColumnSortInfo // sort order information
+	curColumn *logsmd.ColumnDesc          // curColumn is the currently open column.
 }
 
 func newLogsEncoder(parent *Encoder, offset int) *LogsEncoder {
@@ -40,7 +40,7 @@ func newLogsEncoder(parent *Encoder, offset int) *LogsEncoder {
 
 // SetColumnSortInfo sets the sort order information for the logs section.
 // This should be called before committing the encoder.
-func (enc *LogsEncoder) SetColumnSortInfo(info []*logsmd.ColumnSortInfo) error {
+func (enc *LogsEncoder) SetColumnSortInfo(info []*datasetmd.ColumnSortInfo) error {
 	if enc.closed {
 		return ErrClosed
 	}

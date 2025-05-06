@@ -16,7 +16,7 @@ message Metadata {
   // Sort order information for the records in this section.
   // The order of the ColumnSortInfo entries determines the sort precedence.
   // Rows are sorted by the first column, then by the second column to break ties, and so on.
-  repeated ColumnSortInfo sort_info = 2;
+  repeated dataobj.metadata.dataset.v1.ColumnSortInfo sort_info = 2;
 }
 
 // ColumnDesc describes an individual column within the logs table.
@@ -59,25 +59,4 @@ message ColumnMetadata {
 message PageDesc {
   // Information about the page.
   dataobj.metadata.dataset.v1.PageInfo info = 1;
-}
-
-// SortDirection represents the valid sort directions for a column.
-enum SortDirection {
-  // Sort direction is unspecified.
-  SORT_DIRECTION_UNSPECIFIED = 0;
-
-  // SORT_DIRECTION_ASCENDING represents ascending sort order (smallest values first).
-  SORT_DIRECTION_ASCENDING = 1;
-
-  // SORT_DIRECTION_DESCENDING represents descending sort order (largest values first).
-  SORT_DIRECTION_DESCENDING = 2;
-}
-
-// ColumnSortInfo represents a column type and its sort direction.
-message ColumnSortInfo {
-  // Type of column the sort direction applies to.
-  ColumnType column_type = 1;
-
-  // Sort direction of the column.
-  SortDirection direction = 2;
 }

@@ -145,3 +145,24 @@ enum EncodingType {
   // integers using a combination of run-length encoding and bitpacking.
   ENCODING_TYPE_BITMAP = 3;
 }
+
+// ColumnSortInfo represents a column type and its sort direction.
+message ColumnSortInfo {
+  // Index of the column in the columns list.
+  uint32 column_index = 1;
+
+  // Sort direction of the column.
+  SortDirection direction = 2;
+}
+
+// SortDirection represents the valid sort directions for a column.
+enum SortDirection {
+  // Sort direction is unspecified.
+  SORT_DIRECTION_UNSPECIFIED = 0;
+
+  // SORT_DIRECTION_ASCENDING represents ascending sort order (smallest values first).
+  SORT_DIRECTION_ASCENDING = 1;
+
+  // SORT_DIRECTION_DESCENDING represents descending sort order (largest values first).
+  SORT_DIRECTION_DESCENDING = 2;
+}
