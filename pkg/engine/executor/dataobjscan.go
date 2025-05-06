@@ -388,7 +388,7 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 		}
 
 		md := arrow.MetadataFrom(map[string]string{
-			types.ColumnTypeMetadataKey: columnExpr.Ref.Type.String(),
+			types.MetadataKeyColumnType: columnExpr.Ref.Type.String(),
 		})
 
 		switch columnExpr.Ref.Type {
@@ -452,13 +452,13 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.ColumnTypeMetadataKey: types.ColumnTypeLabel.String()}),
+				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeLabel.String()}),
 			})
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.ColumnTypeMetadataKey: types.ColumnTypeMetadata.String()}),
+				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeMetadata.String()}),
 			})
 
 		case types.ColumnTypeParsed:
@@ -489,7 +489,7 @@ func builtinColumnType(ref types.ColumnRef) arrow.DataType {
 // appendToBuilder panics if the type of field does not match the datatype of
 // builder.
 func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field, record *dataobj.Record) {
-	columnType, ok := field.Metadata.GetValue(types.ColumnTypeMetadataKey)
+	columnType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
 	if !ok {
 		// This shouldn't happen; we control the metadata here on the fields.
 		panic(fmt.Sprintf("missing column type in field %s", field.Name))
