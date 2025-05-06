@@ -25,7 +25,7 @@ func TestPlan_String(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral[int64](21),
+			Right: NewLiteral(21),
 			Op:    types.BinaryOpGt,
 		},
 	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)

@@ -23,15 +23,6 @@ func TestExecutor(t *testing.T) {
 	})
 }
 
-func TestExecutor_DataObjScan(t *testing.T) {
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeDataObjScan(context.TODO(), &physical.DataObjScan{})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
-}
-
 func TestExecutor_SortMerge(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		c := &Context{}
