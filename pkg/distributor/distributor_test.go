@@ -40,6 +40,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -2461,7 +2462,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
@@ -2491,7 +2492,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
@@ -2531,7 +2532,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {
@@ -2561,7 +2562,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {

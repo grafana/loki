@@ -25,7 +25,7 @@ var (
 
 func buildMetadata(ty types.ColumnType) arrow.Metadata {
 	return arrow.MetadataFrom(map[string]string{
-		types.ColumnTypeMetadataKey: ty.String(),
+		types.MetadataKeyColumnType: ty.String(),
 	})
 }
 
