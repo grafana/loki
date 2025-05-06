@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -53,7 +54,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     "exceeds_rate_limit",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		}},
 		request: httpExceedsLimitsRequest{
@@ -67,7 +68,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		expected: httpExceedsLimitsResponse{
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     "exceeds_rate_limit",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 	}}

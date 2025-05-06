@@ -121,23 +121,6 @@ func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, err
 	return m.rs, nil
 }
 
-type mockLimits struct {
-	maxGlobalStreams int
-	ingestionRate    float64
-}
-
-func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
-	return m.maxGlobalStreams
-}
-
-func (m *mockLimits) IngestionRateBytes(_ string) float64 {
-	return m.ingestionRate
-}
-
-func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
-	return 1000
-}
-
 func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
