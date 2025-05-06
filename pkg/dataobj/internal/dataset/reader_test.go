@@ -8,6 +8,7 @@ import (
 	"iter"
 	"math/rand"
 	"slices"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -758,6 +759,7 @@ type DatasetGenerator struct {
 	RowCount     int
 	PageSizeHint int
 	Columns      []generatorColumnConfig
+	SortInfo     *datasetmd.ColumnSortInfo // Optional sort info. Only a single column sort order is supported by the generator.
 }
 
 func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
@@ -766,37 +768,70 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 	memColumns := make([]*MemColumn, 0, len(g.Columns))
 	rng := rand.New(rand.NewSource(seed))
 
-	for _, colCfg := range g.Columns {
-		next, stop := iter.Pull(columnValues(rng, colCfg))
-		defer stop()
+	// Step 1: Generate all records
+	type record struct {
+		values []Value
+	}
+	records := make([]record, 0, g.RowCount)
+	// Create iterators for each column
+	nexts := make([]func() (Value, bool), len(g.Columns))
+	stops := make([]func(), len(g.Columns))
+	for i, cfg := range g.Columns {
+		next, stop := iter.Pull(columnValues(rng, cfg))
+		nexts[i] = next
+		stops[i] = stop
+	}
+	defer func() {
+		for _, stop := range stops {
+			stop()
+		}
+	}()
 
+	for range g.RowCount {
+		row := record{values: make([]Value, len(g.Columns))}
+		for i, colCfg := range g.Columns {
+			if rng.Float64() < colCfg.SparsityRate {
+				row.values[i] = Value{} // nil value
+				continue
+			}
+			val, ok := nexts[i]()
+			require.True(t, ok, "generator should yield values")
+			row.values[i] = val
+		}
+		records = append(records, row)
+	}
+
+	if g.SortInfo != nil {
+		sort.Slice(records, func(i, j int) bool {
+			if g.SortInfo.Direction == datasetmd.SORT_DIRECTION_ASCENDING {
+				return CompareValues(records[i].values[g.SortInfo.ColumnIndex], records[j].values[g.SortInfo.ColumnIndex]) < 0
+			}
+			return CompareValues(records[i].values[g.SortInfo.ColumnIndex], records[j].values[g.SortInfo.ColumnIndex]) > 0
+		})
+	}
+
+	for colIdx, cfg := range g.Columns {
 		opts := BuilderOptions{
 			PageSizeHint: g.PageSizeHint,
-			Value:        colCfg.ValueType,
-			Encoding:     colCfg.Encoding,
-			Compression:  colCfg.Compression,
+			Value:        cfg.ValueType,
+			Encoding:     cfg.Encoding,
+			Compression:  cfg.Compression,
 			Statistics: StatisticsOptions{
 				StoreCardinalityStats: true,
 			},
 		}
 
-		if colCfg.ValueType == datasetmd.VALUE_TYPE_INT64 || colCfg.ValueType == datasetmd.VALUE_TYPE_UINT64 {
+		if cfg.ValueType == datasetmd.VALUE_TYPE_INT64 || cfg.ValueType == datasetmd.VALUE_TYPE_UINT64 {
 			opts.Statistics.StoreRangeStats = true
 		}
 
 		// Create a builder for this column
-		builder, err := NewColumnBuilder(colCfg.Name, opts)
+		builder, err := NewColumnBuilder(cfg.Name, opts)
 		require.NoError(t, err)
 
 		// Add values to the builder
-		for i := range g.RowCount {
-			if rng.Float64() < colCfg.SparsityRate {
-				continue
-			}
-
-			val, ok := next()
-			require.True(t, ok, "generator should yield values")
-			require.NoError(t, builder.Append(i, val))
+		for i, row := range records {
+			require.NoError(t, builder.Append(i, row.values[colIdx]))
 		}
 
 		col, err := builder.Flush()
