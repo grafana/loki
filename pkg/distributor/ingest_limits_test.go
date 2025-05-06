@@ -111,7 +111,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			}},
 		},
 		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
@@ -138,7 +137,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			}},
 		},
 		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
@@ -168,7 +166,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			}},
 		},
 		response: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		},
 		expectedStreams: []KeyedStream{{
@@ -248,7 +245,6 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
@@ -269,7 +265,6 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		response: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		},
 		expectedReasons: nil,

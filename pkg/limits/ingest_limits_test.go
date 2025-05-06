@@ -337,7 +337,6 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, tt.tenantID, resp.Tenant)
 			require.ElementsMatch(t, tt.expectedResults, resp.Results)
 
 			metrics, err := reg.Gather()
@@ -428,7 +427,6 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, "tenant1", resp.Tenant)
 			require.Nil(t, resp.Results)
 		}()
 	}
