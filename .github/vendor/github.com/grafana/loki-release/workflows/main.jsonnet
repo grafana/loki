@@ -6,6 +6,7 @@
   release: import 'release.libsonnet',
   validate: import 'validate.libsonnet',
   validateGel: import 'validate-gel.libsonnet',
+
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildArtifactsBucket='loki-build-artifacts',
@@ -28,6 +29,8 @@
     useGCR=false,
     versioningStrategy='always-bump-patch',
                     ) {
+    local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+
     name: 'create release PR',
     on: {
       push: {
@@ -53,6 +56,7 @@
       SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
+      GITHUB_APP: githubApp,
     } + if releaseAs != null then {
       RELEASE_AS: releaseAs,
     } else {},
@@ -104,6 +108,8 @@
     dockerPluginPath='clients/cmd/docker-driver',
     publishDockerPlugins=true,
                   ) {
+    local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+
     name: 'create release',
     on: {
       push: {
@@ -123,6 +129,7 @@
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+      GITHUB_APP: githubApp,
     } + if publishToGCS then {
       PUBLISH_BUCKET: publishBucket,
       PUBLISH_TO_GCS: true,
