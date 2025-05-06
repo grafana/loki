@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -52,15 +53,14 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 }
 
 func TestConvertArrowRecordsToLokiResult(t *testing.T) {
-	mdTypeBuiltin := arrow.NewMetadata([]string{types.ColumnTypeMetadataKey}, []string{types.ColumnTypeBuiltin.String()})
-	mdTypeLabel := arrow.NewMetadata([]string{types.ColumnTypeMetadataKey}, []string{types.ColumnTypeLabel.String()})
-	mdTypeMetadata := arrow.NewMetadata([]string{types.ColumnTypeMetadataKey}, []string{types.ColumnTypeMetadata.String()})
+	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
+	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
 
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: mdTypeBuiltin},
-				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: mdTypeBuiltin},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 			},
 			nil,
@@ -117,8 +117,8 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: mdTypeBuiltin},
-				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: mdTypeBuiltin},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "traceID", Type: arrow.BinaryTypes.String, Metadata: mdTypeMetadata},
