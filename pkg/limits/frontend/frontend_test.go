@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -40,14 +41,14 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {
@@ -86,20 +87,20 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 	}, {
@@ -120,23 +121,23 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}, {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x4,
-				Reason:     ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 	}}

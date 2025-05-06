@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -113,11 +114,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"test"}},
+		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -140,14 +141,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"test"}},
+		expectedReasons: map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -250,11 +251,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"test"}},
+		expectedReasons:       map[uint64][]string{1: {"rate limit exceeded"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
