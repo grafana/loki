@@ -4,7 +4,7 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "a97a3b2a09b8b5bfaff777efe77f21e1fa89bd8f"
+  RELEASE_LIB_REF: "510aa7aca03db13e0a6b627987b17599e33ac6c7"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -138,6 +138,8 @@ jobs:
   publishImages:
     needs:
     - "createRelease"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
@@ -177,6 +179,7 @@ jobs:
     - "createRelease"
     - "publishImages"
     permissions:
+      contents: "write"
       id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
