@@ -400,9 +400,3 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 
 	return &logproto.ExceedsLimitsResponse{results}, nil
 }
-
-// GetStreamUsage implements the logproto.IngestLimitsServer interface.
-// It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
-	return nil, nil
-}
