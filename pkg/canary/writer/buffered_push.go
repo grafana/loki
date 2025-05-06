@@ -87,6 +87,7 @@ func (p *BatchedPush) run() {
 			return
 		}
 
+		level.Info(p.pusher.logger).Log("msg", "running a batched push", "log_count", len(logs))
 		firstLog := logs[0]
 
 		oldestTs := firstLog.ts.UnixNano()

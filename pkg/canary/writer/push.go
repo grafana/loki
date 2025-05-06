@@ -236,6 +236,7 @@ func (p *Push) run() {
 
 			// send log with retry
 			for {
+				level.Info(p.logger).Log("msg", "sending non-batched push")
 				status := 0
 				status, err = p.send(ctx, payload)
 				if err == nil {
