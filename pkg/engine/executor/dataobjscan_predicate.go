@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -89,8 +90,8 @@ func mapTimestampPredicate(expr physical.Expression) (dataobj.TimeRangePredicate
 
 func newTimestampPredicateMapper() *timestampPredicateMapper {
 	open := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
-		StartTime:    time.Unix(0, math.MinInt64),
-		EndTime:      time.Unix(0, math.MaxInt64),
+		StartTime:    time.Unix(0, math.MinInt64).UTC(),
+		EndTime:      time.Unix(0, math.MaxInt64).UTC(),
 		IncludeStart: true,
 		IncludeEnd:   true,
 	}
@@ -128,7 +129,7 @@ func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
 
 	switch rhs := binop.Right.(type) {
 	case *physical.LiteralExpr:
-		if rhs.ValueType() != types.ValueTypeTimestamp {
+		if rhs.ValueType() != datatype.Timestamp {
 			return fmt.Errorf("unsupported literal type: %s", rhs.ValueType())
 		}
 		return nil
@@ -156,28 +157,28 @@ func (m *timestampPredicateMapper) update(op types.BinaryOp, right physical.Expr
 }
 
 func (m *timestampPredicateMapper) rebound(op types.BinaryOp, right *physical.LiteralExpr) error {
-	if right.ValueType() != types.ValueTypeTimestamp {
+	if right.ValueType() != datatype.Timestamp {
 		return fmt.Errorf("unsupported literal type: %s", right.ValueType())
 	}
-	val := right.Value.Timestamp()
+	val := right.Literal.(*datatype.TimestampLiteral).Value()
 
 	switch op {
 	case types.BinaryOpEq: // ts == a
-		m.res.EndTime = time.Unix(0, int64(val))
-		m.res.StartTime = time.Unix(0, int64(val))
+		m.res.EndTime = val
+		m.res.StartTime = val
 		m.res.IncludeEnd = true
 		m.res.IncludeStart = true
 	case types.BinaryOpGt: // ts > a
-		m.res.StartTime = time.Unix(0, int64(val))
+		m.res.StartTime = val
 		m.res.IncludeStart = false
 	case types.BinaryOpGte: // ts >= a
-		m.res.StartTime = time.Unix(0, int64(val))
+		m.res.StartTime = val
 		m.res.IncludeStart = true
 	case types.BinaryOpLt: // ts < a
-		m.res.EndTime = time.Unix(0, int64(val))
+		m.res.EndTime = val
 		m.res.IncludeEnd = false
 	case types.BinaryOpLte: // ts <= a
-		m.res.EndTime = time.Unix(0, int64(val))
+		m.res.EndTime = val
 		m.res.IncludeEnd = true
 	default:
 		return fmt.Errorf("unsupported operator: %s", op)
@@ -211,13 +212,14 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			if !ok { // Should not happen
 				return nil, fmt.Errorf("RHS of EQ metadata predicate failed to cast to LiteralExpr")
 			}
-			if rightLiteral.ValueType() != types.ValueTypeStr {
+			if rightLiteral.ValueType() != datatype.String {
 				return nil, fmt.Errorf("unsupported RHS literal type (%v) for EQ metadata predicate, expected ValueTypeStr", rightLiteral.ValueType())
 			}
+			val := rightLiteral.Literal.(*datatype.StringLiteral).Value()
 
 			return dataobj.MetadataMatcherPredicate{
 				Key:   leftColumn.Ref.Column,
-				Value: rightLiteral.Value.Str(),
+				Value: val,
 			}, nil
 		case types.BinaryOpAnd:
 			leftPredicate, err := mapMetadataPredicate(e.Left)
@@ -229,8 +231,8 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
 			}
 			return dataobj.AndPredicate[dataobj.LogsPredicate]{
-				Left:  leftPredicate.(dataobj.LogsPredicate),
-				Right: rightPredicate.(dataobj.LogsPredicate),
+				Left:  leftPredicate,
+				Right: rightPredicate,
 			}, nil
 		case types.BinaryOpOr:
 			leftPredicate, err := mapMetadataPredicate(e.Left)
@@ -242,8 +244,8 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
 			}
 			return dataobj.OrPredicate[dataobj.LogsPredicate]{
-				Left:  leftPredicate.(dataobj.LogsPredicate),
-				Right: rightPredicate.(dataobj.LogsPredicate),
+				Left:  leftPredicate,
+				Right: rightPredicate,
 			}, nil
 		default:
 			return nil, fmt.Errorf("unsupported binary operator (%s) for metadata predicate, expected EQ, AND, or OR", e.Op)
@@ -257,7 +259,7 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
 		}
 		return dataobj.NotPredicate[dataobj.LogsPredicate]{
-			Inner: innerPredicate.(dataobj.LogsPredicate),
+			Inner: innerPredicate,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported expression type (%T) for metadata predicate, expected BinaryExpr or UnaryExpr", expr)
