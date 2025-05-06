@@ -253,13 +253,13 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
 	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
