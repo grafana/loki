@@ -24,7 +24,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			Streams: nil,
 		},
 		expected: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		},
 	}, {
@@ -38,14 +37,12 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
@@ -62,11 +59,9 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
 			Results: []*logproto.ExceedsLimitsResult{},
 		},
 	}, {
@@ -84,7 +79,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
@@ -94,7 +88,6 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
@@ -118,20 +111,17 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}},
 		},
 		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}, {
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x4,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		}},
 		expected: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
 			Results: []*logproto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),

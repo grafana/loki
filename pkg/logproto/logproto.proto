@@ -71,8 +71,7 @@ message ExceedsLimitsRequest {
 }
 
 message ExceedsLimitsResponse {
-  string tenant = 1;
-  repeated ExceedsLimitsResult results = 2;
+  repeated ExceedsLimitsResult results = 1;
 }
 
 message ExceedsLimitsResult {
@@ -83,21 +82,6 @@ message ExceedsLimitsResult {
 service IngestLimits {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
-
-  // Deprecated.
-  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
-}
-
-message GetStreamUsageRequest {
-  string tenant = 1;
-  repeated uint64 streamHashes = 2;
-}
-
-message GetStreamUsageResponse {
-  string tenant = 1;
-  uint64 activeStreams = 2;
-  uint64 rate = 3;
-  repeated uint64 unknownStreams = 4;
 }
 
 message StreamRate {

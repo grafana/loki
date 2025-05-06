@@ -19,31 +19,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-const (
-	// ReasonExceedsMaxStreams is returned when a tenant exceeds the maximum
-	// number of active streams as per their per-tenant limit.
-	ReasonExceedsMaxStreams = "exceeds_max_streams"
-
-	// ReasonExceedsRateLimit is returned when a tenant exceeds their maximum
-	// rate limit as per their per-tenant limit.
-	ReasonExceedsRateLimit = "exceeds_rate_limit"
-)
-
-// Frontend is the limits-frontend service, and acts a service wrapper for
-// all components needed to run the limits-frontend.
+// Frontend is a frontend for the limits service. It is responsible for
+// receiving RPCs from clients, forwarding them to the correct limits
+// instances, and returning their responses.
 type Frontend struct {
 	services.Service
-
 	cfg                     Config
 	logger                  log.Logger
 	gatherer                ExceedsLimitsGatherer
 	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
-
-	subservices        *services.Manager
-	subservicesWatcher *services.FailureWatcher
-
-	lifecycler        *ring.Lifecycler
-	lifecyclerWatcher *services.FailureWatcher
+	subservices             *services.Manager
+	subservicesWatcher      *services.FailureWatcher
+	lifecycler              *ring.Lifecycler
+	lifecyclerWatcher       *services.FailureWatcher
 }
 
 // New returns a new Frontend.
@@ -59,6 +47,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger,
 	)
 
+	// Set up the assigned partitions cache.
 	var assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
 	if cfg.AssignedPartitionsCacheTTL == 0 {
 		// When the TTL is 0, the cache is disabled.
@@ -80,7 +69,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
 	f.lifecycler = lifecycler
-	// Watch the lifecycler
+	// Watch the lifecycler.
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
 
@@ -108,10 +97,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimit
 	for _, resp := range resps {
 		results = append(results, resp.Results...)
 	}
-	return &logproto.ExceedsLimitsResponse{
-		Tenant:  req.Tenant,
-		Results: results,
-	}, nil
+	return &logproto.ExceedsLimitsResponse{results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {
@@ -136,12 +122,10 @@ func (f *Frontend) starting(ctx context.Context) (err error) {
 			level.Error(f.logger).Log("msg", "failed to stop subservices", "err", stopErr)
 		}
 	}()
-
 	level.Info(f.logger).Log("msg", "starting subservices")
 	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
 		return fmt.Errorf("failed to start subservices: %w", err)
 	}
-
 	return nil
 }
 
