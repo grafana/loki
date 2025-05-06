@@ -11,7 +11,7 @@ import (
 )
 
 // buildLogsPredicate builds a logs predicate from an expression.
-func buildLogsPredicate(_ physical.Expression) (dataobj.LogsPredicate, error) {
+func buildLogsPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
 	// TODO(rfratto): implement converting expressions into logs predicates.
 	//
 	// There's a few challenges here:
@@ -46,14 +46,12 @@ func buildLogsPredicate(_ physical.Expression) (dataobj.LogsPredicate, error) {
 	// think we should start removing things from internal for this; we can probably
 	// find a way to remove the explicit dependency from the dataobj package from
 	// the physical planner instead.
-	return nil, fmt.Errorf("logs predicate conversion is not supported")
+	return mapInitiallySupportedPredicates(expr)
 }
 
-// The planner should only push down predicates that are binary expressions with LHS being a ColumnExpression and RHS being a LiteralExpression (or ColumnExpression, if we want to support that).
-// Initially, we only support the following predicates in mapping
+// Support for timestamp and metadata predicates has been implemented.
 // TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
-
-func mapPredicate(expr physical.Expression) (dataobj.Predicate, error) {
+func mapInitiallySupportedPredicates(expr physical.Expression) (dataobj.LogsPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 		if e.Left.Type() != physical.ExprTypeColumn {
@@ -68,8 +66,7 @@ func mapPredicate(expr physical.Expression) (dataobj.Predicate, error) {
 			}
 			return nil, fmt.Errorf("unsupported builtin column in predicate (only timestamp is supported for now): %s", left.Ref.Column)
 		case types.ColumnTypeMetadata:
-			// return mapMetadataPredicate(left, e.Right)
-			panic("unimplemented")
+			return mapMetadataPredicate(e)
 		default:
 			return nil, fmt.Errorf("unsupported column ref type (%T) in predicate: %s", left.Ref, left.Ref.String())
 		}
@@ -140,7 +137,6 @@ func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
 	default:
 		return fmt.Errorf("unsupported RHS type: %T", binop.Right)
 	}
-
 }
 
 // need to test the following patterns:
@@ -160,14 +156,12 @@ func (m *timestampPredicateMapper) update(op types.BinaryOp, right physical.Expr
 }
 
 func (m *timestampPredicateMapper) rebound(op types.BinaryOp, right *physical.LiteralExpr) error {
-
 	if right.ValueType() != types.ValueTypeTimestamp {
 		return fmt.Errorf("unsupported literal type: %s", right.ValueType())
 	}
 	val := right.Value.Timestamp()
 
 	switch op {
-
 	case types.BinaryOpEq: // ts == a
 		m.res.EndTime = time.Unix(0, int64(val))
 		m.res.StartTime = time.Unix(0, int64(val))
@@ -189,4 +183,83 @@ func (m *timestampPredicateMapper) rebound(op types.BinaryOp, right *physical.Li
 		return fmt.Errorf("unsupported operator: %s", op)
 	}
 	return nil
+}
+
+// mapMetadataPredicate converts a physical.Expression into a dataobj.Predicate for metadata filtering.
+// It supports MetadataMatcherPredicate for equality checks on metadata fields,
+// and can recursively handle AndPredicate, OrPredicate, and NotPredicate.
+func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
+	switch e := expr.(type) {
+	case *physical.BinaryExpr:
+		switch e.Op {
+		case types.BinaryOpEq:
+			if e.Left.Type() != physical.ExprTypeColumn {
+				return nil, fmt.Errorf("unsupported LHS type (%v) for EQ metadata predicate, expected ColumnExpr", e.Left.Type())
+			}
+			leftColumn, ok := e.Left.(*physical.ColumnExpr)
+			if !ok { // Should not happen due to Type() check but defensive
+				return nil, fmt.Errorf("LHS of EQ metadata predicate failed to cast to ColumnExpr")
+			}
+			if leftColumn.Ref.Type != types.ColumnTypeMetadata {
+				return nil, fmt.Errorf("unsupported LHS column type (%v) for EQ metadata predicate, expected ColumnTypeMetadata", leftColumn.Ref.Type)
+			}
+
+			if e.Right.Type() != physical.ExprTypeLiteral {
+				return nil, fmt.Errorf("unsupported RHS type (%v) for EQ metadata predicate, expected LiteralExpr", e.Right.Type())
+			}
+			rightLiteral, ok := e.Right.(*physical.LiteralExpr)
+			if !ok { // Should not happen
+				return nil, fmt.Errorf("RHS of EQ metadata predicate failed to cast to LiteralExpr")
+			}
+			if rightLiteral.ValueType() != types.ValueTypeStr {
+				return nil, fmt.Errorf("unsupported RHS literal type (%v) for EQ metadata predicate, expected ValueTypeStr", rightLiteral.ValueType())
+			}
+
+			return dataobj.MetadataMatcherPredicate{
+				Key:   leftColumn.Ref.Column,
+				Value: rightLiteral.Value.Str(),
+			}, nil
+		case types.BinaryOpAnd:
+			leftPredicate, err := mapMetadataPredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of AND: %w", err)
+			}
+			rightPredicate, err := mapMetadataPredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
+			}
+			return dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  leftPredicate.(dataobj.LogsPredicate),
+				Right: rightPredicate.(dataobj.LogsPredicate),
+			}, nil
+		case types.BinaryOpOr:
+			leftPredicate, err := mapMetadataPredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of OR: %w", err)
+			}
+			rightPredicate, err := mapMetadataPredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
+			}
+			return dataobj.OrPredicate[dataobj.LogsPredicate]{
+				Left:  leftPredicate.(dataobj.LogsPredicate),
+				Right: rightPredicate.(dataobj.LogsPredicate),
+			}, nil
+		default:
+			return nil, fmt.Errorf("unsupported binary operator (%s) for metadata predicate, expected EQ, AND, or OR", e.Op)
+		}
+	case *physical.UnaryExpr:
+		if e.Op != types.UnaryOpNot {
+			return nil, fmt.Errorf("unsupported unary operator (%s) for metadata predicate, expected NOT", e.Op)
+		}
+		innerPredicate, err := mapMetadataPredicate(e.Left)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
+		}
+		return dataobj.NotPredicate[dataobj.LogsPredicate]{
+			Inner: innerPredicate.(dataobj.LogsPredicate),
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported expression type (%T) for metadata predicate, expected BinaryExpr or UnaryExpr", expr)
+	}
 }
