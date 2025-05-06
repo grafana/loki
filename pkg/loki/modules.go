@@ -63,6 +63,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -454,7 +455,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	}
 	t.ingestLimits = ingestLimits
 
-	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
+	limitsproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
 
 	// Register HTTP handler for metadata
 	t.Server.HTTP.Path("/ingest-limits/usage/{tenant}").Methods("GET").Handler(ingestLimits)
@@ -511,7 +512,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		return nil, err
 	}
 	t.ingestLimitsFrontend = ingestLimitsFrontend
-	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+	limitsproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
 
 	// Register HTTP handler to check if a tenant exceeds limits
 	// Returns a JSON response for the frontend to display which

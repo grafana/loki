@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestRingGatherer_ExceedsLimits(t *testing.T) {
 	tests := []struct {
 		name    string
-		request *logproto.ExceedsLimitsRequest
+		request *proto.ExceedsLimitsRequest
 		// Instances contains the complete set of instances that should be mocked.
 		// For example, if a test case is expected to make RPC calls to one instance,
 		// then just one InstanceDesc is required.
@@ -27,34 +27,34 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// value contains the expected request/response for the instance at the
 		// same index in the instances slice. If a request/response is not expected,
 		// the value can be set to nil.
-		expectedAssignedPartitionsRequest []*logproto.GetAssignedPartitionsRequest
-		getAssignedPartitionsResponses    []*logproto.GetAssignedPartitionsResponse
-		expectedExceedsLimitsRequests     []*logproto.ExceedsLimitsRequest
-		exceedsLimitsResponses            []*logproto.ExceedsLimitsResponse
+		expectedAssignedPartitionsRequest []*proto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
+		expectedExceedsLimitsRequests     []*proto.ExceedsLimitsRequest
+		exceedsLimitsResponses            []*proto.ExceedsLimitsResponse
 		exceedsLimitsResponseErrs         []error
-		expected                          []*logproto.ExceedsLimitsResponse
+		expected                          []*proto.ExceedsLimitsResponse
 		expectedErr                       string
 	}{{
 		// When there are no streams, no RPCs should be sent.
 		name: "no streams",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant:  "test",
 			Streams: nil,
 		},
 		instances:                         []ring.InstanceDesc{{Addr: "instance-0"}},
 		numPartitions:                     1,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{nil},
-		getAssignedPartitionsResponses:    []*logproto.GetAssignedPartitionsResponse{nil},
-		expectedExceedsLimitsRequests:     []*logproto.ExceedsLimitsRequest{nil},
-		exceedsLimitsResponses:            []*logproto.ExceedsLimitsResponse{nil},
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{nil},
+		getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{nil},
+		expectedExceedsLimitsRequests:     []*proto.ExceedsLimitsRequest{nil},
+		exceedsLimitsResponses:            []*proto.ExceedsLimitsResponse{nil},
 		exceedsLimitsResponseErrs:         []error{nil},
 	}, {
 		// When there is one instance owning all partitions, that instance is
 		// responsible for enforcing limits of all streams.
 		name: "one stream one instance",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1, // 0x1 is assigned to partition 0.
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -64,29 +64,29 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Addr: "instance-0",
 		}},
 		numPartitions:                     1,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{{}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
 		}},
-		expectedExceedsLimitsRequests: []*logproto.ExceedsLimitsRequest{{
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		}},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		exceedsLimitsResponseErrs: []error{nil},
-		expected: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		expected: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -97,9 +97,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// partitions. But when we have one stream, just one instance
 		// should be called to enforce limits.
 		name: "one stream two instances",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1, // 0x1 is assigned to partition 1.
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -111,8 +111,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions:                     2,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -121,23 +121,23 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedExceedsLimitsRequests: []*logproto.ExceedsLimitsRequest{nil, {
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{nil, {
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		}},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{nil, {
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{nil, {
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		exceedsLimitsResponseErrs: []error{nil, nil},
-		expected: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		expected: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -147,9 +147,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// shard to one partition, just the instance that consumes that
 		// partition should be called to enforce limits.
 		name: "two streams, two instances, all streams to one partition",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1, // 0x1 is assigned to partition 1.
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -165,8 +165,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions:                     2,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -175,9 +175,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedExceedsLimitsRequests: []*logproto.ExceedsLimitsRequest{nil, {
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{nil, {
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -187,15 +187,15 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				StructuredMetadataSize: 0x5,
 			}},
 		}},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{nil, {
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{nil, {
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		exceedsLimitsResponseErrs: []error{nil, nil},
-		expected: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		expected: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -205,9 +205,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		// shards to different partitions, all instances should be called
 		// called to enforce limits.
 		name: "two streams, two instances, one stream each",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1, // 0x1 is assigned to partition 1.
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -223,8 +223,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions:                     2,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -233,40 +233,40 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedExceedsLimitsRequests: []*logproto.ExceedsLimitsRequest{{
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x2,
 				EntriesSize:            0x4,
 				StructuredMetadataSize: 0x5,
 			}},
 		}, {
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		}},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}, {
-			Results: []*logproto.ExceedsLimitsResult{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		exceedsLimitsResponseErrs: []error{nil, nil},
-		expected: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		expected: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}, {
-			Results: []*logproto.ExceedsLimitsResult{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -274,9 +274,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 	}, {
 		// When one instance returns an error, the entire request is failed.
 		name: "two streams, two instances, one instance returns error",
-		request: &logproto.ExceedsLimitsRequest{
+		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1, // 0x1 is assigned to partition 1.
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -292,8 +292,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Addr: "instance-1",
 		}},
 		numPartitions:                     2,
-		expectedAssignedPartitionsRequest: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequest: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -302,23 +302,23 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				1: time.Now().UnixNano(),
 			},
 		}},
-		expectedExceedsLimitsRequests: []*logproto.ExceedsLimitsRequest{{
+		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x2,
 				EntriesSize:            0x4,
 				StructuredMetadataSize: 0x5,
 			}},
 		}, {
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		}},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -354,7 +354,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 				t.Cleanup(mockClients[i].AssertExpectedNumRequests)
 			}
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
-			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+			cache := NewNopCache[string, *proto.GetAssignedPartitionsResponse]()
 			g := NewRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
@@ -377,8 +377,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name                               string
 		instances                          []ring.InstanceDesc
-		expectedAssignedPartitionsRequests []*logproto.GetAssignedPartitionsRequest
-		getAssignedPartitionsResponses     []*logproto.GetAssignedPartitionsResponse
+		expectedAssignedPartitionsRequests []*proto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses     []*proto.GetAssignedPartitionsResponse
 		getAssignedPartitionsResponseErrs  []error
 		expected                           map[string]map[int32]string
 	}{{
@@ -387,8 +387,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-a-0",
 			Zone: "a",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -404,8 +404,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-b-0",
 			Zone: "b",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -428,8 +428,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-b-0",
 			Zone: "b",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 				1: time.Now().UnixNano(),
@@ -453,8 +453,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-b-0",
 			Zone: "b",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 				1: time.Now().UnixNano(),
@@ -474,8 +474,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-b-0",
 			Zone: "b",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses:     []*logproto.GetAssignedPartitionsResponse{{}, {}},
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses:     []*proto.GetAssignedPartitionsResponse{{}, {}},
 		getAssignedPartitionsResponseErrs:  []error{nil, nil, nil},
 		expected:                           map[string]map[int32]string{"a": {}, "b": {}},
 	}, {
@@ -490,8 +490,8 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			Addr: "instance-b-0",
 			Zone: "b",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -533,7 +533,7 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			}
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
-			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+			cache := NewNopCache[string, *proto.GetAssignedPartitionsResponse]()
 			g := NewRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
@@ -558,8 +558,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		// value contains the expected request/response for the instance at the
 		// same index in the instances slice. If a request/response is not expected,
 		// the value can be set to nil.
-		expectedAssignedPartitionsRequests []*logproto.GetAssignedPartitionsRequest
-		getAssignedPartitionsResponses     []*logproto.GetAssignedPartitionsResponse
+		expectedAssignedPartitionsRequests []*proto.GetAssignedPartitionsRequest
+		getAssignedPartitionsResponses     []*proto.GetAssignedPartitionsResponse
 		getAssignedPartitionsResponseErrs  []error
 		// The expected result.
 		expected map[int32]string
@@ -568,8 +568,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		instances: []ring.InstanceDesc{{
 			Addr: "instance-0",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -585,8 +585,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		}, {
 			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -607,8 +607,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		}, {
 			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().Add(-time.Second).UnixNano(),
 			},
@@ -630,8 +630,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		}, {
 			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().Add(-time.Second).UnixNano(),
 			},
@@ -652,8 +652,8 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 		}, {
 			Addr: "instance-1",
 		}},
-		expectedAssignedPartitionsRequests: []*logproto.GetAssignedPartitionsRequest{{}, {}},
-		getAssignedPartitionsResponses:     []*logproto.GetAssignedPartitionsResponse{nil, nil},
+		expectedAssignedPartitionsRequests: []*proto.GetAssignedPartitionsRequest{{}, {}},
+		getAssignedPartitionsResponses:     []*proto.GetAssignedPartitionsResponse{nil, nil},
 		getAssignedPartitionsResponseErrs: []error{
 			errors.New("an unexpected error occurred"),
 			errors.New("an unexpected error occurred"),
@@ -682,7 +682,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 			}
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
-			cache := NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+			cache := NewNopCache[string, *proto.GetAssignedPartitionsResponse]()
 			g := NewRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
@@ -700,7 +700,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_IsCached(t *testing.T) {
 	// Set up the mock clients, one for each pair of mock RPC responses.
 	client0 := mockIngestLimitsClient{
 		t: t,
-		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
+		getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
 			AssignedPartitions: map[int32]int64{
 				0: time.Now().UnixNano(),
 			},
@@ -710,7 +710,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_IsCached(t *testing.T) {
 	t.Cleanup(client0.AssertExpectedNumRequests)
 	client1 := mockIngestLimitsClient{
 		t: t,
-		getAssignedPartitionsResponse: &logproto.GetAssignedPartitionsResponse{
+		getAssignedPartitionsResponse: &proto.GetAssignedPartitionsResponse{
 			AssignedPartitions: map[int32]int64{
 				1: time.Now().UnixNano(),
 			},
@@ -726,7 +726,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_IsCached(t *testing.T) {
 
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
-	cache := NewTTLCache[string, *logproto.GetAssignedPartitionsResponse](time.Minute)
+	cache := NewTTLCache[string, *proto.GetAssignedPartitionsResponse](time.Minute)
 	g := NewRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 	// Set a maximum upper bound on the test execution time.
