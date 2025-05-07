@@ -8,14 +8,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func TestNewFilterPipeline(t *testing.T) {
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean},
+		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Bool)},
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {
@@ -29,9 +30,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always true
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -63,9 +62,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always false
-		falsePredicate := &physical.LiteralExpr{
-			Value: createLiteral(false),
-		}
+		falsePredicate := physical.NewLiteral(false)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -149,12 +146,12 @@ func TestNewFilterPipeline(t *testing.T) {
 			Predicates: []physical.Expression{
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
-					Right: &physical.LiteralExpr{Value: createLiteral("Bob")},
+					Right: physical.NewLiteral("Bob"),
 					Op:    types.BinaryOpEq,
 				},
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
-					Right: &physical.LiteralExpr{Value: createLiteral(false)},
+					Right: physical.NewLiteral(false),
 					Op:    types.BinaryOpNeq,
 				},
 			},
@@ -198,9 +195,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(emptyRecord)
 
 		// Create a simple filter
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{

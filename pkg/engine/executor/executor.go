@@ -5,17 +5,22 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 type Config struct {
-	BatchSize int64 `yaml:"batch_size"`
+	BatchSize int64
+	Bucket    objstore.Bucket
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 	c := &Context{
 		plan:      plan,
 		batchSize: cfg.BatchSize,
+		bucket:    cfg.Bucket,
 	}
 	if plan == nil {
 		return errorPipeline(errors.New("plan is nil"))
@@ -32,6 +37,7 @@ type Context struct {
 	batchSize int64
 	plan      *physical.Plan
 	evaluator expressionEvaluator
+	bucket    objstore.Bucket
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -57,8 +63,30 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 }
 
-func (c *Context) executeDataObjScan(_ context.Context, _ *physical.DataObjScan) Pipeline {
-	return errorPipeline(errNotImplemented)
+func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+	if c.bucket == nil {
+		return errorPipeline(errors.New("no object store bucket configured"))
+	}
+
+	predicates := make([]dataobj.LogsPredicate, 0, len(node.Predicates))
+
+	for _, p := range node.Predicates {
+		conv, err := buildLogsPredicate(p)
+		if err != nil {
+			return errorPipeline(err)
+		}
+		predicates = append(predicates, conv)
+	}
+
+	return newDataobjScanPipeline(ctx, dataobjScanOptions{
+		Object:      dataobj.FromBucket(c.bucket, string(node.Location)),
+		StreamIDs:   node.StreamIDs,
+		Predicates:  predicates,
+		Projections: node.Projections,
+
+		Direction: node.Direction,
+		Limit:     node.Limit,
+	})
 }
 
 func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
