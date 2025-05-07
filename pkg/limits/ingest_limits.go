@@ -420,10 +420,13 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 		for _, stream := range streams {
 			ingestedBytes += stream.TotalSize
 
-			s.wal.Append(context.WithoutCancel(ctx), req.Tenant, &proto.StreamMetadata{
+			err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, &proto.StreamMetadata{
 				StreamHash: stream.Hash,
 				TotalSize:  stream.TotalSize,
 			})
+			if err != nil {
+				level.Error(s.logger).Log("msg", "failed to append stream metadata to WAL", "error", err)
+			}
 		}
 	}
 
