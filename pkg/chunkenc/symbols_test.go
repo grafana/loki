@@ -30,22 +30,11 @@ func TestSymbolizer(t *testing.T) {
 		{
 			name: "no duplicate labels",
 			labelsToAdd: []labels.Labels{
-				{
-					labels.Label{
-						Name:  "foo",
-						Value: "bar",
-					},
-				},
-				{
-					labels.Label{
-						Name:  "fizz",
-						Value: "buzz",
-					},
-					labels.Label{
-						Name:  "ping",
-						Value: "pong",
-					},
-				},
+				labels.FromStrings("foo", "bar"),
+				labels.FromStrings(
+					"fizz", "buzz",
+					"ping", "pong",
+				),
 			},
 			expectedSymbols: []symbols{
 				{
@@ -72,30 +61,15 @@ func TestSymbolizer(t *testing.T) {
 		{
 			name: "with duplicate labels",
 			labelsToAdd: []labels.Labels{
-				{
-					labels.Label{
-						Name:  "foo",
-						Value: "bar",
-					},
-					{
-						Name:  "bar",
-						Value: "foo",
-					},
-				},
-				{
-					labels.Label{
-						Name:  "foo",
-						Value: "bar",
-					},
-					labels.Label{
-						Name:  "fizz",
-						Value: "buzz",
-					},
-					labels.Label{
-						Name:  "ping",
-						Value: "pong",
-					},
-				},
+				labels.FromStrings(
+					"foo", "bar",
+					"bar", "foo",
+				),
+				labels.FromStrings(
+					"foo", "bar",
+					"fizz", "buzz",
+					"ping", "pong",
+				),
 			},
 			expectedSymbols: []symbols{
 				{
@@ -130,11 +104,13 @@ func TestSymbolizer(t *testing.T) {
 	} {
 		for _, encoding := range testEncodings {
 			t.Run(fmt.Sprintf("%s - %s", tc.name, encoding), func(t *testing.T) {
+				labelsBuilder := labels.NewScratchBuilder(0)
+
 				s := newSymbolizer()
-				for i, labels := range tc.labelsToAdd {
-					symbols := s.Add(labels)
+				for i, lbls := range tc.labelsToAdd {
+					symbols := s.Add(lbls)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
-					require.Equal(t, labels, s.Lookup(symbols, nil))
+					require.Equal(t, lbls, s.Lookup(symbols, &labelsBuilder))
 				}
 
 				// Test that Lookup returns empty labels if no symbols are provided.
@@ -144,9 +120,8 @@ func TestSymbolizer(t *testing.T) {
 							Name:  0,
 							Value: 0,
 						},
-					}, nil)
-					require.Equal(t, "", ret[0].Name)
-					require.Equal(t, "", ret[0].Value)
+					}, &labelsBuilder)
+					require.True(t, ret.IsEmpty())
 				}
 
 				require.Equal(t, tc.expectedNumLabels, len(s.labels))

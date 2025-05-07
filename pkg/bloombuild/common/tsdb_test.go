@@ -35,7 +35,7 @@ func (f forSeriesTestImpl) ForSeries(
 			})
 		}
 
-		fn(nil, f[i].Fingerprint, unmapped)
+		fn(labels.EmptyLabels(), f[i].Fingerprint, unmapped)
 	}
 	return nil
 }
