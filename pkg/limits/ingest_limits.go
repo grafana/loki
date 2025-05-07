@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -30,6 +29,11 @@ const (
 	// Kafka
 	consumerGroup = "ingest-limits"
 )
+
+// MetadataTopic returns the metadata topic name for the given topic.
+func MetadataTopic(topic string) string {
+	return topic + ".metadata"
+}
 
 var (
 	partitionsDesc = prometheus.NewDesc(
@@ -149,7 +153,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
-	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
+	kCfg.Topic = MetadataTopic(kCfg.Topic)
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 

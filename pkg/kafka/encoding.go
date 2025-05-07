@@ -16,10 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-const (
-	metadataTopicSuffix = ".metadata"
-)
-
 var (
 	encoderPool = sync.Pool{
 		New: func() any {
@@ -193,9 +189,4 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 // in Protocol Buffers' variable-length integer format.
 func sovPush(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
-}
-
-// MetadataTopicFor returns the metadata topic name for the given topic.
-func MetadataTopicFor(topic string) string {
-	return topic + metadataTopicSuffix
 }
