@@ -104,8 +104,8 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 	})
 }
 
-func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) uint64 {
-	var ingestedBytes uint64
+func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) map[int32][]Stream {
+	stored := make(map[int32][]Stream)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
@@ -129,11 +129,11 @@ func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cu
 			}
 
 			for _, stream := range streams {
-				stored, found := s.stripes[i][tenant][partitionID][stream.Hash]
+				recorded, found := s.stripes[i][tenant][partitionID][stream.Hash]
 
 				// If the stream is new or expired, check if it exceeds the limit.
 				// If limit is not exceeded and the stream is expired, reset the stream.
-				if !found || (stored.LastSeenAt < cutoff) {
+				if !found || (recorded.LastSeenAt < cutoff) {
 					// Count up the new stream before updating
 					newStreams++
 
@@ -142,18 +142,18 @@ func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cu
 					}
 
 					// If the stream is stored and expired, reset the stream
-					if found && stored.LastSeenAt < cutoff {
+					if found && recorded.LastSeenAt < cutoff {
 						s.stripes[i][tenant][partitionID][stream.Hash] = Stream{Hash: stream.Hash, LastSeenAt: stream.LastSeenAt}
 					}
 				}
 
 				s.storeStream(i, tenant, partitionID, stream.Hash, stream.TotalSize, stream.LastSeenAt, bucketStart, bucketCutOff)
 
-				ingestedBytes += stream.TotalSize
+				stored[partitionID] = append(stored[partitionID], stream)
 			}
 		}
 	})
-	return ingestedBytes
+	return stored
 }
 
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {

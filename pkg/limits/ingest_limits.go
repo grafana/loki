@@ -421,9 +421,8 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			ingestedBytes += stream.TotalSize
 
 			s.wal.Append(context.WithoutCancel(ctx), req.Tenant, &proto.StreamMetadata{
-				StreamHash:             stream.Hash,
-				TotalSize:              stream.TotalSize,
-				StructuredMetadataSize: 0,
+				StreamHash: stream.Hash,
+				TotalSize:  stream.TotalSize,
 			})
 		}
 	}
@@ -431,25 +430,4 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
-}
-
-func (s *IngestLimits) sendToKafka(ctx context.Context, tenant string, streams map[int32][]Stream) {
-	noPromise := func(_ *kgo.Record, err error) {
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to send stream metadata to kafka", "error", err)
-		}
-	}
-
-	for partitionID, streams := range streams {
-		for _, stream := range streams {
-			record := &kgo.Record{
-				Topic:     s.cfg.KafkaConfig.Topic,
-				Key:       []byte(tenant),
-				Partition: partitionID,
-				Value:     stream.Marshal(),
-			}
-
-			s.writer.Produce(ctx, record, noPromise)
-		}
-	}
 }

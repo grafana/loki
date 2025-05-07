@@ -2,6 +2,7 @@ package limits
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -12,9 +13,12 @@ type mockWAL struct {
 	t                    *testing.T
 	NumAppendsTotal      int
 	ExpectedAppendsTotal int
+	mtx                  sync.Mutex
 }
 
 func (m *mockWAL) Append(_ context.Context, _ string, _ *proto.StreamMetadata) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.NumAppendsTotal++
 	return nil
 }
