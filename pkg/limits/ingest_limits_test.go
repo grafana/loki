@@ -273,7 +273,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
 				{StreamHash: 0x1, TotalSize: 1010}, // Unassigned
-				{StreamHash: 0x2, TotalSize: 1000}, // Assigned
+				{StreamHash: 0x2, TotalSize: 1010}, // Assigned
 				{StreamHash: 0x3, TotalSize: 1010}, // Unassigned
 				{StreamHash: 0x4, TotalSize: 1010}, // Assigned  but exceeds stream limit
 			},
