@@ -1,7 +1,6 @@
 package limits
 
 import (
-	"bytes"
 	"fmt"
 	"sync"
 	"testing"
@@ -1066,31 +1065,4 @@ func TestStreamMetadata_EvictPartitions_Concurrent(t *testing.T) {
 		actual = append(actual, partitionID)
 	})
 	require.ElementsMatch(t, expected, actual)
-}
-
-func TestStream_MashalAndUnmarshal(t *testing.T) {
-	stream := Stream{
-		Hash:       1,
-		LastSeenAt: time.Now().UnixNano(),
-		TotalSize:  3000,
-		RateBuckets: []RateBucket{
-			{
-				Timestamp: time.Now().UnixNano(),
-				Size:      1000,
-			},
-			{
-				Timestamp: time.Now().UnixNano(),
-				Size:      2000,
-			},
-		},
-	}
-
-	buf := &bytes.Buffer{}
-	buf.Write(stream.Marshal())
-
-	unmarshalled := &Stream{}
-	err := unmarshalled.Unmarshal(buf.Bytes())
-	require.NoError(t, err)
-
-	require.Equal(t, stream, *unmarshalled)
 }

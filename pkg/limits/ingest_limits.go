@@ -107,6 +107,7 @@ type IngestLimits struct {
 
 	// Track stream metadata
 	metadata StreamMetadata
+	wal      WAL
 
 	// Track partition assignments
 	partitionManager *PartitionManager
@@ -158,7 +159,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
-	s.reader, err = client.NewReaderClient("ingest-limits", kCfg, logger, reg,
+	s.reader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
@@ -171,10 +172,11 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	s.writer, err = client.NewWriterClient("ingest-limits", kCfg, 20, logger, reg)
+	s.writer, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
+	s.wal = NewKafkaWAL(s.writer, s.cfg.KafkaConfig.Topic, uint64(s.cfg.NumPartitions), logger)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -334,6 +336,15 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	if s.reader != nil {
 		s.reader.Close()
 	}
+
+	if s.wal != nil {
+		s.wal.Close()
+	}
+
+	if s.writer != nil {
+		s.writer.Close()
+	}
+
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
@@ -408,6 +419,12 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	for _, streams := range stored {
 		for _, stream := range streams {
 			ingestedBytes += stream.TotalSize
+
+			s.wal.Append(context.WithoutCancel(ctx), req.Tenant, &proto.StreamMetadata{
+				StreamHash:             stream.Hash,
+				TotalSize:              stream.TotalSize,
+				StructuredMetadataSize: 0,
+			})
 		}
 	}
 
