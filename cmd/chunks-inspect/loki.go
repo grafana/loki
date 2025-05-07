@@ -180,13 +180,11 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		// the chunk metas section is index 2
 		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(2)
 
-		//expCRC := binary.BigEndian.Uint32(data[structuredMetadataOffset+structuredMetadataLength:])
-		//computedMetaChecksum := crc32.Checksum(lb, castagnoliTable)
-
 		structuredMetadata := data[structuredMetadataOffset : structuredMetadataOffset+structuredMetadataLength]
 
-		// Structured Metadata is "normalized" or "compressed" by storing an index to a string with each log line, and then all the strings in the chunk metadata section
-		// Here we need to extract the list of string from the metadata to be used for look ups when decompressing the log lines
+		// Structured Metadata is compresed by extracting the string keys and values and storing them in a separate section.
+		// The order of the strings determines the index of the string in the metadata section of each row.
+
 		// First we read the number of symbols
 		symbols, n := binary.Uvarint(structuredMetadata)
 		if n <= 0 {
@@ -202,7 +200,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		}
 
 		structuredMetadataSymbols = make([]string, 0, symbols)
-		// Read every label and add it to a map for easy lookup
+		// Read every label and add it to a slice.
 		for i := 0; i < int(symbols); i++ {
 			// Read the length of the string
 			strLen, read := binary.Uvarint(decompressed)
