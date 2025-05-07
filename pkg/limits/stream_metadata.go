@@ -1,6 +1,8 @@
 package limits
 
 import (
+	"bytes"
+	"encoding/binary"
 	"hash/fnv"
 	"sync"
 )
@@ -31,7 +33,7 @@ type StreamMetadata interface {
 
 	// StoreCond tries to store a list of streams for a specific tenant and partition,
 	// until the partition limit is reached. It returns the total ingested bytes.
-	StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) uint64
+	StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) map[int32][]Stream
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
 	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
@@ -51,6 +53,70 @@ type Stream struct {
 	LastSeenAt  int64
 	TotalSize   uint64
 	RateBuckets []RateBucket
+}
+
+func (s *Stream) Marshal() []byte {
+	buf := &bytes.Buffer{}
+	encBuf := make([]byte, binary.MaxVarintLen64)
+
+	n := binary.PutUvarint(encBuf, s.Hash)
+	buf.Write(encBuf[:n])
+
+	n = binary.PutVarint(encBuf, s.LastSeenAt)
+	buf.Write(encBuf[:n])
+
+	n = binary.PutUvarint(encBuf, s.TotalSize)
+	buf.Write(encBuf[:n])
+
+	for _, bucket := range s.RateBuckets {
+		n = binary.PutVarint(encBuf, bucket.Timestamp)
+		buf.Write(encBuf[:n])
+
+		n = binary.PutUvarint(encBuf, bucket.Size)
+		buf.Write(encBuf[:n])
+	}
+
+	return buf.Bytes()
+}
+
+func (s *Stream) Unmarshal(data []byte) error {
+	decBuf := bytes.NewBuffer(data)
+
+	hash, err := binary.ReadUvarint(decBuf)
+	if err != nil {
+		return err
+	}
+
+	lastSeenAt, err := binary.ReadVarint(decBuf)
+	if err != nil {
+		return err
+	}
+
+	totalSize, err := binary.ReadUvarint(decBuf)
+	if err != nil {
+		return err
+	}
+
+	rateBuckets := make([]RateBucket, 0)
+	for decBuf.Len() > 0 {
+		timestamp, err := binary.ReadVarint(decBuf)
+		if err != nil {
+			return err
+		}
+
+		size, err := binary.ReadUvarint(decBuf)
+		if err != nil {
+			return err
+		}
+
+		rateBuckets = append(rateBuckets, RateBucket{Timestamp: timestamp, Size: size})
+	}
+
+	s.Hash = hash
+	s.LastSeenAt = lastSeenAt
+	s.TotalSize = totalSize
+	s.RateBuckets = rateBuckets
+	return nil
 }
 
 // RateBucket represents the bytes received during a specific time interval

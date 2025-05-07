@@ -93,7 +93,8 @@ type IngestLimits struct {
 
 	cfg    Config
 	logger log.Logger
-	client *kgo.Client
+	reader *kgo.Client
+	writer *kgo.Client
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
@@ -157,7 +158,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
-	s.client, err = client.NewReaderClient("ingest-limits", kCfg, logger, reg,
+	s.reader, err = client.NewReaderClient("ingest-limits", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
@@ -166,6 +167,11 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka client: %w", err)
+	}
+
+	s.writer, err = client.NewWriterClient("ingest-limits", kCfg, 20, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
@@ -325,8 +331,8 @@ func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, 
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *IngestLimits) stopping(failureCase error) error {
-	if s.client != nil {
-		s.client.Close()
+	if s.reader != nil {
+		s.reader.Close()
 	}
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
@@ -350,7 +356,7 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssi
 
 // ExceedsLimits implements the proto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
 		// Use the provided lastSeenAt timestamp as the last seen time
@@ -386,7 +392,7 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimits
 	storeRes := make(map[Reason][]uint64)
 	cond := streamLimitExceeded(maxActiveStreams, storeRes)
 
-	ingestedBytes := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
+	stored := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
 
 	var results []*proto.ExceedsLimitsResult
 	for reason, streamHashes := range storeRes {
@@ -398,7 +404,35 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimits
 		}
 	}
 
+	var ingestedBytes uint64
+	for _, streams := range stored {
+		for _, stream := range streams {
+			ingestedBytes += stream.TotalSize
+		}
+	}
+
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
+}
+
+func (s *IngestLimits) sendToKafka(ctx context.Context, tenant string, streams map[int32][]Stream) {
+	noPromise := func(_ *kgo.Record, err error) {
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to send stream metadata to kafka", "error", err)
+		}
+	}
+
+	for partitionID, streams := range streams {
+		for _, stream := range streams {
+			record := &kgo.Record{
+				Topic:     s.cfg.KafkaConfig.Topic,
+				Key:       []byte(tenant),
+				Partition: partitionID,
+				Value:     stream.Marshal(),
+			}
+
+			s.writer.Produce(ctx, record, noPromise)
+		}
+	}
 }

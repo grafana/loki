@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 	"testing"
@@ -748,7 +749,7 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 			actualDropped := make(map[Reason][]uint64)
 			cond := streamLimitExceeded(tt.maxActiveStreams, actualDropped)
 
-			actualIngestedBytes := tt.metadata.StoreCond("tenant1", tt.streams, cutoff, bucketStart, bucketCutOff, cond)
+			stored := tt.metadata.StoreCond("tenant1", tt.streams, cutoff, bucketStart, bucketCutOff, cond)
 
 			actualStored := make(map[string]map[int32][]Stream)
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {
@@ -772,7 +773,14 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				require.ElementsMatch(t, streamHashes, actualDropped[reason])
 			}
 
-			require.Equal(t, tt.expectedIngestedBytes, actualIngestedBytes)
+			var ingestedBytes uint64
+			for _, streams := range stored {
+				for _, stream := range streams {
+					ingestedBytes += stream.TotalSize
+				}
+			}
+
+			require.Equal(t, tt.expectedIngestedBytes, ingestedBytes)
 		})
 	}
 }
@@ -1058,4 +1066,31 @@ func TestStreamMetadata_EvictPartitions_Concurrent(t *testing.T) {
 		actual = append(actual, partitionID)
 	})
 	require.ElementsMatch(t, expected, actual)
+}
+
+func TestStream_MashalAndUnmarshal(t *testing.T) {
+	stream := Stream{
+		Hash:       1,
+		LastSeenAt: time.Now().UnixNano(),
+		TotalSize:  3000,
+		RateBuckets: []RateBucket{
+			{
+				Timestamp: time.Now().UnixNano(),
+				Size:      1000,
+			},
+			{
+				Timestamp: time.Now().UnixNano(),
+				Size:      2000,
+			},
+		},
+	}
+
+	buf := &bytes.Buffer{}
+	buf.Write(stream.Marshal())
+
+	unmarshalled := &Stream{}
+	err := unmarshalled.Unmarshal(buf.Bytes())
+	require.NoError(t, err)
+
+	require.Equal(t, stream, *unmarshalled)
 }

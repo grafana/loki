@@ -464,7 +464,7 @@ func TestNewIngestLimits(t *testing.T) {
 	s, err := NewIngestLimits(cfg, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.NotNil(t, s.client)
+	require.NotNil(t, s.reader)
 
 	require.Equal(t, cfg, s.cfg)
 
