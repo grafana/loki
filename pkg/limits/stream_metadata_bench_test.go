@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func BenchmarkStreamMetadata_Store(b *testing.B) {
@@ -66,7 +66,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				streamIdx := i % bm.streamsPerPartition
 
 				updateTime := now.Add(time.Duration(i) * time.Second)
-				metadata := &logproto.StreamMetadata{
+				metadata := &proto.StreamMetadata{
 					StreamHash:             uint64(streamIdx),
 					EntriesSize:            1000,
 					StructuredMetadataSize: 500,
@@ -91,7 +91,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				streamIdx := i % bm.streamsPerPartition
 
 				updateTime := now.Add(time.Duration(i) * time.Second)
-				metadata := &logproto.StreamMetadata{
+				metadata := &proto.StreamMetadata{
 					StreamHash:             uint64(streamIdx),
 					EntriesSize:            1000,
 					StructuredMetadataSize: 500,
@@ -119,7 +119,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					streamIdx := i % bm.streamsPerPartition
 
 					updateTime := now.Add(time.Duration(i) * time.Second)
-					metadata := &logproto.StreamMetadata{
+					metadata := &proto.StreamMetadata{
 						StreamHash:             uint64(streamIdx),
 						EntriesSize:            1000,
 						StructuredMetadataSize: 500,
@@ -146,7 +146,7 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					streamIdx := i % bm.streamsPerPartition
 
 					updateTime := now.Add(time.Duration(i) * time.Second)
-					metadata := &logproto.StreamMetadata{
+					metadata := &proto.StreamMetadata{
 						StreamHash:             uint64(streamIdx),
 						EntriesSize:            1000,
 						StructuredMetadataSize: 500,
@@ -227,7 +227,7 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 			streamIdx := partition % bm.streamsPerPartition
 
 			updateTime := now.Add(time.Duration(partition) * time.Second)
-			metadata := &logproto.StreamMetadata{
+			metadata := &proto.StreamMetadata{
 				StreamHash:             uint64(streamIdx),
 				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
@@ -261,7 +261,7 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 							streamIdx := i % bm.streamsPerPartition
 
 							updateTime := now.Add(time.Duration(i) * time.Second)
-							metadata := &logproto.StreamMetadata{
+							metadata := &proto.StreamMetadata{
 								StreamHash:             uint64(streamIdx),
 								EntriesSize:            1000,
 								StructuredMetadataSize: 500,

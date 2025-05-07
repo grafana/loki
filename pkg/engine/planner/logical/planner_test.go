@@ -27,12 +27,12 @@ func (q *query) Direction() logproto.Direction {
 
 // End implements logql.Params.
 func (q *query) End() time.Time {
-	return time.Unix(0, q.end)
+	return time.Unix(q.end, 0)
 }
 
 // Start implements logql.Params.
 func (q *query) Start() time.Time {
-	return time.Unix(0, q.start)
+	return time.Unix(q.start, 0)
 }
 
 // Limit implements logql.Params.
@@ -80,8 +80,8 @@ var _ logql.Params = (*query)(nil)
 func TestConvertAST_Success(t *testing.T) {
 	q := &query{
 		statement: `{cluster="prod", namespace=~"loki-.*"} | foo="bar" or bar="baz" |= "metric.go" |= "foo" or "bar" !~ "(a|b|c)" `,
-		start:     1000,
-		end:       2000,
+		start:     3600,
+		end:       7200,
 		direction: logproto.FORWARD,
 		limit:     1000,
 	}
@@ -94,9 +94,9 @@ func TestConvertAST_Success(t *testing.T) {
 %3 = AND %1 %2
 %4 = MAKETABLE [selector=%3]
 %5 = SORT %4 [column=builtin.timestamp, asc=true, nulls_first=false]
-%6 = GTE builtin.timestamp 1000
+%6 = GTE builtin.timestamp 1970-01-01T01:00:00Z
 %7 = SELECT %5 [predicate=%6]
-%8 = LT builtin.timestamp 2000
+%8 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %9 = SELECT %7 [predicate=%8]
 %10 = MATCH_STR ambiguous.foo "bar"
 %11 = MATCH_STR ambiguous.bar "baz"
