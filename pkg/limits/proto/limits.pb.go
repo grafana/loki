@@ -303,6 +303,65 @@ func (m *StreamMetadata) GetTotalSize() uint64 {
 	return 0
 }
 
+type StreamMetadataRecord struct {
+	Zone     string          `protobuf:"bytes,1,opt,name=zone,proto3" json:"zone,omitempty"`
+	Tenant   string          `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Metadata *StreamMetadata `protobuf:"bytes,3,opt,name=metadata,proto3" json:"metadata,omitempty"`
+}
+
+func (m *StreamMetadataRecord) Reset()      { *m = StreamMetadataRecord{} }
+func (*StreamMetadataRecord) ProtoMessage() {}
+func (*StreamMetadataRecord) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaed9e7d5298ac0f, []int{6}
+}
+func (m *StreamMetadataRecord) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *StreamMetadataRecord) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_StreamMetadataRecord.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *StreamMetadataRecord) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StreamMetadataRecord.Merge(m, src)
+}
+func (m *StreamMetadataRecord) XXX_Size() int {
+	return m.Size()
+}
+func (m *StreamMetadataRecord) XXX_DiscardUnknown() {
+	xxx_messageInfo_StreamMetadataRecord.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_StreamMetadataRecord proto.InternalMessageInfo
+
+func (m *StreamMetadataRecord) GetZone() string {
+	if m != nil {
+		return m.Zone
+	}
+	return ""
+}
+
+func (m *StreamMetadataRecord) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
+}
+
+func (m *StreamMetadataRecord) GetMetadata() *StreamMetadata {
+	if m != nil {
+		return m.Metadata
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*ExceedsLimitsRequest)(nil), "proto.ExceedsLimitsRequest")
 	proto.RegisterType((*ExceedsLimitsResponse)(nil), "proto.ExceedsLimitsResponse")
@@ -311,6 +370,7 @@ func init() {
 	proto.RegisterType((*GetAssignedPartitionsResponse)(nil), "proto.GetAssignedPartitionsResponse")
 	proto.RegisterMapType((map[int32]int64)(nil), "proto.GetAssignedPartitionsResponse.AssignedPartitionsEntry")
 	proto.RegisterType((*StreamMetadata)(nil), "proto.StreamMetadata")
+	proto.RegisterType((*StreamMetadataRecord)(nil), "proto.StreamMetadataRecord")
 }
 
 func init() { proto.RegisterFile("pkg/limits/proto/limits.proto", fileDescriptor_aaed9e7d5298ac0f) }
@@ -513,6 +573,36 @@ func (this *StreamMetadata) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *StreamMetadataRecord) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StreamMetadataRecord)
+	if !ok {
+		that2, ok := that.(StreamMetadataRecord)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Zone != that1.Zone {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if !this.Metadata.Equal(that1.Metadata) {
+		return false
+	}
+	return true
+}
 func (this *ExceedsLimitsRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -588,6 +678,20 @@ func (this *StreamMetadata) GoString() string {
 	s = append(s, "&proto.StreamMetadata{")
 	s = append(s, "StreamHash: "+fmt.Sprintf("%#v", this.StreamHash)+",\n")
 	s = append(s, "TotalSize: "+fmt.Sprintf("%#v", this.TotalSize)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *StreamMetadataRecord) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&proto.StreamMetadataRecord{")
+	s = append(s, "Zone: "+fmt.Sprintf("%#v", this.Zone)+",\n")
+	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
+	if this.Metadata != nil {
+		s = append(s, "Metadata: "+fmt.Sprintf("%#v", this.Metadata)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -996,6 +1100,55 @@ func (m *StreamMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *StreamMetadataRecord) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StreamMetadataRecord) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *StreamMetadataRecord) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Metadata != nil {
+		{
+			size, err := m.Metadata.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintLimits(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Tenant) > 0 {
+		i -= len(m.Tenant)
+		copy(dAtA[i:], m.Tenant)
+		i = encodeVarintLimits(dAtA, i, uint64(len(m.Tenant)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Zone) > 0 {
+		i -= len(m.Zone)
+		copy(dAtA[i:], m.Zone)
+		i = encodeVarintLimits(dAtA, i, uint64(len(m.Zone)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintLimits(dAtA []byte, offset int, v uint64) int {
 	offset -= sovLimits(v)
 	base := offset
@@ -1097,6 +1250,27 @@ func (m *StreamMetadata) Size() (n int) {
 	return n
 }
 
+func (m *StreamMetadataRecord) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Zone)
+	if l > 0 {
+		n += 1 + l + sovLimits(uint64(l))
+	}
+	l = len(m.Tenant)
+	if l > 0 {
+		n += 1 + l + sovLimits(uint64(l))
+	}
+	if m.Metadata != nil {
+		l = m.Metadata.Size()
+		n += 1 + l + sovLimits(uint64(l))
+	}
+	return n
+}
+
 func sovLimits(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -1181,6 +1355,18 @@ func (this *StreamMetadata) String() string {
 	s := strings.Join([]string{`&StreamMetadata{`,
 		`StreamHash:` + fmt.Sprintf("%v", this.StreamHash) + `,`,
 		`TotalSize:` + fmt.Sprintf("%v", this.TotalSize) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *StreamMetadataRecord) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&StreamMetadataRecord{`,
+		`Zone:` + fmt.Sprintf("%v", this.Zone) + `,`,
+		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
+		`Metadata:` + strings.Replace(this.Metadata.String(), "StreamMetadata", "StreamMetadata", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1762,6 +1948,159 @@ func (m *StreamMetadata) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLimits(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StreamMetadataRecord) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLimits
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StreamMetadataRecord: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StreamMetadataRecord: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Zone", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Zone = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenant = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLimits
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLimits
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLimits
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Metadata == nil {
+				m.Metadata = &StreamMetadata{}
+			}
+			if err := m.Metadata.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipLimits(dAtA[iNdEx:])
