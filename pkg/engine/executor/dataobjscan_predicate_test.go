@@ -33,6 +33,7 @@ func tsColExpr() *physical.ColumnExpr {
 func TestMapTimestampPredicate(t *testing.T) {
 	time100 := time.Unix(0, 100).UTC()
 	time200 := time.Unix(0, 200).UTC()
+	time300 := time.Unix(0, 300).UTC()
 
 	for _, tc := range []struct {
 		desc     string
@@ -40,7 +41,6 @@ func TestMapTimestampPredicate(t *testing.T) {
 		want     dataobj.TimeRangePredicate[dataobj.LogsPredicate]
 		errMatch string
 	}{
-		// Simple Valid Cases
 		{
 			desc: "timestamp == 100",
 			expr: &physical.BinaryExpr{
@@ -111,9 +111,8 @@ func TestMapTimestampPredicate(t *testing.T) {
 				IncludeEnd:   true,
 			},
 		},
-		// Nested RHS Valid Cases (outermost op with innermost literal)
 		{
-			desc: "timestamp > (timestamp < 100)", // Effectively timestamp > 100
+			desc: "timestamp > (timestamp < 100) - now invalid",
 			expr: &physical.BinaryExpr{
 				Left: tsColExpr(),
 				Op:   types.BinaryOpGt,
@@ -123,15 +122,10 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time100),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
-				StartTime:    time100,
-				EndTime:      testOpenEnd,
-				IncludeStart: false,
-				IncludeEnd:   true,
-			},
+			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.BinaryExpr",
 		},
 		{
-			desc: "timestamp == (timestamp >= (timestamp <= 200))", // Effectively timestamp == 200
+			desc: "timestamp == (timestamp >= (timestamp <= 200)) - now invalid",
 			expr: &physical.BinaryExpr{
 				Left: tsColExpr(),
 				Op:   types.BinaryOpEq,
@@ -145,18 +139,12 @@ func TestMapTimestampPredicate(t *testing.T) {
 					},
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
-				StartTime:    time200,
-				EndTime:      time200,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
+			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.BinaryExpr",
 		},
-		// Error Cases: Verification Phase
 		{
 			desc:     "input is not BinaryExpr",
 			expr:     physical.NewLiteral(time100),
-			errMatch: "unsupported expression type: *physical.LiteralExpr",
+			errMatch: "unsupported expression type for timestamp predicate: *physical.LiteralExpr, expected *physical.BinaryExpr",
 		},
 		{
 			desc: "LHS of BinaryExpr is not ColumnExpr",
@@ -165,7 +153,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpEq,
 				Right: physical.NewLiteral(time200),
 			},
-			errMatch: "unsupported LHS type: *physical.LiteralExpr",
+			errMatch: "invalid LHS for comparison: expected timestamp column, got 1970-01-01T00:00:00.0000001Z",
 		},
 		{
 			desc: "LHS column is not timestamp",
@@ -174,7 +162,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpEq,
 				Right: physical.NewLiteral(time100),
 			},
-			errMatch: "unsupported LHS column: other_col",
+			errMatch: "invalid LHS for comparison: expected timestamp column, got builtin.other_col",
 		},
 		{
 			desc: "RHS Literal is not a timestamp type",
@@ -183,7 +171,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpEq,
 				Right: physical.NewLiteral("not_a_timestamp"),
 			},
-			errMatch: "unsupported literal type: string",
+			errMatch: "unsupported literal type for RHS: string, expected timestamp",
 		},
 		{
 			desc: "RHS is an unsupported type (ColumnExpr)",
@@ -192,45 +180,19 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpEq,
 				Right: newColumnExpr("another_ts", types.ColumnTypeBuiltin),
 			},
-			errMatch: "unsupported RHS type: *physical.ColumnExpr",
+			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.ColumnExpr",
 		},
 		{
-			desc: "Unsupported operator (AND) for rebound",
+			desc: "Unsupported operator (AND) used as a simple comparison",
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpAnd,
 				Right: physical.NewLiteral(time100),
 			},
-			errMatch: "unsupported operator: AND",
+			errMatch: "invalid left operand for AND: unsupported expression type for timestamp predicate: *physical.ColumnExpr, expected *physical.BinaryExpr",
 		},
 		{
-			desc: "Nested RHS fails verification (inner LHS not timestamp)",
-			expr: &physical.BinaryExpr{
-				Left: tsColExpr(),
-				Op:   types.BinaryOpGt,
-				Right: &physical.BinaryExpr{
-					Left:  newColumnExpr("not_ts", types.ColumnTypeBuiltin),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
-				},
-			},
-			errMatch: "unsupported LHS column: not_ts",
-		},
-		{
-			desc: "Nested RHS fails verification (inner RHS unsupported type)",
-			expr: &physical.BinaryExpr{
-				Left: tsColExpr(),
-				Op:   types.BinaryOpGt,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: newColumnExpr("not_literal", types.ColumnTypeBuiltin),
-				},
-			},
-			errMatch: "unsupported RHS type: *physical.ColumnExpr",
-		},
-		{
-			desc: "Unsupported operator (OR) from outer op in nested scenario",
+			desc: "Unsupported operator (OR) from outer op in nested scenario", // OR is still unsupported directly
 			expr: &physical.BinaryExpr{
 				Left: tsColExpr(),
 				Op:   types.BinaryOpOr,
@@ -240,7 +202,249 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time100),
 				},
 			},
-			errMatch: "unsupported operator: OR",
+			errMatch: "unsupported operator for timestamp predicate: OR",
+		},
+		{
+			desc: "timestamp > 100 AND timestamp < 200",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    time100,
+				EndTime:      time200,
+				IncludeStart: false,
+				IncludeEnd:   false,
+			},
+		},
+		{
+			desc: "timestamp >= 100 AND timestamp <= 200",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGte,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLte,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    time100,
+				EndTime:      time200,
+				IncludeStart: true,
+				IncludeEnd:   true,
+			},
+		},
+		{
+			desc: "timestamp >= 100 AND timestamp < 100 (point exclusive)", // leads to impossible range
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGte,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time100),
+				},
+			},
+			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
+		},
+		{
+			desc: "timestamp > 100 AND timestamp <= 100 (point exclusive)", // leads to impossible range
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLte,
+					Right: physical.NewLiteral(time100),
+				},
+			},
+			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
+		},
+		{
+			desc: "timestamp >= 100 AND timestamp <= 100 (point inclusive)",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGte,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLte,
+					Right: physical.NewLiteral(time100),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    time100,
+				EndTime:      time100,
+				IncludeStart: true,
+				IncludeEnd:   true,
+			},
+		},
+		{
+			desc: "timestamp == 100 AND timestamp == 200", // impossible
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpEq,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpEq,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
+		},
+		{
+			desc: "timestamp < 100 AND timestamp > 200", // impossible
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGt,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
+		},
+		{
+			desc: "(timestamp > 100 AND timestamp < 300) AND timestamp == 200",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left: &physical.BinaryExpr{
+						Left:  tsColExpr(),
+						Op:    types.BinaryOpGt,
+						Right: physical.NewLiteral(time100),
+					},
+					Op: types.BinaryOpAnd,
+					Right: &physical.BinaryExpr{
+						Left:  tsColExpr(),
+						Op:    types.BinaryOpLt,
+						Right: physical.NewLiteral(time300),
+					},
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpEq,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    time200,
+				EndTime:      time200,
+				IncludeStart: true,
+				IncludeEnd:   true,
+			},
+		},
+		{
+			desc: "AND with invalid left operand",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{ // Invalid: LHS not timestamp column
+					Left:  newColumnExpr("not_ts", types.ColumnTypeBuiltin),
+					Op:    types.BinaryOpGt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			errMatch: "invalid left operand for AND: invalid LHS for comparison: expected timestamp column, got builtin.not_ts",
+		},
+		{
+			desc: "AND with invalid right operand (RHS literal type)",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpGt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{ // Invalid: RHS literal not timestamp
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral("not-a-time"),
+				},
+			},
+			errMatch: "invalid right operand for AND: unsupported literal type for RHS: string, expected timestamp",
+		},
+		{
+			desc: "timestamp < 100 AND timestamp < 200 (should be ts < 100)",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time100),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time200),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    testOpenStart,
+				EndTime:      time100,
+				IncludeStart: true,
+				IncludeEnd:   false,
+			},
+		},
+		{
+			desc: "timestamp < 200 AND timestamp < 100 (should be ts < 100)",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time200),
+				},
+				Op: types.BinaryOpAnd,
+				Right: &physical.BinaryExpr{
+					Left:  tsColExpr(),
+					Op:    types.BinaryOpLt,
+					Right: physical.NewLiteral(time100),
+				},
+			},
+			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+				StartTime:    testOpenStart,
+				EndTime:      time100,
+				IncludeStart: true,
+				IncludeEnd:   false,
+			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
