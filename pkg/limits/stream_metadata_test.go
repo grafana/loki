@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestStreamMetadata_All(t *testing.T) {
@@ -130,7 +130,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 		tenantID    string
 		partitionID int32
 		lastSeenAt  time.Time
-		record      *logproto.StreamMetadata
+		record      *proto.StreamMetadata
 
 		// Expectations.
 		expected map[string]map[int32]map[uint64]Stream
@@ -141,7 +141,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 			tenantID:    "tenant1",
 			partitionID: 0,
 			lastSeenAt:  time.Unix(100, 0),
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             123,
 				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
@@ -185,7 +185,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 			},
 			tenantID:    "tenant1",
 			partitionID: 1,
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             456,
 				EntriesSize:            2000,
 				StructuredMetadataSize: 1000,
@@ -239,7 +239,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 			},
 			tenantID:    "tenant1",
 			partitionID: 0,
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             123,
 				EntriesSize:            3000,
 				StructuredMetadataSize: 1500,
@@ -264,7 +264,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 		{
 			name:     "update existing bucket",
 			tenantID: "tenant1",
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             888,
 				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
@@ -307,7 +307,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 		{
 			name:     "clean up buckets outside rate window",
 			tenantID: "tenant1",
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             999,
 				EntriesSize:            2000,
 				StructuredMetadataSize: 1000,
@@ -353,7 +353,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 		{
 			name:     "update same minute bucket",
 			tenantID: "tenant1",
-			record: &logproto.StreamMetadata{
+			record: &proto.StreamMetadata{
 				StreamHash:             555,
 				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
@@ -439,7 +439,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 				partitionID = 1
 			}
 
-			record := &logproto.StreamMetadata{
+			record := &proto.StreamMetadata{
 				StreamHash:             uint64(i),
 				EntriesSize:            1000,
 				StructuredMetadataSize: 500,
