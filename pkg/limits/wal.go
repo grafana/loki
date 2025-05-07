@@ -62,7 +62,7 @@ func (w *KafkaWAL) Append(ctx context.Context, tenant string, metadata *proto.St
 
 // Close implements the WAL interface.
 func (w *KafkaWAL) Close() error {
-	w.Close()
+	w.client.Close()
 	return nil
 }
 
