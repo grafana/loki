@@ -148,6 +148,7 @@ type UploadInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMode      string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
@@ -212,6 +213,8 @@ type ObjectInfo struct {
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time
 	ExpirationRuleID string
+	// NumVersions is the number of versions of the object.
+	NumVersions int
 
 	Restore *RestoreInfo
 
@@ -221,6 +224,7 @@ type ObjectInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMode      string
 
 	Internal *struct {
 		K int // Data blocks

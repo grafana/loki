@@ -16,7 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/sercand/kuberesolver/v5"
+	"github.com/sercand/kuberesolver/v6"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 

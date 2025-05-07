@@ -13,7 +13,7 @@ keywords:
 
 This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
 
-This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
+This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](../../../../get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
 The default Helm chart deploys the following components:
 - Read component (3 replicas)
@@ -242,7 +242,7 @@ minio:
 ``` 
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).

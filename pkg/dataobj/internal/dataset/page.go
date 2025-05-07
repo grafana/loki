@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // Helper types.
@@ -105,13 +105,27 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		sr := snappyPool.Get().(*snappy.Reader)
 		sr.Reset(compressedValuesReader)
 		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			sr.Reset(nil) // Allow releasing the buffer.
 			snappyPool.Put(sr)
 			return nil
 		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zr := &fixedZstdReader{page: p, data: compressedValuesData}
-		return bitmapReader, zr, nil
+		zr := zstdPool.Get().(*zstdWrapper)
+		if err := zr.Reset(compressedValuesReader); err != nil {
+			// [zstd.Decoder.Reset] can fail if the underlying reader got closed.
+			// This shouldn't happen in practice (we only close the reader when the
+			// wrapper has been released from the pool), but we handle this for
+			// safety and fall back to manually creating a new wrapper by calling New
+			// directly.
+			zr = zstdPool.New().(*zstdWrapper)
+		}
+
+		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
+			_ = zr.Reset(nil) // Allow releasing the buffer.
+			zstdPool.Put(zr)
+			return nil
+		}}, nil
 
 	default:
 		// We do *not* want to panic here, as we may be trying to read a page from
@@ -121,7 +135,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 }
 
 var snappyPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return snappy.NewReader(nil)
 	},
 }
@@ -133,59 +147,32 @@ type closerFunc struct {
 
 func (c *closerFunc) Close() error { return c.onClose() }
 
-// globalZstdDecoder is a shared zstd decoder for [fixedZstdReader]. Concurrent
-// uses of globalZstdDecoder are only safe when using [zstd.Decoder.DecodeAll].
-var globalZstdDecoder = func() *zstd.Decoder {
-	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
-	if err != nil {
-		panic(err)
-	}
-	return d
-}()
+// zstdWrapper wraps around a [zstd.Decoder]. [zstd.Decoder] uses persistent
+// goroutines for parallelized decoding, which prevents it from being garbage
+// collected.
+//
+// Wrapping around the decoder permits using [runtime.AddCleanup] to detect
+// when the wrapper is garbage collected and automatically closing the
+// underlying decoder.
+type zstdWrapper struct{ *zstd.Decoder }
 
-// fixedZstdReader is an [io.ReadCloser] that decompresses a zstd buffer in a
-// single pass.
-type fixedZstdReader struct {
-	page *MemPage
-	data []byte
+var zstdPool = sync.Pool{
+	New: func() any {
+		// Despite the name of zstd.WithDecoderLowmem implying we're using more
+		// memory, in practice we've seen it use both less memory and fewer
+		// allocations than the default of true. As a result, setting it to false
+		// increases read speed as it is less taxing on the garbage collector.
+		zr, err := zstd.NewReader(nil, zstd.WithDecoderLowmem(false))
+		if err != nil {
+			panic(fmt.Sprintf("creating zstd reader: %v", err))
+		}
 
-	uncompressedBuf *bytes.Buffer
-	closed          bool
-}
+		// See doc comment on [zstdWrapper] for why we're doing this.
+		zw := &zstdWrapper{zr}
+		runtime.AddCleanup(zw, func(zr *zstd.Decoder) {
+			zr.Close()
+		}, zr)
 
-func (r *fixedZstdReader) Read(p []byte) (int, error) {
-	if r.closed {
-		return 0, io.ErrClosedPipe
-	}
-
-	if r.uncompressedBuf != nil {
-		return r.uncompressedBuf.Read(p)
-	}
-
-	// We decompress the entire buffer in a single pass. While a pooled zstd
-	// reader would require less memory and would allow us to stream values as we
-	// decompress, pooling zstd decoders is difficult to do properly, as it
-	// requires a finalizer to release resources, and the goroutines spawned by
-	// decoders prevent the finalizer from ever being called.
-	//
-	// To make efficient zstd decoding less error prone, we opt for this instead.
-	r.uncompressedBuf = bufpool.Get(r.page.Info.UncompressedSize)
-	r.uncompressedBuf.Reset()
-
-	buf, err := globalZstdDecoder.DecodeAll(r.data, r.uncompressedBuf.AvailableBuffer())
-	if err != nil {
-		return 0, fmt.Errorf("decoding zstd: %w", err)
-	}
-	_, _ = r.uncompressedBuf.Write(buf)
-
-	return r.uncompressedBuf.Read(p)
-}
-
-func (r *fixedZstdReader) Close() error {
-	if r.uncompressedBuf != nil {
-		bufpool.Put(r.uncompressedBuf)
-		r.uncompressedBuf = nil
-	}
-	r.closed = true
-	return nil
+		return zw
+	},
 }

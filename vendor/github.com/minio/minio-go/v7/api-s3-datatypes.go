@@ -194,7 +194,6 @@ func (l *ListVersionsResult) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) (e
 			default:
 				return errors.New("unrecognized option:" + tagName)
 			}
-
 		}
 	}
 	return nil
@@ -367,6 +366,7 @@ type completeMultipartUploadResult struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumType      string
 }
 
 // CompletePart sub container lists individual part numbers and their

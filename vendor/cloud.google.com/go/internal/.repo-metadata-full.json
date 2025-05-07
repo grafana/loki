@@ -959,16 +959,6 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
-  "cloud.google.com/go/dataform/apiv1alpha2": {
-    "api_shortname": "dataform",
-    "distribution_name": "cloud.google.com/go/dataform/apiv1alpha2",
-    "description": "Dataform API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/dataform/latest/apiv1alpha2",
-    "release_level": "preview",
-    "library_type": "GAPIC_AUTO"
-  },
   "cloud.google.com/go/dataform/apiv1beta1": {
     "api_shortname": "dataform",
     "distribution_name": "cloud.google.com/go/dataform/apiv1beta1",
@@ -1297,6 +1287,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/filestore/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/financialservices/apiv1": {
+    "api_shortname": "financialservices",
+    "distribution_name": "cloud.google.com/go/financialservices/apiv1",
+    "description": "Financial Services API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/financialservices/latest/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/firestore": {
@@ -1789,6 +1789,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/modelarmor/apiv1": {
+    "api_shortname": "modelarmor",
+    "distribution_name": "cloud.google.com/go/modelarmor/apiv1",
+    "description": "Model Armor API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/modelarmor/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/monitoring/apiv3/v2": {
     "api_shortname": "monitoring",
     "distribution_name": "cloud.google.com/go/monitoring/apiv3/v2",
@@ -2266,16 +2276,6 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/resourcemanager/latest/apiv3",
-    "release_level": "stable",
-    "library_type": "GAPIC_AUTO"
-  },
-  "cloud.google.com/go/resourcesettings/apiv1": {
-    "api_shortname": "resourcesettings",
-    "distribution_name": "cloud.google.com/go/resourcesettings/apiv1",
-    "description": "Resource Settings API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/resourcesettings/latest/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },

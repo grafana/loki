@@ -515,6 +515,10 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -760,7 +764,7 @@ func (q *querierMock) Patterns(ctx context.Context, req *logproto.QueryPatternsR
 }
 
 func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	args := q.MethodCalled("DetectedFields", ctx, req)
+	args := q.MethodCalled("DetectedLabels", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)

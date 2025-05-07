@@ -65,7 +65,13 @@ type (
 		Keep func(name, value string) bool
 	}
 
-	// A MetadataMatcherPredicate is a [LogsPredicae] that requires a metadata
+	// A LogMessageFilterPredicate is a [LogsPredicate] that requires the log message
+	// of the entry to pass a Keep function.
+	LogMessageFilterPredicate struct {
+		Keep func(line []byte) bool
+	}
+
+	// A MetadataMatcherPredicate is a [LogsPredicate] that requires a metadata
 	// key named Key to exist with a value of Value.
 	MetadataMatcherPredicate struct{ Key, Value string }
 
@@ -84,20 +90,22 @@ type (
 	}
 )
 
-func (AndPredicate[P]) isPredicate()          {}
-func (OrPredicate[P]) isPredicate()           {}
-func (NotPredicate[P]) isPredicate()          {}
-func (TimeRangePredicate[P]) isPredicate()    {}
-func (LabelMatcherPredicate) isPredicate()    {}
-func (LabelFilterPredicate) isPredicate()     {}
-func (MetadataMatcherPredicate) isPredicate() {}
-func (MetadataFilterPredicate) isPredicate()  {}
+func (AndPredicate[P]) isPredicate()           {}
+func (OrPredicate[P]) isPredicate()            {}
+func (NotPredicate[P]) isPredicate()           {}
+func (TimeRangePredicate[P]) isPredicate()     {}
+func (LabelMatcherPredicate) isPredicate()     {}
+func (LabelFilterPredicate) isPredicate()      {}
+func (MetadataMatcherPredicate) isPredicate()  {}
+func (MetadataFilterPredicate) isPredicate()   {}
+func (LogMessageFilterPredicate) isPredicate() {}
 
-func (AndPredicate[P]) predicateKind(P)                      {}
-func (OrPredicate[P]) predicateKind(P)                       {}
-func (NotPredicate[P]) predicateKind(P)                      {}
-func (TimeRangePredicate[P]) predicateKind(P)                {}
-func (LabelMatcherPredicate) predicateKind(StreamsPredicate) {}
-func (LabelFilterPredicate) predicateKind(StreamsPredicate)  {}
-func (MetadataMatcherPredicate) predicateKind(LogsPredicate) {}
-func (MetadataFilterPredicate) predicateKind(LogsPredicate)  {}
+func (AndPredicate[P]) predicateKind(P)                       {}
+func (OrPredicate[P]) predicateKind(P)                        {}
+func (NotPredicate[P]) predicateKind(P)                       {}
+func (TimeRangePredicate[P]) predicateKind(P)                 {}
+func (LabelMatcherPredicate) predicateKind(StreamsPredicate)  {}
+func (LabelFilterPredicate) predicateKind(StreamsPredicate)   {}
+func (MetadataMatcherPredicate) predicateKind(LogsPredicate)  {}
+func (MetadataFilterPredicate) predicateKind(LogsPredicate)   {}
+func (LogMessageFilterPredicate) predicateKind(LogsPredicate) {}

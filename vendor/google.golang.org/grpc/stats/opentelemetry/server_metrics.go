@@ -96,6 +96,7 @@ func (h *serverStatsHandler) unaryInterceptor(ctx context.Context, req any, _ *g
 		metadataExchangeLabels = h.options.MetricsOptions.pluginOption.GetMetadata()
 	}
 
+	// - Server-side: The first stats event after the RPC request is received.
 	sts := grpc.ServerTransportStreamFromContext(ctx)
 
 	alts := &attachLabelsTransportStream{
@@ -201,10 +202,12 @@ func (h *serverStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo)
 		startTime: time.Now(),
 		method:    removeLeadingSlash(method),
 	}
-	ri := &rpcInfo{
-		ai: ai,
+	if h.options.isTracingEnabled() {
+		ctx, ai = h.traceTagRPC(ctx, ai)
 	}
-	return setRPCInfo(ctx, ri)
+	return setRPCInfo(ctx, &rpcInfo{
+		ai: ai,
+	})
 }
 
 // HandleRPC implements per RPC tracing and stats implementation.
@@ -214,7 +217,12 @@ func (h *serverStatsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		logger.Error("ctx passed into server side stats handler metrics event handling has no server call data present")
 		return
 	}
-	h.processRPCData(ctx, rs, ri.ai)
+	if h.options.isTracingEnabled() {
+		populateSpan(rs, ri.ai)
+	}
+	if h.options.isMetricsEnabled() {
+		h.processRPCData(ctx, rs, ri.ai)
+	}
 }
 
 func (h *serverStatsHandler) processRPCData(ctx context.Context, s stats.RPCStats, ai *attemptInfo) {

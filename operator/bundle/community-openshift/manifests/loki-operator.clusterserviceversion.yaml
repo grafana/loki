@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.7.1
-    createdAt: "2025-02-18T18:01:36Z"
+    containerImage: docker.io/grafana/loki-operator:0.8.0
+    createdAt: "2025-03-17T11:00:08Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -167,7 +167,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.7.1
+  name: loki-operator.v0.8.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1817,11 +1817,11 @@ spec:
         serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.7.1
+          app.kubernetes.io/instance: loki-operator-v0.8.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.7.1
+          app.kubernetes.io/version: 0.8.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1855,7 +1855,7 @@ spec:
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:0.7.1
+                image: docker.io/grafana/loki-operator:0.8.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1986,8 +1986,8 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.7.0
-  version: 0.7.1
+  replaces: loki-operator.v0.7.1
+  version: 0.8.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

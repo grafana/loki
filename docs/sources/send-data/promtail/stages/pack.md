@@ -65,7 +65,7 @@ This would create a log line
 }
 ```
 
-**Loki 2.2 also includes a new [`unpack` parser]({{< relref "../../../query/log_queries#unpack" >}}) to work with the pack stage.**
+**Loki 2.2 also includes a new [`unpack` parser](../../../../query/log_queries/#unpack) to work with the pack stage.**
 
 For example:
 

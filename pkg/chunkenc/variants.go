@@ -2,10 +2,8 @@ package chunkenc
 
 import (
 	"context"
-	"sort"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -14,7 +12,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
-func newMultiExtractorSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractors []log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newMultiExtractorSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	return &multiExtractorSampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractors:       extractors,
@@ -54,7 +59,7 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 
 		for _, extractor := range e.extractors {
-			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 			if !ok {
 				continue
 			}
@@ -77,25 +82,6 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 	}
 
 	return false
-}
-
-func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {
-	var size int
-	for _, lbls := range many {
-		size += len(lbls)
-	}
-
-	if buf == nil || cap(buf) < size {
-		buf = make(labels.Labels, 0, size)
-	} else {
-		buf = buf[:0]
-	}
-
-	for _, lbls := range many {
-		buf = append(buf, lbls...)
-	}
-	sort.Sort(buf)
-	return buf
 }
 
 func (e *multiExtractorSampleBufferedIterator) Close() error {

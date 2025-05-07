@@ -51,7 +51,11 @@ func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
 		return nil, err
 	}
+
 	u.Path = getDeletePath
+	q := u.Query()
+	q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
+	u.RawQuery = q.Encode()
 	deleteRequestsURL := u.String()
 
 	u.Path = cacheGenNumPath

@@ -117,51 +117,50 @@ var (
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
 )
 
-func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
+func mustParseLabels(labels string) labels.Labels {
 	lbs, err := syntax.ParseLabels(labels)
 	if err != nil {
 		panic(err)
 	}
-	return ChunkEntry{
-		ChunkRef: ChunkRef{
-			UserID:   []byte(userID),
-			SeriesID: labelsSeriesID(lbs),
-			From:     from,
-			Through:  through,
-		},
-		Labels: lbs,
-	}
+
+	return lbs
 }
 
 type table struct {
 	name   string
-	chunks map[string][]chunk.Chunk
+	chunks map[string]map[string][]chunk.Chunk
 }
 
-func (t *table) ForEachChunk(ctx context.Context, callback ChunkEntryCallback) error {
-	for userID, chks := range t.chunks {
-		i := 0
-		for j := 0; j < len(chks) && ctx.Err() == nil; j++ {
-			chk := chks[j]
-			deleteChunk, err := callback(entryFromChunk(chk))
-			if err != nil {
+func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) error {
+	for userID := range t.chunks {
+		for seriesID := range t.chunks[userID] {
+			chunks := make([]Chunk, 0, len(t.chunks[userID][seriesID]))
+			for _, chk := range t.chunks[userID][seriesID] {
+				chunks = append(chunks, Chunk{
+					ChunkID: []byte(getChunkID(chk.ChunkRef)),
+					From:    chk.From,
+					Through: chk.Through,
+				})
+			}
+			series := Series{}
+			series.Reset(
+				[]byte(seriesID),
+				[]byte(userID),
+				labels.NewBuilder(t.chunks[userID][seriesID][0].Metric).Del(labels.MetricName).Labels(),
+			)
+			series.AppendChunks(chunks...)
+			if err := callback(series); err != nil {
 				return err
 			}
-
-			if !deleteChunk {
-				t.chunks[userID][i] = chk
-				i++
-			}
 		}
-
-		t.chunks[userID] = t.chunks[userID][:i]
 	}
 
 	return ctx.Err()
 }
 
 func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
-	t.chunks[chunk.UserID] = append(t.chunks[chunk.UserID], chunk)
+	seriesID := string(labelsSeriesID(chunk.Metric))
+	t.chunks[chunk.UserID][seriesID] = append(t.chunks[chunk.UserID][seriesID], chunk)
 	return true, nil
 }
 
@@ -169,33 +168,50 @@ func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
+func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID []byte) error {
+	seriesID := string(labelsSeriesID(labels.NewBuilder(lbls).Set(labels.MetricName, "logs").Labels()))
+	for i, chk := range t.chunks[string(userID)][seriesID] {
+		if getChunkID(chk.ChunkRef) == string(chunkID) {
+			t.chunks[string(userID)][seriesID] = append(t.chunks[string(userID)][seriesID][:i], t.chunks[string(userID)][seriesID][i+1:]...)
+		}
+	}
+
+	return nil
+}
+
 func newTable(name string) *table {
 	return &table{
 		name:   name,
-		chunks: map[string][]chunk.Chunk{},
+		chunks: map[string]map[string][]chunk.Chunk{},
 	}
 }
 
 func (t *table) Put(chk chunk.Chunk) {
 	if _, ok := t.chunks[chk.UserID]; !ok {
-		t.chunks[chk.UserID] = []chunk.Chunk{}
+		t.chunks[chk.UserID] = make(map[string][]chunk.Chunk)
+	}
+	seriesID := string(labelsSeriesID(chk.Metric))
+	if _, ok := t.chunks[chk.UserID][seriesID]; !ok {
+		t.chunks[chk.UserID][seriesID] = []chunk.Chunk{}
 	}
 
-	t.chunks[chk.UserID] = append(t.chunks[chk.UserID], chk)
+	t.chunks[chk.UserID][seriesID] = append(t.chunks[chk.UserID][seriesID], chk)
 }
 
 func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	var chunks []chunk.Chunk
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 
-	for _, chk := range t.chunks[userID] {
-		if chk.From > through || chk.Through < from || !allMatch(matchers, chk.Metric) {
-			continue
+	for seriesID := range t.chunks[userID] {
+		for _, chk := range t.chunks[userID][seriesID] {
+			if chk.From > through || chk.Through < from || !allMatch(matchers, chk.Metric) {
+				continue
+			}
+			chunks = append(chunks, chk)
 		}
-		chunks = append(chunks, chk)
 	}
 
 	return chunks
@@ -309,19 +325,6 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 	}
 
 	return fetchedChunk
-}
-
-func entryFromChunk(c chunk.Chunk) ChunkEntry {
-	return ChunkEntry{
-		ChunkRef: ChunkRef{
-			UserID:   []byte(c.UserID),
-			SeriesID: labelsSeriesID(c.Metric),
-			ChunkID:  []byte(getChunkID(c.ChunkRef)),
-			From:     c.From,
-			Through:  c.Through,
-		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
-	}
 }
 
 func getChunkID(c logproto.ChunkRef) string {

@@ -327,8 +327,11 @@ func (i *instance) writeAggregatedMetrics(
 	}
 
 	newLbls := labels.Labels{
-		labels.Label{Name: push.AggregatedMetricLabel, Value: service},
-		labels.Label{Name: "level", Value: level},
+		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
+	}
+
+	sturcturedMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: level},
 	}
 
 	if i.writer != nil {
@@ -336,6 +339,7 @@ func (i *instance) writeAggregatedMetrics(
 			now.Time(),
 			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
 			newLbls,
+			sturcturedMetadata,
 		)
 
 		i.metrics.samples.WithLabelValues(service).Inc()

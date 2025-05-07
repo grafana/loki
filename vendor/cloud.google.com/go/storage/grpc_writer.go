@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	gapic "cloud.google.com/go/storage/internal/apiv2"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
@@ -28,8 +29,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const defaultWriteChunkRetryDeadline = 32 * time.Second
+
 type gRPCAppendBidiWriteBufferSender struct {
-	ctx             context.Context
 	bucket          string
 	routingToken    *string
 	raw             *gapic.Client
@@ -38,8 +40,13 @@ type gRPCAppendBidiWriteBufferSender struct {
 	firstMessage    *storagepb.BidiWriteObjectRequest
 	objectChecksums *storagepb.ObjectChecksums
 
+	finalizeOnClose bool
+
 	forceFirstMessage bool
+	progress          func(int64)
 	flushOffset       int64
+	takeoverOffset    int64
+	objResource       *storagepb.Object // Captures received obj to set w.Attrs.
 
 	// Fields used to report responses from the receive side of the stream
 	// recvs is closed when the current recv goroutine is complete. recvErr is set
@@ -48,9 +55,9 @@ type gRPCAppendBidiWriteBufferSender struct {
 	recvErr error
 }
 
-func (w *gRPCWriter) newGRPCAppendBidiWriteBufferSender() (*gRPCAppendBidiWriteBufferSender, error) {
+// Use for a newly created appendable object.
+func (w *gRPCWriter) newGRPCAppendableObjectBufferSender() (*gRPCAppendBidiWriteBufferSender, error) {
 	s := &gRPCAppendBidiWriteBufferSender{
-		ctx:      w.ctx,
 		bucket:   w.spec.GetResource().GetBucket(),
 		raw:      w.c.raw,
 		settings: w.c.settings,
@@ -61,12 +68,47 @@ func (w *gRPCWriter) newGRPCAppendBidiWriteBufferSender() (*gRPCAppendBidiWriteB
 			CommonObjectRequestParams: toProtoCommonObjectRequestParams(w.encryptionKey),
 		},
 		objectChecksums:   toProtoChecksums(w.sendCRC32C, w.attrs),
+		finalizeOnClose:   w.finalizeOnClose,
 		forceFirstMessage: true,
+		progress:          w.progress,
 	}
 	return s, nil
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) connect() (err error) {
+// Use for a takeover of an appendable object.
+// Unlike newGRPCAppendableObjectBufferSender, this blocks until the stream is
+// open because it needs to get the append offset from the server.
+func (w *gRPCWriter) newGRPCAppendTakeoverWriteBufferSender(ctx context.Context) (*gRPCAppendBidiWriteBufferSender, error) {
+	s := &gRPCAppendBidiWriteBufferSender{
+		bucket:   w.spec.GetResource().GetBucket(),
+		raw:      w.c.raw,
+		settings: w.c.settings,
+		firstMessage: &storagepb.BidiWriteObjectRequest{
+			FirstMessage: &storagepb.BidiWriteObjectRequest_AppendObjectSpec{
+				AppendObjectSpec: w.appendSpec,
+			},
+		},
+		objectChecksums:   toProtoChecksums(w.sendCRC32C, w.attrs),
+		finalizeOnClose:   w.finalizeOnClose,
+		forceFirstMessage: true,
+		progress:          w.progress,
+	}
+	if err := s.connect(ctx); err != nil {
+		return nil, fmt.Errorf("storage: opening appendable write stream: %w", err)
+	}
+	_, err := s.sendOnConnectedStream(nil, 0, false, false, true)
+	if err != nil {
+		return nil, err
+	}
+	firstResp := <-s.recvs
+	// Object resource is returned in the first response on takeover, so capture
+	// this now.
+	s.objResource = firstResp.GetResource()
+	s.takeoverOffset = firstResp.GetResource().GetSize()
+	return s, nil
+}
+
+func (s *gRPCAppendBidiWriteBufferSender) connect(ctx context.Context) (err error) {
 	err = func() error {
 		// If this is a forced first message, we've already determined it's safe to
 		// send.
@@ -78,6 +120,10 @@ func (s *gRPCAppendBidiWriteBufferSender) connect() (err error) {
 		// It's always ok to reconnect if there is a handle. This is the common
 		// case.
 		if s.firstMessage.GetAppendObjectSpec().GetWriteHandle() != nil {
+			return nil
+		}
+		// Also always okay to reconnect if there is a generation.
+		if s.firstMessage.GetAppendObjectSpec().GetGeneration() != 0 {
 			return nil
 		}
 
@@ -105,7 +151,7 @@ func (s *gRPCAppendBidiWriteBufferSender) connect() (err error) {
 		return err
 	}
 
-	return s.startReceiver()
+	return s.startReceiver(ctx)
 }
 
 func (s *gRPCAppendBidiWriteBufferSender) withRequestParams(ctx context.Context) context.Context {
@@ -113,11 +159,11 @@ func (s *gRPCAppendBidiWriteBufferSender) withRequestParams(ctx context.Context)
 	if s.routingToken != nil {
 		param = param + fmt.Sprintf("&routing_token=%s", *s.routingToken)
 	}
-	return gax.InsertMetadataIntoOutgoingContext(s.ctx, "x-goog-request-params", param)
+	return gax.InsertMetadataIntoOutgoingContext(ctx, "x-goog-request-params", param)
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) startReceiver() (err error) {
-	s.stream, err = s.raw.BidiWriteObject(s.withRequestParams(s.ctx), s.settings.gax...)
+func (s *gRPCAppendBidiWriteBufferSender) startReceiver(ctx context.Context) (err error) {
+	s.stream, err = s.raw.BidiWriteObject(s.withRequestParams(ctx), s.settings.gax...)
 	if err != nil {
 		return
 	}
@@ -223,9 +269,16 @@ func (s *gRPCAppendBidiWriteBufferSender) receiveMessages(resps chan<- *storagep
 }
 
 func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offset int64, flush, finishWrite, sendFirstMessage bool) (obj *storagepb.Object, err error) {
-	req := bidiWriteObjectRequest(buf, offset, flush, finishWrite)
+	var req *storagepb.BidiWriteObjectRequest
+	finalizeObject := finishWrite && s.finalizeOnClose
 	if finishWrite {
-		// appendable objects pass checksums on the last message only
+		// Always flush when finishing the Write, even if not finalizing.
+		req = bidiWriteObjectRequest(buf, offset, true, finalizeObject)
+	} else {
+		req = bidiWriteObjectRequest(buf, offset, flush, false)
+	}
+	if finalizeObject {
+		// appendable objects pass checksums on the finalize message only
 		req.ObjectChecksums = s.objectChecksums
 	}
 	if sendFirstMessage {
@@ -242,9 +295,19 @@ func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offs
 			if resp.GetResource() != nil {
 				obj = resp.GetResource()
 			}
+			// When closing the stream, update the object resource to reflect
+			// the persisted size. We get a new object from the stream if
+			// the object was finalized, but not if it's unfinalized.
+			if s.objResource != nil && resp.GetPersistedSize() > 0 {
+				s.objResource.Size = resp.GetPersistedSize()
+			}
 		}
 		if s.recvErr != io.EOF {
 			return nil, s.recvErr
+		}
+		if obj.GetSize() > s.flushOffset {
+			s.flushOffset = obj.GetSize()
+			s.progress(s.flushOffset)
 		}
 		return
 	}
@@ -252,36 +315,54 @@ func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offs
 	if flush {
 		// We don't necessarily expect multiple responses for a single flush, but
 		// this allows the server to send multiple responses if it wants to.
-		for s.flushOffset < offset+int64(len(buf)) {
+		flushOffset := s.flushOffset
+
+		// Await a response on the stream. Loop at least once or until the
+		// persisted offset matches the flush offset.
+		for {
 			resp, ok := <-s.recvs
 			if !ok {
 				return nil, s.recvErr
 			}
 			pSize := resp.GetPersistedSize()
 			rSize := resp.GetResource().GetSize()
-			if s.flushOffset < pSize {
-				s.flushOffset = pSize
+			if flushOffset < pSize {
+				flushOffset = pSize
 			}
-			if s.flushOffset < rSize {
-				s.flushOffset = rSize
+			if flushOffset < rSize {
+				flushOffset = rSize
+			}
+			// On the first flush, we expect to get an object resource back and
+			// should return it.
+			if resp.GetResource() != nil {
+				obj = resp.GetResource()
+			}
+			if flushOffset <= offset+int64(len(buf)) {
+				break
 			}
 		}
+		if s.flushOffset < flushOffset {
+			s.flushOffset = flushOffset
+			s.progress(s.flushOffset)
+		}
 	}
-
 	return
 }
 
-func (s *gRPCAppendBidiWriteBufferSender) sendBuffer(buf []byte, offset int64, flush, finishWrite bool) (obj *storagepb.Object, err error) {
+func (s *gRPCAppendBidiWriteBufferSender) sendBuffer(ctx context.Context, buf []byte, offset int64, flush, finishWrite bool) (obj *storagepb.Object, err error) {
 	for {
 		sendFirstMessage := false
 		if s.stream == nil {
 			sendFirstMessage = true
-			if err = s.connect(); err != nil {
+			if err = s.connect(ctx); err != nil {
 				return
 			}
 		}
 
 		obj, err = s.sendOnConnectedStream(buf, offset, flush, finishWrite, sendFirstMessage)
+		if obj != nil {
+			s.objResource = obj
+		}
 		if err == nil {
 			return
 		}
@@ -299,7 +380,6 @@ func (s *gRPCAppendBidiWriteBufferSender) sendBuffer(buf []byte, offset int64, f
 			s.forceFirstMessage = true
 			continue
 		}
-
 		return
 	}
 }

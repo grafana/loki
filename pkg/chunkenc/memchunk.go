@@ -1159,7 +1159,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
 			continue
 		}
 		if _, err := newChunk.Append(&entry); err != nil {
@@ -1249,7 +1249,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata)
 		if !matches {
 			return
 		}
@@ -1316,7 +1316,7 @@ func (hb *headBlock) SampleIterator(
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
-			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
 			if !ok {
 				continue
 			}
@@ -1395,12 +1395,13 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:      stats,
-		origBytes:  b,
-		reader:     nil, // will be initialized later
-		pool:       pool,
-		format:     format,
-		symbolizer: symbolizer,
+		stats:                  stats,
+		origBytes:              b,
+		reader:                 nil, // will be initialized later
+		pool:                   pool,
+		format:                 format,
+		symbolizer:             symbolizer,
+		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }
 
@@ -1443,14 +1444,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1465,7 +1466,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, nil, false
+		return 0, nil, labels.EmptyLabels(), false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1476,7 +1477,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1496,7 +1497,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1505,7 +1506,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	if si.format < ChunkFormatV4 {
 		si.stats.AddDecompressedBytes(decompressedBytes)
 		si.stats.AddDecompressedLines(1)
-		return ts, si.buf[:lineSize], nil, true
+		return ts, si.buf[:lineSize], labels.EmptyLabels(), true
 	}
 
 	lastAttempt = 0
@@ -1516,14 +1517,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1573,7 +1574,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.symbolsBuf = SymbolsPool.Get(nSymbols).([]symbol)
 		if nSymbols > cap(si.symbolsBuf) {
 			si.err = fmt.Errorf("could not get a symbols matrix of size %d, actual %d", nSymbols, cap(si.symbolsBuf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1589,14 +1590,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 			if err != nil {
 				if err != io.EOF {
 					si.err = err
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					si.err = fmt.Errorf("invalid data in chunk")
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 			}
 			sName, nWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
@@ -1615,7 +1616,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
+	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1644,9 +1646,9 @@ func (si *bufferedIterator) close() {
 		si.symbolsBuf = nil
 	}
 
-	if si.currStructuredMetadata != nil {
+	if !si.currStructuredMetadata.IsEmpty() {
 		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
-		si.currStructuredMetadata = nil
+		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
 	si.origBytes = nil
@@ -1679,7 +1681,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue
 		}
@@ -1717,7 +1719,7 @@ func newSampleIterator(
 	}
 
 	if len(extractors) > 1 {
-		return newMultiExtractorSampleIterator(ctx, pool, b, format, extractors, symbolizer)
+		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
 
 	return &sampleBufferedIterator{
@@ -1739,7 +1741,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !ok {
 			continue
 		}

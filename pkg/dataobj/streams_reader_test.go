@@ -92,9 +92,7 @@ func TestStreamsReader_AddLabelFilter(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
-func unixTime(sec int64) time.Time {
-	return time.Unix(sec, 0).UTC()
-}
+func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func buildStreamsObject(t *testing.T, pageSize int) *dataobj.Object {
 	t.Helper()
@@ -130,6 +128,6 @@ func readAllStreams(ctx context.Context, r *dataobj.StreamsReader) ([]dataobj.St
 			return res, err
 		}
 
-		buf = buf[:0]
+		clear(buf)
 	}
 }

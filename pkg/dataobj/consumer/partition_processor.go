@@ -31,7 +31,7 @@ type partitionProcessor struct {
 	builder          *dataobj.Builder
 	decoder          *kafka.Decoder
 	uploader         *uploader.Uploader
-	metastoreManager *metastore.Manager
+	metastoreUpdater *metastore.Updater
 
 	// Builder initialization
 	builderOnce sync.Once
@@ -42,6 +42,7 @@ type partitionProcessor struct {
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	lastFlush        time.Time
+	lastModified     time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -91,9 +92,9 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreManager := metastore.NewManager(bucket, tenantID, logger)
-	if err := metastoreManager.RegisterMetrics(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
+	metastoreUpdater := metastore.NewUpdater(bucket, tenantID, logger)
+	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
 
 	return &partitionProcessor{
@@ -111,10 +112,11 @@ func newPartitionProcessor(
 		tenantID:         []byte(tenantID),
 		metrics:          metrics,
 		uploader:         uploader,
-		metastoreManager: metastoreManager,
+		metastoreUpdater: metastoreUpdater,
 		bufPool:          bufPool,
 		idleFlushTimeout: idleFlushTimeout,
 		lastFlush:        time.Now(),
+		lastModified:     time.Now(),
 	}
 }
 
@@ -199,7 +201,7 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 		return err
 	}
 
-	if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
+	if err := p.metastoreUpdater.Update(p.ctx, objectPath, flushedDataobjStats); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}
@@ -233,6 +235,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
+	p.metrics.incAppendsTotal()
 	if err := p.builder.Append(stream); err != nil {
 		if err != dataobj.ErrBuilderFull {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
@@ -257,11 +260,14 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
+		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
 		}
 	}
+
+	p.lastModified = time.Now()
 }
 
 func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
@@ -274,6 +280,7 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
+		p.metrics.incCommitsTotal()
 		err := p.client.CommitRecords(p.ctx, record)
 		if err == nil {
 			return nil
@@ -294,7 +301,7 @@ func (p *partitionProcessor) idleFlush() {
 		return
 	}
 
-	if time.Since(p.lastFlush) < p.idleFlushTimeout {
+	if time.Since(p.lastModified) < p.idleFlushTimeout {
 		return // Avoid checking too frequently
 	}
 

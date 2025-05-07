@@ -15,7 +15,7 @@ It is recommended that Loki operators set up alerts or dashboards with these met
 
 ### Terminology
 
-- **sample**: a log line with [structured metadata]({{< relref "../get-started/labels/structured-metadata" >}})
+- **sample**: a log line with [structured metadata](../../get-started/labels/structured-metadata/)
 - **stream**: samples with a unique combination of labels 
 - **active stream**: streams that are present in the ingesters - these have recently received log lines within the `chunk_idle_period` period (default: 30m)
 

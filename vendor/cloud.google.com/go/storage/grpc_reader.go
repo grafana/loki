@@ -26,10 +26,8 @@ import (
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/mem"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
@@ -146,13 +144,10 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 			// use a custom decoder to avoid an extra copy at the protobuf layer.
 			databufs := mem.BufferSlice{}
 			err := stream.RecvMsg(&databufs)
-			// These types of errors show up on the Recv call, rather than the
-			// initialization of the stream via ReadObject above.
-			if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
-				return ErrObjectNotExist
-			}
 			if err != nil {
-				return err
+				// NotFound types of errors show up on the Recv call, rather than the
+				// initialization of the stream via ReadObject above.
+				return formatObjectErr(err)
 			}
 			// Use a custom decoder that uses protobuf unmarshalling for all
 			// fields except the object data. Object data is handled separately
@@ -780,7 +775,7 @@ func (d *readObjectResponseDecoder) readFullObjectResponse() error {
 
 			bytesFieldLen, err := d.consumeVarint()
 			if err != nil {
-				return fmt.Errorf("consuming bytes: %v", err)
+				return fmt.Errorf("consuming bytes: %w", err)
 			}
 
 			var contentEndOff = d.off + bytesFieldLen
@@ -816,7 +811,7 @@ func (d *readObjectResponseDecoder) readFullObjectResponse() error {
 			// Consume the bytes and copy them into a single buffer if they are split across buffers.
 			buf, err := d.consumeBytesCopy()
 			if err != nil {
-				return fmt.Errorf("invalid ReadObjectResponse.ObjectChecksums: %v", err)
+				return fmt.Errorf("invalid ReadObjectResponse.ObjectChecksums: %w", err)
 			}
 			// Unmarshal.
 			if err := proto.Unmarshal(buf, msg.ObjectChecksums); err != nil {
@@ -826,7 +821,7 @@ func (d *readObjectResponseDecoder) readFullObjectResponse() error {
 			msg.ContentRange = &storagepb.ContentRange{}
 			buf, err := d.consumeBytesCopy()
 			if err != nil {
-				return fmt.Errorf("invalid ReadObjectResponse.ContentRange: %v", err)
+				return fmt.Errorf("invalid ReadObjectResponse.ContentRange: %w", err)
 			}
 			if err := proto.Unmarshal(buf, msg.ContentRange); err != nil {
 				return err
@@ -836,7 +831,7 @@ func (d *readObjectResponseDecoder) readFullObjectResponse() error {
 
 			buf, err := d.consumeBytesCopy()
 			if err != nil {
-				return fmt.Errorf("invalid ReadObjectResponse.Metadata: %v", err)
+				return fmt.Errorf("invalid ReadObjectResponse.Metadata: %w", err)
 			}
 
 			if err := proto.Unmarshal(buf, msg.Metadata); err != nil {

@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 // CopyDestOptions represents options specified by user for CopyObject/ComposeObject APIs
@@ -98,8 +99,8 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	const replaceDirective = "REPLACE"
 	if opts.ReplaceTags {
 		header.Set(amzTaggingHeaderDirective, replaceDirective)
-		if tags := s3utils.TagEncode(opts.UserTags); tags != "" {
-			header.Set(amzTaggingHeader, tags)
+		if tags, _ := tags.NewTags(opts.UserTags, true); tags != nil {
+			header.Set(amzTaggingHeader, tags.String())
 		}
 	}
 
@@ -236,7 +237,9 @@ func (c *Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBuc
 	}
 
 	if len(dstOpts.UserTags) != 0 {
-		headers.Set(amzTaggingHeader, s3utils.TagEncode(dstOpts.UserTags))
+		if tags, _ := tags.NewTags(dstOpts.UserTags, true); tags != nil {
+			headers.Set(amzTaggingHeader, tags.String())
+		}
 	}
 
 	reqMetadata := requestMetadata{

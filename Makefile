@@ -18,9 +18,9 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.6
+GO_VERSION         := 1.24.1
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.34.5
+BUILD_IMAGE_TAG    := 0.34.6
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -847,3 +847,12 @@ else
 	@echo "Checking diff"
 	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif
+
+.PHONY: update-loki-release-sha
+update-loki-release-sha:
+	@echo "Updating loki-release SHA in .github/jsonnetfile.json"
+	@NEW_SHA=$$(curl -s https://api.github.com/repos/grafana/loki-release/commits/main | jq -r .sha); \
+	jq --arg new_sha "$$NEW_SHA" '.dependencies[] |= if .source.git.remote == "https://github.com/grafana/loki-release.git" then .version = $$new_sha else . end' .github/jsonnetfile.json > .github/jsonnetfile.json.tmp && \
+	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
+	@echo "Updated successfully"
+	@$(MAKE) release-workflows

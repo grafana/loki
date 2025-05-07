@@ -316,13 +316,13 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
-	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", nil))
+	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", labels.EmptyLabels()))
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -504,7 +504,7 @@ func entries(n int, t time.Time) []logproto.Entry {
 var labelNames = []string{"app", "instance", "namespace", "user", "cluster", ShardLbName}
 
 func makeRandomLabels() labels.Labels {
-	ls := labels.NewBuilder(nil)
+	ls := labels.NewBuilder(labels.EmptyLabels())
 	for _, ln := range labelNames {
 		ls.Set(ln, fmt.Sprintf("%d", rand.Int31()))
 	}
@@ -828,14 +828,14 @@ func (p *mockStreamPipeline) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs labels.Labels) ([]byte, log.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.Process(ts, line, lbs...)
+	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs ...labels.Label) (string, log.LabelsResult, bool) {
+func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs labels.Labels) (string, log.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.ProcessString(ts, line, lbs...)
+	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
 
 func Test_ExtractorWrapper(t *testing.T) {
@@ -870,6 +870,49 @@ func Test_ExtractorWrapper(t *testing.T) {
 		}
 
 		require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
+		require.Equal(
+			t,
+			10,
+			wrapper.extractor.sp.called,
+		) // we've passed every log line through the wrapper
+	})
+	t.Run("variants", func(t *testing.T) {
+		instance := defaultInstance(t)
+
+		wrapper := &testExtractorWrapper{
+			extractor: newMockExtractor(),
+		}
+		instance.extractorWrapper = wrapper
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(
+							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+						),
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+		defer it.Close()
+
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
+
+		require.Equal(
+			t,
+			`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+			wrapper.query,
+		)
 		require.Equal(
 			t,
 			10,
@@ -912,6 +955,37 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 
 		require.Equal(t, ``, wrapper.query)
 		require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+	})
+
+	t.Run("variants", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+		it, err := instance.QuerySample(ctx,
+			logql.SelectSampleParams{
+				SampleQueryRequest: &logproto.SampleQueryRequest{
+					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
+					Start:    time.Unix(0, 0),
+					End:      time.Unix(0, 100000000),
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(
+							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
+						),
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+		defer it.Close()
+
+		for it.Next() {
+			// Consume the iterator
+			require.NoError(t, it.Err())
+		}
+
+		require.Equal(t, ``, wrapper.query)
+		require.Equal(t, 0, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
+
 	})
 }
 
@@ -961,14 +1035,14 @@ func (p *mockStreamExtractor) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs ...labels.Label) (float64, log.LabelsResult, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (float64, log.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.Process(ts, line, lbs...)
+	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs ...labels.Label) (float64, log.LabelsResult, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (float64, log.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.ProcessString(ts, line, lbs...)
+	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
 
 func Test_QueryWithDelete(t *testing.T) {
@@ -1044,6 +1118,49 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 				},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	defer it.Close()
+
+	var samples []float64
+	for it.Next() {
+		samples = append(samples, it.At().Value)
+	}
+
+	require.Equal(t, samples, []float64{1.})
+}
+
+func Test_QueryVariantsWithDelete(t *testing.T) {
+	instance := defaultInstance(t)
+
+	it, err := instance.QuerySample(context.TODO(),
+		logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: `variants(count_over_time({job="3"}[5m])) of ({job="3"}[5m])`,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, 110000000),
+				Deletes: []*logproto.Delete{
+					{
+						Selector: `{log_stream="worker"}`,
+						Start:    0,
+						End:      10 * 1e6,
+					},
+					{
+						Selector: `{log_stream="dispatcher"}`,
+						Start:    0,
+						End:      5 * 1e6,
+					},
+					{
+						Selector: `{log_stream="dispatcher"} |= "9"`,
+						Start:    0,
+						End:      10 * 1e6,
+					},
+				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`variants(count_over_time({job="3"}[5m])) of ({job="3"}[5m])`),
 				},
 			},
 		},

@@ -107,6 +107,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -136,6 +139,9 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
 				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 					"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
@@ -152,9 +158,11 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
-				// Go lib crypto doesn't allow ciphers to be configured for TLS 1.3
-				// (Read this and weep: https://github.com/golang/go/issues/29349)
-				Ciphers: []string{},
+				Ciphers: []string{
+					"TLS_AES_128_GCM_SHA256",
+					"TLS_AES_256_GCM_SHA384",
+					"TLS_CHACHA20_POLY1305_SHA256",
+				},
 			},
 		},
 		{
@@ -329,9 +337,9 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 
 			for _, service := range svcs {
 				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
-					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
+					require.Equal(t, service.Annotations, map[string]string{})
 				} else {
-					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
+					require.NotNil(t, service.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
 				}
 			}
 		})
@@ -375,14 +383,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}
@@ -448,14 +456,14 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}

@@ -16,11 +16,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-var encoderPool = sync.Pool{
-	New: func() any {
-		return &logproto.Stream{}
-	},
-}
+var (
+	encoderPool = sync.Pool{
+		New: func() any {
+			return &logproto.Stream{}
+		},
+	}
+)
 
 // Encode converts a logproto.Stream into one or more Kafka records.
 // It handles splitting large streams into multiple records if necessary.

@@ -29,7 +29,6 @@ func (cli *Client) ImagePush(ctx context.Context, image string, options image.Pu
 		return nil, errors.New("cannot push a digest reference")
 	}
 
-	name := reference.FamiliarName(ref)
 	query := url.Values{}
 	if !options.All {
 		ref = reference.TagNameOnly(ref)
@@ -52,21 +51,21 @@ func (cli *Client) ImagePush(ctx context.Context, image string, options image.Pu
 		query.Set("platform", string(pJson))
 	}
 
-	resp, err := cli.tryImagePush(ctx, name, query, options.RegistryAuth)
+	resp, err := cli.tryImagePush(ctx, ref.Name(), query, options.RegistryAuth)
 	if errdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
 		newAuthHeader, privilegeErr := options.PrivilegeFunc(ctx)
 		if privilegeErr != nil {
 			return nil, privilegeErr
 		}
-		resp, err = cli.tryImagePush(ctx, name, query, newAuthHeader)
+		resp, err = cli.tryImagePush(ctx, ref.Name(), query, newAuthHeader)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return resp.body, nil
+	return resp.Body, nil
 }
 
-func (cli *Client) tryImagePush(ctx context.Context, imageID string, query url.Values, registryAuth string) (serverResponse, error) {
+func (cli *Client) tryImagePush(ctx context.Context, imageID string, query url.Values, registryAuth string) (*http.Response, error) {
 	return cli.post(ctx, "/images/"+imageID+"/push", query, nil, http.Header{
 		registry.AuthHeader: {registryAuth},
 	})

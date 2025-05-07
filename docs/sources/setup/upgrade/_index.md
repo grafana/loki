@@ -35,6 +35,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+#### Distributor Max Receive Limits for uncompressed bytes
+
+The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+
+Supported clients should check the configuration options for max send message size if applicable.
+
 ## 3.4.0
 
 ### Loki 3.4.0

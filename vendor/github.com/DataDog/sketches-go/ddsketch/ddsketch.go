@@ -319,6 +319,23 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	}
 }
 
+func (s *DDSketch) EncodeProto(w io.Writer) {
+	builder := sketchpb.NewDDSketchBuilder(w)
+
+	builder.SetMapping(func(indexMappingBuilder *sketchpb.IndexMappingBuilder) {
+		s.IndexMapping.EncodeProto(indexMappingBuilder)
+	})
+
+	builder.SetZeroCount(s.zeroCount)
+	builder.SetNegativeValues(func(storeBuilder *sketchpb.StoreBuilder) {
+		s.negativeValueStore.EncodeProto(storeBuilder)
+	})
+
+	builder.SetPositiveValues(func(storeBuilder *sketchpb.StoreBuilder) {
+		s.positiveValueStore.EncodeProto(storeBuilder)
+	})
+}
+
 // FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.
 func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 	return FromProtoWithStoreProvider(pb, store.DenseStoreConstructor)

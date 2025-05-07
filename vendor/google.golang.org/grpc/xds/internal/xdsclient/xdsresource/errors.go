@@ -51,7 +51,7 @@ func (e *xdsClientError) Error() string {
 	return e.desc
 }
 
-// NewErrorf creates an xds client error. The callbacks are called with this
+// NewErrorf creates an xDS client error. The callbacks are called with this
 // error, to pass additional information about the error.
 func NewErrorf(t ErrorType, format string, args ...any) error {
 	return &xdsClientError{t: t, desc: fmt.Sprintf(format, args...)}

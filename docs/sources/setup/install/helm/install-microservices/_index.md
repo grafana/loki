@@ -369,7 +369,7 @@ singleBinary:
 ```
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
 
 ## Deploying the Loki Helm chart to a Production Environment
 

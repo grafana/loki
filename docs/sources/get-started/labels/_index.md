@@ -74,7 +74,7 @@ By default, the following resource attributes will be stored as labels, with per
 - cloud.availability_zone
 - cloud.region
 - container.name
-- deployment.environment
+- deployment.environment.name
 - k8s.cluster.name
 - k8s.container.name
 - k8s.cronjob.name
@@ -351,7 +351,7 @@ The two previous examples use statically defined labels with a single value; how
      __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../../send-data/promtail/pipelines" >}}) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines](../../send-data/promtail/pipelines/) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 

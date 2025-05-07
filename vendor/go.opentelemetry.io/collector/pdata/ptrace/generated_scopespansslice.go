@@ -7,6 +7,7 @@
 package ptrace
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -54,6 +55,21 @@ func (es ScopeSpansSlice) Len() int {
 //	}
 func (es ScopeSpansSlice) At(i int) ScopeSpans {
 	return newScopeSpans((*es.orig)[i], es.state)
+}
+
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es ScopeSpansSlice) All() iter.Seq2[int, ScopeSpans] {
+	return func(yield func(int, ScopeSpans) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.

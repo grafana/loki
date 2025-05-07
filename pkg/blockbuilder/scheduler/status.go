@@ -15,7 +15,7 @@ import (
 var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"durationSince": func(t time.Time) string { return time.Since(t).Truncate(time.Second).String() },
-	"offsetsLen":    func(min, max int64) int64 { return max - min },
+	"offsetsLen":    func(minVal, maxVal int64) int64 { return maxVal - minVal },
 	"humanize":      humanize.Comma,
 }).Parse(defaultPageContent))
 

@@ -3,14 +3,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.17.2
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.7.1
+    app.kubernetes.io/instance: loki-operator-v0.8.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.7.1
+    app.kubernetes.io/version: 0.8.0
   name: lokistacks.loki.grafana.com
 spec:
   conversion:

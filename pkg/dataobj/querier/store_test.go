@@ -39,7 +39,8 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -162,6 +163,18 @@ func TestStore_SelectSamples(t *testing.T) {
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
+		{
+			name:     "select all samples in range with multiple line filters",
+			selector: `rate({app=~".+"} != "bar" |~ "foo[3-6]"[1h])`,
+			start:    now,
+			end:      now.Add(time.Hour),
+			want: []sampleWithLabels{
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -192,7 +205,8 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -313,6 +327,20 @@ func TestStore_SelectLogs(t *testing.T) {
 				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
 			},
 		},
+		{
+			name:      "select with multiple line filters",
+			selector:  `{app=~".+"} != "bar" |~ "foo[3-6]"`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -340,7 +368,7 @@ func TestStore_SelectLogs(t *testing.T) {
 
 func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 	t.Helper()
-	now := time.Unix(0, int64(time.Hour))
+	now := time.Unix(0, int64(time.Hour)).UTC()
 
 	// Data before the query range (should not be included in results)
 	builder.addStream(
@@ -424,7 +452,7 @@ type testDataBuilder struct {
 
 	tenantID string
 	builder  *dataobj.Builder
-	meta     *metastore.Manager
+	meta     *metastore.Updater
 	uploader *uploader.Uploader
 }
 
@@ -442,10 +470,12 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
 		BufferSize:        1024 * 1024,      // 1MB
+
+		SectionStripeMergeLimit: 2,
 	})
 	require.NoError(t, err)
 
-	meta := metastore.NewManager(bucket, tenantID, log.NewLogfmtLogger(os.Stdout))
+	meta := metastore.NewUpdater(bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
@@ -480,7 +510,7 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.UpdateMetastore(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
@@ -778,7 +808,7 @@ func TestShardSections(t *testing.T) {
 
 				// Verify each section is assigned exactly once
 				for metaIdx, meta := range tt.metadatas {
-					for section := 0; section < meta.LogsSections; section++ {
+					for section := range meta.LogsSections {
 						key := sectionKey{metaIdx: metaIdx, section: section}
 						count := sectionCounts[key]
 						require.Equal(t, 1, count, "section %d in metadata %d was assigned %d times", section, metaIdx, count)
@@ -787,4 +817,209 @@ func TestShardSections(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildLogsPredicateFromPipeline(t *testing.T) {
+	var evalPredicate func(p dataobj.Predicate, item []byte) bool
+	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
+		switch p := p.(type) {
+		case dataobj.LogMessageFilterPredicate:
+			return p.Keep(line)
+		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
+		default:
+			t.Fatalf("unsupported predicate type: %T", p)
+			return false
+		}
+	}
+
+	// helper function to test predicates against sample data
+	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
+		t.Helper()
+		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
+
+		for i, line := range testData {
+			result := evalPredicate(pred, line)
+			require.Equal(t, expected[i], result, "predicate mismatch for line: %s", line)
+		}
+	}
+
+	// Create test data sets
+	testData := [][]byte{
+		[]byte("this is an error message"),
+		[]byte("this is a critical error"),
+		[]byte("this is a success message"),
+		[]byte("this is a warning message"),
+	}
+
+	for _, tt := range []struct {
+		name         string
+		query        syntax.LogSelectorExpr
+		expectedExpr syntax.LogSelectorExpr
+		testFunc     func(t *testing.T, pred dataobj.Predicate)
+	}{
+		{
+			name:         "single line match equal filter",
+			query:        mustParseLogSelector(t, `{app="foo"} |= "error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+
+				// Verify the predicate works correctly
+				expected := []bool{true, true, false, false}
+				testPredicate(t, pred, testData, expected)
+			},
+		},
+		{
+			name:         "single line match not equal filter",
+			query:        mustParseLogSelector(t, `{app="foo"} != "error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+
+				// Verify the predicate works correctly
+				expected := []bool{false, false, true, true}
+				testPredicate(t, pred, testData, expected)
+			},
+		},
+		{
+			name:         "multiple line filters",
+			query:        mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				// we might expect AND predicate here, but the original expression
+				// only contains a single Filterer stage with chained OR filters
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+
+				// The result should match logs containing both "error" and "critical"
+				expected := []bool{false, true, false, false}
+				testPredicate(t, pred, testData, expected)
+			},
+		},
+		{
+			name:         "line filter stage after line_format",
+			query:        mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`), // No filters should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				// Line filters after stages that mutate the line should be ignored
+				require.Nil(t, pred, "expected nil predicate for line filter after parser")
+			},
+		},
+		{
+			name:         "no line filter",
+			query:        mustParseLogSelector(t, `{app="foo"} | json | bar>100`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | bar>100`), // No filters to remove
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.Nil(t, pred, "expected nil predicate for query without line filter")
+			},
+		},
+		{
+			name:         "line filter stage after label_fmt",
+			query:        mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+
+				// Verify the predicate works correctly
+				expected := []bool{true, true, false, false}
+				testPredicate(t, pred, testData, expected)
+			},
+		},
+		{
+			name:         "mixed filters with some removable",
+			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
+			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
+			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+				require.NotNil(t, pred)
+				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
+				expected := []bool{false, true, false, false}
+				testPredicate(t, pred, testData, expected)
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, actualExpr := buildLogsPredicateFromPipeline(tt.query)
+
+			tt.testFunc(t, p)
+
+			// Verify the updated expression
+			syntax.AssertExpressions(t, tt.expectedExpr, actualExpr)
+		})
+	}
+}
+
+func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		query        syntax.SampleExpr
+		expectedExpr syntax.SampleExpr
+		testFunc     func(t *testing.T, pred dataobj.Predicate)
+	}{
+		{
+			name:         "range aggregation with line filter",
+			query:        mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
+			expectedExpr: mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+		{
+			name:         "vector aggregation with line filter",
+			query:        mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
+			expectedExpr: mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+		{
+			name:         "binary expressions are not modified",
+			query:        mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
+			expectedExpr: mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.Nil(t, p)
+			},
+		},
+		{
+			name:         "label replace with line filter",
+			query:        mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
+			expectedExpr: mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
+			testFunc: func(t *testing.T, p dataobj.Predicate) {
+				require.NotNil(t, p)
+				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, actualExpr := buildLogsPredicateFromSampleExpr(tt.query)
+
+			tt.testFunc(t, p)
+
+			// Verify the updated expression
+			syntax.AssertExpressions(t, tt.expectedExpr, actualExpr)
+		})
+	}
+}
+
+// Helper function to parse log selectors for test cases
+func mustParseLogSelector(t *testing.T, s string) syntax.LogSelectorExpr {
+	expr, err := syntax.ParseLogSelector(s, false)
+	if err != nil {
+		t.Fatalf("failed to parse log selector %q: %v", s, err)
+	}
+	return expr
+}
+
+// Helper function to parse sample expressions for test cases
+func mustParseSampleExpr(t *testing.T, s string) syntax.SampleExpr {
+	expr, err := syntax.ParseSampleExpr(s)
+	if err != nil {
+		t.Fatalf("failed to parse sample expr %q: %v", s, err)
+	}
+	return expr
 }

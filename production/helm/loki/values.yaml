@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.4.2
+    tag: 3.5.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -282,6 +282,12 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- if .Values.loki.ui.enabled }}
+    ui:
+      discovery:
+        join_peers:
+          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+    {{- end }}
     {{- with .Values.loki.querier }}
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -417,27 +423,38 @@ loki:
     object_store:
       # Type of object store. Valid options are: s3, gcs, azure
       type: s3
-      storage_prefix: null  # Optional prefix for storage keys
-
+      # Optional prefix for storage keys
+      storage_prefix: null
       # S3 configuration (when type is "s3")
       s3:
-        endpoint: null     # S3 endpoint URL
-        region: null       # Optional region
-        access_key_id: null      # Optional access key
-        secret_access_key: null  # Optional secret key
-        insecure: false       # Optional. Enable if using self-signed TLS
-        sse: {}         # Optional server-side encryption configuration
-        http: {}       # Optional HTTP client configuration
+        # S3 endpoint URL
+        endpoint: null
+        # Optional region
+        region: null
+        # Optional access key
+        access_key_id: null
+        # Optional secret key
+        secret_access_key: null
+        # Optional. Enable if using self-signed TLS
+        insecure: false
+        # Optional server-side encryption configuration
+        sse: {}
+        # Optional HTTP client configuration
+        http: {}
 
       # GCS configuration (when type is "gcs")
       gcs:
-        bucket_name: null  # Name of the bucket
-        service_account: null  # Optional service account JSON
+        # Name of the bucket
+        bucket_name: null
+        # Optional service account JSON
+        service_account: null
 
       # Azure configuration (when type is "azure")
       azure:
-        account_name: null  # Storage account name
-        account_key: null  # Optional storage account key
+        # Storage account name
+        account_name: null
+        # Optional storage account key
+        account_key: null
 
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
@@ -497,6 +514,13 @@ loki:
     enabled: false
   # --  Optional analytics configuration
   analytics: {}
+  # --  Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway
+  ui:
+    # Disabled by default for backwards compatibility. Enable to use the Loki UI.
+    enabled: false
+    gateway:
+      # enable gateway proxying to UI under /ui
+      enabled: true
   # --  Optional querier configuration
   query_range: {}
   # --  Optional querier configuration
@@ -577,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.0
+    tag: 3.4.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -888,6 +912,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables to add to the admin-api pods
+  extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the admin-api pods
   extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
@@ -1711,6 +1737,8 @@ backend:
   extraEnvFrom: []
   # -- Init containers to add to the backend pods
   initContainers: []
+  # -- Containers to add to the backend pods
+  extraContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
@@ -2929,6 +2957,8 @@ patternIngester:
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
   enabled: true
+  # -- Whether to enable the rules sidecar
+  sidecar: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
@@ -3149,7 +3179,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.36-alpine
+    tag: 1.6.38-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3171,7 +3201,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.0
+    tag: v0.15.2
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3495,7 +3525,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.0
+    tag: 1.30.3
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

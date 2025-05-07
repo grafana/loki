@@ -1414,6 +1414,46 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		assert.Len(t, detectedLabels, 0)
 	})
 
+	t.Run("allows boolean values, even if numeric", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"boolean-ints":            {Values: []string{"0", "1"}},
+			"boolean-bools":           {Values: []string{"true", "false"}},
+			"boolean-bools-uppercase": {Values: []string{"TRUE", "FALSE"}},
+			"single-id":               {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef"}},
+			"non-boolean-ints":        {Values: []string{"6", "7"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+
+		foundLabels := make([]string, 0, len(detectedLabels))
+		for _, d := range detectedLabels {
+			foundLabels = append(foundLabels, d.Label)
+		}
+
+		assert.ElementsMatch(t, []string{"boolean-ints", "boolean-bools", "boolean-bools-uppercase"}, foundLabels)
+	})
+
 	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
 		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
 			"cluster":   {Values: []string{"val1"}},

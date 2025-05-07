@@ -268,9 +268,19 @@ func (n *Node) Start(peers []string) error {
 		return fmt.Errorf("failed to join memberlist: %w", err)
 	}
 
-	// Broadcast our current state of the node to all peers now that our lamport
-	// clock is roughly synchronized.
-	return n.broadcastCurrentState()
+	// Originally, after calling n.ml.Join, we would broadcast a new state
+	// message (with a new lamport time) with the node's local state. The intent
+	// was that there might be stale messages about a previous instance of our
+	// node with different lamport times, and we'd want to correct them by
+	// broadcasting a message.
+	//
+	// This only appeared necessary due to a bug in how we stale messages about
+	// our own node, and resulted in a lot of extra state messages being sent due
+	// to nodes calling Start to fix split brain issues.
+	//
+	// Now, we'll correct invalid state messages about our node upon receipt; see
+	// [Node.handleStateMessage] and [nodeDelegate.MergeRemoteState].
+	return nil
 }
 
 func (n *Node) run(ctx context.Context) {
@@ -291,31 +301,6 @@ func (n *Node) run(ctx context.Context) {
 
 		n.notifyObservers(peers)
 	}
-}
-
-// broadcastCurrentState queues a message to send the current state of the node
-// to the cluster. This should be done after joining a new set of nodes once
-// the lamport clock is synchronized.
-func (n *Node) broadcastCurrentState() error {
-	n.stateMut.RLock()
-	defer n.stateMut.RUnlock()
-
-	stateMsg := messages.State{
-		NodeName: n.cfg.Name,
-		NewState: n.localState,
-		Time:     n.clock.Tick(),
-	}
-
-	// Treat the stateMsg as if it was received externally to track our own state
-	// along with other nodes.
-	n.handleStateMessage(stateMsg)
-
-	bcast, err := messages.Broadcast(&stateMsg, nil)
-	if err != nil {
-		return err
-	}
-	n.broadcasts.QueueBroadcast(bcast)
-	return nil
 }
 
 // Stop stops the Node, removing it from the cluster. Callers should first
@@ -441,10 +426,13 @@ func (n *Node) changeState(to peer.State, onDone func()) error {
 }
 
 // handleStateMessage handles a state message from a peer. Returns true if the
-// message hasn't been seen before.
+// message hasn't been seen before. The final return parameter will be the
+// message to broadcast: if msg is a stale message from a previous instance of
+// the local node, final will be an updated message reflecting the node's local
+// state.
 //
 // handleStateMessage must be called with n.stateMut held for reading.
-func (n *Node) handleStateMessage(msg messages.State) (newMessage bool) {
+func (n *Node) handleStateMessage(msg messages.State) (final messages.State, newMessage bool) {
 	n.clock.Observe(msg.Time)
 
 	n.peerMut.Lock()
@@ -453,8 +441,8 @@ func (n *Node) handleStateMessage(msg messages.State) (newMessage bool) {
 	curr, exist := n.peerStates[msg.NodeName]
 	if exist && msg.Time <= curr.Time {
 		// Ignore a state message if we have the same or a newer one.
-		return false
-	} else if exist && msg.NodeName == n.cfg.Name {
+		return curr, false
+	} else if msg.NodeName == n.cfg.Name {
 		level.Debug(n.log).Log("msg", "got stale message about self", "msg", msg)
 
 		// A peer has a newer message about ourselves, likely from a previous
@@ -477,7 +465,7 @@ func (n *Node) handleStateMessage(msg messages.State) (newMessage bool) {
 		n.handlePeersChanged()
 	}
 
-	return true
+	return msg, true
 }
 
 // Peers returns all Peers currently known by n. The Peers list will include
@@ -605,7 +593,7 @@ func (nd *nodeDelegate) NotifyMsg(raw []byte) {
 		nd.stateMut.RLock()
 		defer nd.stateMut.RUnlock()
 
-		if nd.handleStateMessage(s) {
+		if s, broadcast := nd.handleStateMessage(s); broadcast {
 			// We should continue gossiping the message to other peers if we haven't
 			// seen it before.
 			//
@@ -614,6 +602,7 @@ func (nd *nodeDelegate) NotifyMsg(raw []byte) {
 			// messages would still converge eventually using push/pulls.
 			bcast, _ := messages.Broadcast(&s, nil)
 			nd.broadcasts.QueueBroadcast(bcast)
+			nd.m.gossipBroadcastsTotal.WithLabelValues(eventStateChange).Inc()
 		}
 
 	default:

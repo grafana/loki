@@ -74,10 +74,3 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 	// Return any chunks we did receive: a partial result may be useful
 	return result, lastErr
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

@@ -157,13 +157,6 @@ func (c *Client) ListenBucketNotification(ctx context.Context, bucketName, prefi
 			return
 		}
 
-		// Continuously run and listen on bucket notification.
-		// Create a done channel to control 'ListObjects' go routine.
-		retryDoneCh := make(chan struct{}, 1)
-
-		// Indicate to our routine to exit cleanly upon return.
-		defer close(retryDoneCh)
-
 		// Prepare urlValues to pass into the request on every loop
 		urlValues := make(url.Values)
 		urlValues.Set("ping", "10")
@@ -172,7 +165,7 @@ func (c *Client) ListenBucketNotification(ctx context.Context, bucketName, prefi
 		urlValues["events"] = events
 
 		// Wait on the jitter retry loop.
-		for range c.newRetryTimerContinous(time.Second, time.Second*30, MaxJitter, retryDoneCh) {
+		for range c.newRetryTimerContinous(time.Second, time.Second*30, MaxJitter) {
 			// Execute GET on bucket to list objects.
 			resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
 				bucketName:       bucketName,
@@ -251,7 +244,6 @@ func (c *Client) ListenBucketNotification(ctx context.Context, bucketName, prefi
 
 			// Close current connection before looping further.
 			closeResponse(resp)
-
 		}
 	}(notificationInfoCh)
 

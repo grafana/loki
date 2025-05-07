@@ -110,6 +110,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [server: <server>]
 
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
   [node_name: <string> | default = "<hostname>"]
@@ -124,7 +128,7 @@ ui:
 
   # How frequently to rejoin the cluster to address split brain issues.
   # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 15s]
+  [rejoin_interval: <duration> | default = 3m]
 
   # Number of initial peers to join from the discovered set.
   # CLI flag: -ui.cluster-max-join-peers
@@ -137,6 +141,10 @@ ui:
   # Enable using a IPv6 instance address.
   # CLI flag: -ui.enable-ipv6
   [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
 
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
@@ -822,6 +830,11 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # Enable collection of the following kafka latency histograms: read-wait,
+  # read-timing, write-wait, write-timing
+  # CLI flag: -kafka.enable-kafka-histograms
+  [enable_kafka_histograms: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -840,6 +853,11 @@ dataobj:
       # The size of the buffer to use for sorting logs.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
+
+      # The maximum number of stripes to merge into a section at once. Must be
+      # greater than 1.
+      # CLI flag: -dataobj-consumer.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
 
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
@@ -869,6 +887,362 @@ dataobj:
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
+
+ingest_limits:
+  # Enable the ingest limits service.
+  # CLI flag: -ingest-limits.enabled
+  [enabled: <boolean> | default = false]
+
+  # The time window for which stream metadata is considered active.
+  # CLI flag: -ingest-limits.window-size
+  [window_size: <duration> | default = 1h]
+
+  # The time window for rate calculation. This should match the window used in
+  # Prometheus rate() queries for consistency.
+  # CLI flag: -ingest-limits.rate-window
+  [rate_window: <duration> | default = 5m]
+
+  # The granularity of time buckets used for sliding window rate calculation.
+  # Smaller buckets provide more precise rate tracking but require more memory.
+  # CLI flag: -ingest-limits.bucket-duration
+  [bucket_duration: <duration> | default = 1m]
+
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -ingest-limits.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -ingest-limits.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is: ingest-limits
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is: ingest-limits
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -ingest-limits.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -ingest-limits.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -ingest-limits.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -ingest-limits.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -ingest-limits.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -ingest-limits.distributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -ingest-limits.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -ingest-limits.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -ingest-limits.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -ingest-limits.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -ingest-limits.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -ingest-limits.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -ingest-limits.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -ingest-limits.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ingest-limits.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -ingest-limits.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -ingest-limits.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ingest-limits.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -ingest-limits.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -ingest-limits.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -ingest-limits.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ingest-limits.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -ingest-limits.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -ingest-limits.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
+
+ingest_limits_frontend:
+  client_config:
+    # Configures client gRPC connections to limits service.
+    # The CLI flags prefix for this block configuration is:
+    # ingest-limits-frontend.limits-client
+    [grpc_client_config: <grpc_client>]
+
+    # Configures client gRPC connections pool to limits service.
+    pool_config:
+      # How frequently to clean up clients for ingest-limits that have gone
+      # away.
+      # CLI flag: -ingest-limits-frontend.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingest-limits client during periodic cleanup.
+      # CLI flag: -ingest-limits-frontend.health-check-ingest-limits
+      [health_check_ingest_limits: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -ingest-limits-frontend.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
+
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -ingest-limits-frontend.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -ingest-limits-frontend.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # ingest-limits-frontend
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # ingest-limits-frontend
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -ingest-limits-frontend.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -ingest-limits-frontend.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -ingest-limits-frontend.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -ingest-limits-frontend.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -ingest-limits-frontend.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -ingest-limits-frontend.distributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -ingest-limits-frontend.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -ingest-limits-frontend.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -ingest-limits-frontend.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -ingest-limits-frontend.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -ingest-limits-frontend.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -ingest-limits-frontend.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -ingest-limits-frontend.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -ingest-limits-frontend.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ingest-limits-frontend.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -ingest-limits-frontend.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -ingest-limits-frontend.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ingest-limits-frontend.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -ingest-limits-frontend.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -ingest-limits-frontend.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -ingest-limits-frontend.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ingest-limits-frontend.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -ingest-limits-frontend.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -ingest-limits-frontend.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # The period to recheck per tenant ingestion rate limit configuration.
+  # CLI flag: -ingest-limits-frontend.recheck-period
+  [recheck_period: <duration> | default = 10s]
+
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
+  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
+  [assigned_partitions_cache_ttl: <duration> | default = 1m]
+
+ingest_limits_frontend_client:
+  # Configures client gRPC connections to limits service.
+  # The CLI flags prefix for this block configuration is:
+  # ingest-limits-frontend-client
+  [grpc_client_config: <grpc_client>]
+
+  # Configures client gRPC connections pool to limits service.
+  pool_config:
+    # How frequently to clean up clients for ingest-limits-frontend that have
+    # gone away.
+    # CLI flag: -ingest-limits-frontend-client.client-cleanup-period
+    [client_cleanup_period: <duration> | default = 15s]
+
+    # Run a health check on each ingest-limits-frontend client during periodic
+    # cleanup.
+    # CLI flag: -ingest-limits-frontend-client.health-check-ingest-limits
+    [health_check_ingest_limits: <boolean> | default = true]
+
+    # Timeout for the health check.
+    # CLI flag: -ingest-limits-frontend-client.remote-timeout
+    [remote_timeout: <duration> | default = 1s]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1783,7 +2157,7 @@ The `compactor` block configures the compactor component, which compacts index s
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
-[working_directory: <string> | default = ""]
+[working_directory: <string> | default = "/var/loki/compactor"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
@@ -1832,6 +2206,16 @@ retention_backoff_config:
 # Path prefix for storing delete requests.
 # CLI flag: -compactor.delete-request-store.key-prefix
 [delete_request_store_key_prefix: <string> | default = "index/"]
+
+# Type of DB to use for storing delete requests. Supported types: boltdb, sqlite
+# CLI flag: -compactor.delete-request-store.db-type
+[delete_request_store_db_type: <string> | default = "boltdb"]
+
+# Type of DB to use as backup for storing delete requests. Backup DB should
+# ideally be used while migrating from one DB type to another. Supported
+# type(s): boltdb
+# CLI flag: -compactor.delete-request-store.backup-db-type
+[backup_delete_request_store_db_type: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
@@ -1966,6 +2350,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingest-limits`
+- `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
@@ -2147,6 +2533,10 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
+# The maximum size of a received message.
+# CLI flag: -distributor.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 104857600]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -2189,6 +2579,15 @@ otlp_config:
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
 
+# Enable checking limits against the ingest-limits service. Defaults to false.
+# CLI flag: -distributor.ingest-limits-enabled
+[ingest_limits_enabled: <boolean> | default = false]
+
+# Enable dry-run mode where limits are checked the ingest-limits service, but
+# not enforced. Defaults to false.
+# CLI flag: -distributor.ingest-limits-dry-run-enabled
+[ingest_limits_dry_run_enabled: <boolean> | default = false]
+
 tenant_topic:
   # Enable the tenant topic tee, which writes logs to Kafka topics based on
   # tenant IDs instead of using multitenant topics/partitions.
@@ -2210,6 +2609,10 @@ tenant_topic:
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
   [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -2220,6 +2623,8 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingest-limits`
+- `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
@@ -2462,6 +2867,8 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `boltdb.shipper.index-gateway-client.grpc`
 - `compactor.grpc-client`
 - `frontend.grpc-client-config`
+- `ingest-limits-frontend-client`
+- `ingest-limits-frontend.limits-client`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
@@ -2549,6 +2956,11 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -<prefix>.cluster-validation.label
+  [label: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -3119,6 +3531,17 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Simulated latency to add to push requests. Used for testing. Set to 0s to
+# disable.
+# CLI flag: -limits.simulated-push-latency
+[simulated_push_latency: <duration> | default = 0s]
+
+# Enable experimental support for running multiple query variants over the same
+# underlying data. For example, running both a rate() and count_over_time()
+# query over the same range selector.
+# CLI flag: -limits.enable-multi-variant-queries
+[enable_multi_variant_queries: <boolean> | default = false]
+
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
 # log entry.
@@ -3142,7 +3565,7 @@ discover_generic_fields:
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
 
 # Maximum depth to search for log level fields in JSON logs. A value of 0 or
 # less means unlimited depth. Default is 2 which searches the first 2 levels of
@@ -3391,6 +3814,11 @@ discover_generic_fields:
 # disables shuffle sharding for the tenant.
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
+
+# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
+# startup at the cost of not recovering in-memory WAL metrics on restart.
+# CLI flag: -ruler.enable-wal-replay
+[ruler_enable_wal_replay: <boolean> | default = true]
 
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
@@ -3646,13 +4074,19 @@ otlp_config:
   # drop them altogether
   [scope_attributes: <list of attributes_configs>]
 
-  # Configuration for log attributes to store them as Structured Metadata or
-  # drop them altogether
+  # Configuration for log attributes to store them as index labels or Structured
+  # Metadata or drop them altogether
   [log_attributes: <list of attributes_configs>]
 
-# Block ingestion for policy until the configured date. The time should be in
-# RFC3339 format. The policy is based on the policy_stream_mapping
-# configuration.
+  # When true, the severity_text field from log records will be stored as an
+  # index label. It is recommended not to use this option unless absolutely
+  # necessary
+  [severity_text_as_label: <boolean> | default = false]
+
+# Block ingestion for policy until the configured date. The policy '*' is the
+# global policy, which is applied to all streams not matching a policy and can
+# be overridden by other policies. The time should be in RFC3339 format. The
+# policy is based on the policy_stream_mapping configuration.
 [block_ingestion_policy_until: <map of string to Time>]
 
 # Block ingestion until the configured date. The time should be in RFC3339
@@ -3672,7 +4106,8 @@ otlp_config:
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
-# Map of policies to enforced labels. Example:
+# Map of policies to enforced labels. The policy '*' is the global policy, which
+# is applied to all streams and can be extended by other policies. Example:
 #  policy_enforced_labels: 
 #   policy1: 
 #     - label1 
@@ -3680,6 +4115,8 @@ otlp_config:
 #   policy2: 
 #     - label3 
 #     - label4
+#   '*':
+#     - label5
 [policy_enforced_labels: <map of string to list of strings>]
 
 # Map of policies to stream selectors with a priority. Experimental.  Example:
@@ -3786,6 +4223,11 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.compression-enabled
 [compression_enabled: <boolean> | default = true]
 
+# How frequently to notify watchers when a key changes. Can reduce CPU activity
+# in large memberlist deployments. 0 to notify without delay.
+# CLI flag: -memberlist.notify-interval
+[notify_interval: <duration> | default = 0s]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -3827,7 +4269,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.max-join-retries
 [max_join_retries: <int> | default = 10]
 
-# If this node fails to join memberlist cluster, abort.
+# Abort if this node fails the fast memberlist cluster joining procedure at
+# startup. When enabled, it's guaranteed that other services, depending on
+# memberlist, have an updated view over the cluster state when they're started.
+# CLI flag: -memberlist.abort-if-fast-join-fails
+[abort_if_cluster_fast_join_fails: <boolean> | default = false]
+
+# Abort if this node fails to join memberlist cluster at startup. When enabled,
+# it's not guaranteed that other services are started only after the cluster
+# state has been successfully updated; use 'abort-if-fast-join-fails' instead.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = false]
 
@@ -3843,6 +4293,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
+
+# How long to keep obsolete entries in the KV store.
+# CLI flag: -memberlist.obsolete-entries-timeout
+[obsolete_entries_timeout: <duration> | default = 30s]
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
@@ -3861,6 +4315,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
 
+# Size of the buffered channel for the WatchPrefix function.
+# CLI flag: -memberlist.watch-prefix-buffer-size
+[watch_prefix_buffer_size: <int> | default = 128]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -3877,6 +4335,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Maximum number of concurrent writes to other nodes.
+# CLI flag: -memberlist.max-concurrent-writes
+[max_concurrent_writes: <int> | default = 3]
+
+# Timeout for acquiring one of the concurrent write slots. After this time, the
+# message will be dropped.
+# CLI flag: -memberlist.acquire-writer-timeout
+[acquire_writer_timeout: <duration> | default = 250ms]
 
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
@@ -4056,11 +4523,13 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
-  # Enable experimental support for running multiple query variants over the
-  # same underlying data. For example, running both a rate() and
-  # count_over_time() query over the same range selector.
-  # CLI flag: -querier.engine.enable-multi-variant-queries
-  [enable_multi_variant_queries: <boolean> | default = false]
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -querier.engine.enable-v2-engine
+  [enable_v2_engine: <boolean> | default = false]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4749,6 +5218,12 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
 
+# Delimiter used to replace the default delimiter ':' in chunk IDs when storing
+# chunks. This is mainly intended when you run a MinIO instance on a Windows
+# machine. You should not change this value inflight.
+# CLI flag: -<prefix>.s3.chunk-delimiter
+[chunk_delimiter: <string> | default = ""]
+
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
   # CLI flag: -<prefix>.s3.http.timeout
@@ -5077,6 +5552,40 @@ grpc_tls_config:
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -server.cluster-validation.label
+  [label: <string> | default = ""]
+
+  grpc:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.grpc.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.grpc.enabled
+    # CLI flag: -server.cluster-validation.grpc.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+  http:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.http.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.http.enabled
+    # CLI flag: -server.cluster-validation.http.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+    # Comma-separated list of url paths that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-paths
+    [excluded_paths: <string> | default = ""]
 ```
 
 ### storage_config
@@ -6431,7 +6940,7 @@ bos:
   [secret_key: <string> | default = ""]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
-# only contain digits and English alphabet letters.
+# only contain digits, English alphabet letters and dashes.
 # CLI flag: -<prefix>.storage-prefix
 [storage_prefix: <string> | default = ""]
 ```
@@ -6460,6 +6969,10 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `frontend.tail-tls-config`
 - `frontend.volume-results-cache.memcached`
 - `index-gateway.ring.etcd`
+- `ingest-limits-frontend-client`
+- `ingest-limits-frontend.etcd`
+- `ingest-limits-frontend.limits-client`
+- `ingest-limits.etcd`
 - `ingester.client`
 - `ingester.partition-ring.etcd`
 - `memberlist`

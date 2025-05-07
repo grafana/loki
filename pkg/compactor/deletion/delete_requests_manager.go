@@ -2,12 +2,16 @@ package deletion
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +25,8 @@ import (
 const (
 	statusSuccess = "success"
 	statusFail    = "fail"
+
+	seriesProgressFilename = "series_progress.json"
 )
 
 type userDeleteRequests struct {
@@ -30,6 +36,7 @@ type userDeleteRequests struct {
 }
 
 type DeleteRequestsManager struct {
+	workingDir                string
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
@@ -41,10 +48,12 @@ type DeleteRequestsManager struct {
 	done                       chan struct{}
 	batchSize                  int
 	limits                     Limits
+	processedSeries            map[string]struct{}
 }
 
-func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits Limits, registerer prometheus.Registerer) *DeleteRequestsManager {
+func NewDeleteRequestsManager(workingDir string, store DeleteRequestsStore, deleteRequestCancelPeriod time.Duration, batchSize int, limits Limits, registerer prometheus.Registerer) (*DeleteRequestsManager, error) {
 	dm := &DeleteRequestsManager{
+		workingDir:                workingDir,
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 		deleteRequestsToProcess:   map[string]*userDeleteRequests{},
@@ -52,22 +61,29 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 		done:                      make(chan struct{}),
 		batchSize:                 batchSize,
 		limits:                    limits,
+		processedSeries:           map[string]struct{}{},
 	}
 
+	var err error
+	dm.processedSeries, err = loadSeriesProgress(workingDir)
+	if err != nil {
+		return nil, err
+	}
+
+	dm.wg.Add(1)
 	go dm.loop()
 
 	if err := dm.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 
-	return dm
+	return dm, nil
 }
 
 func (d *DeleteRequestsManager) loop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	d.wg.Add(1)
 	defer d.wg.Done()
 
 	for {
@@ -75,6 +91,10 @@ func (d *DeleteRequestsManager) loop() {
 		case <-ticker.C:
 			if err := d.updateMetrics(); err != nil {
 				level.Error(util_log.Logger).Log("msg", "failed to update metrics", "err", err)
+			}
+
+			if err := d.storeSeriesProgress(); err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to store series progress", "err", err)
 			}
 		case <-d.done:
 			return
@@ -85,6 +105,30 @@ func (d *DeleteRequestsManager) loop() {
 func (d *DeleteRequestsManager) Stop() {
 	close(d.done)
 	d.wg.Wait()
+	if err := d.storeSeriesProgress(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to store series progress", "err", err)
+	}
+}
+
+func (d *DeleteRequestsManager) storeSeriesProgress() error {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
+	if len(d.processedSeries) == 0 {
+		return nil
+	}
+
+	data, err := json.Marshal(d.processedSeries)
+	if err != nil {
+		return errors.Wrap(err, "failed to json encode series progress")
+	}
+
+	err = os.WriteFile(filepath.Join(d.workingDir, seriesProgressFilename), data, 0640)
+	if err != nil {
+		return errors.Wrap(err, "failed to store series progress to the file")
+	}
+
+	return nil
 }
 
 func (d *DeleteRequestsManager) updateMetrics() error {
@@ -178,6 +222,13 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if reqCount >= d.batchSize {
 			logBatchTruncation(reqCount, len(deleteRequests))
 			break
+		}
+
+		if deleteRequest.logSelectorExpr == nil {
+			err := deleteRequest.SetQuery(deleteRequest.Query)
+			if err != nil {
+				return errors.Wrapf(err, "failed to init log selector expr for request_id=%s, user_id=%s", deleteRequest.RequestID, deleteRequest.UserID)
+			}
 		}
 
 		level.Info(util_log.Logger).Log(
@@ -278,14 +329,39 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 	return mode == deletionmode.FilterAndDelete, nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, filter.Func) {
+func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, _ model.Time, tableName string, _ model.Time) bool {
+	userIDStr := unsafeGetString(userID)
+
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
-	userIDStr := unsafeGetString(ref.UserID)
+	if d.deleteRequestsToProcess[userIDStr] == nil {
+		return true
+	}
+
+	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
+		// if the delete request does not touch the series, continue looking for other matching requests
+		if !labels.Selector(deleteRequest.matchers).Matches(lbls) {
+			continue
+		}
+
+		// The delete request touches the series. Do not skip if the series is not processed yet.
+		if _, ok := d.processedSeries[buildProcessedSeriesKey(deleteRequest.RequestID, deleteRequest.StartTime, deleteRequest.EndTime, seriesID, tableName)]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, _ model.Time) (bool, filter.Func) {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
+	userIDStr := unsafeGetString(userID)
 	if d.deleteRequestsToProcess[userIDStr] == nil || !intervalsOverlap(d.deleteRequestsToProcess[userIDStr].requestsInterval, model.Interval{
-		Start: ref.From,
-		End:   ref.Through,
+		Start: chk.From,
+		End:   chk.Through,
 	}) {
 		return false, nil
 	}
@@ -293,7 +369,10 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	var filterFuncs []filter.Func
 
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
-		isDeleted, ff := deleteRequest.IsDeleted(ref)
+		if _, ok := d.processedSeries[buildProcessedSeriesKey(deleteRequest.RequestID, deleteRequest.StartTime, deleteRequest.EndTime, seriesID, tableName)]; ok {
+			continue
+		}
+		isDeleted, ff := deleteRequest.IsDeleted(userID, lbls, chk)
 		if !isDeleted {
 			continue
 		}
@@ -304,9 +383,9 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 				"delete_request_id", deleteRequest.RequestID,
 				"sequence_num", deleteRequest.SequenceNum,
 				"user", deleteRequest.UserID,
-				"chunkID", string(ref.ChunkID),
+				"chunkID", string(chk.ChunkID),
 			)
-			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
+			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(userID)).Inc()
 			return true, nil
 		}
 		filterFuncs = append(filterFuncs, ff)
@@ -316,10 +395,10 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(userID)).Inc()
+	return true, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		for _, ff := range filterFuncs {
-			if ff(ts, s, structuredMetadata...) {
+			if ff(ts, s, structuredMetadata) {
 				return true
 			}
 		}
@@ -401,6 +480,15 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
+
+	// When we hit a timeout, MarkPhaseTimedOut is called to clear the list of delete requests to avoid marking delete requests as processed.
+	// Since this method is still called when we hit a timeout, we do not want to drop the progress so that deletion skips the already processed streams.
+	if len(d.deleteRequestsToProcess) > 0 {
+		d.processedSeries = map[string]struct{}{}
+		if err := os.Remove(filepath.Join(d.workingDir, seriesProgressFilename)); err != nil && !os.IsNotExist(err) {
+			level.Error(util_log.Logger).Log("msg", "failed to remove series progress file", "err", err)
+		}
+	}
 }
 
 func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, userID string) bool {
@@ -417,8 +505,36 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 	return len(d.deleteRequestsToProcess) != 0
 }
 
-func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
+func (d *DeleteRequestsManager) DropFromIndex(_ []byte, _ retention.Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
+}
+
+func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
+	d.deleteRequestsToProcessMtx.Lock()
+	defer d.deleteRequestsToProcessMtx.Unlock()
+
+	userIDStr := unsafeGetString(userID)
+	if d.deleteRequestsToProcess[userIDStr] == nil {
+		return nil
+	}
+
+	for _, req := range d.deleteRequestsToProcess[userIDStr].requests {
+		// if the delete request does not touch the series, do not waste space in storing the marker
+		if !labels.Selector(req.matchers).Matches(lbls) {
+			continue
+		}
+		processedSeriesKey := buildProcessedSeriesKey(req.RequestID, req.StartTime, req.EndTime, seriesID, tableName)
+		if _, ok := d.processedSeries[processedSeriesKey]; ok {
+			return fmt.Errorf("series already marked as processed: [table: %s, user: %s, req_id: %s, start: %d, end: %d, series: %s]", tableName, userID, req.RequestID, req.StartTime, req.EndTime, seriesID)
+		}
+		d.processedSeries[processedSeriesKey] = struct{}{}
+	}
+
+	return nil
+}
+
+func buildProcessedSeriesKey(requestID string, startTime, endTime model.Time, seriesID []byte, tableName string) string {
+	return fmt.Sprintf("%s/%d/%d/%s/%s", requestID, startTime, endTime, tableName, seriesID)
 }
 
 func getMaxRetentionInterval(userID string, limits Limits) time.Duration {
@@ -437,4 +553,20 @@ func getMaxRetentionInterval(userID string, limits Limits) time.Duration {
 	}
 
 	return time.Duration(maxRetention)
+}
+
+func loadSeriesProgress(workingDir string) (map[string]struct{}, error) {
+	data, err := os.ReadFile(filepath.Join(workingDir, seriesProgressFilename))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	processedSeries := map[string]struct{}{}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &processedSeries); err != nil {
+			return nil, err
+		}
+	}
+
+	return processedSeries, nil
 }

@@ -223,7 +223,17 @@
       "supportsFIPS" : true
     },
     "regionRegex" : "^us\\-isof\\-\\w+\\-\\d+$",
-    "regions" : { }
+    "regions" : {
+      "aws-iso-f-global" : {
+        "description" : "AWS ISOF global region"
+      },
+      "us-isof-east-1" : {
+        "description" : "US ISOF EAST"
+      },
+      "us-isof-south-1" : {
+        "description" : "US ISOF SOUTH"
+      }
+    }
   } ],
   "version" : "1.1"
 }

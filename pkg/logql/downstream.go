@@ -140,7 +140,9 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 }
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
-	f(d)
+	if !f(d) {
+		return
+	}
 	if d.SampleExpr != nil {
 		d.SampleExpr.Walk(f)
 	}
@@ -177,7 +179,9 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
+	if !f(c) {
+		return
+	}
 	if c.SampleExpr != nil {
 		c.SampleExpr.Walk(f)
 	}
@@ -280,7 +284,9 @@ func (e QuantileSketchEvalExpr) String() string {
 }
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -311,7 +317,9 @@ func (e QuantileSketchMergeExpr) String() string {
 }
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -343,7 +351,9 @@ func (e MergeFirstOverTimeExpr) String() string {
 }
 
 func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -375,7 +385,9 @@ func (e MergeLastOverTimeExpr) String() string {
 }
 
 func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -406,7 +418,9 @@ func (e CountMinSketchEvalExpr) String() string {
 }
 
 func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -693,6 +707,15 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
+}
+
+func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
+	_ context.Context,
+	_ syntax.VariantsExpr,
+	_ Params,
+) (StepEvaluator, error) {
+	// TODO(twhitney): does the downstream evaluator need to handle variants?
+	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
 }
 
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr

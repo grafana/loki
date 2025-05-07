@@ -27,11 +27,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/tls/certprovider"
 	"google.golang.org/grpc/credentials/tls/certprovider/pemfile"
-	"google.golang.org/grpc/internal/grpcsync"
 )
 
 // bundle is an implementation of credentials.Bundle which implements mTLS
@@ -81,7 +81,7 @@ func NewBundle(jd json.RawMessage) (credentials.Bundle, func(), error) {
 	}
 	return &bundle{
 		transportCredentials: &reloadingCreds{provider: provider},
-	}, grpcsync.OnceFunc(func() { provider.Close() }), nil
+	}, sync.OnceFunc(func() { provider.Close() }), nil
 }
 
 func (t *bundle) TransportCredentials() credentials.TransportCredentials {

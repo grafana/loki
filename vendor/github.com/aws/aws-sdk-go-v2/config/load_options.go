@@ -216,7 +216,14 @@ type LoadOptions struct {
 	// Whether S3 Express auth is disabled.
 	S3DisableExpressAuth *bool
 
+	// Whether account id should be built into endpoint resolution
 	AccountIDEndpointMode aws.AccountIDEndpointMode
+
+	// Specify if request checksum should be calculated
+	RequestChecksumCalculation aws.RequestChecksumCalculation
+
+	// Specifies if response checksum should be validated
+	ResponseChecksumValidation aws.ResponseChecksumValidation
 
 	// Service endpoint override. This value is not necessarily final and is
 	// passed to the service's EndpointResolverV2 for further delegation.
@@ -288,6 +295,14 @@ func (o LoadOptions) getAccountIDEndpointMode(ctx context.Context) (aws.AccountI
 	return o.AccountIDEndpointMode, len(o.AccountIDEndpointMode) > 0, nil
 }
 
+func (o LoadOptions) getRequestChecksumCalculation(ctx context.Context) (aws.RequestChecksumCalculation, bool, error) {
+	return o.RequestChecksumCalculation, o.RequestChecksumCalculation > 0, nil
+}
+
+func (o LoadOptions) getResponseChecksumValidation(ctx context.Context) (aws.ResponseChecksumValidation, bool, error) {
+	return o.ResponseChecksumValidation, o.ResponseChecksumValidation > 0, nil
+}
+
 func (o LoadOptions) getBaseEndpoint(context.Context) (string, bool, error) {
 	return o.BaseEndpoint, o.BaseEndpoint != "", nil
 }
@@ -353,6 +368,26 @@ func WithAccountIDEndpointMode(m aws.AccountIDEndpointMode) LoadOptionsFunc {
 		if m != "" {
 			o.AccountIDEndpointMode = m
 		}
+		return nil
+	}
+}
+
+// WithRequestChecksumCalculation is a helper function to construct functional options
+// that sets RequestChecksumCalculation on config's LoadOptions
+func WithRequestChecksumCalculation(c aws.RequestChecksumCalculation) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		if c > 0 {
+			o.RequestChecksumCalculation = c
+		}
+		return nil
+	}
+}
+
+// WithResponseChecksumValidation is a helper function to construct functional options
+// that sets ResponseChecksumValidation on config's LoadOptions
+func WithResponseChecksumValidation(v aws.ResponseChecksumValidation) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.ResponseChecksumValidation = v
 		return nil
 	}
 }

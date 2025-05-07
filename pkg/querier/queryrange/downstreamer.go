@@ -113,7 +113,7 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 		newStart = query.Params.Start()
 		newEnd   = query.Params.End()
 	)
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch rng := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			off := rng.Left.Offset
@@ -127,6 +127,7 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 
 			}
 		}
+		return true
 	})
 	return expr.String(), newStart, newEnd
 }
@@ -195,18 +196,26 @@ func (in instance) For(
 	}()
 
 	var err error
-	for resp := range ch {
-		if err != nil {
-			continue
+	for {
+		select {
+		case <-ctx.Done():
+			// Return early if the context is canceled
+			return acc.Result(), ctx.Err()
+		case resp, ok := <-ch:
+			if !ok {
+				// Channel closed, we're done
+				return acc.Result(), err
+			}
+			if err != nil {
+				continue
+			}
+			if resp.Err != nil {
+				err = resp.Err
+				continue
+			}
+			err = acc.Accumulate(ctx, resp.Res, resp.I)
 		}
-		if resp.Err != nil {
-			err = resp.Err
-			continue
-		}
-		err = acc.Accumulate(ctx, resp.Res, resp.I)
 	}
-
-	return acc.Result(), err
 }
 
 // convert to matrix
@@ -214,10 +223,11 @@ func sampleStreamToMatrix(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Matrix, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Series{}
-		x.Metric = make(labels.Labels, 0, len(stream.Labels))
+		lblsBuilder := labels.NewScratchBuilder(len(stream.Labels))
 		for _, l := range stream.Labels {
-			x.Metric = append(x.Metric, labels.Label(l))
+			lblsBuilder.Add(l.Name, l.Value)
 		}
+		x.Metric = lblsBuilder.Labels()
 
 		x.Floats = make([]promql.FPoint, 0, len(stream.Samples))
 		for _, sample := range stream.Samples {
@@ -236,10 +246,11 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	xs := make(promql.Vector, 0, len(streams))
 	for _, stream := range streams {
 		x := promql.Sample{}
-		x.Metric = make(labels.Labels, 0, len(stream.Labels))
+		lblsBuilder := labels.NewScratchBuilder(len(stream.Labels))
 		for _, l := range stream.Labels {
-			x.Metric = append(x.Metric, labels.Label(l))
+			lblsBuilder.Add(l.Name, l.Value)
 		}
+		x.Metric = lblsBuilder.Labels()
 
 		x.T = stream.Samples[0].TimestampMs
 		x.F = stream.Samples[0].Value
