@@ -142,9 +142,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			partitionID: 0,
 			lastSeenAt:  time.Unix(100, 0),
 			record: &proto.StreamMetadata{
-				StreamHash:             123,
-				EntriesSize:            1000,
-				StructuredMetadataSize: 500,
+				StreamHash: 123,
+				TotalSize:  1500,
 			},
 			expected: map[string]map[int32]map[uint64]Stream{
 				"tenant1": {
@@ -186,9 +185,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			tenantID:    "tenant1",
 			partitionID: 1,
 			record: &proto.StreamMetadata{
-				StreamHash:             456,
-				EntriesSize:            2000,
-				StructuredMetadataSize: 1000,
+				StreamHash: 456,
+				TotalSize:  3000,
 			},
 			lastSeenAt: time.Unix(200, 0),
 			expected: map[string]map[int32]map[uint64]Stream{
@@ -240,9 +238,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			tenantID:    "tenant1",
 			partitionID: 0,
 			record: &proto.StreamMetadata{
-				StreamHash:             123,
-				EntriesSize:            3000,
-				StructuredMetadataSize: 1500,
+				StreamHash: 123,
+				TotalSize:  4500,
 			},
 			lastSeenAt: time.Unix(300, 0),
 			expected: map[string]map[int32]map[uint64]Stream{
@@ -265,9 +262,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			name:     "update existing bucket",
 			tenantID: "tenant1",
 			record: &proto.StreamMetadata{
-				StreamHash:             888,
-				EntriesSize:            1000,
-				StructuredMetadataSize: 500,
+				StreamHash: 888,
+				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(852, 0),
 			metadata: &streamMetadata{
@@ -308,9 +304,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			name:     "clean up buckets outside rate window",
 			tenantID: "tenant1",
 			record: &proto.StreamMetadata{
-				StreamHash:             999,
-				EntriesSize:            2000,
-				StructuredMetadataSize: 1000,
+				StreamHash: 999,
+				TotalSize:  3000,
 			},
 			lastSeenAt: time.Unix(1000, 0), // Current time reference
 			metadata: &streamMetadata{
@@ -354,9 +349,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 			name:     "update same minute bucket",
 			tenantID: "tenant1",
 			record: &proto.StreamMetadata{
-				StreamHash:             555,
-				EntriesSize:            1000,
-				StructuredMetadataSize: 500,
+				StreamHash: 555,
+				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(1100, 0),
 			metadata: &streamMetadata{
@@ -398,11 +392,10 @@ func TestStreamMetadata_Store(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			totalSize := tt.record.EntriesSize + tt.record.StructuredMetadataSize
 			bucketStart := tt.lastSeenAt.Truncate(bucketDuration).UnixNano()
 			bucketCutOff := tt.lastSeenAt.Add(-rateWindow).UnixNano()
 
-			tt.metadata.Store(tt.tenantID, tt.partitionID, tt.record.StreamHash, totalSize, tt.lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
+			tt.metadata.Store(tt.tenantID, tt.partitionID, tt.record.StreamHash, tt.record.TotalSize, tt.lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
 
 			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {
 				require.Contains(t, tt.expected, tenant)
@@ -440,13 +433,11 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 			}
 
 			record := &proto.StreamMetadata{
-				StreamHash:             uint64(i),
-				EntriesSize:            1000,
-				StructuredMetadataSize: 500,
+				StreamHash: uint64(i),
+				TotalSize:  1500,
 			}
 
-			totalSize := record.EntriesSize + record.StructuredMetadataSize
-			m.Store(tenantID, partitionID, record.StreamHash, totalSize, lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
+			m.Store(tenantID, partitionID, record.StreamHash, record.TotalSize, lastSeenAt.UnixNano(), bucketStart, bucketCutOff)
 		}(i)
 	}
 	wg.Wait()

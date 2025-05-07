@@ -68,9 +68,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			tenantID: "tenant2",
 			streams: []*proto.StreamMetadata{
 				{
-					StreamHash:             0x2,
-					EntriesSize:            1000,
-					StructuredMetadataSize: 10,
+					StreamHash: 0x2,
+					TotalSize:  1010,
 				},
 			},
 			// expect data
@@ -103,10 +102,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			tenantID:         "tenant1",
 			maxActiveStreams: 10,
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 4040,
@@ -137,8 +136,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 0,
@@ -173,11 +172,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x5, EntriesSize: 1000, StructuredMetadataSize: 10},
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
+				{StreamHash: 0x5, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 3030,
@@ -214,11 +213,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x5, EntriesSize: 1000, StructuredMetadataSize: 10},
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
+				{StreamHash: 0x5, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 5050,
@@ -242,10 +241,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 2020,
@@ -273,10 +272,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID: "tenant1",
 			streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned  but exceeds stream limit
+				{StreamHash: 0x1, TotalSize: 1010}, // Unassigned
+				{StreamHash: 0x2, TotalSize: 1000}, // Assigned
+				{StreamHash: 0x3, TotalSize: 1010}, // Unassigned
+				{StreamHash: 0x4, TotalSize: 1010}, // Assigned  but exceeds stream limit
 			},
 			// expect data
 			expectedIngestedBytes: 1010,
