@@ -553,6 +553,107 @@ func BenchmarkReader(b *testing.B) {
 	}
 }
 
+func BenchmarkReader_withBounds(b *testing.B) {
+	generator := DatasetGenerator{
+		RowCount:     1_000_000,
+		PageSizeHint: 2 * 1024 * 1024, // 2MB
+		Columns: []generatorColumnConfig{
+			{
+				Name:              "stream",
+				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 1000,
+			},
+			{
+				Name:              "timestamp",
+				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 100_000,
+			},
+			{
+				Name:              "log",
+				ValueType:         datasetmd.VALUE_TYPE_BYTE_ARRAY,
+				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				AvgSize:           1024,
+				CardinalityTarget: 100_000,
+			},
+		},
+		SortInfo: &datasetmd.ColumnSortInfo{
+			ColumnIndex: 0,
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		},
+	}
+
+	// Generate dataset once per case
+	ds, cols := generator.Build(b, rand.Int63())
+
+	tests := []struct {
+		name   string
+		bounds *ColumnBounds
+	}{
+		{
+			name: "bounds=none",
+		},
+		{
+			name: "bounds=early",
+			bounds: &ColumnBounds{
+				column:        cols[0],
+				boundsChecker: BoundsForEqual(Int64Value(100), datasetmd.SORT_DIRECTION_ASCENDING),
+			},
+		},
+		{
+			name: "bounds=late",
+			bounds: &ColumnBounds{
+				column:        cols[0],
+				boundsChecker: BoundsForEqual(Int64Value(900), datasetmd.SORT_DIRECTION_ASCENDING),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			opts := ReaderOptions{
+				Dataset: ds,
+				Columns: cols,
+			}
+
+			if tt.bounds != nil {
+				opts.Bounds = tt.bounds
+			}
+
+			batch := make([]Row, 1000)
+			for b.Loop() {
+				reader := NewReader(opts)
+				var rowsRead int
+				for {
+					n, err := reader.Read(context.Background(), batch)
+					if err == io.EOF {
+						break
+					}
+
+					if tt.bounds != nil && errors.Is(err, ErrBoundExceeded) {
+						break
+					}
+
+					if err != nil {
+						b.Fatal(err)
+					}
+					rowsRead += n
+				}
+				reader.Close()
+
+				b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
+			}
+		})
+	}
+}
+
 func BenchmarkPredicateExecution(b *testing.B) {
 	// Generate dataset with two columns, one with high cardinality and one with low cardinality
 	// higher the cardinality, more selective the predicate
