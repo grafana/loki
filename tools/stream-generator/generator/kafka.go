@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/limits"
 	frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -33,14 +33,14 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distr
 		return
 	}
 
-	var streamMetadata []*logproto.StreamMetadata
+	var streamMetadata []*proto.StreamMetadata
 	for _, stream := range streamsBatch {
-		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash: stream.HashKeyNoShard,
 		})
 	}
 
-	req := &logproto.ExceedsLimitsRequest{
+	req := &proto.ExceedsLimitsRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}
@@ -93,13 +93,22 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 				logSize += uint64(len(entry.Line))
 			}
 
-			// Add metadata record
-			metadataRecord, err := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashKeyNoShard, logSize, 0)
+			metadata := proto.StreamMetadata{
+				StreamHash:  stream.HashKeyNoShard,
+				EntriesSize: logSize,
+			}
+			b, err := metadata.Marshal()
 			if err != nil {
-				errCh <- fmt.Errorf("failed to encode stream metadata: %w", err)
+				errCh <- fmt.Errorf("failed to marshal metadata: %w", err)
 				return
 			}
 
+			metadataRecord := &kgo.Record{
+				Key:       []byte(tenant),
+				Value:     b,
+				Partition: partitionID,
+				Topic:     kafka.MetadataTopicFor(s.cfg.Kafka.Topic),
+			}
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
 
