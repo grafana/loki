@@ -13,12 +13,12 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
-	exceedsLimits(context.Context, *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error)
+	exceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -35,7 +35,7 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -65,7 +65,7 @@ func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req 
 			lastErr = err
 			continue
 		}
-		client := c.(logproto.IngestLimitsFrontendClient)
+		client := c.(proto.IngestLimitsFrontendClient)
 		resp, err := client.ExceedsLimits(ctx, req)
 		if err != nil {
 			lastErr = err
@@ -138,21 +138,21 @@ func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams
 	return true, reasonsForHashes, nil
 }
 
-func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*logproto.ExceedsLimitsRequest, error) {
+func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:             stream.HashKeyNoShard,
 			EntriesSize:            entriesSize,
 			StructuredMetadataSize: structuredMetadataSize,
 		})
 	}
-	return &logproto.ExceedsLimitsRequest{
+	return &proto.ExceedsLimitsRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

@@ -201,9 +201,9 @@ func (t *table) Put(chk chunk.Chunk) {
 func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	var chunks []chunk.Chunk
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 
 	for seriesID := range t.chunks[userID] {
 		for _, chk := range t.chunks[userID][seriesID] {

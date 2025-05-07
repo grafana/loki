@@ -76,18 +76,14 @@ func NewStreamMetadata(size int) StreamMetadata {
 		stripes: make([]map[string]map[int32]map[uint64]Stream, size),
 		locks:   make([]stripeLock, size),
 	}
-
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]map[int32]map[uint64]Stream)
 	}
-
 	return s
 }
 
 func (s *streamMetadata) All(fn AllFunc) {
-	for i := range s.stripes {
-		s.locks[i].RLock()
-
+	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partitionID, partition := range partitions {
 				for _, stream := range partition {
@@ -95,97 +91,85 @@ func (s *streamMetadata) All(fn AllFunc) {
 				}
 			}
 		}
-
-		s.locks[i].RUnlock()
-	}
+	})
 }
 
 func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
-	i := s.getStripeIdx(tenant)
-
-	s.locks[i].RLock()
-	defer s.locks[i].RUnlock()
-
-	for partitionID, partition := range s.stripes[i][tenant] {
-		for _, stream := range partition {
-			fn(partitionID, stream)
+	s.withRLock(tenant, func(i int) {
+		for partitionID, partition := range s.stripes[i][tenant] {
+			for _, stream := range partition {
+				fn(partitionID, stream)
+			}
 		}
-	}
+	})
 }
 
 func (s *streamMetadata) StoreCond(tenant string, streams map[int32][]Stream, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) uint64 {
-	i := s.getStripeIdx(tenant)
-
-	s.locks[i].Lock()
-	defer s.locks[i].Unlock()
-
-	if _, ok := s.stripes[i][tenant]; !ok {
-		s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
-	}
-
 	var ingestedBytes uint64
-	for partitionID, streams := range streams {
-		if _, ok := s.stripes[i][tenant][partitionID]; !ok {
-			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
+	s.withLock(tenant, func(i int) {
+		if _, ok := s.stripes[i][tenant]; !ok {
+			s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
 		}
 
-		var (
-			activeStreams = 0
-			newStreams    = 0
-		)
-
-		// Count as active streams all stream that are not expired.
-		for _, stored := range s.stripes[i][tenant][partitionID] {
-			if stored.LastSeenAt >= cutoff {
-				activeStreams++
+		for partitionID, streams := range streams {
+			if _, ok := s.stripes[i][tenant][partitionID]; !ok {
+				s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
 			}
-		}
 
-		for _, stream := range streams {
-			stored, found := s.stripes[i][tenant][partitionID][stream.Hash]
+			var (
+				activeStreams = 0
+				newStreams    = 0
+			)
 
-			// If the stream is new or expired, check if it exceeds the limit.
-			// If limit is not exceeded and the stream is expired, reset the stream.
-			if !found || (stored.LastSeenAt < cutoff) {
-				// Count up the new stream before updating
-				newStreams++
-
-				if !cond(float64(activeStreams+newStreams), stream) {
-					continue
-				}
-
-				// If the stream is stored and expired, reset the stream
-				if found && stored.LastSeenAt < cutoff {
-					s.stripes[i][tenant][partitionID][stream.Hash] = Stream{Hash: stream.Hash, LastSeenAt: stream.LastSeenAt}
+			// Count as active streams all stream that are not expired.
+			for _, stored := range s.stripes[i][tenant][partitionID] {
+				if stored.LastSeenAt >= cutoff {
+					activeStreams++
 				}
 			}
 
-			s.storeStream(i, tenant, partitionID, stream.Hash, stream.TotalSize, stream.LastSeenAt, bucketStart, bucketCutOff)
+			for _, stream := range streams {
+				stored, found := s.stripes[i][tenant][partitionID][stream.Hash]
 
-			ingestedBytes += stream.TotalSize
+				// If the stream is new or expired, check if it exceeds the limit.
+				// If limit is not exceeded and the stream is expired, reset the stream.
+				if !found || (stored.LastSeenAt < cutoff) {
+					// Count up the new stream before updating
+					newStreams++
+
+					if !cond(float64(activeStreams+newStreams), stream) {
+						continue
+					}
+
+					// If the stream is stored and expired, reset the stream
+					if found && stored.LastSeenAt < cutoff {
+						s.stripes[i][tenant][partitionID][stream.Hash] = Stream{Hash: stream.Hash, LastSeenAt: stream.LastSeenAt}
+					}
+				}
+
+				s.storeStream(i, tenant, partitionID, stream.Hash, stream.TotalSize, stream.LastSeenAt, bucketStart, bucketCutOff)
+
+				ingestedBytes += stream.TotalSize
+			}
 		}
-	}
-
+	})
 	return ingestedBytes
 }
 
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
-	i := s.getStripeIdx(tenant)
+	s.withLock(tenant, func(i int) {
+		// Initialize tenant map if it doesn't exist
+		if _, ok := s.stripes[i][tenant]; !ok {
+			s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
+		}
 
-	s.locks[i].Lock()
-	defer s.locks[i].Unlock()
+		// Initialize partition map if it doesn't exist
+		if s.stripes[i][tenant][partitionID] == nil {
+			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
+		}
 
-	// Initialize tenant map if it doesn't exist
-	if _, ok := s.stripes[i][tenant]; !ok {
-		s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
-	}
-
-	// Initialize partition map if it doesn't exist
-	if s.stripes[i][tenant][partitionID] == nil {
-		s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
-	}
-
-	s.storeStream(i, tenant, partitionID, streamHash, recTotalSize, recordTime, bucketStart, bucketCutOff)
+		s.storeStream(i, tenant, partitionID, streamHash, recTotalSize, recordTime, bucketStart, bucketCutOff)
+	})
 }
 
 func (s *streamMetadata) storeStream(i int, tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
@@ -245,10 +229,7 @@ func (s *streamMetadata) storeStream(i int, tenant string, partitionID int32, st
 
 func (s *streamMetadata) Evict(cutoff int64) map[string]int {
 	evicted := make(map[string]int)
-
-	for i := range s.locks {
-		s.locks[i].Lock()
-
+	s.forEachLock(func(i int) {
 		for tenant, streams := range s.stripes[i] {
 			for partitionID, partition := range streams {
 				for streamHash, stream := range partition {
@@ -259,16 +240,12 @@ func (s *streamMetadata) Evict(cutoff int64) map[string]int {
 				}
 			}
 		}
-		s.locks[i].Unlock()
-	}
-
+	})
 	return evicted
 }
 
 func (s *streamMetadata) EvictPartitions(partitions []int32) {
-	for i := range s.locks {
-		s.locks[i].Lock()
-
+	s.forEachLock(func(i int) {
 		for tenant, tenantPartitions := range s.stripes[i] {
 			for _, deleteID := range partitions {
 				delete(tenantPartitions, deleteID)
@@ -277,14 +254,47 @@ func (s *streamMetadata) EvictPartitions(partitions []int32) {
 				delete(s.stripes[i], tenant)
 			}
 		}
+	})
+}
 
+// forEachRLock executes fn with a shared lock for each stripe.
+func (s *streamMetadata) forEachRLock(fn func(i int)) {
+	for i := range s.stripes {
+		s.locks[i].RLock()
+		fn(i)
+		s.locks[i].RUnlock()
+	}
+}
+
+// forEachLock executes fn with an exclusive lock for each stripe.
+func (s *streamMetadata) forEachLock(fn func(i int)) {
+	for i := range s.stripes {
+		s.locks[i].Lock()
+		fn(i)
 		s.locks[i].Unlock()
 	}
 }
 
-func (s *streamMetadata) getStripeIdx(tenant string) int {
+// withRLock executes fn with a shared lock on the stripe.
+func (s *streamMetadata) withRLock(tenant string, fn func(i int)) {
+	i := s.getStripe(tenant)
+	s.locks[i].RLock()
+	defer s.locks[i].RUnlock()
+	fn(i)
+}
+
+// withLock executes fn with an exclusive lock on the stripe.
+func (s *streamMetadata) withLock(tenant string, fn func(i int)) {
+	i := s.getStripe(tenant)
+	s.locks[i].Lock()
+	defer s.locks[i].Unlock()
+	fn(i)
+}
+
+// getStripe returns the stripe index for the tenant.
+func (s *streamMetadata) getStripe(tenant string) int {
 	h := fnv.New32()
-	h.Write([]byte(tenant))
+	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
 }
 

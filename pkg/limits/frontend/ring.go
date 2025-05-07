@@ -9,7 +9,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 const (
@@ -27,7 +27,7 @@ type RingGatherer struct {
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
 	numPartitions           int
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
 }
 
 // NewRingGatherer returns a new RingGatherer.
@@ -35,7 +35,7 @@ func NewRingGatherer(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse],
+	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
 ) *RingGatherer {
 	return &RingGatherer{
@@ -48,7 +48,7 @@ func NewRingGatherer(
 }
 
 // ExceedsLimits implements ExceedsLimitsGatherer.
-func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
+func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -60,7 +60,7 @@ func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsL
 	if err != nil {
 		return nil, err
 	}
-	ownedStreams := make(map[string][]*logproto.StreamMetadata)
+	ownedStreams := make(map[string][]*proto.StreamMetadata)
 	for _, s := range req.Streams {
 		partitionID := int32(s.StreamHash % uint64(g.numPartitions))
 		addr, ok := partitionConsumers[partitionID]
@@ -72,7 +72,7 @@ func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsL
 		ownedStreams[addr] = append(ownedStreams[addr], s)
 	}
 	errg, ctx := errgroup.WithContext(ctx)
-	responseCh := make(chan *logproto.ExceedsLimitsResponse, len(ownedStreams))
+	responseCh := make(chan *proto.ExceedsLimitsResponse, len(ownedStreams))
 	for addr, streams := range ownedStreams {
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(addr)
@@ -80,7 +80,7 @@ func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsL
 				level.Error(g.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
 				return err
 			}
-			resp, err := client.(logproto.IngestLimitsClient).ExceedsLimits(ctx, &logproto.ExceedsLimitsRequest{
+			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
 				Tenant:  req.Tenant,
 				Streams: streams,
 			})
@@ -95,7 +95,7 @@ func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *logproto.ExceedsL
 		return nil, err
 	}
 	close(responseCh)
-	responses := make([]*logproto.ExceedsLimitsResponse, 0, len(rs.Instances))
+	responses := make([]*proto.ExceedsLimitsResponse, 0, len(rs.Instances))
 	for resp := range responseCh {
 		responses = append(responses, resp)
 	}
@@ -146,7 +146,7 @@ func (g *RingGatherer) getZoneAwarePartitionConsumers(ctx context.Context, insta
 
 type getAssignedPartitionsResponse struct {
 	addr     string
-	response *logproto.GetAssignedPartitionsResponse
+	response *proto.GetAssignedPartitionsResponse
 }
 
 // getPartitionConsumers returns the consumer for each partition.
@@ -185,7 +185,7 @@ func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 				level.Error(g.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+			resp, err := client.(proto.IngestLimitsClient).GetAssignedPartitions(ctx, &proto.GetAssignedPartitionsRequest{})
 			if err != nil {
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
