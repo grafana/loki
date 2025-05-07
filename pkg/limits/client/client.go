@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -67,7 +67,7 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Client is a gRPC client for the ingest-limits.
 type Client struct {
-	logproto.IngestLimitsClient
+	proto.IngestLimitsClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
@@ -89,7 +89,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		IngestLimitsClient: logproto.NewIngestLimitsClient(conn),
+		IngestLimitsClient: proto.NewIngestLimitsClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		Closer:             conn,
 	}, nil

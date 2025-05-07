@@ -11,30 +11,30 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestFrontend_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name                         string
-		expectedExceedsLimitsRequest *logproto.ExceedsLimitsRequest
-		exceedsLimitsResponses       []*logproto.ExceedsLimitsResponse
+		expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
+		exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
 		request                      httpExceedsLimitsRequest
 		expected                     httpExceedsLimitsResponse
 	}{{
 		name: "within limits",
-		expectedExceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{}},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{}},
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
@@ -43,30 +43,30 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		// expected should be default value.
 	}, {
 		name: "exceeds limits",
-		expectedExceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		},
-		exceedsLimitsResponses: []*logproto.ExceedsLimitsResponse{{
-			Results: []*logproto.ExceedsLimitsResult{{
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		}},
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash:             0x1,
 				EntriesSize:            0x2,
 				StructuredMetadataSize: 0x3,
 			}},
 		},
 		expected: httpExceedsLimitsResponse{
-			Results: []*logproto.ExceedsLimitsResult{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},

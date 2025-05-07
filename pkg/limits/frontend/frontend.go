@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 // Frontend is a frontend for the limits service. It is responsible for
@@ -27,7 +27,7 @@ type Frontend struct {
 	cfg                     Config
 	logger                  log.Logger
 	gatherer                ExceedsLimitsGatherer
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
 	lifecycler              *ring.Lifecycler
@@ -48,12 +48,12 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	)
 
 	// Set up the assigned partitions cache.
-	var assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	var assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
 	if cfg.AssignedPartitionsCacheTTL == 0 {
 		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = NewNopCache[string, *logproto.GetAssignedPartitionsResponse]()
+		assignedPartitionsCache = NewNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	} else {
-		assignedPartitionsCache = NewTTLCache[string, *logproto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+		assignedPartitionsCache = NewTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
 	gatherer := NewRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
 
@@ -87,17 +87,17 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	return f, nil
 }
 
-// ExceedsLimits implements logproto.IngestLimitsFrontendClient.
-func (f *Frontend) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+// ExceedsLimits implements proto.IngestLimitsFrontendClient.
+func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	resps, err := f.gatherer.ExceedsLimits(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	results := make([]*logproto.ExceedsLimitsResult, 0, len(req.Streams))
+	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
 	for _, resp := range resps {
 		results = append(results, resp.Results...)
 	}
-	return &logproto.ExceedsLimitsResponse{results}, nil
+	return &proto.ExceedsLimitsResponse{results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {
