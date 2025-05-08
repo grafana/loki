@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
@@ -39,7 +40,7 @@ func NewLiteral(v any) *Literal {
 	case time.Duration:
 		return &Literal{Literal: datatype.NewDurationLiteral(casted)}
 	default:
-		return &Literal{Literal: datatype.NewNullLiteral()}
+		panic(fmt.Sprintf("invalid literal value type %T", casted))
 	}
 }
 

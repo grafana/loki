@@ -38,6 +38,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		value     any
+		want      any
 		arrowType arrow.Type
 	}{
 		{
@@ -68,11 +69,13 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		{
 			name:      "timestamp",
 			value:     time.Unix(3600, 0).UTC(),
+			want:      int64(3600000000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "duration",
 			value:     time.Hour,
+			want:      int64(3600000000000),
 			arrowType: arrow.INT64,
 		},
 		{
@@ -93,7 +96,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			for i := range n {
 				val := colVec.Value(i)
-				require.Equal(t, tt.value, val)
+				if tt.want != nil {
+					require.Equal(t, tt.want, val)
+				} else {
+					require.Equal(t, tt.value, val)
+				}
 			}
 		})
 	}

@@ -38,7 +38,7 @@ var (
 		String:    arrow.BinaryTypes.String,
 		Integer:   arrow.PrimitiveTypes.Int64,
 		Float:     arrow.PrimitiveTypes.Float64,
-		Timestamp: arrow.PrimitiveTypes.Int64,
+		Timestamp: arrow.FixedWidthTypes.Timestamp_ns,
 		Duration:  arrow.PrimitiveTypes.Int64,
 		Bytes:     arrow.PrimitiveTypes.Int64,
 	}
