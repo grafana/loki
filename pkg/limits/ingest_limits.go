@@ -341,10 +341,6 @@ func (s *IngestLimits) stopping(failureCase error) error {
 		s.wal.Close()
 	}
 
-	if s.writer != nil {
-		s.writer.Close()
-	}
-
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
@@ -382,8 +378,9 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
 	)
 
-	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
-	for _, stream := range req.Streams {
+	streams := req.Streams
+	valid := 0
+	for _, stream := range streams {
 		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
@@ -392,16 +389,16 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			continue
 		}
 
-		streams = append(streams, stream)
+		streams[valid] = stream
+		valid++
 	}
+	streams = streams[:valid]
 
-	rejected := make(map[uint64]Reason)
-	cond := streamLimitExceeded(maxActiveStreams, rejected)
-
-	stored := s.metadata.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	cond := streamLimitExceeded(maxActiveStreams)
+	accepted, rejected := s.metadata.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
 
 	var ingestedBytes uint64
-	for _, stream := range stored {
+	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
 		err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, stream)
@@ -412,11 +409,11 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	var results []*proto.ExceedsLimitsResult
-	for streamHash, reason := range rejected {
+	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
+	for _, stream := range rejected {
 		results = append(results, &proto.ExceedsLimitsResult{
-			StreamHash: streamHash,
-			Reason:     uint32(reason),
+			StreamHash: stream.StreamHash,
+			Reason:     uint32(ReasonExceedsMaxStreams),
 		})
 	}
 

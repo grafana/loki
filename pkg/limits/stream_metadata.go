@@ -33,7 +33,7 @@ type StreamMetadata interface {
 
 	// StoreCond tries to store a list of streams for a specific tenant and partition,
 	// until the partition limit is reached. It returns the total ingested bytes.
-	StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) []*proto.StreamMetadata
+	StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata)
 
 	// Store updates or creates the stream metadata for a specific tenant and partition.
 	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
@@ -108,8 +108,9 @@ func (s *streamMetadata) Usage(tenant string, fn UsageFunc) {
 	})
 }
 
-func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) []*proto.StreamMetadata {
+func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	stored := make([]*proto.StreamMetadata, 0, len(streams))
+	rejected := make([]*proto.StreamMetadata, 0, len(streams))
 
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
@@ -142,6 +143,7 @@ func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadat
 				activeStreams[partitionID]++
 
 				if !cond(float64(activeStreams[partitionID]), stream) {
+					rejected = append(rejected, stream)
 					continue
 				}
 
@@ -157,7 +159,7 @@ func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadat
 		}
 	})
 
-	return stored
+	return stored, rejected
 }
 
 func (s *streamMetadata) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
@@ -304,12 +306,8 @@ func (s *streamMetadata) getStripe(tenant string) int {
 
 // streamLimitExceeded returns a CondFunc that checks if the number of active streams
 // exceeds the given limit. If it does, the stream is added to the results map.
-func streamLimitExceeded(limit uint64, rejections map[uint64]Reason) CondFunc {
+func streamLimitExceeded(limit uint64) CondFunc {
 	return func(acc float64, stream *proto.StreamMetadata) bool {
-		if acc > float64(limit) {
-			rejections[stream.StreamHash] = ReasonExceedsMaxStreams
-			return false
-		}
-		return true
+		return acc <= float64(limit)
 	}
 }

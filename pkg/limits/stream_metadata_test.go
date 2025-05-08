@@ -502,7 +502,7 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 
 		// expectations
 		expectedStored   []*proto.StreamMetadata
-		expectedRejected map[uint64]Reason
+		expectedRejected []*proto.StreamMetadata
 	}{
 		{
 			name: "no streams",
@@ -561,8 +561,8 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 			expectedStored: []*proto.StreamMetadata{
 				{StreamHash: 0x0, TotalSize: 1000},
 			},
-			expectedRejected: map[uint64]Reason{
-				0x1: ReasonExceedsMaxStreams,
+			expectedRejected: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
 		},
 		{
@@ -586,9 +586,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				{StreamHash: 0x0, TotalSize: 1000},
 				{StreamHash: 0x1, TotalSize: 1000},
 			},
-			expectedRejected: map[uint64]Reason{
-				0x2: ReasonExceedsMaxStreams,
-				0x3: ReasonExceedsMaxStreams,
+			expectedRejected: []*proto.StreamMetadata{
+				{StreamHash: 0x2, TotalSize: 1000},
+				{StreamHash: 0x3, TotalSize: 1000},
 			},
 		},
 		{
@@ -616,8 +616,8 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				{StreamHash: 0x0, TotalSize: 1000},
 				{StreamHash: 0x3, TotalSize: 1000},
 			},
-			expectedRejected: map[uint64]Reason{
-				0x5: ReasonExceedsMaxStreams,
+			expectedRejected: []*proto.StreamMetadata{
+				{StreamHash: 0x5, TotalSize: 1000},
 			},
 		},
 		{
@@ -655,9 +655,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				{StreamHash: 0x3, TotalSize: 1000},
 				{StreamHash: 0x4, TotalSize: 1000},
 			},
-			expectedRejected: map[uint64]Reason{
-				0x2: ReasonExceedsMaxStreams,
-				0x5: ReasonExceedsMaxStreams,
+			expectedRejected: []*proto.StreamMetadata{
+				{StreamHash: 0x2, TotalSize: 1000},
+				{StreamHash: 0x5, TotalSize: 1000},
 			},
 		},
 		{
@@ -690,15 +690,12 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rejected := make(map[uint64]Reason)
-			cond := streamLimitExceeded(tt.maxActiveStreams, rejected)
+			cond := streamLimitExceeded(tt.maxActiveStreams)
 
-			stored := tt.metadata.StoreCond("tenant1", tt.streams, now.UnixNano(), cutoff, bucketStart, bucketCutOff, cond)
+			stored, rejected := tt.metadata.StoreCond("tenant1", tt.streams, now.UnixNano(), cutoff, bucketStart, bucketCutOff, cond)
 
 			require.ElementsMatch(t, tt.expectedStored, stored)
-			if tt.expectedRejected != nil {
-				require.Equal(t, tt.expectedRejected, rejected)
-			}
+			require.ElementsMatch(t, tt.expectedRejected, rejected)
 		})
 	}
 }

@@ -449,8 +449,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Nil(t, resp.Results)
-
+			require.Empty(t, resp.Results)
 		}()
 	}
 
