@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore/providers/filesystem"
@@ -32,7 +33,8 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 	// from this directory structure. The existing benchmark data generation might need adjustments
 	// if it doesn't produce this format.
 	// Use NewBucket from thanos-io/objstore/providers/filesystem, similar to store_dataobj.go
-	bucketClient, err := filesystem.NewBucket(dataDir)
+	storeDir := filepath.Join(dataDir, "dataobj")
+	bucketClient, err := filesystem.NewBucket(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}

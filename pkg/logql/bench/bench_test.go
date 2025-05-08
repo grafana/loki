@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var slowTests = flag.Bool("slow-tests", false, "run slow tests")
@@ -185,7 +186,7 @@ func testNameRegex(name string) string {
 
 func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
-	t.Skip("Too slow for now.")
+	// t.Skip("Too slow for now.")
 	engine, config := setupBenchmarkWithStore(t, StoreDataObjV2Engine)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -196,9 +197,9 @@ func TestLogQLQueries(t *testing.T) {
 	uniqueQueries := make(map[string]struct{})
 	for _, c := range cases {
 		// Uncomment this to run only log queries
-		// if c.Kind() != "log" {
-		// 	continue
-		// }
+		if c.Kind() != "log" {
+			continue
+		}
 		if _, exists := uniqueQueries[c.Query]; exists {
 			continue
 		}
@@ -221,6 +222,10 @@ func TestLogQLQueries(t *testing.T) {
 		q := engine.Query(params)
 		res, err := q.Exec(ctx)
 		require.NoError(t, err)
+		require.Equal(t, logqlmodel.ValueTypeStreams, string(res.Data.Type()))
+		xs := res.Data.(logqlmodel.Streams)
+		require.Greater(t, len(xs), 0, "no streams returned")
+
 		if testing.Verbose() {
 			// Log the result type and some basic stats
 			t.Logf("Result Type: %s", res.Data.Type())
