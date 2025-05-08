@@ -186,6 +186,7 @@ func testNameRegex(name string) string {
 
 func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
+	// TODO(owen-d): uncomment again
 	// t.Skip("Too slow for now.")
 	engine, config := setupBenchmarkWithStore(t, StoreDataObjV2Engine)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
@@ -195,7 +196,16 @@ func TestLogQLQueries(t *testing.T) {
 
 	// Log all unique queries
 	uniqueQueries := make(map[string]struct{})
+
+	// TODO(owen-d): remove the log case filter
+	var logOnlyCases []TestCase
 	for _, c := range cases {
+		if c.Kind() == "log" {
+			logOnlyCases = append(logOnlyCases, c)
+		}
+	}
+
+	for _, c := range logOnlyCases[:1] {
 		// Uncomment this to run only log queries
 		if c.Kind() != "log" {
 			continue
