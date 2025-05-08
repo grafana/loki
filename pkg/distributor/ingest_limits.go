@@ -147,9 +147,8 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:             stream.HashKeyNoShard,
-			EntriesSize:            entriesSize,
-			StructuredMetadataSize: structuredMetadataSize,
+			StreamHash: stream.HashKeyNoShard,
+			TotalSize:  entriesSize + structuredMetadataSize,
 		})
 	}
 	return &proto.ExceedsLimitsRequest{
