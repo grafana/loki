@@ -2,13 +2,10 @@ package clientv2
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
@@ -28,10 +25,23 @@ func New(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger, opts ...kg
 	if err != nil {
 		return nil, err
 	}
-	if cfg.AutoCreateTopicEnabled {
-		setDefaultNumberOfPartitionsForAutocreatedTopics(cfg, client, logger)
-	}
 	return client, nil
+}
+
+// An OptsBuilder is used to build Kafka options using [OptsBuilder.With].
+// The zero value is ready to use.
+type OptsBuilder struct {
+	opts []kgo.Opt
+}
+
+// With appends the options to b.
+func (b *OptsBuilder) With(opts ...kgo.Opt) {
+	b.opts = append(b.opts, opts...)
+}
+
+// Opts returns all appended options.
+func (b *OptsBuilder) Opts() []kgo.Opt {
+	return b.opts
 }
 
 // NewConsumerOpts returns the opts for a client that consumes from Kafka.
@@ -165,28 +175,6 @@ func newCommonOpts(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) 
 		opts = append(opts, kgo.WithHooks(metrics))
 	}
 	return opts
-}
-
-// setDefaultNumberOfPartitionsForAutocreatedTopics makes a best-effort
-// attempt to set the `num.partitions` config option on brokers.
-func setDefaultNumberOfPartitionsForAutocreatedTopics(cfg kafka.Config, client *kgo.Client, logger log.Logger) {
-	if cfg.AutoCreateTopicDefaultPartitions <= 0 {
-		return
-	}
-	// Note: the admin client doesn't need to be closed as it just wraps the
-	// existing client.
-	adm := kadm.NewClient(client)
-	defaultNumberOfPartitions := fmt.Sprintf("%d", cfg.AutoCreateTopicDefaultPartitions)
-	_, err := adm.AlterBrokerConfigsState(context.Background(), []kadm.AlterConfig{{
-		Op:    kadm.SetConfig,
-		Name:  "num.partitions",
-		Value: &defaultNumberOfPartitions,
-	}})
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to set num.partitions on brokers", "err", err)
-		return
-	}
-	level.Info(logger).Log("msg", "set num.partitions on brokers", "value", cfg.AutoCreateTopicDefaultPartitions)
 }
 
 type onlySampledTraces struct {
