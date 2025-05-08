@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/util/topk"
@@ -425,9 +426,10 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			})
 
 		case types.ColumnTypeBuiltin:
+			ty, md := builtinColumnType(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     builtinColumnType(columnExpr.Ref),
+				Type:     ty,
 				Nullable: true,
 				Metadata: md,
 			})
@@ -469,16 +471,16 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 	return arrow.NewSchema(fields, nil), nil
 }
 
-func builtinColumnType(ref types.ColumnRef) arrow.DataType {
+func builtinColumnType(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
 	if ref.Type != types.ColumnTypeBuiltin {
 		panic("builtinColumnType called with a non-builtin column")
 	}
 
 	switch ref.Column {
 	case types.ColumnNameBuiltinTimestamp:
-		return arrow.FixedWidthTypes.Timestamp_ns
+		return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
 	case types.ColumnNameBuiltinMessage:
-		return arrow.BinaryTypes.String
+		return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
 	default:
 		panic(fmt.Sprintf("unsupported builtin column type %s", ref))
 	}
