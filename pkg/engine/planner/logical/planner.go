@@ -176,7 +176,7 @@ func timestampColumnRef() *ColumnRef {
 }
 
 func lineColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinLine, types.ColumnTypeBuiltin)
+	return NewColumnRef(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin)
 }
 
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
