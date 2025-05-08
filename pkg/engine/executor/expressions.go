@@ -48,7 +48,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
-			value: datatype.NewStringLiteral(""),
+			value: datatype.NewLiteral(""),
 			rows:  input.NumRows(),
 			ct:    types.ColumnTypeGenerated,
 		}, nil

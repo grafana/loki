@@ -4,189 +4,177 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/dustin/go-humanize"
 )
 
 type NullLiteral struct {
 }
 
 // String implements Literal.
-func (n *NullLiteral) String() string {
+func (n NullLiteral) String() string {
 	return "null"
 }
 
 // Type implements Literal.
-func (n *NullLiteral) Type() DataType {
-	return Null
+func (n NullLiteral) Type() DataType {
+	return Loki.Null
 }
 
 // Any implements Literal.
-func (n *NullLiteral) Any() any {
+func (n NullLiteral) Any() any {
 	return nil
 }
 
-func (n *NullLiteral) Value() any {
+func (n NullLiteral) Value() any {
 	return nil
 }
 
-type BoolLiteral struct {
-	v bool
-}
+type BoolLiteral bool
 
 // String implements Literal.
-func (b *BoolLiteral) String() string {
-	return strconv.FormatBool(b.v)
+func (b BoolLiteral) String() string {
+	return strconv.FormatBool(bool(b))
 }
 
 // Type implements Literal.
-func (b *BoolLiteral) Type() DataType {
-	return Bool
+func (b BoolLiteral) Type() DataType {
+	return Loki.Bool
 }
 
 // Any implements Literal.
-func (b *BoolLiteral) Any() any {
-	return b.v
+func (b BoolLiteral) Any() any {
+	return b.Value()
 }
 
-func (b *BoolLiteral) Value() bool {
-	return b.v
+func (b BoolLiteral) Value() bool {
+	return bool(b)
 }
 
-type StringLiteral struct {
-	v string
-}
+type StringLiteral string
 
 // String implements Literal.
-func (s *StringLiteral) String() string {
-	return fmt.Sprintf(`"%s"`, s.v)
+func (s StringLiteral) String() string {
+	return fmt.Sprintf(`"%v"`, string(s))
 }
 
 // Type implements Literal.
-func (s *StringLiteral) Type() DataType {
-	return String
+func (s StringLiteral) Type() DataType {
+	return Loki.String
 }
 
 // Any implements Literal.
-func (s *StringLiteral) Any() any {
-	return s.v
+func (s StringLiteral) Any() any {
+	return s.Value()
 }
 
-func (s *StringLiteral) Value() string {
-	return s.v
+func (s StringLiteral) Value() string {
+	return string(s)
 }
 
-type IntegerLiteral struct {
-	v int64
-}
+type IntegerLiteral int64
 
 // String implements Literal.
-func (i *IntegerLiteral) String() string {
-	return strconv.FormatInt(i.v, 10)
+func (i IntegerLiteral) String() string {
+	return strconv.FormatInt(int64(i), 10)
 }
 
 // Type implements Literal.
-func (i *IntegerLiteral) Type() DataType {
-	return Integer
+func (i IntegerLiteral) Type() DataType {
+	return Loki.Integer
 }
 
 // Any implements Literal.
-func (i *IntegerLiteral) Any() any {
-	return i.v
+func (i IntegerLiteral) Any() any {
+	return i.Value()
 }
 
-func (i *IntegerLiteral) Value() int64 {
-	return i.v
+func (i IntegerLiteral) Value() int64 {
+	return int64(i)
 }
 
-type FloatLiteral struct {
-	v float64
-}
+type FloatLiteral float64
 
 // String implements Literal.
-func (f *FloatLiteral) String() string {
-	return strconv.FormatFloat(f.v, 'f', -1, 64)
+func (f FloatLiteral) String() string {
+	return strconv.FormatFloat(float64(f), 'f', -1, 64)
 }
 
 // Type implements Literal.
-func (f *FloatLiteral) Type() DataType {
-	return Float
+func (f FloatLiteral) Type() DataType {
+	return Loki.Float
 }
 
 // Any implements Literal.
-func (f *FloatLiteral) Any() any {
-	return f.v
+func (f FloatLiteral) Any() any {
+	return f.Value()
 }
 
-func (f *FloatLiteral) Value() float64 {
-	return f.v
+func (f FloatLiteral) Value() float64 {
+	return float64(f)
 }
 
-type TimestampLiteral struct {
-	v int64 // unixnano, UTC
-}
+type TimestampLiteral Timestamp
 
 // String implements Literal.
-func (t *TimestampLiteral) String() string {
-	return time.Unix(0, t.v).UTC().Format(time.RFC3339Nano)
+func (t TimestampLiteral) String() string {
+	return time.Unix(0, int64(t.Value())).UTC().Format(time.RFC3339Nano)
 }
 
 // Type implements Literal.
-func (t *TimestampLiteral) Type() DataType {
-	return Timestamp
+func (t TimestampLiteral) Type() DataType {
+	return Loki.Timestamp
 }
 
 // Any implements Literal.
-func (t *TimestampLiteral) Any() any {
+func (t TimestampLiteral) Any() any {
 	return t.Value()
 }
 
-func (t *TimestampLiteral) Value() time.Time {
-	return time.Unix(0, t.v).UTC()
+func (t TimestampLiteral) Value() Timestamp {
+	return Timestamp(t)
 }
 
-type DurationLiteral struct {
-	v time.Duration
-}
+type DurationLiteral int64
 
 // String implements Literal.
-func (d *DurationLiteral) String() string {
-	return d.v.String()
+func (d DurationLiteral) String() string {
+	return time.Duration(d).String()
 }
 
 // Type implements Literal.
-func (d *DurationLiteral) Type() DataType {
-	return Duration
+func (d DurationLiteral) Type() DataType {
+	return Loki.Duration
 }
 
 // Any implements Literal.
-func (d *DurationLiteral) Any() any {
-	return d.v
+func (d DurationLiteral) Any() any {
+	return d.Value()
 }
 
-func (d *DurationLiteral) Value() time.Duration {
-	return d.v
+func (d DurationLiteral) Value() Duration {
+	return Duration(d)
 }
 
-type BytesLiteral struct {
-	v int64
-}
+type BytesLiteral Bytes
 
 // String implements Literal.
-func (b *BytesLiteral) String() string {
-	return fmt.Sprintf("%dB", b.v)
+func (b BytesLiteral) String() string {
+	return humanize.IBytes(uint64(b))
 }
 
 // Type implements Literal.
-func (b *BytesLiteral) Type() DataType {
-	return Bytes
+func (b BytesLiteral) Type() DataType {
+	return Loki.Bytes
 }
 
 // Any implements Literal.
-func (b *BytesLiteral) Any() any {
-	return b.v
+func (b BytesLiteral) Any() any {
+	return b.Value()
 }
 
-func (b *BytesLiteral) Value() int64 {
-	return b.v
+func (b BytesLiteral) Value() Bytes {
+	return Bytes(b)
 }
 
 // Literal is holds a value of [any] typed as [DataType].
@@ -196,45 +184,54 @@ type Literal interface {
 	Type() DataType
 }
 
+type LiteralType interface {
+	any | bool | string | int64 | float64 | Timestamp | Duration | Bytes
+}
+
+type TypedLiteral[T LiteralType] interface {
+	Literal
+	Value() T
+}
+
 var (
-	_ Literal = (*NullLiteral)(nil)
-	_ Literal = (*BoolLiteral)(nil)
-	_ Literal = (*StringLiteral)(nil)
-	_ Literal = (*IntegerLiteral)(nil)
-	_ Literal = (*FloatLiteral)(nil)
-	_ Literal = (*TimestampLiteral)(nil)
-	_ Literal = (*DurationLiteral)(nil)
-	_ Literal = (*BytesLiteral)(nil)
+	_ Literal                 = (*NullLiteral)(nil)
+	_ TypedLiteral[any]       = (*NullLiteral)(nil)
+	_ Literal                 = (*BoolLiteral)(nil)
+	_ TypedLiteral[bool]      = (*BoolLiteral)(nil)
+	_ Literal                 = (*StringLiteral)(nil)
+	_ TypedLiteral[string]    = (*StringLiteral)(nil)
+	_ Literal                 = (*IntegerLiteral)(nil)
+	_ TypedLiteral[int64]     = (*IntegerLiteral)(nil)
+	_ Literal                 = (*FloatLiteral)(nil)
+	_ TypedLiteral[float64]   = (*FloatLiteral)(nil)
+	_ Literal                 = (*TimestampLiteral)(nil)
+	_ TypedLiteral[Timestamp] = (*TimestampLiteral)(nil)
+	_ Literal                 = (*DurationLiteral)(nil)
+	_ TypedLiteral[Duration]  = (*DurationLiteral)(nil)
+	_ Literal                 = (*BytesLiteral)(nil)
+	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
 )
 
-func NewNullLiteral() *NullLiteral {
-	return &NullLiteral{}
+func NewLiteral[T LiteralType](value T) Literal {
+	switch val := any(value).(type) {
+	case bool:
+		return BoolLiteral(val)
+	case string:
+		return StringLiteral(val)
+	case int64:
+		return IntegerLiteral(val)
+	case float64:
+		return FloatLiteral(val)
+	case Timestamp:
+		return TimestampLiteral(val)
+	case Duration:
+		return DurationLiteral(val)
+	case Bytes:
+		return BytesLiteral(val)
+	}
+	panic(fmt.Sprintf("invalid literal value type %T", value))
 }
 
-func NewBoolLiteral(v bool) *BoolLiteral {
-	return &BoolLiteral{v: v}
-}
-
-func NewStringLiteral(v string) *StringLiteral {
-	return &StringLiteral{v: v}
-}
-
-func NewIntegerLiteral(v int64) *IntegerLiteral {
-	return &IntegerLiteral{v: v}
-}
-
-func NewFloatLiteral(v float64) *FloatLiteral {
-	return &FloatLiteral{v: v}
-}
-
-func NewTimestampLiteral(v time.Time) *TimestampLiteral {
-	return &TimestampLiteral{v: v.UTC().UnixNano()}
-}
-
-func NewDurationLiteral(v time.Duration) *DurationLiteral {
-	return &DurationLiteral{v: v}
-}
-
-func NewBytesLiteral(v int64) *BytesLiteral {
-	return &BytesLiteral{v: v}
+func NewNullLiteral() NullLiteral {
+	return NullLiteral{}
 }

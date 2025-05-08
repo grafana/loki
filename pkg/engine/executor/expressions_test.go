@@ -16,10 +16,10 @@ import (
 
 var (
 	fields = []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
-		{Name: "value", Type: arrow.PrimitiveTypes.Float64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Float)},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Bool)},
+		{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+		{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp)},
+		{Name: "value", Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Float)},
+		{Name: "valid", Type: datatype.Arrow.Bool, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Bool)},
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -37,6 +37,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		value     any
+		want      any
 		arrowType arrow.Type
 	}{
 		{
@@ -66,17 +67,17 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		},
 		{
 			name:      "timestamp",
-			value:     time.Unix(3600, 0).UTC(),
+			value:     datatype.Timestamp(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "duration",
-			value:     time.Hour,
+			value:     datatype.Duration(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "bytes",
-			value:     int64(1024),
+			value:     datatype.Bytes(1024),
 			arrowType: arrow.INT64,
 		},
 	} {
@@ -92,7 +93,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			for i := range n {
 				val := colVec.Value(i)
-				require.Equal(t, tt.value, val)
+				if tt.want != nil {
+					require.Equal(t, tt.want, val)
+				} else {
+					require.Equal(t, tt.value, val)
+				}
 			}
 		})
 	}
@@ -226,8 +231,8 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+			{Name: "message", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
+			{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
 		},
 		nil, // No metadata
 	)
@@ -236,16 +241,16 @@ func batch(n int, now time.Time) arrow.Record {
 	logBuilder := array.NewStringBuilder(mem)
 	defer logBuilder.Release()
 
-	tsBuilder := array.NewUint64Builder(mem)
+	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 	defer tsBuilder.Release()
 
 	// 4. Append data to the builders
 	logs := make([]string, n)
-	ts := make([]uint64, n)
+	ts := make([]arrow.Timestamp, n)
 
 	for i := range n {
 		logs[i] = words[i%len(words)]
-		ts[i] = uint64(now.Add(time.Duration(i) * time.Second).UnixNano())
+		ts[i] = arrow.Timestamp(now.Add(time.Duration(i) * time.Second).UnixNano())
 	}
 
 	tsBuilder.AppendValues(ts, nil)
