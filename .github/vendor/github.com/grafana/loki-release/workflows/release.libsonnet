@@ -16,6 +16,8 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
     job.new()
     + job.withPermissions({
       'id-token': 'write',
+      contents: 'write',
+      'pull-requests': 'write',
     })
     + job.withSteps([
       common.fetchReleaseRepo,
@@ -47,12 +49,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "%s" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "$OUTPUTS_VERSION" \
+          --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "$OUTPUTS_BRANCH" \
-          --token "$OUTPUTS_TOKEN" \
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
 
       ||| % pullRequestFooter),
@@ -104,7 +106,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('download binaries')
                    + step.withRun(|||
                      echo "downloading binaries to $(pwd)/dist"
-                     gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/dist .
+                     gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/dist .
                    |||),
 
                    releaseStep('check if release exists')
@@ -115,7 +117,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    })
                    + step.withRun(|||
                      set +e
-                     isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $OUTPUTS_NAME 2>&1)"
+                     isDraft="$(gh release view --json="isDraft" --jq=".isDraft" $(echo $OUTPUTS_NAME | tr -d '"') 2>&1)"
                      set -e
                      if [[ "$isDraft" == "release not found" ]]; then
                        echo "exists=false" >> $GITHUB_OUTPUT
@@ -143,9 +145,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --draft \
                        --release-type simple \
                        --repo-url "${{ env.RELEASE_REPO }}" \
-                       --target-branch "$OUTPUTS_BRANCH" \
-                       --token "$OUTPUTS_TOKEN" \
-                       --shas-to-tag "$OUTPUTS_PR_NUMBER:${SHA}"
+                       --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+                       --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
+                       --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
                    |||),
 
                    releaseStep('upload artifacts')
@@ -155,7 +157,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                      OUTPUTS_NAME: '${{ needs.shouldRelease.outputs.name }}',
                    })
                    + step.withRun(|||
-                     gh release upload --clobber $OUTPUTS_NAME dist/*
+                     gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
                    |||),
 
                    step.new('release artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
@@ -178,6 +180,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
   publishImages: function(getDockerCredsFromVault=false, dockerUsername='grafanabot')
     job.new()
     + job.withNeeds(['createRelease'])
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps(
       [
         common.fetchReleaseLib,
@@ -201,7 +206,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         })
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
-          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/images .
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/images .
         |||),
         step.new('publish docker images', './lib/actions/push-images')
         + step.with({
@@ -239,7 +244,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         })
         + step.withRun(|||
           echo "downloading images to $(pwd)/plugins"
-          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${SHA}/plugins .
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/plugins .
           mkdir -p "release/%s"
         ||| % path),
         step.new('publish docker driver', './lib/actions/push-images')
@@ -258,6 +263,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
     + job.withNeeds(dependencies)
     + job.withPermissions({
       'id-token': 'write',
+      contents: 'write',
     })
     + job.withSteps([
       common.fetchReleaseRepo,
@@ -272,7 +278,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         OUTPUTS_IS_LATEST: '${{ needs.createRelease.outputs.isLatest }}',
       })
       + step.withRun(|||
-        gh release edit $OUTPUTS_NAME --draft=false --latest=$OUTPUTS_IS_LATEST
+        gh release edit $(echo $OUTPUTS_NAME | tr -d '"') --draft=false --latest=$(echo $OUTPUTS_IS_LATEST | tr -d '"')
       |||),
     ]) + job.withOutputs({
       name: '${{ needs.createRelease.outputs.name }}',
@@ -283,6 +289,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
     + job.withNeeds(['publishRelease'])  // always need createRelease for version info
     + job.withPermissions({
       'id-token': 'write',
+      contents: 'write',
     })
     + job.withSteps([
       common.fetchReleaseRepo,
@@ -330,15 +337,15 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           echo "branch_exists=true" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
-          echo "Creating branch: $BRANCH_NAME from tag: $OUTPUTS_NAME"
+          echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
           
           # Create branch from the tag
           git fetch --tags
-          git checkout "$OUTPUTS_BRANCH"
+          git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
 
           # explicity set the github app token to override the release branch protection
-          git remote set-url origin "https://x-access-token:${OUTPUTS_TOKEN}@github.com/${{ env.RELEASE_REPO }}"
+          git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
           
           echo "branch_exists=false" >> $GITHUB_OUTPUT

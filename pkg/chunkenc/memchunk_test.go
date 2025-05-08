@@ -1120,6 +1120,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					for iter.Next() {
 						_ = iter.At()
 					}
+					iter.Close()
 				}
 			})
 		}

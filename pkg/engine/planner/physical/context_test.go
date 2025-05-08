@@ -2,6 +2,7 @@ package physical
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -24,11 +25,15 @@ func TestContext_ConvertLiteral(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(int64(123)),
+			expr:    NewLiteral(123),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(uint64(123456789)),
+			expr:    NewLiteral(time.Now()),
+			wantErr: true,
+		},
+		{
+			expr:    NewLiteral(time.Hour),
 			wantErr: true,
 		},
 		{
@@ -46,7 +51,7 @@ func TestContext_ConvertLiteral(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := convertLiteral(tt.expr)
+			got, err := convertLiteralToString(tt.expr)
 			if tt.wantErr {
 				require.Error(t, err)
 				t.Log(err)
