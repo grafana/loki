@@ -24,10 +24,8 @@ type DataObjV2EngineStore struct {
 }
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
-func NewDataObjV2EngineStore(dataDir string, tenantID string, logger log.Logger) (*DataObjV2EngineStore, error) {
-	if logger == nil {
-		logger = log.NewNopLogger()
-	}
+func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
 	// This assumes the engine is configured to read its specific data format (e.g., Parquet)
@@ -40,7 +38,9 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string, logger log.Logger)
 	}
 
 	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{}
+	engineOpts := logql.EngineOpts{
+		EnableV2Engine: true,
+	}
 
 	// Instantiate the new engine
 	// Note: The tenantID is not directly passed to engine.New here.
