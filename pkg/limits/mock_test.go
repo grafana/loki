@@ -5,8 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 type mockWAL struct {
