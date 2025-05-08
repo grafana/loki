@@ -497,13 +497,12 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 
 		// setup data
 		metadata         *streamMetadata
-		streams          map[int32][]Stream
+		streams          []*proto.StreamMetadata
 		maxActiveStreams uint64
 
 		// expectations
-		expectedStored        map[string]map[int32][]Stream
-		expectedDropped       map[Reason][]uint64
-		expectedIngestedBytes uint64
+		expectedStored   []*proto.StreamMetadata
+		expectedRejected map[uint64]Reason
 	}{
 		{
 			name: "no streams",
@@ -511,118 +510,91 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
 				locks:   make([]stripeLock, 1),
 			},
-			streams:          map[int32][]Stream{},
 			maxActiveStreams: 10,
-			expectedStored:   map[string]map[int32][]Stream{},
 		},
 		{
 			name: "all streams within partition limit",
 			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
-				locks:   make([]stripeLock, 1),
+				numPartitions: 1,
+				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				locks:         make([]stripeLock, 1),
 			},
-			streams: map[int32][]Stream{0: {
-				{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-			}},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
+			},
 			maxActiveStreams: 2,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-						{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 2000,
 		},
 		{
 			name: "all stream within limit per partition",
 			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
-				locks:   make([]stripeLock, 2),
+				numPartitions: 1,
+				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				locks:         make([]stripeLock, 1),
 			},
-			streams: map[int32][]Stream{
-				0: {
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
-				1: {
-					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
 			maxActiveStreams: 2,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-					1: []Stream{
-						{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 2000,
 		},
 		{
 			name: "some streams dropped",
 			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
-				locks:   make([]stripeLock, 1),
+				numPartitions: 1,
+				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				locks:         make([]stripeLock, 1),
 			},
-			streams: map[int32][]Stream{
-				0: {
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
 			maxActiveStreams: 1,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 1000,
-			expectedDropped: map[Reason][]uint64{
-				ReasonExceedsMaxStreams: {0x1},
+			expectedRejected: map[uint64]Reason{
+				0x1: ReasonExceedsMaxStreams,
 			},
 		},
 		{
 			name: "some streams dropped per partition",
 			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
-				locks:   make([]stripeLock, 2),
+				numPartitions: 2,
+				stripes: []map[string]map[int32]map[uint64]Stream{
+					make(map[string]map[int32]map[uint64]Stream),
+					make(map[string]map[int32]map[uint64]Stream),
+				},
+				locks: make([]stripeLock, 2),
 			},
-			streams: map[int32][]Stream{
-				0: {
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
-				1: {
-					{Hash: 0x2, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000}, // 0 % 2 = 0
+				{StreamHash: 0x1, TotalSize: 1000}, // 1 % 2 = 1
+				{StreamHash: 0x2, TotalSize: 1000}, // 2 % 2 = 0
+				{StreamHash: 0x3, TotalSize: 1000}, // 3 % 2 = 1
 			},
 			maxActiveStreams: 1,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-					1: []Stream{
-						{Hash: 0x2, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 2000,
-			expectedDropped: map[Reason][]uint64{
-				ReasonExceedsMaxStreams: {0x1, 0x3},
+			expectedRejected: map[uint64]Reason{
+				0x2: ReasonExceedsMaxStreams,
+				0x3: ReasonExceedsMaxStreams,
 			},
 		},
 		{
 			name: "some streams dropped from a single partition",
 			metadata: &streamMetadata{
+				numPartitions: 2,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -634,84 +606,64 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 					}},
 				locks: make([]stripeLock, 2),
 			},
-			streams: map[int32][]Stream{
-				0: {
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
-				1: {
-					{Hash: 0x2, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x3, TotalSize: 1000},
+				{StreamHash: 0x5, TotalSize: 1000},
 			},
 			maxActiveStreams: 2,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-					1: []Stream{
-						{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-						{Hash: 0x2, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x3, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 2000,
-			expectedDropped: map[Reason][]uint64{
-				ReasonExceedsMaxStreams: {0x3},
+			expectedRejected: map[uint64]Reason{
+				0x5: ReasonExceedsMaxStreams,
 			},
 		},
 		{
 			name: "drops new streams but updates existing streams",
 			metadata: &streamMetadata{
+				numPartitions: 2,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
 							0: {
 								0x0: {Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
+								0x4: {Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
 							},
 							1: {
+								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
 								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-								0x4: {Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
 							},
 						},
 					},
 				},
-				locks: make([]stripeLock, 1),
+				locks: make([]stripeLock, 2),
 			},
-			streams: map[int32][]Stream{
-				0: { // Mixed order of new and existing streams
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x2, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
-				1: { // Mixed order of new and existing streams
-					{Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000}, // 0 % 2 = 0 Existing
+				{StreamHash: 0x2, TotalSize: 1000}, // 2 % 2 = 0 New
+				{StreamHash: 0x1, TotalSize: 1000}, // 1 % 2 = 1 Existing
+				{StreamHash: 0x3, TotalSize: 1000}, // 3 % 2 = 1 Existing
+				{StreamHash: 0x5, TotalSize: 1000}, // 5 % 2 = 1 New
+				{StreamHash: 0x4, TotalSize: 1000}, // 4 % 2 = 0 Existing
 			},
 			maxActiveStreams: 2,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 2000}}},
-						{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 2000}}},
-					},
-					1: []Stream{
-						{Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 2000}}},
-						{Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 2000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
+				{StreamHash: 0x3, TotalSize: 1000},
+				{StreamHash: 0x4, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 4000,
-			expectedDropped: map[Reason][]uint64{
-				ReasonExceedsMaxStreams: {0x2, 0x5},
+			expectedRejected: map[uint64]Reason{
+				0x2: ReasonExceedsMaxStreams,
+				0x5: ReasonExceedsMaxStreams,
 			},
 		},
 		{
 			name: "reset expired but not evicted streams",
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -725,61 +677,28 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 				locks: make([]stripeLock, 1),
 			},
 			maxActiveStreams: 2,
-			streams: map[int32][]Stream{
-				0: {
-					{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-					{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-				},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
-			expectedIngestedBytes: 2000,
-			expectedStored: map[string]map[int32][]Stream{
-				"tenant1": {
-					0: []Stream{
-						{Hash: 0x0, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 1000}}},
-						{Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: 2000}}},
-					},
-				},
+			expectedStored: []*proto.StreamMetadata{
+				{StreamHash: 0x0, TotalSize: 1000},
+				{StreamHash: 0x1, TotalSize: 1000},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualDropped := make(map[Reason][]uint64)
-			cond := streamLimitExceeded(tt.maxActiveStreams, actualDropped)
+			rejected := make(map[uint64]Reason)
+			cond := streamLimitExceeded(tt.maxActiveStreams, rejected)
 
-			stored := tt.metadata.StoreCond("tenant1", tt.streams, cutoff, bucketStart, bucketCutOff, cond)
+			stored := tt.metadata.StoreCond("tenant1", tt.streams, now.UnixNano(), cutoff, bucketStart, bucketCutOff, cond)
 
-			actualStored := make(map[string]map[int32][]Stream)
-			tt.metadata.All(func(tenant string, partitionID int32, stream Stream) {
-				if _, ok := actualStored[tenant]; !ok {
-					actualStored[tenant] = make(map[int32][]Stream)
-				}
-				actualStored[tenant][partitionID] = append(actualStored[tenant][partitionID], stream)
-			})
-
-			for tenant, partitions := range tt.expectedStored {
-				require.Len(t, actualStored[tenant], len(partitions))
-
-				for partitionID, streams := range partitions {
-					require.Len(t, actualStored[tenant][partitionID], len(streams))
-					require.ElementsMatch(t, streams, actualStored[tenant][partitionID])
-				}
+			require.ElementsMatch(t, tt.expectedStored, stored)
+			if tt.expectedRejected != nil {
+				require.Equal(t, tt.expectedRejected, rejected)
 			}
-
-			for reason, streamHashes := range tt.expectedDropped {
-				require.Contains(t, actualDropped, reason)
-				require.ElementsMatch(t, streamHashes, actualDropped[reason])
-			}
-
-			var ingestedBytes uint64
-			for _, streams := range stored {
-				for _, stream := range streams {
-					ingestedBytes += stream.TotalSize
-				}
-			}
-
-			require.Equal(t, tt.expectedIngestedBytes, ingestedBytes)
 		})
 	}
 }

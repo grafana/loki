@@ -380,10 +380,9 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		// Calculate the max active streams per tenant per partition
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
-		// Create a map of streams per partition
-		streams = make(map[int32][]Stream)
 	)
 
+	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	for _, stream := range req.Streams {
 		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
@@ -393,44 +392,33 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			continue
 		}
 
-		streams[partitionID] = append(streams[partitionID], Stream{
-			Hash:       stream.StreamHash,
-			LastSeenAt: recordTime,
-			TotalSize:  stream.TotalSize,
-		})
+		streams = append(streams, stream)
 	}
 
-	storeRes := make(map[Reason][]uint64)
-	cond := streamLimitExceeded(maxActiveStreams, storeRes)
+	rejected := make(map[uint64]Reason)
+	cond := streamLimitExceeded(maxActiveStreams, rejected)
 
-	stored := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
-
-	var results []*proto.ExceedsLimitsResult
-	for reason, streamHashes := range storeRes {
-		for _, streamHash := range streamHashes {
-			results = append(results, &proto.ExceedsLimitsResult{
-				StreamHash: streamHash,
-				Reason:     uint32(reason),
-			})
-		}
-	}
+	stored := s.metadata.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
 
 	var ingestedBytes uint64
-	for _, streams := range stored {
-		for _, stream := range streams {
-			ingestedBytes += stream.TotalSize
+	for _, stream := range stored {
+		ingestedBytes += stream.TotalSize
 
-			err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, &proto.StreamMetadata{
-				StreamHash: stream.Hash,
-				TotalSize:  stream.TotalSize,
-			})
-			if err != nil {
-				level.Error(s.logger).Log("msg", "failed to append stream metadata to WAL", "error", err)
-			}
+		err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, stream)
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to append stream metadata to WAL", "error", err)
 		}
 	}
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
+
+	var results []*proto.ExceedsLimitsResult
+	for streamHash, reason := range rejected {
+		results = append(results, &proto.ExceedsLimitsResult{
+			StreamHash: streamHash,
+			Reason:     uint32(reason),
+		})
+	}
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
