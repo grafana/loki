@@ -27,6 +27,14 @@ var slowTests = flag.Bool("slow-tests", false, "run slow tests")
 
 const testTenant = "test-tenant"
 
+const (
+	StoreDataObj         = "dataobj"
+	StoreDataObjV2Engine = "dataobj-engine"
+	StoreChunk           = "chunk"
+)
+
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
@@ -46,7 +54,13 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngin
 
 	var querier logql.Querier
 	switch storeType {
-	case "dataobj":
+	case StoreDataObjV2Engine:
+		store, err := NewDataObjV2EngineStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		querier, err = store.Querier()
+	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
 		if err != nil {
 			tb.Fatal(err)
@@ -55,7 +69,7 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngin
 		if err != nil {
 			tb.Fatal(err)
 		}
-	case "chunk":
+	case StoreChunk:
 		store, err := NewChunkStore(DefaultDataDir, testTenant)
 		if err != nil {
 			tb.Fatal(err)
@@ -103,7 +117,7 @@ func TestStorageEquality(t *testing.T) {
 	// Generate a list of stores. The first store name provided here is the one
 	// that acts as the baseline.
 	var stores []*store
-	for _, name := range []string{"chunk", "dataobj"} {
+	for _, name := range allStores {
 		store := generateStore(name)
 		stores = append(stores, store)
 	}
@@ -172,7 +186,7 @@ func testNameRegex(name string) string {
 func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
 	t.Skip("Too slow for now.")
-	engine, config := setupBenchmarkWithStore(t, "dataobj")
+	engine, config := setupBenchmarkWithStore(t, StoreDataObjV2Engine)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	// Generate test cases
@@ -181,6 +195,10 @@ func TestLogQLQueries(t *testing.T) {
 	// Log all unique queries
 	uniqueQueries := make(map[string]struct{})
 	for _, c := range cases {
+		// Uncomment this to run only log queries
+		// if c.Kind() != "log" {
+		// 	continue
+		// }
 		if _, exists := uniqueQueries[c.Query]; exists {
 			continue
 		}
@@ -225,7 +243,7 @@ func TestLogQLQueries(t *testing.T) {
 
 func BenchmarkLogQL(b *testing.B) {
 	// Run benchmarks for both storage types
-	for _, storeType := range []string{"dataobj", "chunk"} {
+	for _, storeType := range allStores {
 		engine, config := setupBenchmarkWithStore(b, storeType)
 		ctx := user.InjectOrgID(context.Background(), testTenant)
 
