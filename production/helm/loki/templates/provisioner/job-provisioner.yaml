@@ -14,7 +14,7 @@ metadata:
     {{- with .Values.enterprise.provisioner.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | default "post-install" | quote }}
+    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | quote }}
     "helm.sh/hook-weight": "15"
 spec:
   backoffLimit: 6
@@ -50,11 +50,11 @@ spec:
             - -exuc
             - |
               {{- range .Values.enterprise.provisioner.additionalTenants }}
-              /usr/bin/enterprise-logs-provisioner \
+              /usr/bin/provisioner \
                 -bootstrap-path=/bootstrap \
                 -cluster-name={{ include "loki.clusterName" $ }} \
-                -gel-url={{ include "loki.address" $ }} \
-                -instance={{ .name }} \
+                -api-url={{ tpl $.Values.enterprise.provisioner.apiUrl $ }} \
+                -tenant={{ .name }} \
                 -access-policy=write-{{ .name }}:{{ .name }}:logs:write \
                 -access-policy=read-{{ .name }}:{{ .name }}:logs:read \
                 -token=write-{{ .name }} \
@@ -62,11 +62,11 @@ spec:
               {{- end -}}
 
               {{- with .Values.monitoring.selfMonitoring.tenant }}
-              /usr/bin/enterprise-logs-provisioner \
+              /usr/bin/provisioner \
                 -bootstrap-path=/bootstrap \
                 -cluster-name={{ include "loki.clusterName" $ }} \
-                -gel-url={{ include "loki.address" $ }} \
-                -instance={{ .name }} \
+                -api-url={{ tpl $.Values.enterprise.provisioner.apiUrl $ }} \
+                -tenant={{ .name }} \
                 -access-policy=self-monitoring:{{ .name }}:logs:write,logs:read \
                 -token=self-monitoring
               {{- end }}
@@ -83,13 +83,14 @@ spec:
           env:
             {{ toYaml . | nindent 12 }}
           {{- end }}
+          securityContext: {{- toYaml .Values.enterprise.provisioner.containerSecurityContext | nindent 12 }}
       containers:
         - name: create-secret
           image: {{ include "loki.kubectlImage" . }}
           imagePullPolicy: {{ .Values.kubectlImage.pullPolicy }}
           command:
             - /bin/bash
-            - -exuc
+            - -euc
             - |
               # In case, the admin resources have already been created, the provisioner job
               # does not write the token files to the bootstrap mount.
@@ -99,7 +100,7 @@ spec:
               # or-operation is successful.
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               ! test -s /bootstrap/token-write-{{ .name }} || \
-                kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
+                kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ tpl $.Values.enterprise.provisioner.provisionedSecretPrefix $ }}-{{ .name }}" \
                   --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
                   --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
               {{- end }}
@@ -123,6 +124,7 @@ spec:
             {{- end }}
             - name: bootstrap
               mountPath: /bootstrap
+          securityContext: {{- toYaml .Values.enterprise.provisioner.containerSecurityContext | nindent 12 }}
       {{- with .Values.enterprise.provisioner.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
@@ -144,4 +146,10 @@ spec:
             secretName: "{{ include "enterprise-logs.adminTokenSecret" . }}"
         - name: bootstrap
           emptyDir: {}
+        {{- if .Values.enterprise.provisioner.extraVolumes }}
+        {{- toYaml .Values.enterprise.provisioner.extraVolumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraVolumes }}
+        {{- toYaml .Values.global.extraVolumes | nindent 8 }}
+        {{- end }}
 {{- end }}
