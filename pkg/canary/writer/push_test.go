@@ -203,8 +203,8 @@ func logbatchMonitor(t *testing.T, testCfg testConfig, wg *sync.WaitGroup) func(
 
 			for _, log := range resp.pushReq.Streams {
 				for _, entry := range log.Entries {
-					logsSent[entry.Line] += 1 // received
-					logCount += 1             // total # expected...
+					logsSent[entry.Line]++ // received
+					logCount++             // total # expected...
 				}
 			}
 
