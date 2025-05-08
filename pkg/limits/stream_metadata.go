@@ -125,7 +125,7 @@ func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadat
 				s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
 			}
 
-			// Count as active streams all stream that are not expired.
+			// Count as active streams all streams that are not expired.
 			if _, ok := activeStreams[partitionID]; !ok {
 				for _, stored := range s.stripes[i][tenant][partitionID] {
 					if stored.LastSeenAt >= cutoff {
@@ -141,8 +141,7 @@ func (s *streamMetadata) StoreCond(tenant string, streams []*proto.StreamMetadat
 			if !found || (recorded.LastSeenAt < cutoff) {
 				activeStreams[partitionID]++
 
-				acc := float64(activeStreams[partitionID])
-				if !cond(acc, stream) {
+				if !cond(float64(activeStreams[partitionID]), stream) {
 					continue
 				}
 
