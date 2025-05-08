@@ -27,6 +27,7 @@ querier:
 ingest_limits:
   enabled: true
   window_size: 1h
+  num_partitions: 1
   lifecycler:
     ring:
       kvstore:
@@ -34,6 +35,7 @@ ingest_limits:
       replication_factor: 1
 
 ingest_limits_frontend:
+  num_partitions: 1
   lifecycler:
     ring:
       kvstore:
