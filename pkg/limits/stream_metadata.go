@@ -307,7 +307,7 @@ func (s *streamMetadata) getStripe(tenant string) int {
 // streamLimitExceeded returns a CondFunc that checks if the number of active streams
 // exceeds the given limit. If it does, the stream is added to the results map.
 func streamLimitExceeded(limit uint64) CondFunc {
-	return func(acc float64, stream *proto.StreamMetadata) bool {
+	return func(acc float64, _ *proto.StreamMetadata) bool {
 		return acc <= float64(limit)
 	}
 }
