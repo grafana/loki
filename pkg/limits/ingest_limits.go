@@ -309,17 +309,15 @@ func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, 
 		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
 		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-		// Calculate the total size of the stream
-		totalSize = rec.EntriesSize + rec.StructuredMetadataSize
 	)
 
 	if assigned := s.partitionManager.Has(partition); !assigned {
 		return
 	}
 
-	s.metadata.Store(tenant, partition, rec.StreamHash, totalSize, recordTime, bucketStart, rateWindowCutoff)
+	s.metadata.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
 
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(totalSize))
+	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -381,7 +379,7 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimits
 		streams[partitionID] = append(streams[partitionID], Stream{
 			Hash:       stream.StreamHash,
 			LastSeenAt: recordTime,
-			TotalSize:  stream.EntriesSize + stream.StructuredMetadataSize,
+			TotalSize:  stream.TotalSize,
 		})
 	}
 
@@ -402,5 +400,5 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimits
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	return &proto.ExceedsLimitsResponse{results}, nil
+	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }

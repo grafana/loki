@@ -31,9 +31,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -53,9 +52,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -69,13 +67,11 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x4,
-				EntriesSize:            0x5,
-				StructuredMetadataSize: 0x6,
+				StreamHash: 0x4,
+				TotalSize:  0x9,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -101,13 +97,11 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x4,
-				EntriesSize:            0x5,
-				StructuredMetadataSize: 0x6,
+				StreamHash: 0x4,
+				TotalSize:  0x9,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{

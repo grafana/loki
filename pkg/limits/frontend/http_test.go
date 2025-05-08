@@ -26,18 +26,16 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{}},
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		// expected should be default value.
@@ -46,9 +44,8 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -60,9 +57,8 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		request: httpExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		},
 		expected: httpExceedsLimitsResponse{

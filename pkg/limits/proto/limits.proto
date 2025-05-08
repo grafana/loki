@@ -33,6 +33,5 @@ message GetAssignedPartitionsResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
-  uint64 entriesSize = 2;
-  uint64 structuredMetadataSize = 3;
+  uint64 totalSize = 2;
 }
