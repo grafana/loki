@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	labelMD    = datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
-	metadataMD = datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
+	labelMD    = datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
+	metadataMD = datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
 )
 
 func Test_dataobjScan(t *testing.T) {
