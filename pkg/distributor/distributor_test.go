@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -2396,8 +2397,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		tenant                    string
 		streams                   logproto.PushRequest
 		expectedLimitsCalls       uint64
-		expectedLimitsRequest     *logproto.ExceedsLimitsRequest
-		limitsResponse            *logproto.ExceedsLimitsResponse
+		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
+		limitsResponse            *limitsproto.ExceedsLimitsResponse
 		limitsResponseErr         error
 		expectedErr               string
 	}{{
@@ -2424,17 +2425,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
-			Results: []*logproto.ExceedsLimitsResult{},
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{},
 		},
 	}, {
 		name:                "max stream limit is exceeded",
@@ -2450,17 +2449,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -2480,17 +2477,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
 				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
@@ -2516,21 +2511,18 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}, {
-				StreamHash:             0x11561609feba8cf6,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+				StreamHash: 0x11561609feba8cf6,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -2550,17 +2542,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
@@ -2579,12 +2569,11 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
 		limitsResponseErr: errors.New("failed to check limits"),

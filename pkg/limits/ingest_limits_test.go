@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/limits/internal/testutil"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
@@ -36,11 +36,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 
 		// Request data for ExceedsLimits.
 		tenantID string
-		streams  []*logproto.StreamMetadata
+		streams  []*proto.StreamMetadata
 
 		// Expectations.
 		expectedIngestedBytes float64
-		expectedResults       []*logproto.ExceedsLimitsResult
+		expectedResults       []*proto.ExceedsLimitsResult
 	}{
 		{
 			name: "tenant not found",
@@ -66,11 +66,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 10,
 			// request data
 			tenantID: "tenant2",
-			streams: []*logproto.StreamMetadata{
+			streams: []*proto.StreamMetadata{
 				{
-					StreamHash:             0x2,
-					EntriesSize:            1000,
-					StructuredMetadataSize: 10,
+					StreamHash: 0x2,
+					TotalSize:  1010,
 				},
 			},
 			// expect data
@@ -102,11 +101,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// request data
 			tenantID:         "tenant1",
 			maxActiveStreams: 10,
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 4040,
@@ -136,13 +135,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 0,
-			expectedResults: []*logproto.ExceedsLimitsResult{
+			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x2, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
@@ -172,16 +171,16 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x5, EntriesSize: 1000, StructuredMetadataSize: 10},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
+				{StreamHash: 0x5, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 3030,
-			expectedResults: []*logproto.ExceedsLimitsResult{
+			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x2, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
@@ -213,12 +212,12 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 5,
 			// request data
 			tenantID: "tenant1",
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x5, EntriesSize: 1000, StructuredMetadataSize: 10},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
+				{StreamHash: 0x5, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 5050,
@@ -241,15 +240,15 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10},
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10},
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1010},
+				{StreamHash: 0x2, TotalSize: 1010},
+				{StreamHash: 0x3, TotalSize: 1010},
+				{StreamHash: 0x4, TotalSize: 1010},
 			},
 			// expect data
 			expectedIngestedBytes: 2020,
-			expectedResults: []*logproto.ExceedsLimitsResult{
+			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x3, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
@@ -272,15 +271,15 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
-			streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
-				{StreamHash: 0x2, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned
-				{StreamHash: 0x3, EntriesSize: 1000, StructuredMetadataSize: 10}, // Unassigned
-				{StreamHash: 0x4, EntriesSize: 1000, StructuredMetadataSize: 10}, // Assigned  but exceeds stream limit
+			streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 1010}, // Unassigned
+				{StreamHash: 0x2, TotalSize: 1010}, // Assigned
+				{StreamHash: 0x3, TotalSize: 1010}, // Unassigned
+				{StreamHash: 0x4, TotalSize: 1010}, // Assigned  but exceeds stream limit
 			},
 			// expect data
 			expectedIngestedBytes: 1010,
-			expectedResults: []*logproto.ExceedsLimitsResult{
+			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
 		},
@@ -329,7 +328,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			s.partitionManager.Assign(context.Background(), nil, partitions)
 
 			// Call ExceedsLimits.
-			req := &logproto.ExceedsLimitsRequest{
+			req := &proto.ExceedsLimitsRequest{
 				Tenant:  tt.tenantID,
 				Streams: tt.streams,
 			}
@@ -337,7 +336,6 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, tt.tenantID, resp.Tenant)
 			require.ElementsMatch(t, tt.expectedResults, resp.Results)
 
 			metrics, err := reg.Gather()
@@ -420,15 +418,14 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	for range concurrency {
 		go func() {
 			defer wg.Done()
-			req := &logproto.ExceedsLimitsRequest{
+			req := &proto.ExceedsLimitsRequest{
 				Tenant:  "tenant1",
-				Streams: []*logproto.StreamMetadata{{StreamHash: 1}, {StreamHash: 2}, {StreamHash: 3}, {StreamHash: 4}, {StreamHash: 5}},
+				Streams: []*proto.StreamMetadata{{StreamHash: 1}, {StreamHash: 2}, {StreamHash: 3}, {StreamHash: 4}, {StreamHash: 5}},
 			}
 
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, "tenant1", resp.Tenant)
 			require.Nil(t, resp.Results)
 		}()
 	}

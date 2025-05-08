@@ -15,9 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -31,25 +30,22 @@ const (
 	consumerGroup = "ingest-limits"
 )
 
+// MetadataTopic returns the metadata topic name for the given topic.
+func MetadataTopic(topic string) string {
+	return topic + ".metadata"
+}
+
 var (
-	tenantPartitionDesc = prometheus.NewDesc(
+	partitionsDesc = prometheus.NewDesc(
 		constants.Loki+"_ingest_limits_partitions",
-		"The current number of partitions per tenant.",
-		[]string{"tenant"},
+		"The current number of partitions.",
+		nil,
 		nil,
 	)
-
-	tenantRecordedStreamsDesc = prometheus.NewDesc(
-		constants.Loki+"_ingest_limits_recorded_streams",
-		"The current number of recorded streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		[]string{"tenant"},
-		nil,
-	)
-
-	tenantActiveStreamsDesc = prometheus.NewDesc(
-		constants.Loki+"_ingest_limits_active_streams",
-		"The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		[]string{"tenant"},
+	tenantStreamsDesc = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_streams",
+		"The current number of streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant", "state"},
 		nil,
 	)
 )
@@ -157,7 +153,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
-	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
+	kCfg.Topic = MetadataTopic(kCfg.Topic)
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
@@ -179,51 +175,46 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 }
 
 func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
-	descs <- tenantPartitionDesc
-	descs <- tenantRecordedStreamsDesc
-	descs <- tenantActiveStreamsDesc
+	descs <- partitionsDesc
+	descs <- tenantStreamsDesc
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
-
-	var (
-		recorded            = make(map[string]int)
-		active              = make(map[string]int)
-		partitionsPerTenant = make(map[string]map[int32]struct{})
-	)
-
-	s.metadata.All(func(tenant string, partitionID int32, stream Stream) {
-		if assigned := s.partitionManager.Has(partitionID); !assigned {
-			return
-		}
-
+	// active counts the number of active streams (within the window) per tenant.
+	active := make(map[string]int)
+	// expired counts the number of expired streams (outside the window) per tenant.
+	expired := make(map[string]int)
+	s.metadata.All(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
-			return
-		}
-
-		active[tenant]++
-
-		if _, ok := partitionsPerTenant[tenant]; !ok {
-			partitionsPerTenant[tenant] = make(map[int32]struct{})
-		}
-
-		if _, ok := partitionsPerTenant[tenant][partitionID]; !ok {
-			partitionsPerTenant[tenant][partitionID] = struct{}{}
+			expired[tenant]++
+		} else {
+			active[tenant]++
 		}
 	})
-
-	for tenant, partitions := range partitionsPerTenant {
-		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
+	for tenant, numActive := range active {
+		m <- prometheus.MustNewConstMetric(
+			tenantStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numActive),
+			tenant,
+			"active",
+		)
 	}
-
-	for tenant, active := range active {
-		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
+	for tenant, numExpired := range expired {
+		m <- prometheus.MustNewConstMetric(
+			tenantStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numExpired),
+			tenant,
+			"expired",
+		)
 	}
-
-	for tenant, recorded := range recorded {
-		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
-	}
+	m <- prometheus.MustNewConstMetric(
+		partitionsDesc,
+		prometheus.GaugeValue,
+		float64(len(s.partitionManager.List())),
+	)
 }
 
 func (s *IngestLimits) onPartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
@@ -310,7 +301,7 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
+func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
 	var (
 		// Use the provided lastSeenAt timestamp as the last seen time
 		recordTime = lastSeenAt.UnixNano()
@@ -318,17 +309,15 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
 		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-		// Calculate the total size of the stream
-		totalSize = rec.EntriesSize + rec.StructuredMetadataSize
 	)
 
 	if assigned := s.partitionManager.Has(partition); !assigned {
 		return
 	}
 
-	s.metadata.Store(tenant, partition, rec.StreamHash, totalSize, recordTime, bucketStart, rateWindowCutoff)
+	s.metadata.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
 
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(totalSize))
+	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -350,18 +339,18 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	return allErrs.Err()
 }
 
-// GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
+// GetAssignedPartitions implements the proto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
-func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
-	resp := logproto.GetAssignedPartitionsResponse{
+func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
+	resp := proto.GetAssignedPartitionsResponse{
 		AssignedPartitions: s.partitionManager.List(),
 	}
 	return &resp, nil
 }
 
-// ExceedsLimits implements the logproto.IngestLimitsServer interface.
+// ExceedsLimits implements the proto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
 		// Use the provided lastSeenAt timestamp as the last seen time
@@ -390,7 +379,7 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 		streams[partitionID] = append(streams[partitionID], Stream{
 			Hash:       stream.StreamHash,
 			LastSeenAt: recordTime,
-			TotalSize:  stream.EntriesSize + stream.StructuredMetadataSize,
+			TotalSize:  stream.TotalSize,
 		})
 	}
 
@@ -399,10 +388,10 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 
 	ingestedBytes := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
 
-	var results []*logproto.ExceedsLimitsResult
+	var results []*proto.ExceedsLimitsResult
 	for reason, streamHashes := range storeRes {
 		for _, streamHash := range streamHashes {
-			results = append(results, &logproto.ExceedsLimitsResult{
+			results = append(results, &proto.ExceedsLimitsResult{
 				StreamHash: streamHash,
 				Reason:     uint32(reason),
 			})
@@ -411,14 +400,5 @@ func (s *IngestLimits) ExceedsLimits(_ context.Context, req *logproto.ExceedsLim
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
-	return &logproto.ExceedsLimitsResponse{
-		Tenant:  req.Tenant,
-		Results: results,
-	}, nil
-}
-
-// GetStreamUsage implements the logproto.IngestLimitsServer interface.
-// It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
-	return nil, nil
+	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
