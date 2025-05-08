@@ -135,7 +135,7 @@ func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
 		if !okRHS {
 			return fmt.Errorf("invalid RHS for comparison: expected literal timestamp, got %T", binop.Right)
 		}
-		if rhsLit.ValueType() != datatype.Timestamp {
+		if rhsLit.ValueType() != datatype.LokiType.Timestamp {
 			return fmt.Errorf("unsupported literal type for RHS: %s, expected timestamp", rhsLit.ValueType())
 		}
 		return nil
@@ -191,11 +191,12 @@ func (m *timestampPredicateMapper) rebound(op types.BinaryOp, rightExpr physical
 		return fmt.Errorf("internal error: rebound expected LiteralExpr, got %T for: %s", rightExpr, rightExpr.String())
 	}
 
-	if literalExpr.ValueType() != datatype.Timestamp {
+	if literalExpr.ValueType() != datatype.LokiType.Timestamp {
 		// Also should be caught by verify.
 		return fmt.Errorf("internal error: unsupported literal type in rebound: %s, expected timestamp", literalExpr.ValueType())
 	}
-	val := literalExpr.Literal.(*datatype.TimestampLiteral).Value()
+	v := literalExpr.Literal.(datatype.TimestampLiteral).Value()
+	val := time.Unix(0, int64(v)).UTC()
 
 	switch op {
 	case types.BinaryOpEq: // ts == val
@@ -294,10 +295,10 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			if !ok { // Should not happen
 				return nil, fmt.Errorf("RHS of EQ metadata predicate failed to cast to LiteralExpr")
 			}
-			if rightLiteral.ValueType() != datatype.String {
+			if rightLiteral.ValueType() != datatype.LokiType.String {
 				return nil, fmt.Errorf("unsupported RHS literal type (%v) for EQ metadata predicate, expected ValueTypeStr", rightLiteral.ValueType())
 			}
-			val := rightLiteral.Literal.(*datatype.StringLiteral).Value()
+			val := rightLiteral.Literal.(datatype.StringLiteral).Value()
 
 			return dataobj.MetadataMatcherPredicate{
 				Key:   leftColumn.Ref.Column,
