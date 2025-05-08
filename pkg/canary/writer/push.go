@@ -87,7 +87,7 @@ func NewPush(
 	}
 
 	if logBatchSize < 0 {
-		return nil, fmt.Errorf("logBatcSize must be >= 0")
+		return nil, fmt.Errorf("logBatchSize must be >= 0")
 	}
 
 	client.Timeout = timeout
