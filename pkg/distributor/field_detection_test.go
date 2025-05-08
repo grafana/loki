@@ -326,6 +326,41 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			},
 			expectedLogLevel: constants.LogLevelInfo,
 		},
+		{
+			name: "unstructured info log line",
+			entry: logproto.Entry{
+				Line: `[INFO] unstructured info log line`,
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "unstructured error log line",
+			entry: logproto.Entry{
+				Line: `[ERROR] unstructured error log line`,
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "unstructured warn log line",
+			entry: logproto.Entry{
+				Line: `[WARN] unstructured warn log line`,
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "unstructured critical log line",
+			entry: logproto.Entry{
+				Line: `[CRITICAL] unstructured critical log line`,
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "unstructured debug log line",
+			entry: logproto.Entry{
+				Line: `[DEBUG] unstructured debug log line`,
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
