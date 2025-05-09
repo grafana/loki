@@ -984,6 +984,91 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
 }
 
+func TestOTLPStructuredMetadataCalculation(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create test with resource, scope, and entry metadata that would previously cause negative calculations
+	// when subtracting resource/scope attribute sizes from the total structured metadata size
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with attributes
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+		rl.Resource().Attributes().PutStr("resource.key", "resource.value")
+
+		// Create scope with attributes
+		sl := rl.ScopeLogs().AppendEmpty()
+		sl.Scope().SetName("test-scope")
+		sl.Scope().Attributes().PutStr("scope.key", "scope.value")
+
+		// Add a log record with minimal metadata
+		logRecord := sl.LogRecords().AppendEmpty()
+		logRecord.Body().SetStr("Test entry with minimal metadata")
+		logRecord.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		logRecord.Attributes().PutStr("entry.key", "entry.value")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		DefaultOTLPConfig(defaultGlobalOTLPConfig),
+		[]string{},
+		tracker,
+		stats,
+		false,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Verify there is exactly one stream
+	require.Equal(t, 1, len(pushReq.Streams))
+
+	// Verify we have a single entry with all the expected metadata
+	stream := pushReq.Streams[0]
+	require.Equal(t, 1, len(stream.Entries))
+
+	// Verify the structured metadata bytes are positive
+	require.Greater(t, stats.StructuredMetadataBytes["test-policy"][time.Hour], int64(0),
+		"Structured metadata bytes should be positive")
+
+	// Verify we can find the resource, scope, and entry metadata in the entry
+	entry := stream.Entries[0]
+
+	resourceMetadataFound := false
+	scopeMetadataFound := false
+	entryMetadataFound := false
+
+	for _, metadata := range entry.StructuredMetadata {
+		if metadata.Name == "resource_key" && metadata.Value == "resource.value" {
+			resourceMetadataFound = true
+		}
+		if metadata.Name == "scope_key" && metadata.Value == "scope.value" {
+			scopeMetadataFound = true
+		}
+		if metadata.Name == "entry_key" && metadata.Value == "entry.value" {
+			entryMetadataFound = true
+		}
+	}
+
+	require.True(t, resourceMetadataFound, "Resource metadata should be present in the entry")
+	require.True(t, scopeMetadataFound, "Scope metadata should be present in the entry")
+	require.True(t, entryMetadataFound, "Entry metadata should be present in the entry")
+}
+
 func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
 
