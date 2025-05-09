@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.1](https://github.com/grafana/loki/compare/v3.5.0...v3.5.1) (2025-05-09)
+
+
+### Features
+
+* prepare Loki 3.5 release ([22a5221](https://github.com/grafana/loki/commit/22a52211cb0603922e284f5bb53d5216d6776d8a))
+
 ## [3.5.0](https://github.com/grafana/loki/compare/v3.4.2...v3.5.0) (2025-04-17)
 
 
