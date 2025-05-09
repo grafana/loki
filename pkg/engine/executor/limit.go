@@ -26,7 +26,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 			input := inputs[0]
 			err := input.Read()
 			if err != nil {
-				return newState(input.Value())
+				return failureState(err)
 			}
 			batch, _ = input.Value()
 
