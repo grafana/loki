@@ -23,7 +23,7 @@ const (
 	lblPong   = "pong"
 )
 
-func TestDeleteRequest_IsDeleted(t *testing.T) {
+func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 	now := model.Now()
 	user1 := "user1"
 
@@ -271,7 +271,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
 			tc.deleteRequest.Metrics = newDeleteRequestsManagerMetrics(nil)
-			isExpired, filterFunc := tc.deleteRequest.IsDeleted([]byte(user1), mustParseLabel(lbl), chunkEntry)
+			isExpired, filterFunc := tc.deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)

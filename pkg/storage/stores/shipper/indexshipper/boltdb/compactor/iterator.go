@@ -30,7 +30,7 @@ func ForEachSeries(ctx context.Context, bucket *bbolt.Bucket, config config.Peri
 	}
 
 	cursor := bucket.Cursor()
-	var current retention.Series
+	current := retention.NewSeries()
 
 	for key, _ := cursor.First(); key != nil && ctx.Err() == nil; key, _ = cursor.Next() {
 		ref, ok, err := parseChunkRef(decodeKey(key))

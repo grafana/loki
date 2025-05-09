@@ -297,7 +297,7 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 	logprotoChunkRef := logproto.ChunkRef{
 		UserID: c.userID,
 	}
-	var series retention.Series
+	series := retention.NewSeries()
 	for seriesID, stream := range c.builder.streams {
 		series.Reset(
 			getUnsafeBytes(seriesID),
