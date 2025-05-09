@@ -76,6 +76,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.19.0-weekly.227
 
 - [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
+- [BUGFIX] Fix Helm chart for gateway to be able to use custom file configuration without first line being a comment. https://github.com/grafana/loki/pull/14575
 
 ## 6.19.0
 
