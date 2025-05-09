@@ -1044,6 +1044,14 @@ ingest_limits:
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
+  # The address of the seed broker for the Kafka read client.
+  # CLI flag: -ingest-limits.kafka-read-address
+  [kafka_read_address: <string> | default = ""]
+
+  # The address of the seed broker for the Kafka write client.
+  # CLI flag: -ingest-limits.kafka-write-address
+  [kafka_write_address: <string> | default = ""]
+
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
   # CLI flag: -ingest-limits.num-partitions
