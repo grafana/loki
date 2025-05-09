@@ -62,6 +62,9 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngin
 			tb.Fatal(err)
 		}
 		querier, err = store.Querier()
+		if err != nil {
+			tb.Fatal(err)
+		}
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
 		if err != nil {

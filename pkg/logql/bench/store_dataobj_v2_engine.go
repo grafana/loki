@@ -117,7 +117,7 @@ func (q *dataObjV2EngineQuerier) SelectLogs(ctx context.Context, params logql.Se
 }
 
 // SelectSamples implements logql.Querier.
-func (q *dataObjV2EngineQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *dataObjV2EngineQuerier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, errStoreUnimplemented
 }
 
