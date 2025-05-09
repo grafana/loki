@@ -87,13 +87,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             1,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x6,
+				StreamHash: 1,
+				TotalSize:  9,
 			}, {
-				StreamHash:             2,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x8,
+				StreamHash: 2,
+				TotalSize:  11,
 			}},
 		},
 		responseErr: errors.New("failed to check limits"),

@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ColumnMetadataBuiltinLine      = ColumnMetadata(types.ColumnTypeBuiltin, String)
+	ColumnMetadataBuiltinMessage   = ColumnMetadata(types.ColumnTypeBuiltin, String)
 	ColumnMetadataBuiltinTimestamp = ColumnMetadata(types.ColumnTypeBuiltin, Timestamp)
 )
 

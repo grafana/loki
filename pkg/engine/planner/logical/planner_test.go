@@ -102,10 +102,10 @@ func TestConvertAST_Success(t *testing.T) {
 %11 = MATCH_STR ambiguous.bar "baz"
 %12 = OR %10 %11
 %13 = SELECT %9 [predicate=%12]
-%14 = MATCH_STR builtin.line "metric.go"
-%15 = MATCH_STR builtin.line "foo"
+%14 = MATCH_STR builtin.message "metric.go"
+%15 = MATCH_STR builtin.message "foo"
 %16 = AND %14 %15
-%17 = NOT_MATCH_RE builtin.line "(a|b|c)"
+%17 = NOT_MATCH_RE builtin.message "(a|b|c)"
 %18 = AND %16 %17
 %19 = SELECT %13 [predicate=%18]
 %20 = LIMIT %19 [skip=0, fetch=1000]

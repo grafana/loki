@@ -116,10 +116,10 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		require.ErrorContains(t, err, errors.ErrKey.Error())
 	})
 
-	t.Run("string(line)", func(t *testing.T) {
+	t.Run("string(message)", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
-				Column: "line",
+				Column: "message",
 				Type:   types.ColumnTypeBuiltin,
 			},
 		}
@@ -223,7 +223,7 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "line", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
 			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
 		},
 		nil, // No metadata

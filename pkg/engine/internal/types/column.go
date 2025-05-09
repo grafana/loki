@@ -22,7 +22,7 @@ const (
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
-	ColumnNameBuiltinLine      = "line"
+	ColumnNameBuiltinMessage   = "message"
 	MetadataKeyColumnType      = "column_type"
 	MetadataKeyColumnDataType  = "column_datatype"
 )

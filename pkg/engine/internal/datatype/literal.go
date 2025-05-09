@@ -121,12 +121,12 @@ func (f *FloatLiteral) Value() float64 {
 }
 
 type TimestampLiteral struct {
-	v time.Time
+	v int64 // unixnano, UTC
 }
 
 // String implements Literal.
 func (t *TimestampLiteral) String() string {
-	return t.v.UTC().Format(time.RFC3339Nano)
+	return time.Unix(0, t.v).UTC().Format(time.RFC3339Nano)
 }
 
 // Type implements Literal.
@@ -136,11 +136,11 @@ func (t *TimestampLiteral) Type() DataType {
 
 // Any implements Literal.
 func (t *TimestampLiteral) Any() any {
-	return t.v.UTC()
+	return t.Value()
 }
 
 func (t *TimestampLiteral) Value() time.Time {
-	return t.v
+	return time.Unix(0, t.v).UTC()
 }
 
 type DurationLiteral struct {
@@ -228,7 +228,7 @@ func NewFloatLiteral(v float64) *FloatLiteral {
 }
 
 func NewTimestampLiteral(v time.Time) *TimestampLiteral {
-	return &TimestampLiteral{v: v}
+	return &TimestampLiteral{v: v.UTC().UnixNano()}
 }
 
 func NewDurationLiteral(v time.Duration) *DurationLiteral {
