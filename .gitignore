@@ -44,10 +44,6 @@ pkg/ui/frontend/.vite/*
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login
 
-# Workspaces
-*.work
-*.work.sum
-
 # emacs
 .#*
 
