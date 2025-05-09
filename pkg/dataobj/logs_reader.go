@@ -169,6 +169,11 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
+	sortInfo, err := dec.SortInfo(ctx, sec)
+	if err != nil {
+		return fmt.Errorf("reading sort info: %w", err)
+	}
+
 	dset := encoding.LogsDataset(dec, sec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
@@ -188,11 +193,32 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		}
 	}
 
-	readerOpts := dataset.ReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: OrderPredicates(predicates),
+	var bounds *dataset.ColumnBounds
+	// Only one column bound is supported. While we could theoretically support multiple bounds,
+	// handling multiple sort columns and their bounds is complex:
+	// - We can only use bounds for secondary columns on rows that have the same primary column value
+	// - This would require smaller batch sizes and more calls through the stack
+	if len(sortInfo) > 0 {
+		idx := sortInfo[0].ColumnIndex
+		if idx >= uint32(len(columns)) {
+			panic(fmt.Sprintf("logsReader: invalid sort column index %d", idx))
+		}
 
+		if column := columns[idx]; column != nil {
+			for _, predicate := range predicates {
+				if b := dataset.GenerateBoundsForColumn(predicate, column, sortInfo[0].Direction); b != nil {
+					bounds = b
+					break
+				}
+			}
+		}
+	}
+
+	readerOpts := dataset.ReaderOptions{
+		Dataset:         dset,
+		Columns:         columns,
+		Predicates:      OrderPredicates(predicates),
+		Bounds:          bounds,
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
 

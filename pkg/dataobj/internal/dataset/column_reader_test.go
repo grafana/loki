@@ -53,7 +53,7 @@ func Test_columnReader_SeekAcrossPages(t *testing.T) {
 
 	// Read enough values to span into the second page
 	batch := make([]Value, 4)
-	n, err := cr.Read(context.Background(), batch)
+	n, err := cr.Read(context.Background(), batch, nil)
 	require.NoError(t, err)
 	require.Equal(t, 4, n)
 
@@ -130,7 +130,7 @@ func readColumn(t *testing.T, cr *columnReader, batchSize int) ([]string, error)
 	)
 
 	for {
-		n, err := cr.Read(context.Background(), batch)
+		n, err := cr.Read(context.Background(), batch, nil)
 		if n > 0 {
 			all = append(all, convertToStrings(t, batch[:n])...)
 		}

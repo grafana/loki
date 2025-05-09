@@ -8,6 +8,7 @@ import (
 	"iter"
 	"math/rand"
 	"slices"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -38,7 +39,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 		Columns: columns,
 		Predicates: []Predicate{
 			GreaterThanPredicate{
-				Column: columns[3], // birth_year column
+				Column: columns[4], // birth_year column
 				Value:  Int64Value(1985),
 			},
 		},
@@ -74,7 +75,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		// which is out of range of at least one page.
 		Predicates: []Predicate{
 			EqualPredicate{
-				Column: columns[0], // first_name column
+				Column: columns[1], // first_name column
 				Value:  ByteArrayValue([]byte("Henry")),
 			},
 		},
@@ -100,10 +101,10 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	// Create a predicate that only returns people born after 1985
 	r := NewReader(ReaderOptions{
 		Dataset: dset,
-		Columns: []Column{columns[3]},
+		Columns: []Column{columns[4]},
 		Predicates: []Predicate{
 			GreaterThanPredicate{
-				Column: columns[3], // birth_year column
+				Column: columns[4], // birth_year column
 				Value:  Int64Value(1985),
 			},
 		},
@@ -153,7 +154,7 @@ func Test_Reader_Stats(t *testing.T) {
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{GreaterThanPredicate{
-			Column: columns[3], // birth_year column
+			Column: columns[4], // birth_year column
 			Value:  Int64Value(1985),
 		}},
 	})
@@ -552,6 +553,107 @@ func BenchmarkReader(b *testing.B) {
 	}
 }
 
+func BenchmarkReader_withBounds(b *testing.B) {
+	generator := DatasetGenerator{
+		RowCount:     1_000_000,
+		PageSizeHint: 2 * 1024 * 1024, // 2MB
+		Columns: []generatorColumnConfig{
+			{
+				Name:              "stream",
+				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 1000,
+			},
+			{
+				Name:              "timestamp",
+				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				CardinalityTarget: 100_000,
+			},
+			{
+				Name:              "log",
+				ValueType:         datasetmd.VALUE_TYPE_BYTE_ARRAY,
+				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
+				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				AvgSize:           1024,
+				CardinalityTarget: 100_000,
+			},
+		},
+		SortInfo: &datasetmd.ColumnSortInfo{
+			ColumnIndex: 0,
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		},
+	}
+
+	// Generate dataset once per case
+	ds, cols := generator.Build(b, rand.Int63())
+
+	tests := []struct {
+		name   string
+		bounds *ColumnBounds
+	}{
+		{
+			name: "bounds=none",
+		},
+		{
+			name: "bounds=early",
+			bounds: &ColumnBounds{
+				column:        cols[0],
+				boundsChecker: BoundsForEqual(Int64Value(100), datasetmd.SORT_DIRECTION_ASCENDING),
+			},
+		},
+		{
+			name: "bounds=late",
+			bounds: &ColumnBounds{
+				column:        cols[0],
+				boundsChecker: BoundsForEqual(Int64Value(900), datasetmd.SORT_DIRECTION_ASCENDING),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			opts := ReaderOptions{
+				Dataset: ds,
+				Columns: cols,
+			}
+
+			if tt.bounds != nil {
+				opts.Bounds = tt.bounds
+			}
+
+			batch := make([]Row, 1000)
+			for b.Loop() {
+				reader := NewReader(opts)
+				var rowsRead int
+				for {
+					n, err := reader.Read(context.Background(), batch)
+					if err == io.EOF {
+						break
+					}
+
+					if tt.bounds != nil && errors.Is(err, ErrBoundExceeded) {
+						break
+					}
+
+					if err != nil {
+						b.Fatal(err)
+					}
+					rowsRead += n
+				}
+				reader.Close()
+
+				b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
+			}
+		})
+	}
+}
+
 func BenchmarkPredicateExecution(b *testing.B) {
 	// Generate dataset with two columns, one with high cardinality and one with low cardinality
 	// higher the cardinality, more selective the predicate
@@ -758,6 +860,7 @@ type DatasetGenerator struct {
 	RowCount     int
 	PageSizeHint int
 	Columns      []generatorColumnConfig
+	SortInfo     *datasetmd.ColumnSortInfo // Optional sort info. Only a single column sort order is supported by the generator.
 }
 
 func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
@@ -766,37 +869,70 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 	memColumns := make([]*MemColumn, 0, len(g.Columns))
 	rng := rand.New(rand.NewSource(seed))
 
-	for _, colCfg := range g.Columns {
-		next, stop := iter.Pull(columnValues(rng, colCfg))
-		defer stop()
+	// Step 1: Generate all records
+	type record struct {
+		values []Value
+	}
+	records := make([]record, 0, g.RowCount)
+	// Create iterators for each column
+	nexts := make([]func() (Value, bool), len(g.Columns))
+	stops := make([]func(), len(g.Columns))
+	for i, cfg := range g.Columns {
+		next, stop := iter.Pull(columnValues(rng, cfg))
+		nexts[i] = next
+		stops[i] = stop
+	}
+	defer func() {
+		for _, stop := range stops {
+			stop()
+		}
+	}()
 
+	for range g.RowCount {
+		row := record{values: make([]Value, len(g.Columns))}
+		for i, colCfg := range g.Columns {
+			if rng.Float64() < colCfg.SparsityRate {
+				row.values[i] = Value{} // nil value
+				continue
+			}
+			val, ok := nexts[i]()
+			require.True(t, ok, "generator should yield values")
+			row.values[i] = val
+		}
+		records = append(records, row)
+	}
+
+	if g.SortInfo != nil {
+		sort.Slice(records, func(i, j int) bool {
+			if g.SortInfo.Direction == datasetmd.SORT_DIRECTION_ASCENDING {
+				return CompareValues(records[i].values[g.SortInfo.ColumnIndex], records[j].values[g.SortInfo.ColumnIndex]) < 0
+			}
+			return CompareValues(records[i].values[g.SortInfo.ColumnIndex], records[j].values[g.SortInfo.ColumnIndex]) > 0
+		})
+	}
+
+	for colIdx, cfg := range g.Columns {
 		opts := BuilderOptions{
 			PageSizeHint: g.PageSizeHint,
-			Value:        colCfg.ValueType,
-			Encoding:     colCfg.Encoding,
-			Compression:  colCfg.Compression,
+			Value:        cfg.ValueType,
+			Encoding:     cfg.Encoding,
+			Compression:  cfg.Compression,
 			Statistics: StatisticsOptions{
 				StoreCardinalityStats: true,
 			},
 		}
 
-		if colCfg.ValueType == datasetmd.VALUE_TYPE_INT64 || colCfg.ValueType == datasetmd.VALUE_TYPE_UINT64 {
+		if cfg.ValueType == datasetmd.VALUE_TYPE_INT64 || cfg.ValueType == datasetmd.VALUE_TYPE_UINT64 {
 			opts.Statistics.StoreRangeStats = true
 		}
 
 		// Create a builder for this column
-		builder, err := NewColumnBuilder(colCfg.Name, opts)
+		builder, err := NewColumnBuilder(cfg.Name, opts)
 		require.NoError(t, err)
 
 		// Add values to the builder
-		for i := range g.RowCount {
-			if rng.Float64() < colCfg.SparsityRate {
-				continue
-			}
-
-			val, ok := next()
-			require.True(t, ok, "generator should yield values")
-			require.NoError(t, builder.Append(i, val))
+		for i, row := range records {
+			require.NoError(t, builder.Append(i, row.values[colIdx]))
 		}
 
 		col, err := builder.Flush()

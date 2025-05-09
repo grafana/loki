@@ -21,8 +21,9 @@ type LogsEncoder struct {
 	closed      bool // true if LogsEncoder has been closed.
 
 	data      *bytes.Buffer
-	columns   []*logsmd.ColumnDesc // closed columns.
-	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
+	columns   []*logsmd.ColumnDesc        // closed columns.
+	sortInfo  []*datasetmd.ColumnSortInfo // sort order information
+	curColumn *logsmd.ColumnDesc          // curColumn is the currently open column.
 }
 
 func newLogsEncoder(parent *Encoder, offset int) *LogsEncoder {
@@ -35,6 +36,17 @@ func newLogsEncoder(parent *Encoder, offset int) *LogsEncoder {
 
 		data: buf,
 	}
+}
+
+// SetColumnSortInfo sets the sort order information for the logs section.
+// This should be called before committing the encoder.
+func (enc *LogsEncoder) SetColumnSortInfo(info []*datasetmd.ColumnSortInfo) error {
+	if enc.closed {
+		return ErrClosed
+	}
+
+	enc.sortInfo = info
+	return nil
 }
 
 // OpenColumn opens a new column in the logs section. OpenColumn fails if there
@@ -81,7 +93,10 @@ func (enc *LogsEncoder) metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &logsmd.Metadata{Columns: columns}
+	return &logsmd.Metadata{
+		Columns:  columns,
+		SortInfo: enc.sortInfo,
+	}
 }
 
 // Commit closes the section, flushing all data to the parent element. After

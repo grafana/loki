@@ -21,8 +21,9 @@ type StreamsEncoder struct {
 	closed      bool // true if StreamsEncoder has been closed.
 
 	data      *bytes.Buffer
-	columns   []*streamsmd.ColumnDesc // closed columns.
-	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
+	columns   []*streamsmd.ColumnDesc     // closed columns.
+	sortInfo  []*datasetmd.ColumnSortInfo // sort order information
+	curColumn *streamsmd.ColumnDesc       // curColumn is the currently open column.
 }
 
 func newStreamsEncoder(parent *Encoder, offset int) *StreamsEncoder {
@@ -35,6 +36,17 @@ func newStreamsEncoder(parent *Encoder, offset int) *StreamsEncoder {
 
 		data: buf,
 	}
+}
+
+// SetColumnSortInfo sets the sort order information for the streams section.
+// This should be called before committing the encoder.
+func (enc *StreamsEncoder) SetColumnSortInfo(info []*datasetmd.ColumnSortInfo) error {
+	if enc.closed {
+		return ErrClosed
+	}
+
+	enc.sortInfo = info
+	return nil
 }
 
 // OpenColumn opens a new column in the streams section. OpenColumn fails if
@@ -81,7 +93,10 @@ func (enc *StreamsEncoder) metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &streamsmd.Metadata{Columns: columns}
+	return &streamsmd.Metadata{
+		Columns:  columns,
+		SortInfo: enc.sortInfo,
+	}
 }
 
 // Commit closes the section, flushing all data to the parent element. After

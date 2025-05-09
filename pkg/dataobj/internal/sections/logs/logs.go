@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -225,6 +226,21 @@ func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 		// successfully committed.
 		_ = logsEnc.Discard()
 	}()
+
+	// Add sort order information to the logs section metadata
+	// Update the index if the column order changes.
+	if err := logsEnc.SetColumnSortInfo([]*datasetmd.ColumnSortInfo{
+		{
+			ColumnIndex: 0, // STREAM_ID is always first.
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		},
+		{
+			ColumnIndex: 1, // Followed by TIMESTAMP.
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		},
+	}); err != nil {
+		return fmt.Errorf("setting column sort order info: %w", err)
+	}
 
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)

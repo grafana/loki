@@ -34,8 +34,8 @@ func newColumnReader(column Column) *columnReader {
 
 // Read reads up to the next len(v) values from the column into v. It returns
 // the number of values read and any error encountered. At the end of the
-// column, Read returns 0, io.EOF.
-func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) {
+// column, Read returns 0, io.EOF. If a BoundFunc is provided and returns false, returns ErrBoundExceeded.
+func (cr *columnReader) Read(ctx context.Context, v []Value, bounds BoundsChecker) (n int, err error) {
 	if !cr.initialized {
 		err := cr.init(ctx)
 		if err != nil {
@@ -87,7 +87,7 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 		// of rows, potentially across multiple page boundaries. This means that
 		// only the first call to cr.reader.Read will use the scratch space in v to
 		// skip rows, where the scratch space is the entirety of len(v).
-		count, err := cr.reader.Read(ctx, v[n:])
+		count, err := cr.reader.Read(ctx, v[n:], bounds)
 		cr.nextRow += int64(count)
 		n += count
 

@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
@@ -122,6 +123,26 @@ func (rd *rangeStreamsDecoder) Columns(ctx context.Context, section *filemd.Sect
 		return nil, err
 	}
 	return md.Columns, nil
+}
+
+func (rd *rangeStreamsDecoder) SortInfo(ctx context.Context, section *filemd.SectionInfo) ([]*datasetmd.ColumnSortInfo, error) {
+	if got, want := section.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
+	}
+	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading streams section metadata: %w", err)
+	}
+	defer rc.Close()
+
+	br, release := getBufioReader(rc)
+	defer release()
+
+	md, err := decodeStreamsMetadata(br)
+	if err != nil {
+		return nil, err
+	}
+	return md.SortInfo, nil
 }
 
 func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
@@ -266,6 +287,26 @@ func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.Section
 		return nil, err
 	}
 	return md.Columns, nil
+}
+
+func (rd *rangeLogsDecoder) SortInfo(ctx context.Context, section *filemd.SectionInfo) ([]*datasetmd.ColumnSortInfo, error) {
+	if got, want := section.Type, filemd.SECTION_TYPE_LOGS; got != want {
+		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
+	}
+	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading logs section metadata: %w", err)
+	}
+	defer rc.Close()
+
+	br, release := getBufioReader(rc)
+	defer release()
+
+	md, err := decodeLogsMetadata(br)
+	if err != nil {
+		return nil, err
+	}
+	return md.SortInfo, nil
 }
 
 func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) result.Seq[[]*logsmd.PageDesc] {
