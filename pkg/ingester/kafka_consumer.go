@@ -124,7 +124,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// success keeps track of the records that were processed. It is expected to
 	// be sorted in ascending order of offset since the records themselves are
 	// ordered.
-	success := make([]int64, len(records))
+	success := make([]*int64, len(records))
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
@@ -161,7 +161,8 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 					continue
 				}
 
-				success[recordWithIndex.index] = recordWithIndex.record.Offset
+				offset := recordWithIndex.record.Offset
+				success[recordWithIndex.index] = &offset
 			}
 		}()
 	}
@@ -176,10 +177,10 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// Find the highest offset before a gap, and commit that.
 	var highestOffset int64
 	for _, offset := range success {
-		if offset == 0 {
+		if offset == nil || *offset == 0 {
 			break
 		}
-		highestOffset = offset
+		highestOffset = *offset
 	}
 	if highestOffset > 0 {
 		kc.committer.EnqueueOffset(highestOffset)
