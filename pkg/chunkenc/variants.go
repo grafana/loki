@@ -3,9 +3,6 @@ package chunkenc
 import (
 	"context"
 
-  "github.com/prometheus/prometheus/model/labels"
-	"github.com/cespare/xxhash/v2"
-
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
