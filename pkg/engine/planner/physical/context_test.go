@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -25,15 +26,15 @@ func TestContext_ConvertLiteral(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(123),
+			expr:    NewLiteral(int64(123)),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(time.Now()),
+			expr:    NewLiteral(datatype.Timestamp(time.Now().UnixNano())),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(time.Hour),
+			expr:    NewLiteral(datatype.Duration(time.Hour.Nanoseconds())),
 			wantErr: true,
 		},
 		{

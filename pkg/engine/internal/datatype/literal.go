@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/dustin/go-humanize"
 )
 
 type NullLiteral struct {
@@ -16,7 +18,7 @@ func (n NullLiteral) String() string {
 
 // Type implements Literal.
 func (n NullLiteral) Type() DataType {
-	return Null
+	return LokiType.Null
 }
 
 // Any implements Literal.
@@ -37,7 +39,7 @@ func (b BoolLiteral) String() string {
 
 // Type implements Literal.
 func (b BoolLiteral) Type() DataType {
-	return Bool
+	return LokiType.Bool
 }
 
 // Any implements Literal.
@@ -58,7 +60,7 @@ func (s StringLiteral) String() string {
 
 // Type implements Literal.
 func (s StringLiteral) Type() DataType {
-	return String
+	return LokiType.String
 }
 
 // Any implements Literal.
@@ -79,7 +81,7 @@ func (i IntegerLiteral) String() string {
 
 // Type implements Literal.
 func (i IntegerLiteral) Type() DataType {
-	return Integer
+	return LokiType.Integer
 }
 
 // Any implements Literal.
@@ -100,7 +102,7 @@ func (f FloatLiteral) String() string {
 
 // Type implements Literal.
 func (f FloatLiteral) Type() DataType {
-	return Float
+	return LokiType.Float
 }
 
 // Any implements Literal.
@@ -112,16 +114,16 @@ func (f FloatLiteral) Value() float64 {
 	return float64(f)
 }
 
-type TimestampLiteral int64
+type TimestampLiteral Timestamp
 
 // String implements Literal.
 func (t TimestampLiteral) String() string {
-	return time.Unix(0, t.Value()).UTC().Format(time.RFC3339Nano)
+	return time.Unix(0, int64(t.Value())).UTC().Format(time.RFC3339Nano)
 }
 
 // Type implements Literal.
 func (t TimestampLiteral) Type() DataType {
-	return Timestamp
+	return LokiType.Timestamp
 }
 
 // Any implements Literal.
@@ -129,8 +131,8 @@ func (t TimestampLiteral) Any() any {
 	return t.Value()
 }
 
-func (t TimestampLiteral) Value() int64 {
-	return int64(t)
+func (t TimestampLiteral) Value() Timestamp {
+	return Timestamp(t)
 }
 
 type DurationLiteral int64
@@ -142,7 +144,7 @@ func (d DurationLiteral) String() string {
 
 // Type implements Literal.
 func (d DurationLiteral) Type() DataType {
-	return Duration
+	return LokiType.Duration
 }
 
 // Any implements Literal.
@@ -150,21 +152,20 @@ func (d DurationLiteral) Any() any {
 	return d.Value()
 }
 
-func (d DurationLiteral) Value() int64 {
-	return int64(d)
+func (d DurationLiteral) Value() Duration {
+	return Duration(d)
 }
 
-type BytesLiteral int64
+type BytesLiteral Bytes
 
 // String implements Literal.
 func (b BytesLiteral) String() string {
-	// return humanize.Bytes(uint64(b))
-	return fmt.Sprintf("%dB", b)
+	return humanize.IBytes(uint64(b))
 }
 
 // Type implements Literal.
 func (b BytesLiteral) Type() DataType {
-	return Bytes
+	return LokiType.Bytes
 }
 
 // Any implements Literal.
@@ -172,8 +173,8 @@ func (b BytesLiteral) Any() any {
 	return b.Value()
 }
 
-func (b BytesLiteral) Value() int64 {
-	return int64(b)
+func (b BytesLiteral) Value() Bytes {
+	return Bytes(b)
 }
 
 // Literal is holds a value of [any] typed as [DataType].
@@ -184,7 +185,7 @@ type Literal interface {
 }
 
 type LiteralType interface {
-	any | bool | string | int64 | float64 | time.Time | time.Duration
+	any | bool | string | int64 | float64 | Timestamp | Duration | Bytes
 }
 
 type TypedLiteral[T LiteralType] interface {
@@ -193,52 +194,44 @@ type TypedLiteral[T LiteralType] interface {
 }
 
 var (
-	_ Literal               = (*NullLiteral)(nil)
-	_ TypedLiteral[any]     = (*NullLiteral)(nil)
-	_ Literal               = (*BoolLiteral)(nil)
-	_ TypedLiteral[bool]    = (*BoolLiteral)(nil)
-	_ Literal               = (*StringLiteral)(nil)
-	_ TypedLiteral[string]  = (*StringLiteral)(nil)
-	_ Literal               = (*IntegerLiteral)(nil)
-	_ TypedLiteral[int64]   = (*IntegerLiteral)(nil)
-	_ Literal               = (*FloatLiteral)(nil)
-	_ TypedLiteral[float64] = (*FloatLiteral)(nil)
-	_ Literal               = (*TimestampLiteral)(nil)
-	_ TypedLiteral[int64]   = (*TimestampLiteral)(nil)
-	_ Literal               = (*DurationLiteral)(nil)
-	_ TypedLiteral[int64]   = (*DurationLiteral)(nil)
-	_ Literal               = (*BytesLiteral)(nil)
-	_ TypedLiteral[int64]   = (*BytesLiteral)(nil)
+	_ Literal                 = (*NullLiteral)(nil)
+	_ TypedLiteral[any]       = (*NullLiteral)(nil)
+	_ Literal                 = (*BoolLiteral)(nil)
+	_ TypedLiteral[bool]      = (*BoolLiteral)(nil)
+	_ Literal                 = (*StringLiteral)(nil)
+	_ TypedLiteral[string]    = (*StringLiteral)(nil)
+	_ Literal                 = (*IntegerLiteral)(nil)
+	_ TypedLiteral[int64]     = (*IntegerLiteral)(nil)
+	_ Literal                 = (*FloatLiteral)(nil)
+	_ TypedLiteral[float64]   = (*FloatLiteral)(nil)
+	_ Literal                 = (*TimestampLiteral)(nil)
+	_ TypedLiteral[Timestamp] = (*TimestampLiteral)(nil)
+	_ Literal                 = (*DurationLiteral)(nil)
+	_ TypedLiteral[Duration]  = (*DurationLiteral)(nil)
+	_ Literal                 = (*BytesLiteral)(nil)
+	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
 )
+
+func NewLiteral[T LiteralType](value T) Literal {
+	switch val := any(value).(type) {
+	case bool:
+		return BoolLiteral(val)
+	case string:
+		return StringLiteral(val)
+	case int64:
+		return IntegerLiteral(val)
+	case float64:
+		return FloatLiteral(val)
+	case Timestamp:
+		return TimestampLiteral(val)
+	case Duration:
+		return DurationLiteral(val)
+	case Bytes:
+		return BytesLiteral(val)
+	}
+	panic(fmt.Sprintf("invalid literal value type %T", value))
+}
 
 func NewNullLiteral() NullLiteral {
 	return NullLiteral{}
-}
-
-func NewBoolLiteral(v bool) BoolLiteral {
-	return BoolLiteral(v)
-}
-
-func NewStringLiteral(v string) StringLiteral {
-	return StringLiteral(v)
-}
-
-func NewIntegerLiteral(v int64) IntegerLiteral {
-	return IntegerLiteral(v)
-}
-
-func NewFloatLiteral(v float64) FloatLiteral {
-	return FloatLiteral(v)
-}
-
-func NewTimestampLiteral(v time.Time) TimestampLiteral {
-	return TimestampLiteral(v.UTC().UnixNano())
-}
-
-func NewDurationLiteral(v time.Duration) DurationLiteral {
-	return DurationLiteral(v.Nanoseconds())
-}
-
-func NewBytesLiteral(v int64) BytesLiteral {
-	return BytesLiteral(v)
 }

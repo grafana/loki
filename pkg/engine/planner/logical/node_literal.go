@@ -1,9 +1,6 @@
 package logical
 
 import (
-	"fmt"
-	"time"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
@@ -18,30 +15,11 @@ type Literal struct {
 
 var _ Value = (*Literal)(nil)
 
-func NewLiteral(v any) *Literal {
-	if v == nil {
+func NewLiteral(value datatype.LiteralType) *Literal {
+	if value == nil {
 		return &Literal{Literal: datatype.NewNullLiteral()}
 	}
-
-	switch casted := v.(type) {
-	case bool:
-		return &Literal{Literal: datatype.NewBoolLiteral(casted)}
-	case string:
-		// TODO(chaudum): Try parsing bytes/timestamp/duration
-		return &Literal{Literal: datatype.NewStringLiteral(casted)}
-	case int:
-		return &Literal{Literal: datatype.NewIntegerLiteral(int64(casted))}
-	case int64:
-		return &Literal{Literal: datatype.NewIntegerLiteral(casted)}
-	case float64:
-		return &Literal{Literal: datatype.NewFloatLiteral(casted)}
-	case time.Time:
-		return &Literal{Literal: datatype.NewTimestampLiteral(casted)}
-	case time.Duration:
-		return &Literal{Literal: datatype.NewDurationLiteral(casted)}
-	default:
-		panic(fmt.Sprintf("invalid literal value type %T", casted))
-	}
+	return &Literal{Literal: datatype.NewLiteral(value)}
 }
 
 // Kind returns the kind of value represented by the literal.

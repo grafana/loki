@@ -6,6 +6,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
+type Timestamp int64
+type Duration int64
+type Bytes int64
+
 type Type uint8
 
 const (
@@ -38,17 +42,6 @@ type DataType interface {
 	ID() Type
 	ArrowType() arrow.DataType
 }
-
-var (
-	Null      DataType = tNull{}
-	Bool      DataType = tBool{}
-	String    DataType = tString{}
-	Integer   DataType = tInteger{}
-	Float     DataType = tFloat{}
-	Timestamp DataType = tTimestamp{}
-	Duration  DataType = tDuration{}
-	Bytes     DataType = tBytes{}
-)
 
 type tNull struct{}
 
@@ -100,14 +93,14 @@ func (tBytes) ArrowType() arrow.DataType { return ArrowType.Integer }
 
 var (
 	names = map[string]DataType{
-		Null.String():      Null,
-		Bool.String():      Bool,
-		String.String():    String,
-		Integer.String():   Integer,
-		Float.String():     Float,
-		Timestamp.String(): Timestamp,
-		Duration.String():  Duration,
-		Bytes.String():     Bytes,
+		LokiType.Null.String():      LokiType.Null,
+		LokiType.Bool.String():      LokiType.Bool,
+		LokiType.String.String():    LokiType.String,
+		LokiType.Integer.String():   LokiType.Integer,
+		LokiType.Float.String():     LokiType.Float,
+		LokiType.Timestamp.String(): LokiType.Timestamp,
+		LokiType.Duration.String():  LokiType.Duration,
+		LokiType.Bytes.String():     LokiType.Bytes,
 	}
 )
 

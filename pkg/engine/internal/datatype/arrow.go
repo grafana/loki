@@ -13,14 +13,14 @@ var (
 		Duration  DataType
 		Bytes     DataType
 	}{
-		Null:      Null,
-		Bool:      Bool,
-		String:    String,
-		Integer:   Integer,
-		Float:     Float,
-		Timestamp: Timestamp,
-		Duration:  Duration,
-		Bytes:     Bytes,
+		Null:      tNull{},
+		Bool:      tBool{},
+		String:    tString{},
+		Integer:   tInteger{},
+		Float:     tFloat{},
+		Timestamp: tTimestamp{},
+		Duration:  tDuration{},
+		Bytes:     tBytes{},
 	}
 
 	ArrowType = struct {
@@ -43,25 +43,25 @@ var (
 		Bytes:     arrow.PrimitiveTypes.Int64,
 	}
 
-	ToArrow = map[DataType]arrow.DataType{
-		Null:      ArrowType.Null,
-		Bool:      ArrowType.Bool,
-		String:    ArrowType.String,
-		Integer:   ArrowType.Integer,
-		Float:     ArrowType.Float,
-		Timestamp: ArrowType.Timestamp,
-		Duration:  ArrowType.Duration,
-		Bytes:     ArrowType.Bytes,
-	}
+	// ToArrow = map[DataType]arrow.DataType{
+	// 	Null:      ArrowType.Null,
+	// 	Bool:      ArrowType.Bool,
+	// 	String:    ArrowType.String,
+	// 	Integer:   ArrowType.Integer,
+	// 	Float:     ArrowType.Float,
+	// 	Timestamp: ArrowType.Timestamp,
+	// 	Duration:  ArrowType.Duration,
+	// 	Bytes:     ArrowType.Bytes,
+	// }
 
-	ToLoki = map[arrow.DataType]DataType{
-		ArrowType.Null:      Null,
-		ArrowType.Bool:      Bool,
-		ArrowType.String:    String,
-		ArrowType.Integer:   Integer,
-		ArrowType.Float:     Float,
-		ArrowType.Timestamp: Timestamp,
-		ArrowType.Duration:  Duration,
-		ArrowType.Bytes:     Bytes,
-	}
+	// ToLoki = map[arrow.DataType]DataType{
+	// 	ArrowType.Null:      Null,
+	// 	ArrowType.Bool:      Bool,
+	// 	ArrowType.String:    String,
+	// 	ArrowType.Integer:   Integer,
+	// 	ArrowType.Float:     Float,
+	// 	ArrowType.Timestamp: Timestamp,
+	// 	ArrowType.Duration:  Duration,
+	// 	ArrowType.Bytes:     Bytes,
+	// }
 )
