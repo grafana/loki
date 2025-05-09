@@ -2,7 +2,7 @@
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: {{ .kind }}
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
   namespace: {{ $.Release.Namespace }}
