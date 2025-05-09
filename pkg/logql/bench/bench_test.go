@@ -164,7 +164,11 @@ func TestStorageEquality(t *testing.T) {
 			require.NoError(t, err)
 
 			// Find matching test case in other stores and then compare results.
-			for _, store := range stores[1:] {
+			for _, store := range stores {
+				if store == baseStore {
+					continue
+				}
+
 				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
 					return tc == baseCase
 				})
