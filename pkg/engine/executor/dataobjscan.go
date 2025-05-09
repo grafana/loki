@@ -68,6 +68,9 @@ func (s *dataobjScan) Read() error {
 	s.state = newState(rec, err)
 
 	if err != nil {
+		if err == EOF {
+			return err
+		}
 		return fmt.Errorf("reading data object: %w", err)
 	}
 	return nil
