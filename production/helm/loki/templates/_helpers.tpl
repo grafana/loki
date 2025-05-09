@@ -555,6 +555,13 @@ Memcached Exporter Docker image
 {{- include "loki.image" $dict -}}
 {{- end }}
 
+{{/*
+Memcached Exporter Docker image
+*/}}
+{{- define "loki.memcached.suffix" -}}
+{{ if ne . "" }}-{{ . }}{{ end }}
+{{- end }}
+
 {{/* Allow KubeVersion to be overridden. */}}
 {{- define "loki.kubeVersion" -}}
   {{- default .Capabilities.KubeVersion.Version .Values.kubeVersionOverride -}}

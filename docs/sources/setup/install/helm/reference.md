@@ -2010,6 +2010,436 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.l2</td>
+			<td>object</td>
+			<td>l2 memcache configuration</td>
+			<td><pre lang="json">
+{
+  "affinity": {},
+  "allocatedMemory": 8192,
+  "annotations": {},
+  "batchSize": 4,
+  "connectionLimit": 16384,
+  "defaultValidity": "0s",
+  "enabled": true,
+  "extraArgs": {},
+  "extraContainers": [],
+  "extraExtendedOptions": "",
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "initContainers": [],
+  "l2ChunkCacheHandoff": "345600s",
+  "maxItemMemory": 5,
+  "nodeSelector": {},
+  "parallelism": 5,
+  "persistence": {
+    "enabled": false,
+    "mountPath": "/data",
+    "storageClass": null,
+    "storageSize": "10G"
+  },
+  "podAnnotations": {},
+  "podDisruptionBudget": {
+    "maxUnavailable": 1
+  },
+  "podLabels": {},
+  "podManagementPolicy": "Parallel",
+  "port": 11211,
+  "priorityClassName": null,
+  "replicas": 1,
+  "resources": null,
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "statefulStrategy": {
+    "type": "RollingUpdate"
+  },
+  "suffix": "l2",
+  "terminationGracePeriodSeconds": 60,
+  "timeout": "2000ms",
+  "tolerations": [],
+  "topologySpreadConstraints": [],
+  "writebackBuffer": 500000,
+  "writebackParallelism": 1,
+  "writebackSizeLimit": "500MB"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.affinity</td>
+			<td>object</td>
+			<td>Affinity for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedMemory</td>
+			<td>int</td>
+			<td>Amount of memory allocated to chunks-cache-l2 for object storage (in MB).</td>
+			<td><pre lang="json">
+8192
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.annotations</td>
+			<td>object</td>
+			<td>Annotations for the chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.batchSize</td>
+			<td>int</td>
+			<td>Batchsize for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+4
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.connectionLimit</td>
+			<td>int</td>
+			<td>Maximum number of connections allowed</td>
+			<td><pre lang="json">
+16384
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.defaultValidity</td>
+			<td>string</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+"0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether memcached based chunks-cache-l2 should be enabled</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI args for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraContainers</td>
+			<td>list</td>
+			<td>Additional containers to be added to the chunks-cache-l2 pod.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraExtendedOptions</td>
+			<td>string</td>
+			<td>Add extended options for chunks-cache-l2 memcached container. The format is the same as for the memcached -o/--extend flag. Example: extraExtendedOptions: 'tls,no_hashexpand'</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumeMounts: - name: extra-volume   mountPath: /etc/extra-volume   readOnly: true</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.initContainers</td>
+			<td>list</td>
+			<td>Extra init containers for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
+			<td>string</td>
+			<td>The age of chunks should be transfered from l1 cache to l2</td>
+			<td><pre lang="json">
+"345600s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.maxItemMemory</td>
+			<td>int</td>
+			<td>Maximum item memory for chunks-cache-l2 (in MB).</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for chunks-cach-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.parallelism</td>
+			<td>int</td>
+			<td>Parallel threads for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache-l2</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache-l2</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podLabels</td>
+			<td>object</td>
+			<td>Labels for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podManagementPolicy</td>
+			<td>string</td>
+			<td>Management policy for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.port</td>
+			<td>int</td>
+			<td>Port of the chunks-cache-l2 service</td>
+			<td><pre lang="json">
+11211
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.replicas</td>
+			<td>int</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.resources</td>
+			<td>string</td>
+			<td>Resource requests and limits for the chunks-cache-l2 By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.service</td>
+			<td>object</td>
+			<td>Service annotations and labels</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.statefulStrategy</td>
+			<td>object</td>
+			<td>Stateful chunks-cache strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+"l2"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the chunks-cache-l2 to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.timeout</td>
+			<td>string</td>
+			<td>Memcached operation timeout</td>
+			<td><pre lang="json">
+"2000ms"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints. labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackBuffer</td>
+			<td>int</td>
+			<td>Max number of objects to use for cache write back</td>
+			<td><pre lang="json">
+500000
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackParallelism</td>
+			<td>int</td>
+			<td>Number of parallel threads for cache write back</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackSizeLimit</td>
+			<td>string</td>
+			<td>Max memory to use for cache write back</td>
+			<td><pre lang="json">
+"500MB"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.maxItemMemory</td>
 			<td>int</td>
 			<td>Maximum item memory for chunks-cache (in MB).</td>
@@ -2145,7 +2575,7 @@ null
 		<tr>
 			<td>chunksCache.replicas</td>
 			<td>int</td>
-			<td>Total number of chunks-cache replicas</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache before being expired</td>
 			<td><pre lang="json">
 1
 </pre>
@@ -2180,6 +2610,15 @@ null
 {
   "type": "RollingUpdate"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -6348,7 +6787,20 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas</td>
 			<td><pre lang="json">
-{}
+{
+  "configs": [
+    {
+      "from": "2021-06-05",
+      "index": {
+        "period": "24h",
+        "prefix": "loki_index_"
+      },
+      "object_store": "gcs",
+      "schema": "v11",
+      "store": "boltdb-shipper"
+    }
+  ]
+}
 </pre>
 </td>
 		</tr>
@@ -6400,6 +6852,11 @@ null
     "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
+  },
+  "bucketNames": {
+    "admin": "FIXME",
+    "chunks": "FIXME",
+    "ruler": "FIXME"
   },
   "filesystem": {
     "admin_api_directory": "/var/loki/admin",
@@ -6549,15 +7006,6 @@ null
     "enabled": true
   }
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.useTestSchema</td>
-			<td>bool</td>
-			<td>a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around you can enable useTestSchema</td>
-			<td><pre lang="json">
-false
 </pre>
 </td>
 		</tr>
@@ -10350,6 +10798,15 @@ null
 {
   "type": "RollingUpdate"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.suffix</td>
+			<td>string</td>
+			<td>Should not be touched, used for chunksCache</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
