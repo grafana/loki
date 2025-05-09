@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -55,28 +56,28 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 			}
 		}
 
-		// Check if both pipelines are complete
-		if leftErr == EOF && rightErr == EOF {
+		// Check conditions on our batches:
+		switch {
+		case errors.Is(leftErr, EOF) && errors.Is(rightErr, EOF):
+			// Both pipelines are finished; we can finish now.
 			return
-		}
 
-		// If one pipeline has an error but the other doesn't, they're not equal
-		if (leftErr == EOF && rightErr != EOF) || (leftErr != EOF && rightErr == EOF) {
-			require.Fail(t, "Pipelines have different number of rows",
+		case (errors.Is(leftErr, EOF) && rightErr == nil) || (errors.Is(rightErr, EOF) && leftErr == nil):
+			// One pipeline finished before the other (and the other didn't fail), then
+			// there's an inequal number of rows.
+			require.Fail(t, "Pipelines have a different number of rows",
 				"left error: %v, right error: %v", leftErr, rightErr)
-		}
 
-		// If both pipelines have errors that aren't EOF, they fail equally
-		if leftErr != nil && rightErr != nil && leftErr != EOF && rightErr != EOF {
+		case leftErr != nil && rightErr != nil && !errors.Is(leftErr, EOF) && !errors.Is(rightErr, EOF):
+			// Both pipelines failed with non-EOF errors.
 			require.Equal(t, leftErr, rightErr, "Pipelines failed with different errors")
-			return
-		}
 
-		// If one pipeline has an error that's not EOF, the pipelines are not equal
-		if leftErr != nil && leftErr != EOF {
+		case leftErr != nil && !errors.Is(leftErr, EOF):
+			// Left pipeline failed with a non-EOF error.
 			require.Fail(t, "Left pipeline failed", "error: %v", leftErr)
-		}
-		if rightErr != nil && rightErr != EOF {
+
+		case rightErr != nil && !errors.Is(rightErr, EOF):
+			// Right pipeline failed with a non-EOF error.
 			require.Fail(t, "Right pipeline failed", "error: %v", rightErr)
 		}
 

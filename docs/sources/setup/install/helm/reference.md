@@ -54,6 +54,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnv": [],
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
@@ -129,6 +130,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>

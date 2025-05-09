@@ -63,7 +63,7 @@ func TestSortMerge(t *testing.T) {
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64
+		var lastTs int64
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -77,7 +77,7 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Int64)
 
 			// Check if ts column is sorted
 			for i := 0; i < arr.Len()-1; i++ {
@@ -115,7 +115,7 @@ func TestSortMerge(t *testing.T) {
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64 = math.MaxUint64
+		var lastTs int64 = math.MaxInt64
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -129,7 +129,7 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Int64)
 
 			// Check if ts column is sorted
 			for i := 0; i < arr.Len()-1; i++ {

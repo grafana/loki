@@ -669,7 +669,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// and that all other ring entries are OK too.
 		if t.Ingester != nil {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, fmt.Sprintf("Ingester not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -678,7 +678,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// and that all other ring entries are OK too.
 		if t.PatternIngester != nil {
 			if err := t.PatternIngester.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, fmt.Sprintf("Pattern Ingester not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -687,7 +687,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// itself as ready
 		if t.frontend != nil {
 			if err := t.frontend.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Query Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, fmt.Sprintf("Query Frontend not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -695,7 +695,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// Ingest Limits has a special check that makes sure that it was able to register into the ring
 		if t.ingestLimits != nil {
 			if err := t.ingestLimits.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Ingest Limits not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, fmt.Sprintf("Ingest Limits not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -704,7 +704,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// the ring
 		if t.ingestLimitsFrontend != nil {
 			if err := t.ingestLimitsFrontend.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Ingest Limits Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, fmt.Sprintf("Ingest Limits Frontend not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -782,7 +782,7 @@ func (t *Loki) setupModuleManager() error {
 		UI:                       {Server},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UI},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
-		IngestLimits:             {MemberlistKV, Server},
+		IngestLimits:             {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},

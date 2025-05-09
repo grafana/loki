@@ -21,18 +21,20 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			BucketDuration: 30 * time.Second,
 		},
 		metadata: &streamMetadata{
-			stripes: []map[string]map[int32][]Stream{
+			stripes: []map[string]map[int32]map[uint64]Stream{
 				{
 					"tenant": {
-						0: {{
-							Hash:      0x1,
-							TotalSize: 100,
-							RateBuckets: []RateBucket{{
-								Timestamp: time.Now().UnixNano(),
-								Size:      1,
-							}},
-							LastSeenAt: time.Now().UnixNano(),
-						}},
+						0: {
+							0x1: {
+								Hash:      0x1,
+								TotalSize: 100,
+								RateBuckets: []RateBucket{{
+									Timestamp: time.Now().UnixNano(),
+									Size:      1,
+								}},
+								LastSeenAt: time.Now().UnixNano(),
+							},
+						},
 					},
 				},
 			},
