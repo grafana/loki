@@ -119,7 +119,7 @@ func (p *KWayMerge) read() error {
 		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			err := p.inputs[i].Read()
 			if err != nil {
-				if err == EOF {
+				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
 					continue
 				}

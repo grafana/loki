@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -111,7 +112,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	for {
 		err := pipeline.Read()
-		if err == EOF {
+		if errors.Is(err, EOF) {
 			break
 		}
 		if err != nil {
