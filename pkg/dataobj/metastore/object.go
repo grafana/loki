@@ -54,7 +54,7 @@ func NewObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	}
 }
 
-func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
+func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time
 			continue
 		}
 
-		for _, streamLabel := range *streamLabels {
+		for _, streamLabel := range streamLabels {
 			foreach(streamLabel)
 		}
 	}
@@ -195,20 +195,11 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) da
 					Value: matcher.Value,
 				},
 			})
-		case labels.MatchRegexp:
+		case labels.MatchRegexp, labels.MatchNotRegexp:
 			predicates = append(predicates, dataobj.LabelFilterPredicate{
 				Name: matcher.Name,
 				Keep: func(_, value string) bool {
 					return matcher.Matches(value)
-				},
-			})
-		case labels.MatchNotRegexp:
-			predicates = append(predicates, dataobj.NotPredicate[dataobj.StreamsPredicate]{
-				Inner: dataobj.LabelFilterPredicate{
-					Name: matcher.Name,
-					Keep: func(_, value string) bool {
-						return !matcher.Matches(value)
-					},
 				},
 			})
 		}
@@ -257,9 +248,9 @@ func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths 
 	return dedupeAndSort(objects), nil
 }
 
-func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate dataobj.StreamsPredicate) ([]*labels.Labels, error) {
+func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate dataobj.StreamsPredicate) ([]labels.Labels, error) {
 	mu := sync.Mutex{}
-	streams := make(map[uint64][]*labels.Labels, 1024)
+	streams := make(map[uint64][]labels.Labels, 1024)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -269,7 +260,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 			object := dataobj.FromBucket(m.bucket, path)
 
 			return forEachStream(ctx, object, predicate, func(stream dataobj.Stream) {
-				addLabels(&mu, streams, &stream.Labels)
+				addLabels(&mu, streams, stream.Labels)
 			})
 		})
 	}
@@ -278,7 +269,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 		return nil, err
 	}
 
-	streamsSlice := make([]*labels.Labels, 0, len(streams))
+	streamsSlice := make([]labels.Labels, 0, len(streams))
 	for _, labels := range streams {
 		streamsSlice = append(streamsSlice, labels...)
 	}
@@ -311,7 +302,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	return streamIDs, nil
 }
 
-func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
+func addLabels(mtx *sync.Mutex, streams map[uint64][]labels.Labels, newLabels labels.Labels) {
 	mtx.Lock()
 	defer mtx.Unlock()
 
@@ -325,7 +316,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 	}
 
 	for _, lbs := range matches {
-		if labels.Equal(*lbs, *newLabels) {
+		if labels.Equal(lbs, newLabels) {
 			return
 		}
 	}

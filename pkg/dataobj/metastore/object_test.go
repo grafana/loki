@@ -151,9 +151,39 @@ func TestLabelsSingleMatcher(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, matchedLabels, 3)
-		for _, expectedLabel := range []string{"env", "team", "app"} {
-			require.NotEqual(t, slices.Index(matchedLabels, expectedLabel), -1)
-		}
+		require.ElementsMatch(t, matchedLabels, []string{"env", "team", "app"})
+	})
+}
+
+func TestStreamsRegexMatcher(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, "env", "p.+"),
+	}
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedLabels, err := mstore.Streams(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, matchedLabels, 3)
+		require.ElementsMatch(t, matchedLabels, []labels.Labels{
+			{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
+		})
+	})
+}
+
+func TestStreamsNotRegexMatcher(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchNotRegexp, "env", "d.+"),
+	}
+	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedLabels, err := mstore.Streams(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, matchedLabels, 3)
+		require.ElementsMatch(t, matchedLabels, []labels.Labels{
+			{{Name: "app", Value: "foo"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "bar"}, {Name: "env", Value: "prod"}},
+			{{Name: "app", Value: "baz"}, {Name: "env", Value: "prod"}, {Name: "team", Value: "a"}},
+		})
 	})
 }
 
