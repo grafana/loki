@@ -619,6 +619,8 @@ Ingress service paths for distributed deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $compactorServiceName "paths" .Values.ingress.paths.compactor)}}
 {{- end -}}
 
 {{/*
@@ -631,6 +633,7 @@ Ingress service paths for legacy simple scalable deployment when backend compone
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $backendServiceName := include "loki.backendFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -640,6 +643,7 @@ Ingress service paths for legacy simple scalable deployment
 {{- $readServiceName := include "loki.readFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- $writeServiceName := include "loki.writeFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
@@ -652,6 +656,7 @@ Ingress service paths for single binary deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
