@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -63,16 +64,18 @@ func (s *symbolizer) Reset() {
 
 // Add adds new labels pairs to the collection and returns back a symbol for each existing and new label pair
 func (s *symbolizer) Add(lbls labels.Labels) symbols {
-	if len(lbls) == 0 {
+	if lbls.IsEmpty() {
 		return nil
 	}
 
-	syms := make([]symbol, len(lbls))
+	syms := make([]symbol, 0, lbls.Len())
 
-	for i, label := range lbls {
-		syms[i].Name = s.add(label.Name)
-		syms[i].Value = s.add(label.Value)
-	}
+	lbls.Range(func(label labels.Label) {
+		syms = append(syms, symbol{
+			Name:  s.add(label.Name),
+			Value: s.add(label.Value),
+		})
+	})
 
 	return syms
 }
@@ -102,14 +105,16 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels.Labels {
 	if len(syms) == 0 {
-		return nil
+		return labels.EmptyLabels()
 	}
+
 	if buf == nil {
-		buf = structuredMetadataPool.Get().(labels.Labels)
+		structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
 	}
-	buf = buf[:0]
+	buf.Reset()
 
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
@@ -130,10 +135,10 @@ func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
 			name = normalized
 		}
 
-		buf = append(buf, labels.Label{Name: name, Value: s.lookup(symbol.Value)})
+		buf.Add(labels.Label{Name: name, Value: s.lookup(symbol.Value)})
 	}
 
-	return buf
+	return buf.Labels()
 }
 
 func (s *symbolizer) lookup(idx uint32) string {

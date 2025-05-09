@@ -2,6 +2,7 @@ concurrency:
   group: "create-release-${{ github.sha }}"
 env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
+  GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
   RELEASE_LIB_REF: "main"
@@ -57,8 +58,8 @@ jobs:
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
         repo_secrets: |
-          APP_ID=loki-gh-app:app-id
-          PRIVATE_KEY=loki-gh-app:private-key
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
@@ -142,6 +143,7 @@ jobs:
       branchExists: "${{ steps.create_branch.outputs.branch_exists }}"
       branchName: "${{ steps.create_branch.outputs.branch_name }}"
     permissions:
+      contents: "write"
       id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
@@ -162,8 +164,8 @@ jobs:
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
         repo_secrets: |
-          APP_ID=loki-gh-app:app-id
-          PRIVATE_KEY=loki-gh-app:private-key
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
@@ -285,6 +287,8 @@ jobs:
   publishImages:
     needs:
     - "createRelease"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
@@ -328,6 +332,7 @@ jobs:
     outputs:
       name: "${{ needs.createRelease.outputs.name }}"
     permissions:
+      contents: "write"
       id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
@@ -343,8 +348,8 @@ jobs:
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
         repo_secrets: |
-          APP_ID=loki-gh-app:app-id
-          PRIVATE_KEY=loki-gh-app:private-key
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"

@@ -1402,12 +1402,13 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:      stats,
-		origBytes:  b,
-		reader:     nil, // will be initialized later
-		pool:       pool,
-		format:     format,
-		symbolizer: symbolizer,
+		stats:                  stats,
+		origBytes:              b,
+		reader:                 nil, // will be initialized later
+		pool:                   pool,
+		format:                 format,
+		symbolizer:             symbolizer,
+		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }
 
@@ -1450,14 +1451,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1472,7 +1473,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, nil, false
+		return 0, nil, labels.EmptyLabels(), false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1483,7 +1484,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1503,7 +1504,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1512,7 +1513,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	if si.format < ChunkFormatV4 {
 		si.stats.AddDecompressedBytes(decompressedBytes)
 		si.stats.AddDecompressedLines(1)
-		return ts, si.buf[:lineSize], nil, true
+		return ts, si.buf[:lineSize], labels.EmptyLabels(), true
 	}
 
 	lastAttempt = 0
@@ -1523,14 +1524,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1580,7 +1581,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.symbolsBuf = SymbolsPool.Get(nSymbols).([]symbol)
 		if nSymbols > cap(si.symbolsBuf) {
 			si.err = fmt.Errorf("could not get a symbols matrix of size %d, actual %d", nSymbols, cap(si.symbolsBuf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1596,14 +1597,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 			if err != nil {
 				if err != io.EOF {
 					si.err = err
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					si.err = fmt.Errorf("invalid data in chunk")
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 			}
 			sName, nWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
@@ -1622,7 +1623,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
+	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1651,9 +1653,9 @@ func (si *bufferedIterator) close() {
 		si.symbolsBuf = nil
 	}
 
-	if si.currStructuredMetadata != nil {
+	if !si.currStructuredMetadata.IsEmpty() {
 		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
-		si.currStructuredMetadata = nil
+		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
 	si.origBytes = nil
