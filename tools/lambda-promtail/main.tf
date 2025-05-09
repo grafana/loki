@@ -149,12 +149,15 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 locals {
-  binary_path  = "${path.module}/lambda-promtail/bootstrap"
-  archive_path = "${path.module}/lambda-promtail/${var.name}.zip"
+  binary_path           = "${path.module}/lambda-promtail/bootstrap"
+  archive_path          = "${path.module}/lambda-promtail/${var.name}.zip"
+  use_image             = var.lambda_promtail_image == "" ? false : true
+  use_s3_configuration  = alltrue([var.lambda_promtail_image == "", var.s3_source_file != "", var.s3_source_bucket != ""]) ? true : false
+  use_local_build       = alltrue([var.lambda_promtail_image == "", var.s3_source_file == "", var.s3_source_bucket == ""]) ? true : false
 }
 
 resource "null_resource" "function_binary" {
-  count = var.lambda_promtail_image == "" ? 1 : 0
+  count = local.use_local_build ? 1 : 0
   triggers = {
     always_run = timestamp()
   }
@@ -165,8 +168,14 @@ resource "null_resource" "function_binary" {
   }
 }
 
+data "aws_s3_object" "lambda_code" {
+  count       = local.use_s3_configuration ? 1 : 0
+  key         = var.s3_source_file
+  bucket      = var.s3_source_bucket
+}
+
 data "archive_file" "lambda" {
-  count      = var.lambda_promtail_image == "" ? 1 : 0
+  count      = local.use_local_build ? 1 : 0
   depends_on = [null_resource.function_binary[0]]
 
   type        = "zip"
@@ -179,15 +188,22 @@ resource "aws_lambda_function" "this" {
   role          = aws_iam_role.this.arn
   kms_key_arn   = var.kms_key_arn
 
-  image_uri        = var.lambda_promtail_image == "" ? null : var.lambda_promtail_image
-  filename         = var.lambda_promtail_image == "" ? local.archive_path : null
-  source_code_hash = var.lambda_promtail_image == "" ? data.archive_file.lambda[0].output_base64sha256 : null
-  runtime          = var.lambda_promtail_image == "" ? "provided.al2023" : null
-  handler          = var.lambda_promtail_image == "" ? local.binary_path : null
+  image_uri        = local.use_image ? var.lambda_promtail_image : null
+  filename         = local.use_local_build ? local.archive_path : null
+  source_code_hash = local.use_local_build ? data.archive_file.lambda[0].output_base64sha256 : null
+
+  s3_bucket        = local.use_s3_configuration ? var.s3_source_bucket : null
+  s3_key           = local.use_s3_configuration ? var.s3_source_file : null
+  s3_object_version = local.use_s3_configuration ? data.aws_s3_object.lambda_code[0].version_id : null
+
+
+  runtime          = anytrue([local.use_s3_configuration, local.use_local_build]) ? "provided.al2023" : null
+  handler          = local.use_local_build ? local.binary_path : local.use_s3_configuration ? "hello.handler" : null
+
 
   timeout      = 60
   memory_size  = 128
-  package_type = var.lambda_promtail_image == "" ? "Zip" : "Image"
+  package_type = local.use_image ? "Image" : "Zip"
 
   # From the Terraform AWS Lambda docs: If both subnet_ids and security_group_ids are empty then vpc_config is considered to be empty or unset.
   vpc_config {
