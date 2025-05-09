@@ -98,9 +98,10 @@ spec:
               # Note: the following bash commands should always return a success status code. 
               # Therefore, in case the token file does not exist, the first clause of the 
               # or-operation is successful.
+              {{- $prefix := tpl (default "" $.Values.enterprise.provisioner.provisionedSecretPrefix) $ -}}  // defaults to empty string in case the value is not set in a deployed config
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               ! test -s /bootstrap/token-write-{{ .name }} || \
-                kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ tpl $.Values.enterprise.provisioner.provisionedSecretPrefix $ }}-{{ .name }}" \
+                kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{- if $prefix }}{{ $prefix }}-{{ end }}{{ .name }}" \
                   --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
                   --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
               {{- end }}
