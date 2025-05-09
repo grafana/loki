@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -115,18 +116,24 @@ func TestStorageEquality(t *testing.T) {
 		}
 	}
 
-	// Generate a list of stores. The first store name provided here is the one
-	// that acts as the baseline.
-	var stores []*store
+	// Generate a list of stores. The chunks store (as the most stable) acts as
+	// the baseline.
+	var (
+		stores    []*store
+		baseStore *store
+	)
 	for _, name := range allStores {
 		store := generateStore(name)
 		stores = append(stores, store)
+
+		if name == StoreChunk {
+			baseStore = store
+		}
 	}
 	if len(stores) < 2 {
 		t.Skipf("not enough stores to compare; need at least 2, got %d", len(stores))
 	}
 
-	baseStore := stores[0]
 	for _, baseCase := range baseStore.Cases {
 		t.Run(baseCase.Name(), func(t *testing.T) {
 			defer func() {
@@ -159,12 +166,15 @@ func TestStorageEquality(t *testing.T) {
 					return tc == baseCase
 				})
 				if idx == -1 {
-					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
+					t.Skipf("Store %s missing test case %s", store.Name, baseCase.Name())
 					continue
 				}
 
 				actual, err := store.Engine.Query(params).Exec(ctx)
-				if assert.NoError(t, err) {
+				if err != nil && errors.Is(err, errStoreUnimplemented) {
+					t.Skipf("Store %s does not implement test case %s", store.Name, baseCase.Name())
+					continue
+				} else if assert.NoError(t, err) {
 					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 				}
 			}

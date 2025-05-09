@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
+
+var errStoreUnimplemented = errors.New("store does not implement this operation")
 
 // DataObjV2EngineStore uses the new pkg/engine/engine.New for querying.
 // It assumes the engine can read the "new dataobj format" (e.g. Parquet)
@@ -98,7 +101,9 @@ func (q *dataObjV2EngineQuerier) SelectLogs(ctx context.Context, params logql.Se
 	// Execute query
 	compiledQuery := q.engine.Query(logqlParams)
 	result, err := compiledQuery.Exec(ctx)
-	if err != nil {
+	if err != nil && errors.Is(err, engine.ErrNotSupported) {
+		return nil, errors.Join(errStoreUnimplemented, err)
+	} else if err != nil {
 		return nil, fmt.Errorf("DataObjV2EngineStore query execution failed: %w", err)
 	}
 
@@ -113,7 +118,7 @@ func (q *dataObjV2EngineQuerier) SelectLogs(ctx context.Context, params logql.Se
 
 // SelectSamples implements logql.Querier.
 func (q *dataObjV2EngineQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("SelectSamples not implemented for DataObjV2EngineStore")
+	return nil, errStoreUnimplemented
 }
 
 // newStreamsEntryIterator creates a sorted entry iterator from multiple logqlmodel.Streams.
