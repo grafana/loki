@@ -303,7 +303,7 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Len(t, objs, 13)
+	require.Len(t, objs, 11)
 }
 
 func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T) {
@@ -987,7 +987,7 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	}
 	objs, err := BuildGateway(opts)
 	require.NoError(t, err)
-	require.Len(t, objs, 13)
+	require.Len(t, objs, 11)
 
 	pdb := objs[6].(*policyv1.PodDisruptionBudget)
 	require.NotNil(t, pdb)

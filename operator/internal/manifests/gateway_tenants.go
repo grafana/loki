@@ -152,8 +152,6 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 			}
 		}
 
-		openShiftObjs := openshift.BuildGatewayTenantModeObjects(opts.OpenShiftOptions)
-		objs = append(objs, openShiftObjs...)
 	}
 
 	return objs
