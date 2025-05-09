@@ -182,7 +182,7 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		}
 	}
 
-	manifestJson, err := json.Marshal(manifest{
+	manifestJSON, err := json.Marshal(manifest{
 		Requests:          requests,
 		DuplicateRequests: d.deleteRequestBatch.duplicateRequests,
 		SegmentsCount:     d.segmentsCount,
@@ -192,7 +192,7 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJson)))
+	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
@@ -210,7 +210,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	if len(b.ChunksGroups) == 0 {
 		return nil
 	}
-	batchJson, err := json.Marshal(b)
+	batchJSON, err := json.Marshal(b)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount)), strings.NewReader(unsafeGetString(batchJson)))
+	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {

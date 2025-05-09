@@ -319,7 +319,7 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 	return true
 }
 
-func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, t model.Time) (bool, filter.Func) {
+func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, _ model.Time) (bool, filter.Func) {
 	return d.currentBatch.expired(userID, chk, lbls, func(request *DeleteRequest) bool {
 		d.processedSeriesMtx.RLock()
 		defer d.processedSeriesMtx.RUnlock()
@@ -333,7 +333,7 @@ func (d *DeleteRequestsManager) MarkPhaseStarted() {
 	status := statusSuccess
 	if batch, err := d.loadDeleteRequestsToProcess(DeleteRequestsAll); err != nil {
 		status = statusFail
-		batch = nil
+		d.currentBatch = nil
 		level.Error(util_log.Logger).Log("msg", "failed to load delete requests to process", "err", err)
 	} else {
 		d.currentBatch = batch

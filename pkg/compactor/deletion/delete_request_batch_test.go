@@ -615,7 +615,7 @@ func TestDeleteRequestBatch_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, func(request *DeleteRequest) bool {
+			isExpired, filterFunc := batch.expired([]byte(testUserID), chunkEntry, lblFoo, func(_ *DeleteRequest) bool {
 				return false
 			})
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)

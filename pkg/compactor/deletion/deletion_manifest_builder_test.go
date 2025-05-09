@@ -53,30 +53,30 @@ type mockSeries struct {
 	chunks   []retention.Chunk
 }
 
-func (m mockSeries) SeriesID() []byte {
+func (m *mockSeries) SeriesID() []byte {
 	return m.seriesID
 }
 
-func (m mockSeries) Reset(seriesID, userID []byte, labels labels.Labels) {
+func (m *mockSeries) Reset(seriesID, userID []byte, labels labels.Labels) {
 	m.seriesID = seriesID
 	m.userID = string(userID)
 	m.labels = labels
 	m.chunks = nil
 }
 
-func (m mockSeries) AppendChunks(ref ...retention.Chunk) {
+func (m *mockSeries) AppendChunks(ref ...retention.Chunk) {
 	m.chunks = append(m.chunks, ref...)
 }
 
-func (m mockSeries) UserID() []byte {
+func (m *mockSeries) UserID() []byte {
 	return []byte(m.userID)
 }
 
-func (m mockSeries) Labels() labels.Labels {
+func (m *mockSeries) Labels() labels.Labels {
 	return m.labels
 }
 
-func (m mockSeries) Chunks() []retention.Chunk {
+func (m *mockSeries) Chunks() []retention.Chunk {
 	return m.chunks
 }
 
@@ -86,7 +86,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 		deleteRequests []DeleteRequest
 		series         []struct {
 			tableName string
-			series    mockSeries
+			series    *mockSeries
 		}
 		expectedManifest manifest
 		expectedSegments []segment
@@ -105,11 +105,11 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			},
 			series: []struct {
 				tableName string
-				series    mockSeries
+				series    *mockSeries
 			}{
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBar),
 						chunks: buildChunks(10, 100),
@@ -162,11 +162,11 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			},
 			series: []struct {
 				tableName string
-				series    mockSeries
+				series    *mockSeries
 			}{
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBar),
 						chunks: buildChunks(0, maxChunksPerSegment+1),
@@ -237,11 +237,11 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			},
 			series: []struct {
 				tableName string
-				series    mockSeries
+				series    *mockSeries
 			}{
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBar),
 						chunks: buildChunks(0, 50),
@@ -249,7 +249,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 				{
 					tableName: table2,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBar),
 						chunks: buildChunks(50, 50),
@@ -327,11 +327,11 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			},
 			series: []struct {
 				tableName string
-				series    mockSeries
+				series    *mockSeries
 			}{
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBar),
 						chunks: buildChunks(0, maxChunksPerSegment+1),
@@ -339,7 +339,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user2,
 						labels: mustParseLabel(lblFizzBuzz),
 						chunks: buildChunks(10, maxChunksPerSegment+1),
@@ -459,11 +459,11 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			},
 			series: []struct {
 				tableName string
-				series    mockSeries
+				series    *mockSeries
 			}{
 				{
 					tableName: table1,
-					series: mockSeries{
+					series: &mockSeries{
 						userID: user1,
 						labels: mustParseLabel(lblFooBarAndFizzBuzz),
 						chunks: buildChunks(25, 50),
@@ -536,6 +536,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{
 				Directory: tempDir,
 			})
+			require.NoError(t, err)
 
 			// Create delete request batch
 			batch := newDeleteRequestBatch(nil)
@@ -563,12 +564,12 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
 			require.NoError(t, err)
 
-			manifestJson, err := io.ReadAll(reader)
+			manifestJSON, err := io.ReadAll(reader)
 			require.NoError(t, err)
 			require.NoError(t, reader.Close())
 
 			var manifest manifest
-			require.NoError(t, json.Unmarshal(manifestJson, &manifest))
+			require.NoError(t, json.Unmarshal(manifestJSON, &manifest))
 			slices.SortFunc(manifest.Requests, func(a, b DeleteRequest) int {
 				return strings.Compare(a.RequestID, b.RequestID)
 			})
@@ -579,12 +580,12 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i+1)))
 				require.NoError(t, err)
 
-				segmentJson, err := io.ReadAll(reader)
+				segmentJSON, err := io.ReadAll(reader)
 				require.NoError(t, err)
 				require.NoError(t, reader.Close())
 
 				var segment segment
-				require.NoError(t, json.Unmarshal(segmentJson, &segment))
+				require.NoError(t, json.Unmarshal(segmentJSON, &segment))
 
 				slices.SortFunc(segment.ChunksGroups, func(a, b ChunksGroup) int {
 					switch {
@@ -608,6 +609,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	objectClient, err := local.NewFSObjectClient(local.FSConfig{
 		Directory: tempDir,
 	})
+	require.NoError(t, err)
 
 	// Create delete request batch
 	batch := newDeleteRequestBatch(nil)
@@ -623,7 +625,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	builder, err := newDeletionManifestBuilder(objectClient, *batch)
 	require.NoError(t, err)
 
-	err = builder.AddSeries(ctx, table1, mockSeries{
+	err = builder.AddSeries(ctx, table1, &mockSeries{
 		userID: user2,
 		labels: mustParseLabel(lblFooBar),
 		chunks: buildChunks(0, 25),
