@@ -77,7 +77,7 @@ func (list) String() string {
 // privately managed domain (and in practice, not a top level domain) or an
 // unmanaged top level domain (and not explicitly mentioned in the
 // publicsuffix.org list). For example, "foo.org" and "foo.co.uk" are ICANN
-// domains, "foo.dyndns.org" and "foo.blogspot.co.uk" are private domains and
+// domains, "foo.dyndns.org" is a private domain and
 // "cromulent" is an unmanaged top level domain.
 //
 // Use cases for distinguishing ICANN domains like "foo.com" from private
