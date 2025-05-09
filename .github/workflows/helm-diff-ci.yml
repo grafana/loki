@@ -5,23 +5,21 @@ on:
     paths:
       - "production/helm/loki/**"
 
-# These permissions are needed to assume roles from Github's OIDC.
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
   single-binary-diff:
     name: Single Binary Scenario
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4
 
       - name: Add required Helm repositories
         run: |
@@ -68,13 +66,16 @@ jobs:
   default-values-diff:
     name: Default Values Scenario
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4
 
       - name: Add required Helm repositories
         run: |
@@ -121,13 +122,16 @@ jobs:
   ingress-values-diff:
     name: Ingress Values Scenario
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4
 
       - name: Add required Helm repositories
         run: |
@@ -174,13 +178,16 @@ jobs:
   legacy-monitoring-values-diff:
     name: Legacy Monitoring Values Scenario
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4
 
       - name: Add required Helm repositories
         run: |
@@ -227,13 +234,16 @@ jobs:
   simple-scalable-aws-kube-irsa-values-diff:
     name: Simple Scalable AWS Kube IRSA Values Scenario
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4
 
       - name: Add required Helm repositories
         run: |
@@ -274,6 +284,9 @@ jobs:
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event.pull_request.head.repo.fork == false
     needs:
       - single-binary-diff
@@ -368,7 +381,7 @@ jobs:
           echo "" >> formatted_diff_output.md
 
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728  # v2
         with:
           header: "Helm Diff Output - Summary"
           skip_unchanged: true

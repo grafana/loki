@@ -1705,7 +1705,7 @@ The `compactor` block configures the compactor component, which compacts index s
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
-[working_directory: <string> | default = ""]
+[working_directory: <string> | default = "/var/loki/compactor"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
