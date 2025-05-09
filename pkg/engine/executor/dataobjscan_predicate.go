@@ -2,13 +2,17 @@ package executor
 
 import (
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 // buildLogsPredicate builds a logs predicate from an expression.
-func buildLogsPredicate(_ physical.Expression) (dataobj.LogsPredicate, error) {
+func buildLogsPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
 	// TODO(rfratto): implement converting expressions into logs predicates.
 	//
 	// There's a few challenges here:
@@ -43,5 +47,303 @@ func buildLogsPredicate(_ physical.Expression) (dataobj.LogsPredicate, error) {
 	// think we should start removing things from internal for this; we can probably
 	// find a way to remove the explicit dependency from the dataobj package from
 	// the physical planner instead.
-	return nil, fmt.Errorf("logs predicate conversion is not supported")
+	return mapInitiallySupportedPredicates(expr)
+}
+
+// Support for timestamp and metadata predicates has been implemented.
+// TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
+func mapInitiallySupportedPredicates(expr physical.Expression) (dataobj.LogsPredicate, error) {
+	switch e := expr.(type) {
+	case *physical.BinaryExpr:
+		if e.Left.Type() != physical.ExprTypeColumn {
+			return nil, fmt.Errorf("unsupported predicate, expected column ref on LHS: %s", expr.String())
+		}
+
+		left := e.Left.(*physical.ColumnExpr)
+		switch left.Ref.Type {
+		case types.ColumnTypeBuiltin:
+			if left.Ref.Column == types.ColumnNameBuiltinTimestamp {
+				return mapTimestampPredicate(e)
+			}
+			return nil, fmt.Errorf("unsupported builtin column in predicate (only timestamp is supported for now): %s", left.Ref.Column)
+		case types.ColumnTypeMetadata:
+			return mapMetadataPredicate(e)
+		default:
+			return nil, fmt.Errorf("unsupported column ref type (%T) in predicate: %s", left.Ref, left.Ref.String())
+		}
+	default:
+		return nil, fmt.Errorf("unsupported expression type (%T) in predicate: %s", expr, expr.String())
+	}
+}
+
+func mapTimestampPredicate(expr physical.Expression) (dataobj.TimeRangePredicate[dataobj.LogsPredicate], error) {
+	m := newTimestampPredicateMapper()
+	if err := m.verify(expr); err != nil {
+		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{}, err
+	}
+
+	if err := m.processExpr(expr); err != nil {
+		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{}, err
+	}
+
+	// Check for impossible ranges that might have been formed.
+	if m.res.StartTime.After(m.res.EndTime) {
+		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{},
+			fmt.Errorf("impossible time range: start_time (%v) is after end_time (%v)", m.res.StartTime, m.res.EndTime)
+	}
+	if m.res.StartTime.Equal(m.res.EndTime) && (!m.res.IncludeStart || !m.res.IncludeEnd) {
+		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{},
+			fmt.Errorf("impossible time range: start_time (%v) equals end_time (%v) but the range is exclusive", m.res.StartTime, m.res.EndTime)
+	}
+
+	return m.res, nil
+}
+
+func newTimestampPredicateMapper() *timestampPredicateMapper {
+	open := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+		StartTime:    time.Unix(0, math.MinInt64).UTC(),
+		EndTime:      time.Unix(0, math.MaxInt64).UTC(),
+		IncludeStart: true,
+		IncludeEnd:   true,
+	}
+	return &timestampPredicateMapper{
+		res: open,
+	}
+}
+
+type timestampPredicateMapper struct {
+	res dataobj.TimeRangePredicate[dataobj.LogsPredicate]
+}
+
+// ensures the LHS is a timestamp column reference
+// and the RHS is either a literal or a binary expression
+func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
+	binop, ok := expr.(*physical.BinaryExpr)
+	if !ok {
+		return fmt.Errorf("unsupported expression type for timestamp predicate: %T, expected *physical.BinaryExpr", expr)
+	}
+
+	switch binop.Op {
+	case types.BinaryOpEq, types.BinaryOpGt, types.BinaryOpGte, types.BinaryOpLt, types.BinaryOpLte:
+		lhs, okLHS := binop.Left.(*physical.ColumnExpr)
+		if !okLHS || lhs.Ref.Type != types.ColumnTypeBuiltin || lhs.Ref.Column != types.ColumnNameBuiltinTimestamp {
+			return fmt.Errorf("invalid LHS for comparison: expected timestamp column, got %s", binop.Left.String())
+		}
+
+		// RHS must be a literal timestamp for simple comparisons.
+		rhsLit, okRHS := binop.Right.(*physical.LiteralExpr)
+		if !okRHS {
+			return fmt.Errorf("invalid RHS for comparison: expected literal timestamp, got %T", binop.Right)
+		}
+		if rhsLit.ValueType() != datatype.Timestamp {
+			return fmt.Errorf("unsupported literal type for RHS: %s, expected timestamp", rhsLit.ValueType())
+		}
+		return nil
+
+	case types.BinaryOpAnd:
+		if err := m.verify(binop.Left); err != nil {
+			return fmt.Errorf("invalid left operand for AND: %w", err)
+		}
+		if err := m.verify(binop.Right); err != nil {
+			return fmt.Errorf("invalid right operand for AND: %w", err)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported operator for timestamp predicate: %s", binop.Op)
+	}
+}
+
+// processExpr recursively processes the expression tree to update the time range.
+func (m *timestampPredicateMapper) processExpr(expr physical.Expression) error {
+	// verify should have already ensured expr is *physical.BinaryExpr
+	binExp := expr.(*physical.BinaryExpr)
+
+	switch binExp.Op {
+	case types.BinaryOpAnd:
+		if err := m.processExpr(binExp.Left); err != nil {
+			return err
+		}
+		return m.processExpr(binExp.Right)
+	case types.BinaryOpEq, types.BinaryOpGt, types.BinaryOpGte, types.BinaryOpLt, types.BinaryOpLte:
+		// This is a comparison operation, rebound m.res
+		// The 'right' here is binExp.Right, which could be a literal or a nested BinaryExpr.
+		// rebound will extract the actual literal value.
+		return m.rebound(binExp.Op, binExp.Right)
+	default:
+		// This case should ideally not be reached if verify is correct.
+		return fmt.Errorf("unexpected operator in processExpr: %s", binExp.Op)
+	}
+}
+
+// rebound updates the time range (m.res) based on a single comparison operation.
+// The `op` is the comparison operator (e.g., Gt, Lte).
+// The `rightExpr` is the RHS of the comparison, which might be a literal
+// or a nested binary expression (e.g., `timestamp > (timestamp = X)`).
+// This function will traverse `rightExpr` to find the innermost literal value.
+func (m *timestampPredicateMapper) rebound(op types.BinaryOp, rightExpr physical.Expression) error {
+	// `verify` (called by processExpr before this) now ensures that for comparison ops,
+	// the original expression's RHS was a literal, or if it was an AND, its constituent parts were.
+	// `processExpr` will pass the direct LiteralExpr from a comparison to rebound.
+	literalExpr, ok := rightExpr.(*physical.LiteralExpr)
+	if !ok {
+		// This should not happen if verify and processExpr are correct.
+		return fmt.Errorf("internal error: rebound expected LiteralExpr, got %T for: %s", rightExpr, rightExpr.String())
+	}
+
+	if literalExpr.ValueType() != datatype.Timestamp {
+		// Also should be caught by verify.
+		return fmt.Errorf("internal error: unsupported literal type in rebound: %s, expected timestamp", literalExpr.ValueType())
+	}
+	val := literalExpr.Literal.(*datatype.TimestampLiteral).Value()
+
+	switch op {
+	case types.BinaryOpEq: // ts == val
+		m.updateLowerBound(val, true)
+		m.updateUpperBound(val, true)
+	case types.BinaryOpGt: // ts > val
+		m.updateLowerBound(val, false)
+	case types.BinaryOpGte: // ts >= val
+		m.updateLowerBound(val, true)
+	case types.BinaryOpLt: // ts < val
+		m.updateUpperBound(val, false)
+	case types.BinaryOpLte: // ts <= val
+		m.updateUpperBound(val, true)
+	default:
+		// Should not be reached if processExpr filters operators correctly.
+		return fmt.Errorf("unsupported operator in rebound: %s", op)
+	}
+	return nil
+}
+
+// updateLowerBound updates the start of the time range (m.res.StartTime, m.res.IncludeStart).
+// `val` is the new potential start time from the condition.
+// `includeVal` indicates if this new start time is inclusive (e.g., from '>=' or '==').
+func (m *timestampPredicateMapper) updateLowerBound(val time.Time, includeVal bool) {
+	if val.After(m.res.StartTime) {
+		// The new value is strictly greater than the current start, so it becomes the new start.
+		m.res.StartTime = val
+		m.res.IncludeStart = includeVal
+	} else if val.Equal(m.res.StartTime) {
+		// The new value is equal to the current start.
+		// The range becomes more restrictive if the current start was exclusive and the new one is also exclusive or inclusive.
+		// Or if the current was inclusive and the new one is exclusive.
+		// Effectively, IncludeStart becomes true only if *both* the existing and new condition allow/imply inclusion.
+		// No, this should be: if new condition makes it more restrictive (i.e. current is [T and new is (T ), then new is (T )
+		// m.res.IncludeStart = m.res.IncludeStart && includeVal (This is for intersection: [a,b] AND (a,c] -> (a, min(b,c)] )
+		// m.res.IncludeStart = m.res.IncludeStart && includeVal
+		if !includeVal { // if new bound is exclusive (e.g. from `> val`)
+			m.res.IncludeStart = false // existing [val,... or (val,... combined with (> val) becomes (val,...
+		}
+		// If includeVal is true (e.g. from `>= val`), and m.res.IncludeStart was already true, it stays true.
+		// If includeVal is true, and m.res.IncludeStart was false, it stays false ( (val,...) AND [val,...] is (val,...) )
+		// This logic is subtle. Let's restate:
+		// Current Start: S, Is       (m.res.StartTime, m.res.IncludeStart)
+		// New Condition: val, includeVal
+		// if val > S: new start is val, includeVal
+		// if val == S: new start is val. IncludeStart becomes m.res.IncludeStart AND includeVal.
+		//    Example: current (S, ...), new condition S >= S. Combined: (S, ...). So if m.res.IncludeStart=false, new includeVal=true -> false.
+		//    Example: current [S, ...), new condition S > S. Combined: (S, ...). So if m.res.IncludeStart=true, new includeVal=false -> false.
+		//    This is correct for intersection.
+		m.res.IncludeStart = m.res.IncludeStart && includeVal
+	}
+	// If val is before m.res.StartTime, the current StartTime is already more restrictive, so no change.
+}
+
+// updateUpperBound updates the end of the time range (m.res.EndTime, m.res.IncludeEnd).
+// `val` is the new potential end time from the condition.
+// `includeVal` indicates if this new end time is inclusive (e.g., from '<=' or '==').
+func (m *timestampPredicateMapper) updateUpperBound(val time.Time, includeVal bool) {
+	if val.Before(m.res.EndTime) {
+		// The new value is strictly less than the current end, so it becomes the new end.
+		m.res.EndTime = val
+		m.res.IncludeEnd = includeVal
+	} else if val.Equal(m.res.EndTime) {
+		// The new value is equal to the current end.
+		// Similar to updateLowerBound, the inclusiveness is an AND condition.
+		// Example: current (..., S), new condition ts <= S. Combined: (..., S). m.res.IncludeEnd=false, includeVal=true -> false.
+		// Example: current (..., S], new condition ts < S. Combined: (..., S). m.res.IncludeEnd=true, includeVal=false -> false.
+		m.res.IncludeEnd = m.res.IncludeEnd && includeVal
+	}
+	// If val is after m.res.EndTime, the current EndTime is already more restrictive, so no change.
+}
+
+// mapMetadataPredicate converts a physical.Expression into a dataobj.Predicate for metadata filtering.
+// It supports MetadataMatcherPredicate for equality checks on metadata fields,
+// and can recursively handle AndPredicate, OrPredicate, and NotPredicate.
+func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
+	switch e := expr.(type) {
+	case *physical.BinaryExpr:
+		switch e.Op {
+		case types.BinaryOpEq:
+			if e.Left.Type() != physical.ExprTypeColumn {
+				return nil, fmt.Errorf("unsupported LHS type (%v) for EQ metadata predicate, expected ColumnExpr", e.Left.Type())
+			}
+			leftColumn, ok := e.Left.(*physical.ColumnExpr)
+			if !ok { // Should not happen due to Type() check but defensive
+				return nil, fmt.Errorf("LHS of EQ metadata predicate failed to cast to ColumnExpr")
+			}
+			if leftColumn.Ref.Type != types.ColumnTypeMetadata {
+				return nil, fmt.Errorf("unsupported LHS column type (%v) for EQ metadata predicate, expected ColumnTypeMetadata", leftColumn.Ref.Type)
+			}
+
+			if e.Right.Type() != physical.ExprTypeLiteral {
+				return nil, fmt.Errorf("unsupported RHS type (%v) for EQ metadata predicate, expected LiteralExpr", e.Right.Type())
+			}
+			rightLiteral, ok := e.Right.(*physical.LiteralExpr)
+			if !ok { // Should not happen
+				return nil, fmt.Errorf("RHS of EQ metadata predicate failed to cast to LiteralExpr")
+			}
+			if rightLiteral.ValueType() != datatype.String {
+				return nil, fmt.Errorf("unsupported RHS literal type (%v) for EQ metadata predicate, expected ValueTypeStr", rightLiteral.ValueType())
+			}
+			val := rightLiteral.Literal.(*datatype.StringLiteral).Value()
+
+			return dataobj.MetadataMatcherPredicate{
+				Key:   leftColumn.Ref.Column,
+				Value: val,
+			}, nil
+		case types.BinaryOpAnd:
+			leftPredicate, err := mapMetadataPredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of AND: %w", err)
+			}
+			rightPredicate, err := mapMetadataPredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
+			}
+			return dataobj.AndPredicate[dataobj.LogsPredicate]{
+				Left:  leftPredicate,
+				Right: rightPredicate,
+			}, nil
+		case types.BinaryOpOr:
+			leftPredicate, err := mapMetadataPredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of OR: %w", err)
+			}
+			rightPredicate, err := mapMetadataPredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
+			}
+			return dataobj.OrPredicate[dataobj.LogsPredicate]{
+				Left:  leftPredicate,
+				Right: rightPredicate,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unsupported binary operator (%s) for metadata predicate, expected EQ, AND, or OR", e.Op)
+		}
+	case *physical.UnaryExpr:
+		if e.Op != types.UnaryOpNot {
+			return nil, fmt.Errorf("unsupported unary operator (%s) for metadata predicate, expected NOT", e.Op)
+		}
+		innerPredicate, err := mapMetadataPredicate(e.Left)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
+		}
+		return dataobj.NotPredicate[dataobj.LogsPredicate]{
+			Inner: innerPredicate,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported expression type (%T) for metadata predicate, expected BinaryExpr or UnaryExpr", expr)
+	}
 }
