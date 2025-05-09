@@ -61,6 +61,7 @@ This is the generated reference for the Loki Helm Chart values.
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +81,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -199,6 +201,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for admin-api Pods</td>
@@ -262,6 +273,15 @@ This is the generated reference for the Loki Helm Chart values.
   "annotations": {},
   "labels": {}
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1178,6 +1198,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1484,6 +1505,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
@@ -1569,6 +1599,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1869,6 +1900,15 @@ null
 			<td>bloomPlanner.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2325,6 +2365,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -2634,6 +2675,15 @@ null
 			<td>compactor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.startupProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3684,6 +3734,7 @@ false
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "fsGroup": 10001,
@@ -3705,6 +3756,7 @@ false
     "labels": {},
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -3816,6 +3868,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>enterpriseGateway.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterpriseGateway.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for gateway Pods</td>
@@ -3881,6 +3942,15 @@ false
   "labels": {},
   "type": "ClusterIP"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4298,6 +4368,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.clientMaxBodySize</td>
 			<td>string</td>
 			<td>Allows customizing the `client_max_body_size` directive</td>
@@ -4569,6 +4648,15 @@ null
 			<td>Type of the gateway service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5161,6 +5249,7 @@ null
   "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -5558,6 +5647,15 @@ false
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6703,6 +6801,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.livenessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for canary pods</td>
@@ -6739,6 +6846,42 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.readinessProbe.httpGet.path</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.httpGet.port</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"http-metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.initialDelaySeconds</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+15
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.timeoutSeconds</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -6760,6 +6903,15 @@ true
 			<td>lokiCanary.service.labels</td>
 			<td>object</td>
 			<td>Additional labels for loki-canary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.startupProbe</td>
+			<td>object</td>
+			<td></td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6851,6 +7003,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -6870,6 +7031,24 @@ false
 			<td>The name of the PriorityClass for memcached pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6936,6 +7115,24 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.resources.limits</td>
 			<td>object</td>
 			<td></td>
@@ -6946,6 +7143,15 @@ true
 		</tr>
 		<tr>
 			<td>memcachedExporter.resources.requests</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.startupProbe</td>
 			<td>object</td>
 			<td></td>
 			<td><pre lang="json">
@@ -8150,6 +8356,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -8460,6 +8667,15 @@ null
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -11081,6 +11297,15 @@ null
 			<td>Set to true to skip tls verification for kube api calls.</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
