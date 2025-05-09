@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.4.4](https://github.com/grafana/loki/compare/v3.4.3...v3.4.4) (2025-05-09)
+
+
+### Features
+
+* LID for query splitting (backport release-3.4.x) ([#17378](https://github.com/grafana/loki/issues/17378)) ([2cb5ad7](https://github.com/grafana/loki/commit/2cb5ad7c7cc18f423473ce670ad66a6c4e33f49a))
+
+
+### Bug Fixes
+
+* **docs:** Update configuration.md (backport release-3.4.x) ([#17298](https://github.com/grafana/loki/issues/17298)) ([cc8db57](https://github.com/grafana/loki/commit/cc8db57f1576a7444b001fe466cb06a3698ffa67))
+
 ## [3.4.3](https://github.com/grafana/loki/compare/v3.4.2...v3.4.3) (2025-04-03)
 
 
