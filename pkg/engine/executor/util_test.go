@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -52,19 +53,19 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
 			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
 		}, nil),
 
 		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer idColBuilder.Release()
 
-			tsColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
+			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 			defer tsColBuilder.Release()
 
 			for i := int64(0); i < sz; i++ {
 				idColBuilder.Append(offset + i)
-				tsColBuilder.Append(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano())
+				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
 			}
 
 			idData := idColBuilder.NewArray()
@@ -111,7 +112,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	for {
 		err := pipeline.Read()
-		if err == EOF {
+		if errors.Is(err, EOF) {
 			break
 		}
 		if err != nil {
