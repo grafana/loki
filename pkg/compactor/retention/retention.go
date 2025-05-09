@@ -41,36 +41,49 @@ func (c Chunk) String() string {
 	return fmt.Sprintf("ChunkID: %s", c.ChunkID)
 }
 
-type Series struct {
+type Series interface {
+	SeriesID() []byte
+	UserID() []byte
+	Labels() labels.Labels
+	Chunks() []Chunk
+	Reset(seriesID, userID []byte, labels labels.Labels)
+	AppendChunks(ref ...Chunk)
+}
+
+func NewSeries() Series {
+	return &series{}
+}
+
+type series struct {
 	seriesID, userID []byte
 	labels           labels.Labels
 	chunks           []Chunk
 }
 
-func (s *Series) SeriesID() []byte {
+func (s *series) SeriesID() []byte {
 	return s.seriesID
 }
 
-func (s *Series) UserID() []byte {
+func (s *series) UserID() []byte {
 	return s.userID
 }
 
-func (s *Series) Labels() labels.Labels {
+func (s *series) Labels() labels.Labels {
 	return s.labels
 }
 
-func (s *Series) Chunks() []Chunk {
+func (s *series) Chunks() []Chunk {
 	return s.chunks
 }
 
-func (s *Series) Reset(seriesID, userID []byte, labels labels.Labels) {
+func (s *series) Reset(seriesID, userID []byte, labels labels.Labels) {
 	s.seriesID = seriesID
 	s.userID = userID
 	s.labels = labels
 	s.chunks = s.chunks[:0]
 }
 
-func (s *Series) AppendChunks(ref ...Chunk) {
+func (s *series) AppendChunks(ref ...Chunk) {
 	s.chunks = append(s.chunks, ref...)
 }
 
@@ -219,7 +232,7 @@ func markForDelete(
 			}
 		}
 
-		if expiration.CanSkipSeries(s.UserID(), s.labels, s.SeriesID(), seriesStart, tableName, now) {
+		if expiration.CanSkipSeries(s.UserID(), s.Labels(), s.SeriesID(), seriesStart, tableName, now) {
 			empty = false
 			return nil
 		}

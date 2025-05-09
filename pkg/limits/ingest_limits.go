@@ -176,7 +176,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-	s.wal = NewKafkaWAL(s.writer, s.cfg.KafkaConfig.Topic, uint64(s.cfg.NumPartitions), logger)
+	s.wal = NewKafkaWAL(s.writer, kCfg.Topic, uint64(s.cfg.NumPartitions), logger)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
