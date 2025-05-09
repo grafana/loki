@@ -198,7 +198,6 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	for _, reader := range s.readers {
 		g.Go(func() error {
 			buf := make([]dataobj.Record, 512)
-
 			for {
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
