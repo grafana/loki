@@ -166,13 +166,13 @@ func TestStorageEquality(t *testing.T) {
 					return tc == baseCase
 				})
 				if idx == -1 {
-					t.Skipf("Store %s missing test case %s", store.Name, baseCase.Name())
+					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
 					continue
 				}
 
 				actual, err := store.Engine.Query(params).Exec(ctx)
 				if err != nil && errors.Is(err, errStoreUnimplemented) {
-					t.Skipf("Store %s does not implement test case %s", store.Name, baseCase.Name())
+					t.Logf("Store %s does not implement test case %s", store.Name, baseCase.Name())
 					continue
 				} else if assert.NoError(t, err) {
 					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
