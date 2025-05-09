@@ -21,7 +21,6 @@ import (
 var (
 	labelMD    = buildMetadata(types.ColumnTypeLabel)
 	metadataMD = buildMetadata(types.ColumnTypeMetadata)
-	builtinMD  = buildMetadata(types.ColumnTypeBuiltin)
 )
 
 func buildMetadata(ty types.ColumnType) arrow.Metadata {
