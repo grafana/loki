@@ -170,6 +170,22 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: nil,
 		},
+		"should fail on index table prefix ending in path delimiter": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema: "v13",
+						IndexTables: IndexPeriodicTableConfig{
+							PathPrefix: "index/",
+							PeriodicTableConfig: PeriodicTableConfig{
+								Prefix: "v13/key_",
+							},
+						},
+					},
+				},
+			},
+			err: errInvalidTablePrefixValue,
+		},
 		"should pass on index and chunk table period set to zero (no period tables)": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{
