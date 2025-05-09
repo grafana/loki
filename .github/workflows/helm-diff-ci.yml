@@ -25,6 +25,9 @@ jobs:
           - name: Distributed Scenario
             values_file: default-distributed-values.yaml
             use_k3d: true
+          - name: Single Binary Scenario
+            values_file: default-single-binary-values.yaml
+            use_k3d: true
           - name: Default Values Scenario
             values_file: default-values.yaml
             use_k3d: true
