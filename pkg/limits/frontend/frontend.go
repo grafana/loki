@@ -97,7 +97,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	for _, resp := range resps {
 		results = append(results, resp.Results...)
 	}
-	return &proto.ExceedsLimitsResponse{results}, nil
+	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

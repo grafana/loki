@@ -185,14 +185,14 @@ func collectRow(rec arrow.Record, i int, result *resultBuilder) {
 		}
 
 		// Extract line
-		if colName == types.ColumnNameBuiltinLine && colType == types.ColumnTypeBuiltin.String() {
+		if colName == types.ColumnNameBuiltinMessage && colType == types.ColumnTypeBuiltin.String() {
 			entry.Line = col.(*array.String).Value(i)
 			continue
 		}
 
 		// Extract timestamp
 		if colName == types.ColumnNameBuiltinTimestamp && colType == types.ColumnTypeBuiltin.String() {
-			entry.Timestamp = time.Unix(0, int64(col.(*array.Uint64).Value(i)))
+			entry.Timestamp = time.Unix(0, int64(col.(*array.Timestamp).Value(i)))
 			continue
 		}
 

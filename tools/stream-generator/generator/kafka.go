@@ -94,8 +94,8 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 			}
 
 			metadata := proto.StreamMetadata{
-				StreamHash:  stream.HashKeyNoShard,
-				EntriesSize: logSize,
+				StreamHash: stream.HashKeyNoShard,
+				TotalSize:  logSize,
 			}
 			b, err := metadata.Marshal()
 			if err != nil {

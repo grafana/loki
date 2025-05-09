@@ -353,8 +353,8 @@ func (s *dataobjScan) effectiveProjections(h *topk.Heap[dataobj.Record]) ([]phys
 	})
 
 	// Add fixed columns at the end.
-	addColumn("timestamp", types.ColumnTypeBuiltin)
-	addColumn("message", types.ColumnTypeBuiltin)
+	addColumn(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
+	addColumn(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin)
 
 	return columns, nil
 }
@@ -475,9 +475,9 @@ func builtinColumnType(ref types.ColumnRef) arrow.DataType {
 	}
 
 	switch ref.Column {
-	case "timestamp":
+	case types.ColumnNameBuiltinTimestamp:
 		return arrow.FixedWidthTypes.Timestamp_ns
-	case "message":
+	case types.ColumnNameBuiltinMessage:
 		return arrow.BinaryTypes.String
 	default:
 		panic(fmt.Sprintf("unsupported builtin column type %s", ref))
@@ -518,10 +518,10 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		}
 
 	case types.ColumnTypeBuiltin.String():
-		if field.Name == "timestamp" {
+		if field.Name == types.ColumnNameBuiltinTimestamp {
 			ts, _ := arrow.TimestampFromTime(record.Timestamp, arrow.Nanosecond)
 			builder.(*array.TimestampBuilder).Append(ts)
-		} else if field.Name == "message" {
+		} else if field.Name == types.ColumnNameBuiltinMessage {
 			// Use the inner BinaryBuilder to avoid converting record.Line to a
 			// string and back.
 			builder.(*array.StringBuilder).BinaryBuilder.Append(record.Line)

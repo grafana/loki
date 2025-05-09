@@ -55,9 +55,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1, // 0x1 is assigned to partition 0.
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1, // 0x1 is assigned to partition 0.
+				TotalSize:  0x5,
 			}},
 		},
 		instances: []ring.InstanceDesc{{
@@ -73,9 +72,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		}},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -100,9 +98,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1, // 0x1 is assigned to partition 1.
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1, // 0x1 is assigned to partition 1.
+				TotalSize:  0x5,
 			}},
 		},
 		instances: []ring.InstanceDesc{{
@@ -124,9 +121,8 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{nil, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		}},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{nil, {
@@ -150,13 +146,11 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1, // 0x1 is assigned to partition 1.
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1, // 0x1 is assigned to partition 1.
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x3, // 0x3 is also assigned to partition 1.
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x3, // 0x3 is also assigned to partition 1.
+				TotalSize:  0x9,
 			}},
 		},
 		instances: []ring.InstanceDesc{{
@@ -178,13 +172,11 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{nil, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x3,
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x3,
+				TotalSize:  0x9,
 			}},
 		}},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{nil, {
@@ -208,13 +200,11 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1, // 0x1 is assigned to partition 1.
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1, // 0x1 is assigned to partition 1.
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x2, // 0x2 is also assigned to partition 0.
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x2, // 0x2 is also assigned to partition 0.
+				TotalSize:  0x9,
 			}},
 		},
 		instances: []ring.InstanceDesc{{
@@ -236,16 +226,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x2,
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x2,
+				TotalSize:  0x9,
 			}},
 		}, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		}},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
@@ -277,13 +265,11 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1, // 0x1 is assigned to partition 1.
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1, // 0x1 is assigned to partition 1.
+				TotalSize:  0x5,
 			}, {
-				StreamHash:             0x2, // 0x2 is also assigned to partition 0.
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x2, // 0x2 is also assigned to partition 0.
+				TotalSize:  0x9,
 			}},
 		},
 		instances: []ring.InstanceDesc{{
@@ -305,16 +291,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expectedExceedsLimitsRequests: []*proto.ExceedsLimitsRequest{{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x2,
-				EntriesSize:            0x4,
-				StructuredMetadataSize: 0x5,
+				StreamHash: 0x2,
+				TotalSize:  0x9,
 			}},
 		}, {
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash:             0x1,
-				EntriesSize:            0x2,
-				StructuredMetadataSize: 0x3,
+				StreamHash: 0x1,
+				TotalSize:  0x5,
 			}},
 		}},
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
