@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -1159,7 +1160,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
 			continue
 		}
 		if _, err := newChunk.Append(&entry); err != nil {
@@ -1249,7 +1250,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata)
 		if !matches {
 			return
 		}
@@ -1316,8 +1317,8 @@ func (hb *headBlock) SampleIterator(
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
-			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-			if !ok {
+			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			if !ok || len(samples) == 0 {
 				continue
 			}
 			var (
@@ -1325,23 +1326,29 @@ func (hb *headBlock) SampleIterator(
 				s     *logproto.Series
 			)
 
-			lblStr := lbls.String()
-			baseHash := extractor.BaseLabels().Hash()
-			if s, found = series[lblStr]; !found {
-				s = &logproto.Series{
-					Labels:     lblStr,
-					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-					StreamHash: baseHash,
+			for _, sample := range samples {
+				value := sample.Value
+				lbls := sample.Labels
+
+				lblStr := lbls.String()
+				baseHash := extractor.BaseLabels().Hash()
+				if s, found = series[lblStr]; !found {
+					s = &logproto.Series{
+						Labels:     lblStr,
+						Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+						StreamHash: baseHash,
+					}
+					series[lblStr] = s
 				}
-				series[lblStr] = s
+
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: e.t,
+					Value:     value,
+					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+				})
 			}
 
-			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: e.t,
-				Value:     value,
-				Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-			})
-
+			//TODO(twhitney): will need to solve for this with multivariate extractor
 			if extractor.ReferencedStructuredMetadata() {
 				setQueryReferencedStructuredMetadata = true
 			}
@@ -1395,12 +1402,13 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:      stats,
-		origBytes:  b,
-		reader:     nil, // will be initialized later
-		pool:       pool,
-		format:     format,
-		symbolizer: symbolizer,
+		stats:                  stats,
+		origBytes:              b,
+		reader:                 nil, // will be initialized later
+		pool:                   pool,
+		format:                 format,
+		symbolizer:             symbolizer,
+		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }
 
@@ -1443,14 +1451,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1465,7 +1473,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, nil, false
+		return 0, nil, labels.EmptyLabels(), false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1476,7 +1484,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1496,7 +1504,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1505,7 +1513,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	if si.format < ChunkFormatV4 {
 		si.stats.AddDecompressedBytes(decompressedBytes)
 		si.stats.AddDecompressedLines(1)
-		return ts, si.buf[:lineSize], nil, true
+		return ts, si.buf[:lineSize], labels.EmptyLabels(), true
 	}
 
 	lastAttempt = 0
@@ -1516,14 +1524,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1573,7 +1581,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.symbolsBuf = SymbolsPool.Get(nSymbols).([]symbol)
 		if nSymbols > cap(si.symbolsBuf) {
 			si.err = fmt.Errorf("could not get a symbols matrix of size %d, actual %d", nSymbols, cap(si.symbolsBuf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1589,14 +1597,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 			if err != nil {
 				if err != io.EOF {
 					si.err = err
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					si.err = fmt.Errorf("invalid data in chunk")
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 			}
 			sName, nWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
@@ -1615,7 +1623,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
+	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1644,9 +1653,9 @@ func (si *bufferedIterator) close() {
 		si.symbolsBuf = nil
 	}
 
-	if si.currStructuredMetadata != nil {
+	if !si.currStructuredMetadata.IsEmpty() {
 		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
-		si.currStructuredMetadata = nil
+		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
 	si.origBytes = nil
@@ -1679,7 +1688,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue
 		}
@@ -1724,6 +1733,8 @@ func newSampleIterator(
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractors[0],
 		stats:            stats.FromContext(ctx),
+		curr:             []logproto.Sample{},
+		currLabels:       []log.LabelsResult{},
 	}
 }
 
@@ -1733,21 +1744,50 @@ type sampleBufferedIterator struct {
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
 
-	cur        logproto.Sample
-	currLabels log.LabelsResult
+	curr       []logproto.Sample
+	currLabels []log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
+	// sample at e.curr[0] is the current sample
+	// since there is more than one sample, shift the remaining samples down by one
+	// to make e.curr[1] the new current sample
+	if len(e.curr) > 1 {
+		e.curr = e.curr[1:]
+		e.currLabels = e.currLabels[1:]
+
+		return true
+	}
+
+	// sample at e.curr[0] is the current sample
+	// since there is only one sample (the current one), we need to shift it out
+	// and clear the slice
+	if len(e.curr) == 1 {
+		e.curr = e.curr[:0]
+		e.currLabels = e.currLabels[:0]
+	}
+
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
-		if !ok {
+		e.stats.AddPostFilterLines(1)
+
+		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		if !ok || len(samples) == 0 {
 			continue
 		}
-		e.stats.AddPostFilterLines(1)
-		e.currLabels = labels
-		e.cur.Value = val
-		e.cur.Hash = xxhash.Sum64(e.currLine)
-		e.cur.Timestamp = e.currTs
+
+		for _, sample := range samples {
+			e.currLabels = append(e.currLabels, sample.Labels)
+
+			// multilple samples from the same line can't have the same line hash or they will be deduplicated
+			// so they must have unique labels, which we'll use to create a unique line hash
+			lblString := sample.Labels.String()
+			e.curr = append(e.curr, logproto.Sample{
+				Timestamp: e.currTs,
+				Value:     sample.Value,
+				Hash:      util.UniqueSampleHash(lblString, e.currLine),
+			})
+		}
+
 		return true
 	}
 	return false
@@ -1761,12 +1801,12 @@ func (e *sampleBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.cur
+	return e.curr[0]
 }
 
 // validateBlock validates block by doing following checks:

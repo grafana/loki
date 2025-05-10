@@ -41,36 +41,49 @@ func (c Chunk) String() string {
 	return fmt.Sprintf("ChunkID: %s", c.ChunkID)
 }
 
-type Series struct {
+type Series interface {
+	SeriesID() []byte
+	UserID() []byte
+	Labels() labels.Labels
+	Chunks() []Chunk
+	Reset(seriesID, userID []byte, labels labels.Labels)
+	AppendChunks(ref ...Chunk)
+}
+
+func NewSeries() Series {
+	return &series{}
+}
+
+type series struct {
 	seriesID, userID []byte
 	labels           labels.Labels
 	chunks           []Chunk
 }
 
-func (s *Series) SeriesID() []byte {
+func (s *series) SeriesID() []byte {
 	return s.seriesID
 }
 
-func (s *Series) UserID() []byte {
+func (s *series) UserID() []byte {
 	return s.userID
 }
 
-func (s *Series) Labels() labels.Labels {
+func (s *series) Labels() labels.Labels {
 	return s.labels
 }
 
-func (s *Series) Chunks() []Chunk {
+func (s *series) Chunks() []Chunk {
 	return s.chunks
 }
 
-func (s *Series) Reset(seriesID, userID []byte, labels labels.Labels) {
+func (s *series) Reset(seriesID, userID []byte, labels labels.Labels) {
 	s.seriesID = seriesID
 	s.userID = userID
 	s.labels = labels
 	s.chunks = s.chunks[:0]
 }
 
-func (s *Series) AppendChunks(ref ...Chunk) {
+func (s *series) AppendChunks(ref ...Chunk) {
 	s.chunks = append(s.chunks, ref...)
 }
 
@@ -219,7 +232,7 @@ func markForDelete(
 			}
 		}
 
-		if expiration.CanSkipSeries(s.UserID(), s.labels, s.SeriesID(), seriesStart, tableName, now) {
+		if expiration.CanSkipSeries(s.UserID(), s.Labels(), s.SeriesID(), seriesStart, tableName, now) {
 			empty = false
 			return nil
 		}
@@ -268,7 +281,7 @@ func markForDelete(
 			// We would now check if the end time of the tableInterval is out of retention period so that
 			// we can drop the chunk entry from this table without removing the chunk from the store.
 			if c.Through.After(tableInterval.End) {
-				if expiration.DropFromIndex(s.UserID(), c, nil, tableInterval.End, now) {
+				if expiration.DropFromIndex(s.UserID(), c, labels.EmptyLabels(), tableInterval.End, now) {
 					modified = true
 					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
@@ -280,7 +293,11 @@ func markForDelete(
 			empty = false
 			seriesMap.MarkSeriesNotDeleted(s.SeriesID(), s.UserID())
 		}
-		return iterCtx.Err()
+		if err := iterCtx.Err(); err != nil {
+			return err
+		}
+
+		return expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName)
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
@@ -438,8 +455,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
-		if filterFunc(ts, s, structuredMetadata...) {
+	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+		if filterFunc(ts, s, structuredMetadata) {
 			linesDeleted = true
 			return true
 		}

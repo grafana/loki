@@ -1,16 +1,17 @@
 package dataobj
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"maps"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -23,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // A Record is an individual log record in a data object.
@@ -39,14 +42,17 @@ type LogsReader struct {
 	idx   int
 	ready bool
 
-	matchIDs  map[int64]struct{}
-	predicate LogsPredicate
+	matchIDs   map[int64]struct{}
+	predicates []LogsPredicate
 
-	buf []dataset.Row
+	buf    []dataset.Row
+	record logs.Record
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
 	columnDesc []*logsmd.ColumnDesc
+
+	symbols *symbolizer.Symbolizer
 }
 
 // NewLogsReader creates a new LogsReader that reads from the logs section of
@@ -78,17 +84,17 @@ func (r *LogsReader) MatchStreams(ids iter.Seq[int64]) error {
 	return nil
 }
 
-// SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
+// SetPredicate sets the predicates to use for filtering logs. [LogsReader.Read]
 // will only return logs for which the predicate passes.
 //
-// A predicate may only be set before reading begins or after a call to
+// Predicates may only be set before reading begins or after a call to
 // [LogsReader.Reset].
-func (r *LogsReader) SetPredicate(p LogsPredicate) error {
+func (r *LogsReader) SetPredicates(p []LogsPredicate) error {
 	if r.ready {
 		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
-	r.predicate = p
+	r.predicates = p
 	return nil
 }
 
@@ -109,7 +115,7 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 		}
 	}
 
-	r.buf = slices.Grow(r.buf, len(s))
+	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
 
 	n, err := r.reader.Read(ctx, r.buf)
@@ -120,20 +126,35 @@ func (r *LogsReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		readRecord, err := logs.Decode(r.columnDesc, r.buf[i])
+		err := logs.Decode(r.columnDesc, r.buf[i], &r.record)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
 
-		s[i] = Record{
-			StreamID:  readRecord.StreamID,
-			Timestamp: readRecord.Timestamp,
-			Metadata:  readRecord.Metadata,
-			Line:      readRecord.Line,
+		// Copy record data into pre-allocated output buffer
+		s[i].StreamID = r.record.StreamID
+		s[i].Timestamp = r.record.Timestamp
+		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, len(r.record.Metadata))
+		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
+		for j := range r.record.Metadata {
+			s[i].Metadata[j].Name = r.symbols.Get(r.record.Metadata[j].Name)
+			s[i].Metadata[j].Value = r.symbols.Get(unsafeString(r.record.Metadata[j].Value))
 		}
+		s[i].Line = slicegrow.Copy(s[i].Line, r.record.Line)
 	}
 
 	return n, nil
+}
+
+func unsafeSlice(data string, capacity int) []byte {
+	if capacity <= 0 {
+		capacity = len(data)
+	}
+	return unsafe.Slice(unsafe.StringData(data), capacity)
+}
+
+func unsafeString(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
@@ -156,18 +177,21 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
-	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
-	if r.predicate != nil {
-		predicate = dataset.AndPredicate{
-			Left:  predicate,
-			Right: translateLogsPredicate(r.predicate, columns, columnDescs),
+	var predicates []dataset.Predicate
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs); p != nil {
+		predicates = append(predicates, p)
+	}
+
+	for _, predicate := range r.predicates {
+		if p := translateLogsPredicate(predicate, columns, columnDescs); p != nil {
+			predicates = append(predicates, p)
 		}
 	}
 
 	readerOpts := dataset.ReaderOptions{
-		Dataset:   dset,
-		Columns:   columns,
-		Predicate: predicate,
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: OrderPredicates(predicates),
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
@@ -176,6 +200,12 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		r.reader = dataset.NewReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+
+	if r.symbols == nil {
+		r.symbols = symbolizer.New(128, 100_000)
+	} else {
+		r.symbols.Reset()
 	}
 
 	r.columnDesc = columnDescs
@@ -204,12 +234,17 @@ func (r *LogsReader) findSection(ctx context.Context) (*filemd.SectionInfo, erro
 	return nil, fmt.Errorf("section index %d not found", r.idx)
 }
 
-func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := make(labels.Labels, 0, len(md))
+func convertMetadata(md push.LabelsAdapter) []logs.RecordMetadata {
+	l := make([]logs.RecordMetadata, 0, len(md))
 	for _, label := range md {
-		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
+		l = append(l, logs.RecordMetadata{Name: label.Name, Value: unsafeSlice(label.Value, 0)})
 	}
-	sort.Sort(l)
+	sort.Slice(l, func(i, j int) bool {
+		if l[i].Name == l[j].Name {
+			return cmp.Compare(unsafeString(l[i].Value), unsafeString(l[j].Value)) < 0
+		}
+		return cmp.Compare(l[i].Name, l[j].Name) < 0
+	})
 	return l
 }
 
@@ -226,10 +261,14 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	r.ready = false
 
 	clear(r.matchIDs)
-	r.predicate = nil
+	r.predicates = nil
 
 	r.columns = nil
 	r.columnDesc = nil
+
+	if r.symbols != nil {
+		r.symbols.Reset()
+	}
 
 	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
 	// call to Read.
@@ -245,8 +284,6 @@ func (r *LogsReader) Close() error {
 }
 
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
-	var res dataset.Predicate
-
 	streamIDColumn := findColumnFromDesc(columns, columnDesc, func(desc *logsmd.ColumnDesc) bool {
 		return desc.Type == logsmd.COLUMN_TYPE_STREAM_ID
 	})
@@ -254,23 +291,19 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
+	var values []dataset.Value
 	for id := range ids {
-		p := dataset.EqualPredicate{
-			Column: streamIDColumn,
-			Value:  dataset.Int64Value(id),
-		}
-
-		if res == nil {
-			res = p
-		} else {
-			res = dataset.OrPredicate{
-				Left:  res,
-				Right: p,
-			}
-		}
+		values = append(values, dataset.Int64Value(id))
 	}
 
-	return res
+	if len(values) == 0 {
+		return nil
+	}
+
+	return dataset.InPredicate{
+		Column: streamIDColumn,
+		Values: values,
+	}
 }
 
 func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDesc []*logsmd.ColumnDesc) dataset.Predicate {
@@ -316,9 +349,9 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.VALUE_TYPE_STRING {
+				if value.Type() == datasetmd.VALUE_TYPE_BYTE_ARRAY {
 					// To handle older dataobjs that still use string type for message column. This can be removed in future.
-					return p.Keep([]byte(value.String()))
+					return p.Keep(value.ByteArray())
 				}
 
 				return p.Keep(value.ByteArray())
@@ -334,7 +367,7 @@ func translateLogsPredicate(p LogsPredicate, columns []dataset.Column, columnDes
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.StringValue(p.Value),
+			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case MetadataFilterPredicate:
@@ -408,8 +441,8 @@ func valueToString(value dataset.Value) string {
 		return strconv.FormatInt(value.Int64(), 10)
 	case datasetmd.VALUE_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_STRING:
-		return value.String()
+	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		return unsafeString(value.ByteArray())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
 	}

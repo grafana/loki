@@ -15,8 +15,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
@@ -34,11 +34,13 @@ const (
 
 	OTLPSeverityNumber = "severity_number"
 	OTLPSeverityText   = "severity_text"
+
+	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
-	otlpLogs, err := extractLogs(r, stats)
+	otlpLogs, err := extractLogs(r, maxRecvMsgSize, stats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -47,11 +49,16 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tracker Usa
 	return req, stats, nil
 }
 
-func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
+func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Logs, error) {
 	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
 	var body io.Reader = bodySize
+	if maxRecvMsgSize > 0 {
+		// Read from LimitReader with limit max+1. So if the underlying
+		// reader is over limit, the result will be bigger than max.
+		body = io.LimitReader(bodySize, int64(maxRecvMsgSize)+1)
+	}
 	if pushStats.ContentEncoding == gzipContentEncoding {
 		r, err := gzip.NewReader(bodySize)
 		if err != nil {
@@ -64,6 +71,9 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	}
 	buf, err := io.ReadAll(body)
 	if err != nil {
+		if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
+			return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
+		}
 		return plog.NewLogs(), err
 	}
 
@@ -101,6 +111,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
+
+	// Track if request used the Loki OTLP exporter label
+	var usingLokiExporter bool
 
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
@@ -195,6 +208,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
+
+		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
+		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
+			usingLokiExporter = true
+		}
 
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
@@ -359,6 +377,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 	}
 
+	// Increment exporter streams metric once per request if seen
+	if usingLokiExporter {
+		otlpExporterStreams.WithLabelValues(userID).Inc()
+	}
+
 	return pr
 }
 
@@ -476,7 +499,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = prometheus.NormalizeLabel(keyWithPrefix)
+	keyWithPrefix = otlptranslator.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

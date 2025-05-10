@@ -14,6 +14,10 @@ const (
 	ReasonLabel            = "reason"
 	MissingStreamsErrorMsg = "error at least one valid stream is required for ingestion"
 
+	// RequestBodyTooLarge is a reason when decompressing the request body is too large.
+	RequestBodyTooLarge         = "request_body_too_large"
+	RequestBodyTooLargeErrorMsg = "request body too large: %d bytes, limit: %d bytes"
+
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"

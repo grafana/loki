@@ -228,19 +228,17 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		}
 	}()
 	streamsPredicate := streamPredicate(selector.Matchers(), req.Start, req.End)
-	var logsPredicate dataobj.LogsPredicate = dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicates []dataobj.LogsPredicate
+	logsPredicates = append(logsPredicates, dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    req.Start,
 		EndTime:      req.End,
 		IncludeStart: true,
 		IncludeEnd:   false,
-	}
+	})
 
 	p, expr := buildLogsPredicateFromPipeline(selector)
 	if p != nil {
-		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
-			Left:  logsPredicate,
-			Right: p,
-		}
+		logsPredicates = append(logsPredicates, p)
 	}
 	req.Plan.AST = expr
 
@@ -254,7 +252,7 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicates, req)
 			if err != nil {
 				return err
 			}
@@ -287,20 +285,18 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
 	// TODO: support more predicates and combine with log.Pipeline.
-	var logsPredicate dataobj.LogsPredicate = dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicates []dataobj.LogsPredicate
+	logsPredicates = append(logsPredicates, dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
 		IncludeEnd:   false,
-	}
+	})
 
 	var predicateFromExpr dataobj.LogsPredicate
 	predicateFromExpr, expr = buildLogsPredicateFromSampleExpr(expr)
 	if predicateFromExpr != nil {
-		logsPredicate = dataobj.AndPredicate[dataobj.LogsPredicate]{
-			Left:  logsPredicate,
-			Right: predicateFromExpr,
-		}
+		logsPredicates = append(logsPredicates, predicateFromExpr)
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -313,7 +309,7 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 			span.SetTag("object", obj.object.path)
 			span.SetTag("sections", len(obj.logReaders))
 
-			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicates, expr)
 			if err != nil {
 				return err
 			}
@@ -456,8 +452,8 @@ func (s *shardedObject) reset() {
 	clear(s.streams)
 }
 
-func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicates []dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicates); err != nil {
 		return nil, err
 	}
 
@@ -488,8 +484,8 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicates []dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicates); err != nil {
 		return nil, err
 	}
 
@@ -527,12 +523,12 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 	return iter.NewSortSampleIterator(iterators), nil
 }
 
-func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate) error {
+func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, logsPredicates []dataobj.LogsPredicate) error {
 	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
 		return err
 	}
 	for _, reader := range s.logReaders {
-		if err := reader.SetPredicate(logsPredicate); err != nil {
+		if err := reader.SetPredicates(logsPredicates); err != nil {
 			return err
 		}
 	}
@@ -658,19 +654,17 @@ func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (dataobj.LogsPredi
 		predicate dataobj.LogsPredicate
 		skip      bool
 	)
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.BinOpExpr:
 			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
 			skip = true
-			return
 		case *syntax.RangeAggregationExpr:
-			if skip {
-				return
+			if !skip {
+				predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
 			}
-
-			predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
 		}
+		return true
 	})
 
 	return predicate, expr

@@ -10,9 +10,11 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -37,11 +39,14 @@ type symbolizer struct {
 	labels         []string
 	size           int
 	compressedSize int
+	// Runtime-only map to track which symbols are label names and have been normalized
+	normalizedNames map[uint32]string
 }
 
 func newSymbolizer() *symbolizer {
 	return &symbolizer{
-		symbolsMap: map[string]uint32{},
+		symbolsMap:      map[string]uint32{},
+		normalizedNames: map[uint32]string{},
 	}
 }
 
@@ -54,20 +59,23 @@ func (s *symbolizer) Reset() {
 	s.labels = s.labels[:0]
 	s.size = 0
 	s.compressedSize = 0
+	s.normalizedNames = map[uint32]string{}
 }
 
 // Add adds new labels pairs to the collection and returns back a symbol for each existing and new label pair
 func (s *symbolizer) Add(lbls labels.Labels) symbols {
-	if len(lbls) == 0 {
+	if lbls.IsEmpty() {
 		return nil
 	}
 
-	syms := make([]symbol, len(lbls))
+	syms := make([]symbol, 0, lbls.Len())
 
-	for i, label := range lbls {
-		syms[i].Name = s.add(label.Name)
-		syms[i].Value = s.add(label.Value)
-	}
+	lbls.Range(func(label labels.Label) {
+		syms = append(syms, symbol{
+			Name:  s.add(label.Name),
+			Value: s.add(label.Value),
+		})
+	})
 
 	return syms
 }
@@ -97,20 +105,40 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels.Labels {
 	if len(syms) == 0 {
-		return nil
+		return labels.EmptyLabels()
 	}
+
 	if buf == nil {
-		buf = structuredMetadataPool.Get().(labels.Labels)
+		structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
 	}
-	buf = buf[:0]
+	buf.Reset()
 
 	for _, symbol := range syms {
-		buf = append(buf, labels.Label{Name: s.lookup(symbol.Name), Value: s.lookup(symbol.Value)})
+		// First check if we have a normalized name for this symbol
+		s.mtx.RLock()
+		normalized, exists := s.normalizedNames[symbol.Name]
+		s.mtx.RUnlock()
+
+		var name string
+		if exists {
+			name = normalized
+		} else {
+			// If we haven't seen this name before, look it up and normalize it
+			name = s.lookup(symbol.Name)
+			normalized := otlptranslator.NormalizeLabel(name)
+			s.mtx.Lock()
+			s.normalizedNames[symbol.Name] = normalized
+			s.mtx.Unlock()
+			name = normalized
+		}
+
+		buf.Add(labels.Label{Name: name, Value: s.lookup(symbol.Value)})
 	}
 
-	return buf
+	return buf.Labels()
 }
 
 func (s *symbolizer) lookup(idx uint32) string {
@@ -312,6 +340,9 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 	s := symbolizer{
 		symbolsMap: make(map[string]uint32, numLabels),
 		labels:     make([]string, 0, numLabels),
+		// Labels are key-value pairs, preallocate to half the number to store just the keys,
+		// likely less memory than the exponential growth Go will do.
+		normalizedNames: make(map[uint32]string, numLabels/2),
 	}
 
 	for i := 0; i < numLabels; i++ {
@@ -338,8 +369,11 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 	defer pool.PutReader(reader)
 
 	s := symbolizer{
-		labels:         make([]string, 0, numLabels),
-		compressedSize: len(b),
+		labels: make([]string, 0, numLabels),
+		// Same as symbolizerFromCheckpoint
+		normalizedNames: make(map[uint32]string, numLabels/2),
+		symbolsMap:      make(map[string]uint32, numLabels),
+		compressedSize:  len(b),
 	}
 
 	var (
@@ -400,7 +434,9 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 				return nil, err
 			}
 		}
-		s.labels = append(s.labels, string(buf))
+		label := string(buf)
+		s.symbolsMap[label] = uint32(len(s.labels))
+		s.labels = append(s.labels, label)
 		s.size += len(buf)
 	}
 

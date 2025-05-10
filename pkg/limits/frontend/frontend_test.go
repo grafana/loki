@@ -2,330 +2,144 @@ package frontend
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/limiter"
-	"github.com/grafana/dskit/ring"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestFrontend_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name                           string
-		exceedsLimitsRequest           *logproto.ExceedsLimitsRequest
-		getAssignedPartitionsResponses []*logproto.GetAssignedPartitionsResponse
-		expectedStreamUsageRequest     []*logproto.GetStreamUsageRequest
-		getStreamUsageResponses        []*logproto.GetStreamUsageResponse
-		maxGlobalStreams               int
-		ingestionRate                  float64
-		expected                       []*logproto.RejectedStream
+		name                   string
+		exceedsLimitsRequest   *proto.ExceedsLimitsRequest
+		exceedsLimitsResponses []*proto.ExceedsLimitsResponse
+		expected               *proto.ExceedsLimitsResponse
 	}{{
 		name: "no streams",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant:  "test",
-			Streams: []*logproto.StreamMetadata{},
+			Streams: nil,
 		},
-		expected: nil,
-	}, {
-		name: "no response",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-			Partitions:   []int32{0},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{}},
-		maxGlobalStreams:        10,
-		ingestionRate:           100,
-		expected:                nil,
-	}, {
-		name: "within limits",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-				{StreamHash: 0x2},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 2,
-			Rate:          10,
-		}},
-		maxGlobalStreams: 10,
-		ingestionRate:    100,
-		expected:         nil,
-	}, {
-		name: "exceeds max streams limit, rejects new streams",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1}, // Exceeds limits.
-				{StreamHash: 0x2}, // Also exceeds limits.
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:         "test",
-			ActiveStreams:  5,
-			Rate:           10,
-			UnknownStreams: []uint64{0x1, 0x2},
-		}},
-		maxGlobalStreams: 5,
-		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
-			{StreamHash: 0x1, Reason: ReasonExceedsMaxStreams},
-			{StreamHash: 0x2, Reason: ReasonExceedsMaxStreams},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{},
 		},
 	}, {
-		name: "exceeds max streams limit, allows existing streams and rejects new streams",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+		name: "one stream",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-				{StreamHash: 0x2},
-				{StreamHash: 0x3},
-				{StreamHash: 0x4},
-				{StreamHash: 0x5},
-				{StreamHash: 0x6}, // Exceeds limits.
-				{StreamHash: 0x7}, // Also exceeds limits.
-			},
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}},
 		}},
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7},
-			Partitions:   []int32{0},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:         "test",
-			ActiveStreams:  5,
-			Rate:           10,
-			UnknownStreams: []uint64{6, 7},
-		}},
-		maxGlobalStreams: 5,
-		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
-			{StreamHash: 6, Reason: ReasonExceedsMaxStreams},
-			{StreamHash: 7, Reason: ReasonExceedsMaxStreams},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}},
 		},
 	}, {
-		// This test checks the case where a tenant's streams are sharded over
-		// two instances, each holding one each stream. Each instance will
-		// return an response stating that it doesn't know about the other
-		// stream. The frontend is responsible for taking the intersection of
-		// the two responses and calculating the actual set of unknown streams.
-		name: "exceeds max streams limit, streams sharded over two instances",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
+		name: "one stream, no responses",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1}, // Exceeds limits.
-				{StreamHash: 0x2}, // Also exceeds limits.
-			},
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(), // Instance 0 owns partition 0.
-			},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{},
+		}},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{},
+		},
+	}, {
+		name: "two stream, one response",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}, {
+				StreamHash: 0x4,
+				TotalSize:  0x9,
+			}},
+		},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}, {
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
+			}},
+		}},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}, {
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
+			}},
+		},
+	}, {
+		name: "two stream, two responses",
+		exceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}, {
+				StreamHash: 0x4,
+				TotalSize:  0x9,
+			}},
+		},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}},
 		}, {
-			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(), // Instance 1 owns partition 1.
-			},
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
+			}},
 		}},
-		// The frontend will ask instance 0 for the data for partition 0,
-		// and instance 1 for the data for partition 1.
-		expectedStreamUsageRequest: []*logproto.GetStreamUsageRequest{{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{0},
-		}, {
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1, 0x2},
-			Partitions:   []int32{1},
-		}},
-		// Each instance will respond stating that it doesn't know about the
-		// other stream.
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:         "test",
-			ActiveStreams:  1,
-			Rate:           5,
-			UnknownStreams: []uint64{0x2},
-		}, {
-			Tenant:         "test",
-			ActiveStreams:  1,
-			Rate:           5,
-			UnknownStreams: []uint64{0x1},
-		}},
-		maxGlobalStreams: 1,
-		ingestionRate:    100,
-		// No streams should be rejected.
-		expected: nil,
-	}, {
-		name: "exceeds rate limits, rejects all streams",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-				{StreamHash: 0x2},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 2,
-			Rate:          1500, // Above the limit of 100 bytes/sec
-		}},
-		maxGlobalStreams: 10,
-		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
-			{StreamHash: 1, Reason: ReasonExceedsRateLimit},
-			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
-		},
-	}, {
-		name: "exceeds rate limits, rates sharded over two instances",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x1},
-				{StreamHash: 0x2},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: time.Now().UnixNano(),
-			},
-		}, {
-			AssignedPartitions: map[int32]int64{
-				1: time.Now().UnixNano(),
-			},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:        "test",
-			ActiveStreams: 1,
-			Rate:          600,
-		}, {
-			Tenant:        "test",
-			ActiveStreams: 1,
-			Rate:          500,
-		}},
-		maxGlobalStreams: 10,
-		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
-			{StreamHash: 1, Reason: ReasonExceedsRateLimit},
-			{StreamHash: 2, Reason: ReasonExceedsRateLimit},
-		},
-	}, {
-		name: "exceeds both max stream limit and rate limits",
-		exceedsLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{
-				{StreamHash: 0x6},
-				{StreamHash: 0x7},
-			},
-		},
-		getAssignedPartitionsResponses: []*logproto.GetAssignedPartitionsResponse{{
-			AssignedPartitions: map[int32]int64{
-				0: 1,
-			},
-		}},
-		getStreamUsageResponses: []*logproto.GetStreamUsageResponse{{
-			Tenant:         "test",
-			ActiveStreams:  5,
-			UnknownStreams: []uint64{0x6, 0x7},
-			Rate:           1500, // Above the limit of 100 bytes/sec
-		}},
-		maxGlobalStreams: 5,
-		ingestionRate:    100,
-		expected: []*logproto.RejectedStream{
-			{StreamHash: 0x6, Reason: ReasonExceedsMaxStreams},
-			{StreamHash: 0x7, Reason: ReasonExceedsMaxStreams},
-			{StreamHash: 0x6, Reason: ReasonExceedsRateLimit},
-			{StreamHash: 0x7, Reason: ReasonExceedsRateLimit},
+		expected: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+			}, {
+				StreamHash: 0x4,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
+			}},
 		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Set up the mock clients, one for each pair of mock RPC responses.
-			clients := make([]logproto.IngestLimitsClient, len(test.getAssignedPartitionsResponses))
-			instances := make([]ring.InstanceDesc, len(clients))
-
-			for i := 0; i < len(test.getAssignedPartitionsResponses); i++ {
-				clients[i] = &mockIngestLimitsClient{
-					getAssignedPartitionsResponse: test.getAssignedPartitionsResponses[i],
-					getStreamUsageResponse:        test.getStreamUsageResponses[i],
-					t:                             t,
-				}
-				instances[i] = ring.InstanceDesc{
-					Addr: fmt.Sprintf("instance-%d", i),
-				}
-			}
-
-			// Set up the mocked ring and client pool for the tests.
-			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, instances)
-			l := &mockLimits{
-				maxGlobalStreams: test.maxGlobalStreams,
-				ingestionRate:    test.ingestionRate,
-			}
-			rl := limiter.NewRateLimiter(newRateLimitsAdapter(l), 10*time.Second)
-
 			f := Frontend{
-				limits:      l,
-				rateLimiter: rl,
-				streamUsage: NewRingStreamUsageGatherer(readRing, clientPool, log.NewNopLogger()),
-				metrics:     newMetrics(prometheus.NewRegistry()),
+				gatherer: &mockExceedsLimitsGatherer{
+					t:                            t,
+					expectedExceedsLimitsRequest: test.exceedsLimitsRequest,
+					exceedsLimitsResponses:       test.exceedsLimitsResponses,
+				},
 			}
-
-			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-
-			resp, err := f.ExceedsLimits(ctx, test.exceedsLimitsRequest)
+			actual, err := f.ExceedsLimits(ctx, test.exceedsLimitsRequest)
 			require.NoError(t, err)
-			require.Equal(t, test.expected, resp.RejectedStreams)
+			require.Equal(t, test.expected, actual)
 		})
 	}
 }
