@@ -21,26 +21,29 @@ func New(set component.TelemetrySettings) (Metrics, error) {
 		tracked: &zero,
 	}
 
-	trackedCb := metadata.WithDeltatocumulativeStreamsTrackedLinearCallback(func() int64 {
-		return int64((*m.tracked)())
-	})
-
-	telb, err := metadata.NewTelemetryBuilder(set, trackedCb)
+	telb, err := metadata.NewTelemetryBuilder(set)
 	if err != nil {
 		return Metrics{}, err
 	}
-	m.TelemetryBuilder = *telb
+	err = telb.RegisterDeltatocumulativeStreamsTrackedLinearCallback(func(_ context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64((*m.tracked)()))
+		return nil
+	})
+	if err != nil {
+		return Metrics{}, err
+	}
+	m.TelemetryBuilder = telb
 
 	return m, nil
 }
 
 type Metrics struct {
-	metadata.TelemetryBuilder
+	*metadata.TelemetryBuilder
 
 	tracked *func() int
 }
 
-func (m Metrics) Datapoints() Counter {
+func (m *Metrics) Datapoints() Counter {
 	return Counter{Int64Counter: m.DeltatocumulativeDatapointsLinear}
 }
 

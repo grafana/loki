@@ -1,3 +1,18 @@
+## v2.6.0 (2025-03-03)
+
+* [GH-3309](https://github.com/gophercloud/gophercloud/pull/3309) Backport: Added support for hypervisor_hostname to v2
+
+## v2.5.0 (2025-02-11)
+
+* [GH-3278](https://github.com/gophercloud/gophercloud/pull/3278) [v2] test: Ensure that randomly created secgroup rules don't conflict
+* [GH-3287](https://github.com/gophercloud/gophercloud/pull/3287) [v2] Fix panic in ExtractIntoStructPtr
+* [GH-3288](https://github.com/gophercloud/gophercloud/pull/3288) [v2] Fix JSON field name hints in APIVersion structs
+* [GH-3292](https://github.com/gophercloud/gophercloud/pull/3292) [v2] Add permissions to the label-issue workflow
+* [GH-3294](https://github.com/gophercloud/gophercloud/pull/3294) [v2] Add support for zone sharing in DNS v2
+* [GH-3296](https://github.com/gophercloud/gophercloud/pull/3296) build(deps): bump golang.org/x/crypto from 0.30.0 to 0.31.0
+* [GH-3297](https://github.com/gophercloud/gophercloud/pull/3297) [v2] build(deps): bump golang.org/x/crypto from 0.31.0 to 0.32.0
+* [GH-3298](https://github.com/gophercloud/gophercloud/pull/3298) [v2] build(deps): bump golang.org/x/crypto from 0.32.0 to 0.33.0
+
 ## v2.4.0 (2024-12-18)
 
 * [GH-3270](https://github.com/gophercloud/gophercloud/pull/3270) [v2] SG rules: implement bulk create

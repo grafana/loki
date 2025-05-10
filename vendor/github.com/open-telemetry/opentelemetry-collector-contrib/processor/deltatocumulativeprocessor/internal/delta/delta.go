@@ -30,17 +30,20 @@ func (e ErrOutOfOrder) Error() string {
 	return fmt.Sprintf("out of order: dropped sample from time=%s, because series is already at time=%s", e.Sample, e.Last)
 }
 
-type Type interface {
+type Type[Self any] interface {
 	pmetric.NumberDataPoint | pmetric.HistogramDataPoint | pmetric.ExponentialHistogramDataPoint
 
 	StartTimestamp() pcommon.Timestamp
 	Timestamp() pcommon.Timestamp
+	SetTimestamp(pcommon.Timestamp)
+	CopyTo(Self)
 }
 
-// AccumulateInto adds state and dp, storing the result in state
-//
-//	state = state + dp
-func AccumulateInto[T Type](state, dp T) error {
+type Aggregator struct {
+	data.Aggregator
+}
+
+func Aggregate[T Type[T]](state, dp T, aggregate func(state, dp T) error) error {
 	switch {
 	case dp.StartTimestamp() < state.StartTimestamp():
 		// belongs to older series
@@ -50,16 +53,22 @@ func AccumulateInto[T Type](state, dp T) error {
 		return ErrOutOfOrder{Last: state.Timestamp(), Sample: dp.Timestamp()}
 	}
 
-	switch dp := any(dp).(type) {
-	case pmetric.NumberDataPoint:
-		state := any(state).(pmetric.NumberDataPoint)
-		data.Number{NumberDataPoint: state}.Add(data.Number{NumberDataPoint: dp})
-	case pmetric.HistogramDataPoint:
-		state := any(state).(pmetric.HistogramDataPoint)
-		data.Histogram{HistogramDataPoint: state}.Add(data.Histogram{HistogramDataPoint: dp})
-	case pmetric.ExponentialHistogramDataPoint:
-		state := any(state).(pmetric.ExponentialHistogramDataPoint)
-		data.ExpHistogram{DataPoint: state}.Add(data.ExpHistogram{DataPoint: dp})
+	if err := aggregate(state, dp); err != nil {
+		return err
 	}
+
+	state.SetTimestamp(dp.Timestamp())
 	return nil
+}
+
+func (aggr Aggregator) Numbers(state, dp pmetric.NumberDataPoint) error {
+	return Aggregate(state, dp, aggr.Aggregator.Numbers)
+}
+
+func (aggr Aggregator) Histograms(state, dp pmetric.HistogramDataPoint) error {
+	return Aggregate(state, dp, aggr.Aggregator.Histograms)
+}
+
+func (aggr Aggregator) Exponential(state, dp pmetric.ExponentialHistogramDataPoint) error {
+	return Aggregate(state, dp, aggr.Aggregator.Exponential)
 }

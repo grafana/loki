@@ -42,6 +42,8 @@ const (
 	databaseIndexPath                   = databaseBasePath + "/%s/indexes/%s"
 	databaseLogsinkPath                 = databaseBasePath + "/%s/logsink/%s"
 	databaseLogsinksPath                = databaseBasePath + "/%s/logsink"
+	databaseOnlineMigrationsPath        = databaseBasePath + "/%s/online-migration"
+	databaseOnlineMigrationPath         = databaseBasePath + "/%s/online-migration/%s"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -179,6 +181,9 @@ type DatabasesService interface {
 	ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error)
 	UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error)
 	DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error)
+	StartOnlineMigration(ctx context.Context, databaseID string, onlineMigrationRequest *DatabaseStartOnlineMigrationRequest) (*DatabaseOnlineMigrationStatus, *Response, error)
+	StopOnlineMigration(ctx context.Context, databaseID, migrationID string) (*Response, error)
+	GetOnlineMigrationStatus(ctx context.Context, databaseID string) (*DatabaseOnlineMigrationStatus, *Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -366,6 +371,13 @@ type DatabaseLogsink struct {
 	Config *DatabaseLogsinkConfig `json:"config,omitempty"`
 }
 
+// DatabaseOnlineMigrationStatus represents an online migration status
+type DatabaseOnlineMigrationStatus struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+}
+
 // TopicPartition represents the state of a Kafka topic partition
 type TopicPartition struct {
 	EarliestOffset uint64                `json:"earliest_offset,omitempty"`
@@ -515,6 +527,13 @@ type DatabaseFirewallRule struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// DatabaseStartOnlineMigrationRequest is used to start an online migration for a database cluster
+type DatabaseStartOnlineMigrationRequest struct {
+	Source     *DatabaseOnlineMigrationConfig `json:"source"`
+	DisableSSL bool                           `json:"disable_ssl,omitempty"`
+	IgnoreDBs  []string                       `json:"ignore_dbs,omitempty"`
+}
+
 // DatabaseCreateLogsinkRequest is used to create logsink for a database cluster
 type DatabaseCreateLogsinkRequest struct {
 	Name   string                 `json:"sink_name"`
@@ -542,6 +561,15 @@ type DatabaseLogsinkConfig struct {
 	CA           string  `json:"ca,omitempty"`
 	Key          string  `json:"key,omitempty"`
 	Cert         string  `json:"cert,omitempty"`
+}
+
+// DatabaseOnlineMigrationConfig represents the configuration options for database online migrations.
+type DatabaseOnlineMigrationConfig struct {
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"port,omitempty"`
+	DatabaseName string `json:"dbname,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
 }
 
 // PostgreSQLConfig holds advanced configurations for PostgreSQL database clusters.
@@ -1965,6 +1993,53 @@ func (svc *DatabasesServiceOp) UpdateLogsink(ctx context.Context, databaseID str
 // DeleteLogsink deletes a logsink for a database cluster
 func (svc *DatabasesServiceOp) DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error) {
 	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// StartOnlineMigration starts an online migration for a database. Migrating a cluster establishes a connection with an existing cluster
+// and replicates its contents to the target cluster. Online migration is only available for MySQL, PostgreSQL, and Redis clusters.
+func (svc *DatabasesServiceOp) StartOnlineMigration(ctx context.Context, databaseID string, onlineMigration *DatabaseStartOnlineMigrationRequest) (*DatabaseOnlineMigrationStatus, *Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, onlineMigration)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseOnlineMigrationStatus)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetOnlineMigrationStatus retrieves the status of the most recent online migration
+func (svc *DatabasesServiceOp) GetOnlineMigrationStatus(ctx context.Context, databaseID string) (*DatabaseOnlineMigrationStatus, *Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseOnlineMigrationStatus)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// StopOnlineMigration stops an online migration
+func (svc *DatabasesServiceOp) StopOnlineMigration(ctx context.Context, databaseID, migrationID string) (*Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationPath, databaseID, migrationID)
 	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return nil, err
