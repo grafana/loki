@@ -654,14 +654,15 @@ func TestS3Extract(t *testing.T) {
 	}
 }
 
-func TestS3Extract_S3ForcePathStyle(t *testing.T) {
+func TestS3Extract_ForcePathStyle(t *testing.T) {
 	tt := []struct {
 		desc        string
 		secret      *corev1.Secret
 		wantOptions *storage.S3StorageConfig
+		wantError   string
 	}{
 		{
-			desc: "aws s3 endpoint",
+			desc: "aws endpoint without forcepathstyle specified (default behavior)",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -673,38 +674,81 @@ func TestS3Extract_S3ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint: "https://s3.region.amazonaws.com",
-				Region:   "region",
-				Buckets:  "this,that",
+				Endpoint:       "https://s3.region.amazonaws.com",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: false, // defaults to virtual style for AWS endpoints
 			},
 		},
 		{
-			desc: "non-aws s3 endpoint",
+			desc: "non-aws s3 endpoint without forcepathstyle specified (default behavior)",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("https://test.default.svc.cluster.local:9000"),
-					"region":            []byte("region"),
+					"endpoint":          []byte("http://minio:9000"),
+					"region":            []byte(""),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "https://test.default.svc.cluster.local:9000",
+				Endpoint:       "http://minio:9000",
+				Region:         "",
+				Buckets:        "this,that",
+				ForcePathStyle: true, // defaults to path style for non-AWS endpoints
+			},
+		},
+		{
+			desc: "aws s3 endpoint with forcepathstyle=true",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"forcepathstyle":    []byte("true"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://s3.region.amazonaws.com",
 				Region:         "region",
 				Buckets:        "this,that",
 				ForcePathStyle: true,
 			},
 		},
+		{
+			desc: "invalid forcepathstyle value",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"forcepathstyle":    []byte("yes"),
+				},
+			},
+			wantError: `forcepathstyle must be "true" or "false": yes`,
+		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
-			require.NoError(t, err)
-			require.Equal(t, tc.wantOptions, options)
+			got, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
+			if tc.wantError == "" {
+				require.NoError(t, err)
+
+				require.Equal(t, tc.wantOptions.ForcePathStyle, got.ForcePathStyle)
+				require.Equal(t, tc.wantOptions.Endpoint, got.Endpoint)
+				require.Equal(t, tc.wantOptions.Region, got.Region)
+				require.Equal(t, tc.wantOptions.Buckets, got.Buckets)
+			} else {
+				require.EqualError(t, err, tc.wantError)
+			}
 		})
 	}
 }

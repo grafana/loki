@@ -13,7 +13,7 @@ weight: 100
 toc: true
 ---
 
-Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.  
+Loki Operator supports [AWS S3](https://aws.amazon.com/), [Azure](https://azure.microsoft.com), [GCS](https://cloud.google.com/), [Minio](https://min.io/), [OpenShift Data Foundation](https://www.redhat.com/en/technologies/cloud-computing/openshift-data-foundation) and  [Swift](https://docs.openstack.org/swift/latest/) for LokiStack object storage.
 
 _Note_: Upon setting up LokiStack for any object storage provider, you should configure a logging collector that references the LokiStack in order to view the logs.
 
@@ -46,11 +46,12 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
       --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>" \
       --from-literal=sse_type="SSE-KMS" \
       --from-literal=sse_kms_key_id="<AWS_SSE_KMS_KEY_ID>" \
       --from-literal=sse_kms_encryption_context="<OPTIONAL_AWS_SSE_KMS_ENCRYPTION_CONTEXT_JSON>"
     ```
-    
+
     See also official docs on [AWS KMS Key ID](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#key-id) and [AWS KMS Encryption Context](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#encrypt_context) (**Note:** Only content without newlines allowed, because it is exposed via environment variable to the containers).
 
     or with `SSE-S3` encryption
@@ -61,8 +62,27 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
       --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
       --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>" \
       --from-literal=sse_type="SSE-S3"
     ```
+
+    Additionally, you can control the S3 URL style access behavior with `force_path_style` parameter:
+
+    ```console
+    kubectl create secret generic lokistack-dev-s3 \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>" \
+      --from-literal=force_path_style="true"
+    ```
+
+    By default:
+    * AWS endpoints (ending with `.amazonaws.com`) use virtual hosted style (`force_path_style=false`)
+    * Non-AWS endpoints use path style (`force_path_style=true`)
+
+    Set `force_path_style` to `false` if you need to use virtual-hosted style with non-AWS S3 compatible services.
 
     where `lokistack-dev-s3` is the secret name.
 
@@ -130,7 +150,7 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=bucketname="<BUCKET_NAME>" \
       --from-file=key.json="<PATH/TO/KEY.JSON>"
     ```
-  
+
     where `lokistack-dev-gcs` is the secret name, `<BUCKET_NAME>` is the name of bucket created in requirements step and `<PATH/TO/KEY.JSON>` is the file path where the `key.json` was copied to.
 
 * Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `gcs`:
