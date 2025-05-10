@@ -177,11 +177,16 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 
 // DecodeWithoutLabels converts a Kafka record's byte data back into a logproto.Stream without parsing labels.
 func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
-	d.stream.Entries = d.stream.Entries[:0]
-	if err := d.stream.Unmarshal(data); err != nil {
+	if len(data) == 0 {
+		return logproto.Stream{}, errors.New("empty data received")
+	}
+
+	stream := logproto.Stream{}
+	if err := stream.Unmarshal(data); err != nil {
 		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
-	return *d.stream, nil
+
+	return stream, nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.
