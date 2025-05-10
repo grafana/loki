@@ -724,7 +724,11 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
+{{- if .Values.enterprise.tokengen.adminTokenSecret }}
+{{- .Values.enterprise.tokengen.adminTokenSecret -}}
+{{- else }}
 {{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
 {{- end -}}
 
 {{/* Prefix for provisioned secrets created for each provisioned tenant */}}
