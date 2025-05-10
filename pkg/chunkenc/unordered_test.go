@@ -22,11 +22,15 @@ import (
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, logproto.Entry{
+		expected := logproto.Entry{
 			Timestamp:          time.Unix(0, exp[i].t),
 			Line:               exp[i].s,
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
-		}, got.At())
+		}
+		if exp[i].structuredMetadata.IsEmpty() {
+			expected.StructuredMetadata = nil
+		}
+		require.Equal(t, expected, got.At())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
 		i++
 	}
@@ -36,7 +40,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 10; i++ {
-		dup, err := hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}})
+		dup, err := hb.Append(int64(i), fmt.Sprint(i), labels.FromStrings("i", fmt.Sprint(i)))
 		require.False(t, dup)
 		require.Nil(t, err)
 	}
@@ -94,67 +98,67 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "simple forward",
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 		},
 		{
 			desc: "simple backward",
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{2, "c", labels.Labels{{Name: "a", Value: "b"}}}, {1, "b", nil}, {0, "a", nil},
+				{2, "c", labels.FromStrings("a", "b")}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "unordered forward",
 			input: []entry{
-				{1, "b", nil}, {0, "a", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 		},
 		{
 			desc: "unordered backward",
 			input: []entry{
-				{1, "b", nil}, {0, "a", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()}, {2, "c", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{2, "c", labels.Labels{{Name: "a", Value: "b"}}}, {1, "b", nil}, {0, "a", nil},
+				{2, "c", labels.FromStrings("a", "b")}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts collision forward",
 			input: []entry{
-				{0, "a", labels.Labels{{Name: "a", Value: "b"}}}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}}, {1, "c", nil},
+				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.FromStrings("a", "b")}, {1, "c", labels.EmptyLabels()},
 			},
 			exp: []entry{
-				{0, "a", labels.Labels{{Name: "a", Value: "b"}}}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}}, {1, "c", nil},
+				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.FromStrings("a", "b")}, {1, "c", labels.EmptyLabels()},
 			},
 		},
 		{
 			desc: "ts collision backward",
 			input: []entry{
-				{0, "a", labels.Labels{{Name: "a", Value: "b"}}}, {0, "b", nil}, {1, "c", nil},
+				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
 			},
 			exp: []entry{
-				{1, "c", nil}, {0, "b", nil}, {0, "a", labels.Labels{{Name: "a", Value: "b"}}},
+				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
 			},
 			dir:    logproto.FORWARD,
 			hasDup: true,
@@ -162,10 +166,10 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
+				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
 			dir:    logproto.BACKWARD,
 			hasDup: true,
@@ -202,7 +206,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 					copy(expected, tc.exp)
 					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
 						for i := range expected {
-							expected[i].structuredMetadata = nil
+							expected[i].structuredMetadata = labels.EmptyLabels()
 						}
 					}
 
@@ -226,10 +230,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.FromStrings("a", "b")}, {2, "c", labels.EmptyLabels()}, {3, "d", labels.EmptyLabels()}, {4, "e", labels.EmptyLabels()},
 			},
 			exp: []entry{
-				{1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil},
+				{1, "b", labels.FromStrings("a", "b")}, {2, "c", labels.EmptyLabels()}, {3, "d", labels.EmptyLabels()},
 			},
 		},
 		{
@@ -237,10 +241,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
+				{0, "a", labels.EmptyLabels()}, {1, "b", labels.FromStrings("a", "b")}, {2, "c", labels.EmptyLabels()}, {3, "d", labels.EmptyLabels()}, {4, "e", labels.EmptyLabels()},
 			},
 			exp: []entry{
-				{3, "d", nil}, {2, "c", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}},
+				{3, "d", labels.EmptyLabels()}, {2, "c", labels.EmptyLabels()}, {1, "b", labels.FromStrings("a", "b")},
 			},
 			dir: logproto.BACKWARD,
 		},
@@ -249,10 +253,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {2, "c", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {4, "e", nil}, {3, "d", nil},
+				{0, "a", labels.EmptyLabels()}, {2, "c", labels.EmptyLabels()}, {1, "b", labels.FromStrings("a", "b")}, {4, "e", labels.EmptyLabels()}, {3, "d", labels.EmptyLabels()},
 			},
 			exp: []entry{
-				{1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil},
+				{1, "b", labels.FromStrings("a", "b")}, {2, "c", labels.EmptyLabels()}, {3, "d", labels.EmptyLabels()},
 			},
 		},
 	} {
@@ -281,7 +285,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 					copy(expected, tc.exp)
 					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
 						for i := range expected {
-							expected[i].structuredMetadata = nil
+							expected[i].structuredMetadata = labels.EmptyLabels()
 						}
 					}
 
@@ -296,14 +300,14 @@ func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
-		metaLabels := labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}
+		metaLabels := labels.FromStrings("foo", fmt.Sprint(99-i))
 		dup, err := unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels)
 		require.False(t, dup)
 		require.Nil(t, err)
 		dup, err = unorderedWithStructuredMetadata.Append(int64(99-i), fmt.Sprint(99-i), metaLabels)
 		require.False(t, dup)
 		require.Nil(t, err)
-		dup, err = ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}})
+		dup, err = ordered.Append(int64(i), fmt.Sprint(i), labels.FromStrings("foo", fmt.Sprint(i)))
 		require.False(t, dup)
 		require.Nil(t, err)
 	}
@@ -424,7 +428,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 
 				var structuredMetadata labels.Labels
 				if withStructuredMetadata {
-					structuredMetadata = labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}}
+					structuredMetadata = labels.FromStrings("foo", fmt.Sprint(ts))
 				}
 
 				writes = append(writes, entry{
@@ -706,7 +710,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 	from, to := c.Bounds()
 	require.Nil(t, c.Close())
 
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(nil))
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
 	require.Nil(t, err)
 
 	exp := []entry{
@@ -731,7 +735,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 }
 
 func Test_HeadIteratorHash(t *testing.T) {
-	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
+	lbs := labels.FromStrings("foo", "bar")
 	countEx, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 	require.NoError(t, err)
 	bytesEx, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
@@ -743,7 +747,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 		"ordered":                            &headBlock{},
 	} {
 		t.Run(fmt.Sprintf("%s SampleIterator", name), func(t *testing.T) {
-			dup, err := b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}})
+			dup, err := b.Append(1, "foo", labels.FromStrings("foo", "bar"))
 			require.False(t, dup)
 			require.NoError(t, err)
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
@@ -759,7 +763,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 		})
 
 		t.Run(fmt.Sprintf("%s SampleIterator with multiple extractors", name), func(t *testing.T) {
-			dup, err := b.Append(1, "bar", labels.Labels{{Name: "bar", Value: "foo"}})
+			dup, err := b.Append(1, "bar", labels.FromStrings("bar", "foo"))
 			require.False(t, dup)
 			require.NoError(t, err)
 			eit := b.Iterator(

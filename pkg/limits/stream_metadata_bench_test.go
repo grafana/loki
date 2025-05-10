@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func BenchmarkStreamMetadata_Store(b *testing.B) {
@@ -66,17 +66,15 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				streamIdx := i % bm.streamsPerPartition
 
 				updateTime := now.Add(time.Duration(i) * time.Second)
-				metadata := &logproto.StreamMetadata{
-					StreamHash:             uint64(streamIdx),
-					EntriesSize:            1000,
-					StructuredMetadataSize: 500,
+				metadata := &proto.StreamMetadata{
+					StreamHash: uint64(streamIdx),
+					TotalSize:  1500,
 				}
 
 				bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-				totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+				s.Store(tenant, partition, metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 			}
 		})
 
@@ -91,17 +89,15 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 				streamIdx := i % bm.streamsPerPartition
 
 				updateTime := now.Add(time.Duration(i) * time.Second)
-				metadata := &logproto.StreamMetadata{
-					StreamHash:             uint64(streamIdx),
-					EntriesSize:            1000,
-					StructuredMetadataSize: 500,
+				metadata := &proto.StreamMetadata{
+					StreamHash: uint64(streamIdx),
+					TotalSize:  1500,
 				}
 
 				bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-				totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-				s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+				s.Store(tenant, partition, metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 			}
 		})
 
@@ -119,17 +115,15 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					streamIdx := i % bm.streamsPerPartition
 
 					updateTime := now.Add(time.Duration(i) * time.Second)
-					metadata := &logproto.StreamMetadata{
-						StreamHash:             uint64(streamIdx),
-						EntriesSize:            1000,
-						StructuredMetadataSize: 500,
+					metadata := &proto.StreamMetadata{
+						StreamHash: uint64(streamIdx),
+						TotalSize:  1500,
 					}
 
 					bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-					totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+					s.Store(tenant, partition, metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 					i++
 				}
 			})
@@ -146,17 +140,15 @@ func BenchmarkStreamMetadata_Store(b *testing.B) {
 					streamIdx := i % bm.streamsPerPartition
 
 					updateTime := now.Add(time.Duration(i) * time.Second)
-					metadata := &logproto.StreamMetadata{
-						StreamHash:             uint64(streamIdx),
-						EntriesSize:            1000,
-						StructuredMetadataSize: 500,
+					metadata := &proto.StreamMetadata{
+						StreamHash: uint64(streamIdx),
+						TotalSize:  1500,
 					}
 
 					bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-					totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-					s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+					s.Store(tenant, partition, metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 					i++
 				}
 			})
@@ -227,17 +219,15 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 			streamIdx := partition % bm.streamsPerPartition
 
 			updateTime := now.Add(time.Duration(partition) * time.Second)
-			metadata := &logproto.StreamMetadata{
-				StreamHash:             uint64(streamIdx),
-				EntriesSize:            1000,
-				StructuredMetadataSize: 500,
+			metadata := &proto.StreamMetadata{
+				StreamHash: uint64(streamIdx),
+				TotalSize:  1500,
 			}
 
 			bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 			bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-			totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-			s.Store(tenant, int32(partition), metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+			s.Store(tenant, int32(partition), metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 		}
 
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
@@ -261,17 +251,15 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 							streamIdx := i % bm.streamsPerPartition
 
 							updateTime := now.Add(time.Duration(i) * time.Second)
-							metadata := &logproto.StreamMetadata{
-								StreamHash:             uint64(streamIdx),
-								EntriesSize:            1000,
-								StructuredMetadataSize: 500,
+							metadata := &proto.StreamMetadata{
+								StreamHash: uint64(streamIdx),
+								TotalSize:  1500,
 							}
 
 							bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
 							bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-							totalSize := metadata.EntriesSize + metadata.StructuredMetadataSize
 
-							s.Store(tenant, partition, metadata.StreamHash, totalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
+							s.Store(tenant, partition, metadata.StreamHash, metadata.TotalSize, updateTime.UnixNano(), bucketStart, bucketCutOff)
 						}
 					}(i)
 				}

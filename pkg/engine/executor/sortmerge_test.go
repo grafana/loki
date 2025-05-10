@@ -47,7 +47,7 @@ func TestSortMerge(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "timestamp",
+					Column: types.ColumnNameBuiltinTimestamp,
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
@@ -63,7 +63,7 @@ func TestSortMerge(t *testing.T) {
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64
+		var lastTs int64
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -77,14 +77,14 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Timestamp)
 
 			// Check if ts column is sorted
 			for i := 0; i < arr.Len()-1; i++ {
 				require.LessOrEqual(t, arr.Value(i), arr.Value(i+1))
 				// also check ascending order across batches
 				require.GreaterOrEqual(t, arr.Value(i), lastTs)
-				lastTs = arr.Value(i + 1)
+				lastTs = int64(arr.Value(i + 1))
 			}
 			batches++
 			rows += batch.NumRows()
@@ -99,7 +99,7 @@ func TestSortMerge(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "timestamp",
+					Column: types.ColumnNameBuiltinTimestamp,
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
@@ -115,7 +115,7 @@ func TestSortMerge(t *testing.T) {
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64 = math.MaxUint64
+		var lastTs int64 = math.MaxInt64
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -129,14 +129,14 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Timestamp)
 
 			// Check if ts column is sorted
 			for i := 0; i < arr.Len()-1; i++ {
 				require.GreaterOrEqual(t, arr.Value(i), arr.Value(i+1))
 				// also check descending order across batches
 				require.LessOrEqual(t, arr.Value(i), lastTs)
-				lastTs = arr.Value(i + 1)
+				lastTs = int64(arr.Value(i + 1))
 			}
 			batches++
 			rows += batch.NumRows()

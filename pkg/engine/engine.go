@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/executor"
@@ -29,12 +30,19 @@ var (
 )
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, metastore metastore.Metastore, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+
+	var ms metastore.Metastore
+	if bucket != nil {
+		ms = metastore.NewObjectMetastore(bucket)
+	}
+
 	return &QueryEngine{
 		logger:    logger,
 		metrics:   newMetrics(reg),
 		limits:    limits,
-		metastore: metastore,
+		metastore: ms,
+		bucket:    bucket,
 		opts:      opts,
 	}
 }
@@ -45,6 +53,7 @@ type QueryEngine struct {
 	metrics   *metrics
 	limits    logql.Limits
 	metastore metastore.Metastore
+	bucket    objstore.Bucket
 	opts      logql.EngineOpts
 }
 
@@ -73,7 +82,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusNotImplemented).Inc()
+		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
@@ -85,13 +94,13 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	plan, err = planner.Optimize(plan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
@@ -102,19 +111,20 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	t = time.Now() // start stopwatch for execution
 	cfg := executor.Config{
 		BatchSize: int64(e.opts.BatchSize),
+		Bucket:    e.bucket,
 	}
 	pipeline := executor.Run(ctx, cfg, plan)
 	defer pipeline.Close()
 
 	if err := collectResult(ctx, pipeline, builder); err != nil {
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), err
 	}
 
 	statsCtx := stats.FromContext(ctx)
 	builder.setStats(statsCtx.Result(time.Since(start), 0, builder.len()))
 
-	e.metrics.subqueries.WithLabelValues(status, statusSuccess).Inc()
+	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
 	e.metrics.execution.Observe(time.Since(t).Seconds())
 	durExecution := time.Since(t)
 
@@ -132,7 +142,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 func collectResult(_ context.Context, pipeline executor.Pipeline, result *resultBuilder) error {
 	for {
 		if err := pipeline.Read(); err != nil {
-			if err == executor.EOF {
+			if errors.Is(err, executor.EOF) {
 				break
 			}
 			return err
@@ -167,7 +177,7 @@ func collectRow(rec arrow.Record, i int, result *resultBuilder) {
 
 		// TODO(chaudum): We need to add metadata to columns to identify builtins, labels, metadata, and parsed.
 		field := rec.Schema().Field(colIdx)
-		colType, ok := field.Metadata.GetValue(types.ColumnTypeMetadataKey)
+		colType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
 
 		// Ignore column values that are NULL or invalid or don't have a column typ
 		if col.IsNull(i) || !col.IsValid(i) || !ok {
@@ -175,14 +185,14 @@ func collectRow(rec arrow.Record, i int, result *resultBuilder) {
 		}
 
 		// Extract line
-		if colName == types.ColumnNameBuiltinLine && colType == types.ColumnTypeBuiltin.String() {
+		if colName == types.ColumnNameBuiltinMessage && colType == types.ColumnTypeBuiltin.String() {
 			entry.Line = col.(*array.String).Value(i)
 			continue
 		}
 
 		// Extract timestamp
 		if colName == types.ColumnNameBuiltinTimestamp && colType == types.ColumnTypeBuiltin.String() {
-			entry.Timestamp = time.Unix(0, int64(col.(*array.Uint64).Value(i)))
+			entry.Timestamp = time.Unix(0, int64(col.(*array.Timestamp).Value(i)))
 			continue
 		}
 

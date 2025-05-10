@@ -4,18 +4,19 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_UserSeries(t *testing.T) {
 	m := newUserSeriesMap()
 
-	m.Add([]byte(`series1`), []byte(`user1`), nil)
-	m.Add([]byte(`series1`), []byte(`user1`), nil)
-	m.Add([]byte(`series1`), []byte(`user2`), nil)
-	m.Add([]byte(`series2`), []byte(`user1`), nil)
-	m.Add([]byte(`series2`), []byte(`user1`), nil)
-	m.Add([]byte(`series2`), []byte(`user2`), nil)
+	m.Add([]byte(`series1`), []byte(`user1`), labels.EmptyLabels())
+	m.Add([]byte(`series1`), []byte(`user1`), labels.EmptyLabels())
+	m.Add([]byte(`series1`), []byte(`user2`), labels.EmptyLabels())
+	m.Add([]byte(`series2`), []byte(`user1`), labels.EmptyLabels())
+	m.Add([]byte(`series2`), []byte(`user1`), labels.EmptyLabels())
+	m.Add([]byte(`series2`), []byte(`user2`), labels.EmptyLabels())
 
 	keys := []string{}
 
