@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/clientv2"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -91,10 +91,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type IngestLimits struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
-	reader *kgo.Client
-	writer *kgo.Client
+	cfg         Config
+	logger      log.Logger
+	kafkaReader *kgo.Client
+	kafkaWriter *kgo.Client
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
@@ -153,30 +153,52 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s.lifecyclerWatcher = services.NewFailureWatcher()
 	s.lifecyclerWatcher.WatchService(s.lifecycler)
 
-	// Create a copy of the config to modify the topic
-	kCfg := cfg.KafkaConfig
-	kCfg.Topic = MetadataTopic(kCfg.Topic)
-	kCfg.AutoCreateTopicEnabled = true
-	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
-
-	s.reader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
+	// Set up the client to read from Kafka.
+	kafkaReaderCfg := cfg.KafkaConfig
+	if cfg.KafkaReadAddress != "" {
+		kafkaReaderCfg.Address = cfg.KafkaReadAddress
+	}
+	kafkaReaderCfg.Topic = MetadataTopic(kafkaReaderCfg.Topic)
+	kafkaReaderCfg.AutoCreateTopicEnabled = true
+	kafkaReaderOpts := clientv2.OptsBuilder{}
+	kafkaReaderOpts.With(
 		kgo.ConsumerGroup(consumerGroup),
-		kgo.ConsumeTopics(kCfg.Topic),
+		kgo.ConsumeTopics(kafkaReaderCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
 	)
+	s.kafkaReader, err = clientv2.New(
+		kafkaReaderCfg,
+		clientv2.NewMetrics("loki_ingest_limits_kafka_reader_client", reg, cfg.KafkaConfig.EnableKafkaHistograms),
+		logger,
+		kafkaReaderOpts.Opts()...,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka client: %w", err)
+		return nil, fmt.Errorf("failed to create kafka reader client: %w", err)
 	}
 
-	s.writer, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka client: %w", err)
+	// Set up the client to write to Kafka.
+	kafkaWriterCfg := cfg.KafkaConfig
+	if cfg.KafkaWriteAddress != "" {
+		kafkaWriterCfg.Address = cfg.KafkaWriteAddress
 	}
-	s.wal = NewKafkaWAL(s.writer, kCfg.Topic, uint64(s.cfg.NumPartitions), logger)
+	kafkaWriterCfg.Topic = MetadataTopic(kafkaWriterCfg.Topic)
+	kafkaWriterCfg.AutoCreateTopicEnabled = true
+	kafkaWriterOpts := clientv2.OptsBuilder{}
+	s.kafkaWriter, err = clientv2.New(
+		kafkaWriterCfg,
+		clientv2.NewMetrics("loki_ingest_limits_kafka_writer_client", reg, cfg.KafkaConfig.EnableKafkaHistograms),
+		logger,
+		kafkaWriterOpts.Opts()...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka writer client: %w", err)
+	}
+
+	s.wal = NewKafkaWAL(s.kafkaReader, s.kafkaWriter, kafkaReaderCfg.Topic, uint64(s.cfg.NumPartitions), logger)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -333,13 +355,7 @@ func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, 
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *IngestLimits) stopping(failureCase error) error {
-	if s.reader != nil {
-		s.reader.Close()
-	}
-
-	if s.wal != nil {
-		s.wal.Close()
-	}
+	s.wal.Close()
 
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
