@@ -115,10 +115,9 @@ func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint str
 		// Overwrite all of the previously specific DialOptions, DirectPath uses its own set of credentials and certificates.
 		defaultCredetialsOptions := grpcgoogle.DefaultCredentialsOptions{PerRPCCreds: &grpcCredentialsProvider{creds: creds}}
 		if isDirectPathBoundTokenEnabled(opts.InternalOptions) && isTokenProviderComputeEngine(creds) {
-			opts.DetectOpts.TokenBindingType = credentials.ALTSHardBinding
-			altsCreds, err := credentials.DetectDefault(opts.resolveDetectOptions())
-			// Revert it back since the same opts will be used in subsequent dial() calls.
-			opts.DetectOpts.TokenBindingType = credentials.NoBinding
+			optsClone := opts.resolveDetectOptions()
+			optsClone.TokenBindingType = credentials.ALTSHardBinding
+			altsCreds, err := credentials.DetectDefault(optsClone)
 			if err != nil {
 				return nil, "", err
 			}
