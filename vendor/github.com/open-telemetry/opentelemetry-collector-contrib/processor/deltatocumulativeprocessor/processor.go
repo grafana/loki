@@ -15,6 +15,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/staleness"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/data"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/delta"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/metrics"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/telemetry"
@@ -27,6 +28,7 @@ type Processor struct {
 	cfg  Config
 
 	last state
+	aggr data.Aggregator
 	mtx  sync.Mutex
 
 	ctx    context.Context
@@ -47,6 +49,7 @@ func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *Pr
 			hist: make(map[identity.Stream]pmetric.HistogramDataPoint),
 			expo: make(map[identity.Stream]pmetric.ExponentialHistogramDataPoint),
 		},
+		aggr:   delta.Aggregator{Aggregator: new(data.Adder)},
 		ctx:    ctx,
 		cancel: cancel,
 
@@ -109,15 +112,15 @@ func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) erro
 			switch dp := dp.(type) {
 			case pmetric.NumberDataPoint:
 				state := p.last.nums[id]
-				err = delta.AccumulateInto(state, dp)
+				err = p.aggr.Numbers(state, dp)
 				state.CopyTo(dp)
 			case pmetric.HistogramDataPoint:
 				state := p.last.hist[id]
-				err = delta.AccumulateInto(state, dp)
+				err = p.aggr.Histograms(state, dp)
 				state.CopyTo(dp)
 			case pmetric.ExponentialHistogramDataPoint:
 				state := p.last.expo[id]
-				err = delta.AccumulateInto(state, dp)
+				err = p.aggr.Exponential(state, dp)
 				state.CopyTo(dp)
 			}
 			if err != nil {

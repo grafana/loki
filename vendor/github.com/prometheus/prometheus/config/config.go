@@ -156,6 +156,7 @@ var (
 	// DefaultConfig is the default top-level configuration.
 	DefaultConfig = Config{
 		GlobalConfig: DefaultGlobalConfig,
+		Runtime:      DefaultRuntimeConfig,
 	}
 
 	// DefaultGlobalConfig is the default global configuration.
@@ -839,6 +840,7 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	switch globalConfig.MetricNameValidationScheme {
 	case LegacyValidationConfig:
 	case "", UTF8ValidationConfig:
+		//nolint:staticcheck
 		if model.NameValidationScheme != model.UTF8Validation {
 			panic("utf8 name validation requested but model.NameValidationScheme is not set to UTF8")
 		}

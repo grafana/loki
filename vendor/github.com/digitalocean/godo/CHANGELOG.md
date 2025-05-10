@@ -1,5 +1,23 @@
 # Change Log
 
+## [v1.136.0] - 2025-01-28
+
+- #776 - @danaelhe - Databases: Support online-migrations
+- #777 - @apinonformoso - update bgp to be a pointer
+
+##  [v1.135.0] - 2025-01-27
+- #766 - @dhij - kubernetes: add cluster autoscaler config
+- #775 - @jvasilevsky - LBASA-3620: add network_stack field to load balancers model
+- #773 - @blesswinsamuel - Add field to customize the offline page during app maintenance
+
+##  [v1.134.0] - 2025-01-15
+- #771 - @d-honeybadger - add ID field to KubernetesClusterUser response
+- #768 - @lee-aaron - support Spaces Keys API
+
+##  [v1.133.0] - 2025-01-10
+- #769 - @guptado - support partner interconnect attachment operations
+- #767 - @loosla - [kubernetes]: make kubernetes maintenance_policy day case insensitive
+
 ##  [v1.132.0] - 2024-12-17
 - #764 - @greeshmapill - APPS-9365: Add bitbucket source to App Spec
 

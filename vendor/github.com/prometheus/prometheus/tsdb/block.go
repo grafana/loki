@@ -26,7 +26,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 
 	"github.com/prometheus/common/promslog"
 
@@ -656,7 +656,7 @@ Outer:
 func (pb *Block) CleanTombstones(dest string, c Compactor) ([]ulid.ULID, bool, error) {
 	numStones := 0
 
-	if err := pb.tombstones.Iter(func(id storage.SeriesRef, ivs tombstones.Intervals) error {
+	if err := pb.tombstones.Iter(func(_ storage.SeriesRef, ivs tombstones.Intervals) error {
 		numStones += len(ivs)
 		return nil
 	}); err != nil {
