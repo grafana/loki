@@ -42,6 +42,10 @@ func NewStatus() Status {
 func (ms Status) MoveTo(dest Status) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlptrace.Status{}
 }

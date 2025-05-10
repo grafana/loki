@@ -106,6 +106,10 @@ func (ms Float64Slice) Append(elms ...float64) {
 func (ms Float64Slice) MoveTo(dest Float64Slice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = nil
 }
