@@ -22,14 +22,26 @@ type pthreadCleanupItem struct {
 	routine, arg uintptr
 }
 
-// C version is 40 bytes (64b) and 24 bytes (32b).
-type pthreadMutex struct { // 64b        32b
-	sync.Mutex            //  0	8    0     8
-	count      int32      //  8	4    8     4
-	mType      uint32     // 12	4   12     4
-	outer      sync.Mutex // 16	8   16     8
-	owner      int32      // 24	4   24     4
-	//			 28         28
+// C original, unpatched version
+//
+// include/alltypes.h.in:86:TYPEDEF struct {
+//	union {
+//		int __i[sizeof(long)==8?10:6];
+//		volatile int __vi[sizeof(long)==8?10:6];
+//		volatile void *volatile __p[sizeof(long)==8?5:6];
+//	} __u;
+// } pthread_mutex_t;
+
+//TODO(jnml) can remove __ccgo_room patches now.
+
+// We overlay the C version with our version below. It must not be larger than
+// the C version.
+type pthreadMutex struct { // gc  64b       32b        | tinygo   64b       32b
+	sync.Mutex        //        0    8    0    4   |            0   16    0    8
+	count      int32  //        8    4    4    4   |           16    4    8    4
+	typ        uint32 //       12    4    8    4   |           20    4   12    4
+	owner      int32  //       16    4   12    4   |           24    4   16    4
+	//                         20        16        |           28        20
 }
 
 type pthreadConds struct {
@@ -39,7 +51,6 @@ type pthreadConds struct {
 
 var (
 	// Ensure there's enough space for unsafe type conversions.
-	_ [unsafe.Sizeof(sync.Mutex{}) - __CCGO_SIZEOF_GO_MUTEX]byte
 	_ [unsafe.Sizeof(Tpthread_mutex_t{}) - unsafe.Sizeof(pthreadMutex{})]byte
 	_ [unsafe.Sizeof(Tpthread_attr_t{}) - unsafe.Sizeof(pthreadAttr{})]byte
 
@@ -255,103 +266,75 @@ func Xpthread_self(tls *TLS) uintptr {
 func Xpthread_mutex_init(tls *TLS, m, a uintptr) int32 {
 	*(*Tpthread_mutex_t)(unsafe.Pointer(m)) = Tpthread_mutex_t{}
 	if a != 0 {
-		(*pthreadMutex)(unsafe.Pointer(m)).mType = (*Tpthread_mutexattr_t)(unsafe.Pointer(a)).F__attr
+		(*pthreadMutex)(unsafe.Pointer(m)).typ = (*Tpthread_mutexattr_t)(unsafe.Pointer(a)).F__attr
 	}
 	return 0
 }
 
-func Xpthread_mutex_destroy(tls *TLS, mutex uintptr) int32 {
+func Xpthread_mutex_destroy(tls *TLS, m uintptr) int32 {
+	*(*Tpthread_mutex_t)(unsafe.Pointer(m)) = Tpthread_mutex_t{}
 	return 0
 }
 
 func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
-	(*pthreadMutex)(unsafe.Pointer(m)).outer.Lock()
-	owner := (*pthreadMutex)(unsafe.Pointer(m)).owner
-	typ := (*pthreadMutex)(unsafe.Pointer(m)).mType
-	switch typ {
+	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).owner = tls.ID
-		(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
 		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+		return 0
 	case PTHREAD_MUTEX_RECURSIVE:
-		switch owner {
-		case 0:
+		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
 			(*pthreadMutex)(unsafe.Pointer(m)).count = 1
-			(*pthreadMutex)(unsafe.Pointer(m)).owner = tls.ID
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
-			return 0
-		case tls.ID:
-			(*pthreadMutex)(unsafe.Pointer(m)).count++
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-			return 0
-		default:
-		wait:
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Lock()
-			if (*pthreadMutex)(unsafe.Pointer(m)).owner != 0 {
-				goto wait
-			}
-
-			(*pthreadMutex)(unsafe.Pointer(m)).count = 1
-			(*pthreadMutex)(unsafe.Pointer(m)).owner = tls.ID
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
 			return 0
 		}
+
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
+			(*pthreadMutex)(unsafe.Pointer(m)).count++
+			return 0
+		}
+
+		for {
+			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
+			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
+				(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+				return 0
+			}
+
+			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		}
 	default:
-		panic(todo("typ=%v", typ))
+		panic(todo("", typ))
 	}
-	return 0
 }
 
 func Xpthread_mutex_trylock(tls *TLS, m uintptr) int32 {
-	(*pthreadMutex)(unsafe.Pointer(m)).outer.Lock()
-	owner := (*pthreadMutex)(unsafe.Pointer(m)).owner
-	typ := (*pthreadMutex)(unsafe.Pointer(m)).mType
-	switch typ {
+	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
-		if owner != 0 {
-			(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-			return EBUSY
+		if (*pthreadMutex)(unsafe.Pointer(m)).TryLock() {
+			return 0
 		}
 
-		(*pthreadMutex)(unsafe.Pointer(m)).owner = tls.ID
-		(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
-		return 0
+		return EBUSY
 	default:
 		panic(todo("typ=%v", typ))
 	}
 }
 
 func Xpthread_mutex_unlock(tls *TLS, m uintptr) int32 {
-	(*pthreadMutex)(unsafe.Pointer(m)).outer.Lock()
-	count := (*pthreadMutex)(unsafe.Pointer(m)).count
-	owner := (*pthreadMutex)(unsafe.Pointer(m)).owner
-	typ := (*pthreadMutex)(unsafe.Pointer(m)).mType
-	switch typ {
+	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
 		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		return 0
 	case PTHREAD_MUTEX_RECURSIVE:
-		switch owner {
-		case tls.ID:
-			switch count {
-			case 1:
-				(*pthreadMutex)(unsafe.Pointer(m)).owner = 0
-				(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-				(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
-				return 0
-			default:
-				(*pthreadMutex)(unsafe.Pointer(m)).count--
-				(*pthreadMutex)(unsafe.Pointer(m)).outer.Unlock()
-				return 0
-			}
-		default:
-			panic(todo("", owner, tls.ID))
+		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) != tls.ID {
+			return EPERM
 		}
+
+		if atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), -1) == 0 {
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0)
+			(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
+		}
+		return 0
 	default:
 		panic(todo("", typ))
 	}
@@ -404,9 +387,8 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 		}
 	}()
 
-	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).mType; typ {
+	switch typ := (*pthreadMutex)(unsafe.Pointer(m)).typ; typ {
 	case PTHREAD_MUTEX_NORMAL:
-		(*pthreadMutex)(unsafe.Pointer(m)).owner = 0
 		(*pthreadMutex)(unsafe.Pointer(m)).Unlock()
 		select {
 		case <-ch:
@@ -414,7 +396,6 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 		case <-to:
 			r = ETIMEDOUT
 		}
-		(*pthreadMutex)(unsafe.Pointer(m)).owner = tls.ID
 		(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 		return r
 	default:

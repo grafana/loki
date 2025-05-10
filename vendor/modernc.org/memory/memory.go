@@ -57,7 +57,6 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
-	"reflect"
 	"unsafe"
 )
 
@@ -352,12 +351,7 @@ func (a *Allocator) Calloc(size int) (r []byte, err error) {
 		return nil, err
 	}
 
-	var b []byte
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	sh.Cap = usableSize(p)
-	sh.Data = p
-	sh.Len = size
-	return b, nil
+	return (*rawmem)(unsafe.Pointer(p))[:size:usableSize(p)], nil
 }
 
 // Close releases all OS resources used by a and sets it to its zero value.
@@ -396,11 +390,7 @@ func (a *Allocator) Malloc(size int) (r []byte, err error) {
 		return nil, err
 	}
 
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&r))
-	sh.Cap = usableSize(p)
-	sh.Data = p
-	sh.Len = size
-	return r, nil
+	return (*rawmem)(unsafe.Pointer(p))[:size:usableSize(p)], nil
 }
 
 // Realloc changes the size of the backing array of b to size bytes or returns
@@ -422,11 +412,7 @@ func (a *Allocator) Realloc(b []byte, size int) (r []byte, err error) {
 		return nil, err
 	}
 
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&r))
-	sh.Cap = usableSize(p)
-	sh.Data = p
-	sh.Len = size
-	return r, nil
+	return (*rawmem)(unsafe.Pointer(p))[:size:usableSize(p)], nil
 }
 
 // UsableSize reports the size of the memory block allocated at p, which must

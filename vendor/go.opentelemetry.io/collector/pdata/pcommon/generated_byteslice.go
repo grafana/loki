@@ -106,6 +106,10 @@ func (ms ByteSlice) Append(elms ...byte) {
 func (ms ByteSlice) MoveTo(dest ByteSlice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = nil
 }
