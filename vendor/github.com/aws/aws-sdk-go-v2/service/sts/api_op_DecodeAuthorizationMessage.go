@@ -147,6 +147,9 @@ func (c *Client) addOperationDecodeAuthorizationMessageMiddlewares(stack *middle
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = addOpDecodeAuthorizationMessageValidationMiddleware(stack); err != nil {
 		return err
 	}

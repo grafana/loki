@@ -1,5 +1,5 @@
 set -e
-for tag in none libc.dmesg libc.membrk libc.memgrind libc.strace
+for tag in none libc.dmesg libc.membrk libc.memgrind libc.strace libc.memexpvar
 do
 	echo "-tags=$tag"
 	echo "GOOS=darwin GOARCH=amd64"

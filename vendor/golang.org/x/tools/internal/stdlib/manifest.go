@@ -1,4 +1,4 @@
-// Copyright 2024 The Go Authors. All rights reserved.
+// Copyright 2025 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -2151,6 +2151,8 @@ var PackageSymbols = map[string][]Symbol{
 		{"(Type).String", Method, 0},
 		{"(Version).GoString", Method, 0},
 		{"(Version).String", Method, 0},
+		{"(VersionIndex).Index", Method, 24},
+		{"(VersionIndex).IsHidden", Method, 24},
 		{"ARM_MAGIC_TRAMP_NUMBER", Const, 0},
 		{"COMPRESS_HIOS", Const, 6},
 		{"COMPRESS_HIPROC", Const, 6},
@@ -3834,6 +3836,7 @@ var PackageSymbols = map[string][]Symbol{
 		{"SymType", Type, 0},
 		{"SymVis", Type, 0},
 		{"Symbol", Type, 0},
+		{"Symbol.HasVersion", Field, 24},
 		{"Symbol.Info", Field, 0},
 		{"Symbol.Library", Field, 13},
 		{"Symbol.Name", Field, 0},
@@ -3843,18 +3846,12 @@ var PackageSymbols = map[string][]Symbol{
 		{"Symbol.Value", Field, 0},
 		{"Symbol.Version", Field, 13},
 		{"Symbol.VersionIndex", Field, 24},
-		{"Symbol.VersionScope", Field, 24},
-		{"SymbolVersionScope", Type, 24},
 		{"Type", Type, 0},
 		{"VER_FLG_BASE", Const, 24},
 		{"VER_FLG_INFO", Const, 24},
 		{"VER_FLG_WEAK", Const, 24},
 		{"Version", Type, 0},
-		{"VersionScopeGlobal", Const, 24},
-		{"VersionScopeHidden", Const, 24},
-		{"VersionScopeLocal", Const, 24},
-		{"VersionScopeNone", Const, 24},
-		{"VersionScopeSpecific", Const, 24},
+		{"VersionIndex", Type, 24},
 	},
 	"debug/gosym": {
 		{"(*DecodingError).Error", Method, 0},

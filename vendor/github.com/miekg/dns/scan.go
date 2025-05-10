@@ -108,6 +108,8 @@ type ttlState struct {
 // origin for resolving relative domain names defaults to the DNS root (.).
 // Full zone file syntax is supported, including directives like $TTL and $ORIGIN.
 // All fields of the returned RR are set from the read data, except RR.Header().Rdlength which is set to 0.
+// Is you need a partial resource record with no rdata - for instance - for dynamic updates, see the [ANY]
+// documentation.
 func NewRR(s string) (RR, error) {
 	if len(s) > 0 && s[len(s)-1] != '\n' { // We need a closing newline
 		return ReadRR(strings.NewReader(s+"\n"), "")

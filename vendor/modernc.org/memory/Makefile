@@ -37,30 +37,59 @@ editor:
 
 build_all_targets:
 	GOOS=darwin GOARCH=amd64 go build
+	GOOS=darwin GOARCH=amd64 staticcheck
 	GOOS=darwin GOARCH=arm64 go build
+	GOOS=darwin GOARCH=arm64 staticcheck
 	GOOS=freebsd GOARCH=386 go build
+	GOOS=freebsd GOARCH=386 staticcheck
 	GOOS=freebsd GOARCH=amd64 go build
+	GOOS=freebsd GOARCH=amd64 staticcheck
 	GOOS=freebsd GOARCH=arm go build
+	GOOS=freebsd GOARCH=arm staticcheck
 	GOOS=freebsd GOARCH=arm64 go build
+	GOOS=freebsd GOARCH=arm64 staticcheck
 	GOOS=illumos GOARCH=amd64 go build
+	GOOS=illumos GOARCH=amd64 staticcheck
 	GOOS=linux GOARCH=386 go build
+	GOOS=linux GOARCH=386 staticcheck
 	GOOS=linux GOARCH=amd64 go build
+	GOOS=linux GOARCH=amd64 staticcheck
 	GOOS=linux GOARCH=arm go build
+	GOOS=linux GOARCH=arm staticcheck
 	GOOS=linux GOARCH=arm64 go build
+	GOOS=linux GOARCH=arm64 staticcheck
 	GOOS=linux GOARCH=loong64 go build
+	GOOS=linux GOARCH=loong64 staticcheck
 	GOOS=linux GOARCH=mips go build
+	GOOS=linux GOARCH=mips staticcheck
 	GOOS=linux GOARCH=mips64le go build
+	GOOS=linux GOARCH=mips64le staticcheck
 	GOOS=linux GOARCH=mipsle go build
+	GOOS=linux GOARCH=mipsle staticcheck
+	GOOS=linux GOARCH=ppc64le go build
+	GOOS=linux GOARCH=ppc64le staticcheck
 	GOOS=linux GOARCH=riscv64 go build
+	GOOS=linux GOARCH=riscv64 staticcheck
 	GOOS=linux GOARCH=s390x go build
+	GOOS=linux GOARCH=s390x staticcheck
 	GOOS=netbsd GOARCH=386 go build
+	GOOS=netbsd GOARCH=386 staticcheck
 	GOOS=netbsd GOARCH=amd64 go build
+	GOOS=netbsd GOARCH=amd64 staticcheck
 	GOOS=netbsd GOARCH=arm go build
+	GOOS=netbsd GOARCH=arm staticcheck
 	GOOS=openbsd GOARCH=386 go build
+	GOOS=openbsd GOARCH=386 staticcheck
 	GOOS=openbsd GOARCH=amd64 go build
+	GOOS=openbsd GOARCH=amd64 staticcheck
 	GOOS=openbsd GOARCH=arm64 go build
+	GOOS=openbsd GOARCH=arm64 staticcheck
 	GOOS=windows GOARCH=386 go build
+	GOOS=windows GOARCH=386 staticcheck
 	GOOS=windows GOARCH=amd64 go build
+	GOOS=windows GOARCH=amd64 staticcheck
+	GOOS=windows GOARCH=arm64 go build
+	GOOS=windows GOARCH=arm64 staticcheck
 
 internalError:
 	egrep -ho '"internal error.*"' *.go | sort | cat -n
