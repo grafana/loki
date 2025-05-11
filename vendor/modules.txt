@@ -1729,7 +1729,7 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v6 v6.0.0
 ## explicit; go 1.22.0
 github.com/sercand/kuberesolver/v6
-# github.com/shirou/gopsutil/v4 v4.25.3
+# github.com/shirou/gopsutil/v4 v4.25.4
 ## explicit; go 1.23
 github.com/shirou/gopsutil/v4/common
 github.com/shirou/gopsutil/v4/cpu
