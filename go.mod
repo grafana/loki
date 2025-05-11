@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go/bigtable v1.37.0
 	cloud.google.com/go/pubsub v1.49.0
 	cloud.google.com/go/storage v1.52.0
-	dario.cat/mergo v1.0.1
+	dario.cat/mergo v1.0.2
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
