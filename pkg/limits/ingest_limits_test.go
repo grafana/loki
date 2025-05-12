@@ -27,7 +27,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		// Setup data.
 		assignedPartitionIDs []int32
 		numPartitions        int
-		metadata             *streamMetadata
+		usage                *UsageStore
 		windowSize           time.Duration
 		rateWindow           time.Duration
 		bucketDuration       time.Duration
@@ -47,9 +47,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -82,9 +82,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -119,9 +119,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -156,9 +156,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -197,9 +197,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -236,12 +236,12 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0, 1},
 			numPartitions:        2,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
-				stripes: []map[string]map[int32]map[uint64]Stream{
-					make(map[string]map[int32]map[uint64]Stream),
-					make(map[string]map[int32]map[uint64]Stream),
+				stripes: []map[string]tenantUsage{
+					make(map[string]tenantUsage),
+					make(map[string]tenantUsage),
 				},
 			},
 			windowSize:       time.Hour,
@@ -269,12 +269,12 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        2,
-			metadata: &streamMetadata{
+			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
-				stripes: []map[string]map[int32]map[uint64]Stream{
-					make(map[string]map[int32]map[uint64]Stream),
-					make(map[string]map[int32]map[uint64]Stream),
+				stripes: []map[string]tenantUsage{
+					make(map[string]tenantUsage),
+					make(map[string]tenantUsage),
 				},
 			},
 			windowSize:       time.Hour,
@@ -331,7 +331,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				logger:           log.NewNopLogger(),
 				metrics:          newMetrics(reg),
 				limits:           limits,
-				metadata:         tt.metadata,
+				usage:            tt.usage,
 				partitionManager: NewPartitionManager(log.NewNopLogger()),
 				clock:            clock,
 				wal:              wal,
@@ -380,9 +380,9 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	wal := &mockWAL{t: t, ExpectedAppendsTotal: 50}
 
 	// Setup test data with a mix of active and expired streams>
-	metadata := &streamMetadata{
+	usage := &UsageStore{
 		numPartitions: 1,
-		stripes: []map[string]map[int32]map[uint64]Stream{
+		stripes: []map[string]tenantUsage{
 			{
 				"tenant1": {
 					0: {
@@ -420,7 +420,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			},
 		},
 		logger:           log.NewNopLogger(),
-		metadata:         metadata,
+		usage:            usage,
 		partitionManager: NewPartitionManager(log.NewNopLogger()),
 		metrics:          newMetrics(prometheus.NewRegistry()),
 		limits:           limits,
@@ -492,6 +492,6 @@ func TestNewIngestLimits(t *testing.T) {
 
 	require.Equal(t, cfg, s.cfg)
 
-	require.NotNil(t, s.metadata)
+	require.NotNil(t, s.usage)
 	require.NotNil(t, s.lifecycler)
 }
