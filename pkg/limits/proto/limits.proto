@@ -35,3 +35,9 @@ message StreamMetadata {
   uint64 streamHash = 1;
   uint64 totalSize = 2;
 }
+
+message StreamMetadataRecord {
+  string zone = 1;
+  string tenant = 2;
+  StreamMetadata metadata = 3;
+}

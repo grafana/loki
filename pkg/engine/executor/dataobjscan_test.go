@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -20,7 +21,6 @@ import (
 var (
 	labelMD    = buildMetadata(types.ColumnTypeLabel)
 	metadataMD = buildMetadata(types.ColumnTypeMetadata)
-	builtinMD  = buildMetadata(types.ColumnTypeBuiltin)
 )
 
 func buildMetadata(ty types.ColumnType) arrow.Metadata {
@@ -77,8 +77,8 @@ func Test_dataobjScan(t *testing.T) {
 			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
 			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: builtinMD, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: builtinMD, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
 		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world
@@ -106,7 +106,7 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 		})
 
 		expectFields := []arrow.Field{
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: builtinMD, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
 		}
 
@@ -206,8 +206,8 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: builtinMD, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: builtinMD, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
 		expectCSV := `prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1

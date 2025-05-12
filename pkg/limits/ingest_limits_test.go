@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/limits/internal/testutil"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -41,6 +40,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		// Expectations.
 		expectedIngestedBytes float64
 		expectedResults       []*proto.ExceedsLimitsResult
+		expectedAppendsTotal  int
 	}{
 		{
 			name: "tenant not found",
@@ -48,6 +48,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -74,6 +75,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 1010,
+			expectedAppendsTotal:  1,
 		},
 		{
 			name: "all existing streams still active",
@@ -81,6 +83,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -109,6 +112,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 4040,
+			expectedAppendsTotal:  4,
 		},
 		{
 			name: "keep existing active streams and drop new streams",
@@ -116,6 +120,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -152,6 +157,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -184,6 +190,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				{StreamHash: 0x2, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
+			expectedAppendsTotal: 3,
 		},
 		{
 			name: "update active streams and re-activate expired streams",
@@ -191,6 +198,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
 			metadata: &streamMetadata{
+				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -221,6 +229,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 5050,
+			expectedAppendsTotal:  5,
 		},
 		{
 			name: "drop streams per partition limit",
@@ -228,7 +237,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0, 1},
 			numPartitions:        2,
 			metadata: &streamMetadata{
-				locks: make([]stripeLock, 2),
+				numPartitions: 2,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					make(map[string]map[int32]map[uint64]Stream),
 					make(map[string]map[int32]map[uint64]Stream),
@@ -252,6 +262,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				{StreamHash: 0x3, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
+			expectedAppendsTotal: 2,
 		},
 		{
 			name: "skip streams assigned to partitions not owned by instance but enforce limit",
@@ -259,7 +270,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        2,
 			metadata: &streamMetadata{
-				locks: make([]stripeLock, 2),
+				numPartitions: 2,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					make(map[string]map[int32]map[uint64]Stream),
 					make(map[string]map[int32]map[uint64]Stream),
@@ -282,15 +294,18 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
+			expectedAppendsTotal: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
-			limits := &testutil.MockLimits{
+			limits := &MockLimits{
 				MaxGlobalStreams: tt.maxActiveStreams,
 			}
+
+			wal := &mockWAL{t: t, ExpectedAppendsTotal: tt.expectedAppendsTotal}
 
 			s := &IngestLimits{
 				cfg: Config{
@@ -319,6 +334,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				metadata:         tt.metadata,
 				partitionManager: NewPartitionManager(log.NewNopLogger()),
 				clock:            clock,
+				wal:              wal,
 			}
 
 			// Assign the Partition IDs.
@@ -347,6 +363,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 					break
 				}
 			}
+
+			wal.AssertAppendsTotal()
 		})
 	}
 }
@@ -355,12 +373,15 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	clock := quartz.NewMock(t)
 	now := clock.Now()
 
-	limits := &testutil.MockLimits{
+	limits := &MockLimits{
 		MaxGlobalStreams: 5,
 	}
 
+	wal := &mockWAL{t: t, ExpectedAppendsTotal: 50}
+
 	// Setup test data with a mix of active and expired streams>
 	metadata := &streamMetadata{
+		numPartitions: 1,
 		stripes: []map[string]map[int32]map[uint64]Stream{
 			{
 				"tenant1": {
@@ -404,6 +425,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		metrics:          newMetrics(prometheus.NewRegistry()),
 		limits:           limits,
 		clock:            clock,
+		wal:              wal,
 	}
 
 	// Assign the Partition IDs.
@@ -426,18 +448,20 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			resp, err := s.ExceedsLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Nil(t, resp.Results)
+			require.Empty(t, resp.Results)
 		}()
 	}
 
 	// Wait for all goroutines to complete
 	wg.Wait()
+	wal.AssertAppendsTotal()
 }
 
 func TestNewIngestLimits(t *testing.T) {
 	cfg := Config{
 		KafkaConfig: kafka.Config{
-			Topic: "test-topic",
+			Topic:        "test-topic",
+			WriteTimeout: 10 * time.Second,
 		},
 		WindowSize: time.Hour,
 		LifecyclerConfig: ring.LifecyclerConfig{
@@ -456,7 +480,7 @@ func TestNewIngestLimits(t *testing.T) {
 		},
 	}
 
-	limits := &testutil.MockLimits{
+	limits := &MockLimits{
 		MaxGlobalStreams: 100,
 		IngestionRate:    1000,
 	}
@@ -464,7 +488,7 @@ func TestNewIngestLimits(t *testing.T) {
 	s, err := NewIngestLimits(cfg, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.NotNil(t, s.client)
+	require.NotNil(t, s.reader)
 
 	require.Equal(t, cfg, s.cfg)
 

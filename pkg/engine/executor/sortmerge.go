@@ -119,7 +119,7 @@ func (p *KWayMerge) read() error {
 		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			err := p.inputs[i].Read()
 			if err != nil {
-				if err == EOF {
+				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
 					continue
 				}
@@ -136,7 +136,8 @@ func (p *KWayMerge) read() error {
 		if err != nil {
 			return err
 		}
-		tsCol, ok := col.ToArray().(*array.Int64)
+		arr := col.ToArray()
+		tsCol, ok := arr.(*array.Timestamp)
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}
@@ -144,7 +145,7 @@ func (p *KWayMerge) read() error {
 
 		// Populate slices for sorting
 		batchIndexes = append(batchIndexes, i)
-		timestamps = append(timestamps, ts)
+		timestamps = append(timestamps, int64(ts))
 	}
 
 	// Pipeline is exhausted if no more input batches are available
@@ -182,7 +183,7 @@ func (p *KWayMerge) read() error {
 		return err
 	}
 	// We assume the column is a Uint64 array
-	tsCol, ok := col.ToArray().(*array.Int64)
+	tsCol, ok := col.ToArray().(*array.Timestamp)
 	if !ok {
 		return errors.New("column is not a timestamp column")
 	}
@@ -193,7 +194,7 @@ func (p *KWayMerge) read() error {
 	for end < p.batches[j].NumRows() {
 		ts := tsCol.Value(int(end))
 		end++
-		if p.compare(ts, timestamps[1]) {
+		if p.compare(int64(ts), timestamps[1]) {
 			break
 		}
 	}

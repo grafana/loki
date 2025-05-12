@@ -142,14 +142,14 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 					Through: chk.Through,
 				})
 			}
-			series := Series{}
+			series := series{}
 			series.Reset(
 				[]byte(seriesID),
 				[]byte(userID),
 				labels.NewBuilder(t.chunks[userID][seriesID][0].Metric).Del(labels.MetricName).Labels(),
 			)
 			series.AppendChunks(chunks...)
-			if err := callback(series); err != nil {
+			if err := callback(&series); err != nil {
 				return err
 			}
 		}
