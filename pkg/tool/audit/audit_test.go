@@ -48,7 +48,7 @@ type testCompactedIdx struct {
 }
 
 func (t testCompactedIdx) ForEachSeries(_ context.Context, f retention.SeriesCallback) error {
-	var series retention.Series
+	series := retention.NewSeries()
 	series.AppendChunks(t.chunks...)
 	return f(series)
 }

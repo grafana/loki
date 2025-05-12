@@ -82,7 +82,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusNotImplemented).Inc()
+		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
@@ -94,13 +94,13 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	plan, err = planner.Optimize(plan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), ErrNotSupported
 	}
 	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
@@ -117,14 +117,14 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	defer pipeline.Close()
 
 	if err := collectResult(ctx, pipeline, builder); err != nil {
-		e.metrics.subqueries.WithLabelValues(status, statusFailure).Inc()
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		return builder.empty(), err
 	}
 
 	statsCtx := stats.FromContext(ctx)
 	builder.setStats(statsCtx.Result(time.Since(start), 0, builder.len()))
 
-	e.metrics.subqueries.WithLabelValues(status, statusSuccess).Inc()
+	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
 	e.metrics.execution.Observe(time.Since(t).Seconds())
 	durExecution := time.Since(t)
 
@@ -142,7 +142,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 func collectResult(_ context.Context, pipeline executor.Pipeline, result *resultBuilder) error {
 	for {
 		if err := pipeline.Read(); err != nil {
-			if err == executor.EOF {
+			if errors.Is(err, executor.EOF) {
 				break
 			}
 			return err
