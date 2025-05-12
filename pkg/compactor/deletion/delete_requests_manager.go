@@ -438,9 +438,6 @@ func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, l
 			continue
 		}
 		processedSeriesKey := buildProcessedSeriesKey(req.RequestID, req.StartTime, req.EndTime, seriesID, tableName)
-		if _, ok := d.processedSeries[processedSeriesKey]; ok {
-			return fmt.Errorf("series already marked as processed: [table: %s, user: %s, req_id: %s, start: %d, end: %d, series: %s]", tableName, userID, req.RequestID, req.StartTime, req.EndTime, seriesID)
-		}
 		d.processedSeries[processedSeriesKey] = struct{}{}
 	}
 
