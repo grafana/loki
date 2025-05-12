@@ -307,27 +307,6 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 	}
 }
 
-// updateMetadata updates the metadata map with the provided StreamMetadata.
-// It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	var (
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-	)
-
-	if assigned := s.partitionManager.Has(partition); !assigned {
-		return
-	}
-
-	s.usage.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
-
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
-}
-
 // stopping implements the Service interface's stopping method.
 // It performs cleanup when the service is stopping, including closing the Kafka client.
 // It returns nil for expected termination cases (context cancellation or client closure)
