@@ -50,7 +50,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			numPartitions:        1,
 			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -85,7 +85,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			numPartitions:        1,
 			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -122,7 +122,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			numPartitions:        1,
 			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -159,7 +159,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			numPartitions:        1,
 			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -200,7 +200,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			numPartitions:        1,
 			usage: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -240,9 +240,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
-				stripes: []map[string]map[int32]map[uint64]Stream{
-					make(map[string]map[int32]map[uint64]Stream),
-					make(map[string]map[int32]map[uint64]Stream),
+				stripes: []map[string]tenantUsage{
+					make(map[string]tenantUsage),
+					make(map[string]tenantUsage),
 				},
 			},
 			windowSize:       time.Hour,
@@ -273,9 +273,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
-				stripes: []map[string]map[int32]map[uint64]Stream{
-					make(map[string]map[int32]map[uint64]Stream),
-					make(map[string]map[int32]map[uint64]Stream),
+				stripes: []map[string]tenantUsage{
+					make(map[string]tenantUsage),
+					make(map[string]tenantUsage),
 				},
 			},
 			windowSize:       time.Hour,
@@ -383,7 +383,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	// Setup test data with a mix of active and expired streams>
 	usage := &UsageStore{
 		numPartitions: 1,
-		stripes: []map[string]map[int32]map[uint64]Stream{
+		stripes: []map[string]tenantUsage{
 			{
 				"tenant1": {
 					0: {

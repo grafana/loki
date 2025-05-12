@@ -7,16 +7,23 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// AllFunc is a closure called for each stream.
-type AllFunc func(tenant string, partitionID int32, stream Stream)
+// IterateFunc is a closure called for each stream.
+type IterateFunc func(tenant string, partitionID int32, stream Stream)
 
-// UsageFunc is a closure called for
-type UsageFunc func(partitionID int32, stream Stream)
-
-// CondFunc is a function that is called for each stream in the metadata.
-// It is used to check if the stream should be stored.
-// It returns true if the stream should be stored, false otherwise.
+// CondFunc is a function that is called for each stream passed to StoreCond,
+// and is often used to check if a stream can be stored (for example, with
+// the max series limit). It should return true if the stream can be stored.
 type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
+
+// UsageStore stores per-tenant stream usage data.
+type UsageStore struct {
+	numPartitions int
+	stripes       []map[string]tenantUsage
+	locks         []stripeLock
+}
+
+// tenantUsage contains the per-partition stream usage for a tenant.
+type tenantUsage map[int32]map[uint64]Stream
 
 // Stream represents the metadata for a stream loaded from the kafka topic.
 // It contains the minimal information to count per tenant active streams and
@@ -41,26 +48,23 @@ type stripeLock struct {
 	_ [40]byte
 }
 
-// UsageStore implements StreaMetadataStore.
-type UsageStore struct {
-	numPartitions int
-	stripes       []map[string]map[int32]map[uint64]Stream // stripe -> tenant -> partitionID -> streamMetadata
-	locks         []stripeLock
-}
-
+// NewUsageStore returns a new UsageStore.
 func NewUsageStore(numPartitions int) *UsageStore {
 	s := &UsageStore{
 		numPartitions: numPartitions,
-		stripes:       make([]map[string]map[int32]map[uint64]Stream, numPartitions),
+		stripes:       make([]map[string]tenantUsage, numPartitions),
 		locks:         make([]stripeLock, numPartitions),
 	}
 	for i := range s.stripes {
-		s.stripes[i] = make(map[string]map[int32]map[uint64]Stream)
+		s.stripes[i] = make(map[string]tenantUsage)
 	}
 	return s
 }
 
-func (s *UsageStore) All(fn AllFunc) {
+// All iterates all streams, and calls the [IterateFunc] closure for each
+// iterated stream. As [All] acquires a read lock, the closure must not
+// make blocking calls while iterating streams.
+func (s *UsageStore) All(fn IterateFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partitionID, partition := range partitions {
@@ -72,11 +76,14 @@ func (s *UsageStore) All(fn AllFunc) {
 	})
 }
 
-func (s *UsageStore) Usage(tenant string, fn UsageFunc) {
+// ForTenant iterates all streams for the tenant, and calls the [IterateFunc]
+// closure for each iterated stream. As [ForTenant] aquires a read lock, the
+// closure must not make blocking calls while iterating streams.
+func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 	s.withRLock(tenant, func(i int) {
 		for partitionID, partition := range s.stripes[i][tenant] {
 			for _, stream := range partition {
-				fn(partitionID, stream)
+				fn(tenant, partitionID, stream)
 			}
 		}
 	})
@@ -88,7 +95,7 @@ func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, l
 
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
+			s.stripes[i][tenant] = make(tenantUsage)
 		}
 
 		activeStreams := make(map[int32]int)
@@ -140,7 +147,7 @@ func (s *UsageStore) Store(tenant string, partitionID int32, streamHash, recTota
 	s.withLock(tenant, func(i int) {
 		// Initialize tenant map if it doesn't exist
 		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(map[int32]map[uint64]Stream)
+			s.stripes[i][tenant] = make(tenantUsage)
 		}
 
 		// Initialize partition map if it doesn't exist
@@ -149,6 +156,38 @@ func (s *UsageStore) Store(tenant string, partitionID int32, streamHash, recTota
 		}
 
 		s.storeStream(i, tenant, partitionID, streamHash, recTotalSize, recordTime, bucketStart, bucketCutOff)
+	})
+}
+
+// Evict removes all streams that have not been seen since cutoff seconds.
+func (s *UsageStore) Evict(cutoff int64) map[string]int {
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, streams := range s.stripes[i] {
+			for partitionID, partition := range streams {
+				for streamHash, stream := range partition {
+					if stream.LastSeenAt < cutoff {
+						delete(s.stripes[i][tenant][partitionID], streamHash)
+						evicted[tenant]++
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
+// EvictPartitions deletes the usage data for the specified partitions.
+func (s *UsageStore) EvictPartitions(partitions []int32) {
+	s.forEachLock(func(i int) {
+		for tenant, tenantPartitions := range s.stripes[i] {
+			for _, deleteID := range partitions {
+				delete(tenantPartitions, deleteID)
+			}
+			if len(tenantPartitions) == 0 {
+				delete(s.stripes[i], tenant)
+			}
+		}
 	})
 }
 
@@ -205,36 +244,6 @@ func (s *UsageStore) storeStream(i int, tenant string, partitionID int32, stream
 	recorded.TotalSize = totalSize
 	recorded.RateBuckets = sb
 	s.stripes[i][tenant][partitionID][streamHash] = recorded
-}
-
-func (s *UsageStore) Evict(cutoff int64) map[string]int {
-	evicted := make(map[string]int)
-	s.forEachLock(func(i int) {
-		for tenant, streams := range s.stripes[i] {
-			for partitionID, partition := range streams {
-				for streamHash, stream := range partition {
-					if stream.LastSeenAt < cutoff {
-						delete(s.stripes[i][tenant][partitionID], streamHash)
-						evicted[tenant]++
-					}
-				}
-			}
-		}
-	})
-	return evicted
-}
-
-func (s *UsageStore) EvictPartitions(partitions []int32) {
-	s.forEachLock(func(i int) {
-		for tenant, tenantPartitions := range s.stripes[i] {
-			for _, deleteID := range partitions {
-				delete(tenantPartitions, deleteID)
-			}
-			if len(tenantPartitions) == 0 {
-				delete(s.stripes[i], tenant)
-			}
-		}
-	})
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
