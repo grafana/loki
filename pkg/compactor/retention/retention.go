@@ -216,7 +216,13 @@ func markForDelete(
 	iterCtx, cancel := ctxForTimeout(timeout)
 	defer cancel()
 
+	seriesSeen := map[string]struct{}{}
 	err := indexFile.ForEachSeries(iterCtx, func(s Series) error {
+		seriesIDStr := string(s.SeriesID())
+		if _, ok := seriesMap[seriesIDStr]; ok {
+			return fmt.Errorf("series should not be repeated. Series %s already seen earlier", seriesIDStr)
+		}
+		seriesSeen[seriesIDStr] = struct{}{}
 		chunks := s.Chunks()
 		if len(chunks) == 0 {
 			// add the series to series map so that it gets cleaned up
