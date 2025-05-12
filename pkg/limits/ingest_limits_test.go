@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/limits/internal/testutil"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -302,7 +301,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
-			limits := &testutil.MockLimits{
+			limits := &MockLimits{
 				MaxGlobalStreams: tt.maxActiveStreams,
 			}
 
@@ -374,7 +373,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	clock := quartz.NewMock(t)
 	now := clock.Now()
 
-	limits := &testutil.MockLimits{
+	limits := &MockLimits{
 		MaxGlobalStreams: 5,
 	}
 
@@ -481,7 +480,7 @@ func TestNewIngestLimits(t *testing.T) {
 		},
 	}
 
-	limits := &testutil.MockLimits{
+	limits := &MockLimits{
 		MaxGlobalStreams: 100,
 		IngestionRate:    1000,
 	}
