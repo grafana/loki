@@ -199,7 +199,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	// filter the response to catch the empty matcher case
-	if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
+	if resp != nil && !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
 		return q.filterAggregatedMetricsFromSeriesResp(resp), statResult, err
 	}
 
