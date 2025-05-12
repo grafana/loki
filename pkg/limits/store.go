@@ -18,31 +18,6 @@ type UsageFunc func(partitionID int32, stream Stream)
 // It returns true if the stream should be stored, false otherwise.
 type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
 
-// UsageStore is an interface for stores which track stream usage.
-type UsageStore interface {
-	// All iterates over all streams and calls the closure for each stream.
-	// Iteration is unordered.
-	All(fn AllFunc)
-
-	// Usage iterates over all streams for the tenant, and calls the closure
-	// for each stream. It is used to get current usage (i.e. the total number
-	// of active streams and the total size of all active streams).
-	Usage(tenant string, fn UsageFunc)
-
-	// StoreCond tries to store the streams for the tenant.
-	// until the partition limit is reached. It returns the total ingested bytes.
-	StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata)
-
-	// Store updates the stream metadata for the tenant.
-	Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64)
-
-	// Evict removes all streams that have not been seen in cutoff seconds.
-	Evict(cutoff int64) map[string]int
-
-	// EvictPartitions removes the partitions for all tenants.
-	EvictPartitions(partitions []int32)
-}
-
 // Stream represents the metadata for a stream loaded from the kafka topic.
 // It contains the minimal information to count per tenant active streams and
 // rate limits.
@@ -66,15 +41,15 @@ type stripeLock struct {
 	_ [40]byte
 }
 
-// MemUsageStore implements StreaMetadataStore.
-type MemUsageStore struct {
+// UsageStore implements StreaMetadataStore.
+type UsageStore struct {
 	numPartitions int
 	stripes       []map[string]map[int32]map[uint64]Stream // stripe -> tenant -> partitionID -> streamMetadata
 	locks         []stripeLock
 }
 
-func NewMemUsageStore(numPartitions int) *MemUsageStore {
-	s := &MemUsageStore{
+func NewUsageStore(numPartitions int) *UsageStore {
+	s := &UsageStore{
 		numPartitions: numPartitions,
 		stripes:       make([]map[string]map[int32]map[uint64]Stream, numPartitions),
 		locks:         make([]stripeLock, numPartitions),
@@ -85,7 +60,7 @@ func NewMemUsageStore(numPartitions int) *MemUsageStore {
 	return s
 }
 
-func (s *MemUsageStore) All(fn AllFunc) {
+func (s *UsageStore) All(fn AllFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partitionID, partition := range partitions {
@@ -97,7 +72,7 @@ func (s *MemUsageStore) All(fn AllFunc) {
 	})
 }
 
-func (s *MemUsageStore) Usage(tenant string, fn UsageFunc) {
+func (s *UsageStore) Usage(tenant string, fn UsageFunc) {
 	s.withRLock(tenant, func(i int) {
 		for partitionID, partition := range s.stripes[i][tenant] {
 			for _, stream := range partition {
@@ -107,7 +82,7 @@ func (s *MemUsageStore) Usage(tenant string, fn UsageFunc) {
 	})
 }
 
-func (s *MemUsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	stored := make([]*proto.StreamMetadata, 0, len(streams))
 	rejected := make([]*proto.StreamMetadata, 0, len(streams))
 
@@ -161,7 +136,7 @@ func (s *MemUsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata
 	return stored, rejected
 }
 
-func (s *MemUsageStore) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
+func (s *UsageStore) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
 	s.withLock(tenant, func(i int) {
 		// Initialize tenant map if it doesn't exist
 		if _, ok := s.stripes[i][tenant]; !ok {
@@ -177,7 +152,7 @@ func (s *MemUsageStore) Store(tenant string, partitionID int32, streamHash, recT
 	})
 }
 
-func (s *MemUsageStore) storeStream(i int, tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
+func (s *UsageStore) storeStream(i int, tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
 	// Check if the stream already exists in the metadata
 	recorded, ok := s.stripes[i][tenant][partitionID][streamHash]
 
@@ -232,7 +207,7 @@ func (s *MemUsageStore) storeStream(i int, tenant string, partitionID int32, str
 	s.stripes[i][tenant][partitionID][streamHash] = recorded
 }
 
-func (s *MemUsageStore) Evict(cutoff int64) map[string]int {
+func (s *UsageStore) Evict(cutoff int64) map[string]int {
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, streams := range s.stripes[i] {
@@ -249,7 +224,7 @@ func (s *MemUsageStore) Evict(cutoff int64) map[string]int {
 	return evicted
 }
 
-func (s *MemUsageStore) EvictPartitions(partitions []int32) {
+func (s *UsageStore) EvictPartitions(partitions []int32) {
 	s.forEachLock(func(i int) {
 		for tenant, tenantPartitions := range s.stripes[i] {
 			for _, deleteID := range partitions {
@@ -263,7 +238,7 @@ func (s *MemUsageStore) EvictPartitions(partitions []int32) {
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
-func (s *MemUsageStore) forEachRLock(fn func(i int)) {
+func (s *UsageStore) forEachRLock(fn func(i int)) {
 	for i := range s.stripes {
 		s.locks[i].RLock()
 		fn(i)
@@ -272,7 +247,7 @@ func (s *MemUsageStore) forEachRLock(fn func(i int)) {
 }
 
 // forEachLock executes fn with an exclusive lock for each stripe.
-func (s *MemUsageStore) forEachLock(fn func(i int)) {
+func (s *UsageStore) forEachLock(fn func(i int)) {
 	for i := range s.stripes {
 		s.locks[i].Lock()
 		fn(i)
@@ -281,7 +256,7 @@ func (s *MemUsageStore) forEachLock(fn func(i int)) {
 }
 
 // withRLock executes fn with a shared lock on the stripe.
-func (s *MemUsageStore) withRLock(tenant string, fn func(i int)) {
+func (s *UsageStore) withRLock(tenant string, fn func(i int)) {
 	i := s.getStripe(tenant)
 	s.locks[i].RLock()
 	defer s.locks[i].RUnlock()
@@ -289,7 +264,7 @@ func (s *MemUsageStore) withRLock(tenant string, fn func(i int)) {
 }
 
 // withLock executes fn with an exclusive lock on the stripe.
-func (s *MemUsageStore) withLock(tenant string, fn func(i int)) {
+func (s *UsageStore) withLock(tenant string, fn func(i int)) {
 	i := s.getStripe(tenant)
 	s.locks[i].Lock()
 	defer s.locks[i].Unlock()
@@ -297,7 +272,7 @@ func (s *MemUsageStore) withLock(tenant string, fn func(i int)) {
 }
 
 // getStripe returns the stripe index for the tenant.
-func (s *MemUsageStore) getStripe(tenant string) int {
+func (s *UsageStore) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))

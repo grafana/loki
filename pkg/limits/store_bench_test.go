@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func BenchmarkMemUsageStore_Store(b *testing.B) {
+func BenchmarkUsageStore_Store(b *testing.B) {
 	const (
 		windowSize     = time.Hour
 		bucketDuration = time.Minute
@@ -50,7 +50,7 @@ func BenchmarkMemUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := NewMemUsageStore(bm.numPartitions)
+		s := NewUsageStore(bm.numPartitions)
 
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
@@ -98,7 +98,7 @@ func BenchmarkMemUsageStore_Store(b *testing.B) {
 			}
 		})
 
-		s = NewMemUsageStore(bm.numPartitions)
+		s = NewUsageStore(bm.numPartitions)
 
 		// Run parallel benchmark
 		b.Run(bm.name+"_create_parallel", func(b *testing.B) {
@@ -204,7 +204,7 @@ func BenchmarkStreamMetadata_UsageAndStore(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := NewMemUsageStore(bm.numPartitions)
+		s := NewUsageStore(bm.numPartitions)
 
 		now := time.Now()
 

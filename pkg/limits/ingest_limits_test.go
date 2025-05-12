@@ -28,7 +28,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		// Setup data.
 		assignedPartitionIDs []int32
 		numPartitions        int
-		usage                *MemUsageStore
+		usage                *UsageStore
 		windowSize           time.Duration
 		rateWindow           time.Duration
 		bucketDuration       time.Duration
@@ -48,7 +48,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -83,7 +83,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -120,7 +120,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -157,7 +157,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -198,7 +198,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        1,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -237,7 +237,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0, 1},
 			numPartitions:        2,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
 				stripes: []map[string]map[int32]map[uint64]Stream{
@@ -270,7 +270,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitionIDs: []int32{0},
 			numPartitions:        2,
-			usage: &MemUsageStore{
+			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
 				stripes: []map[string]map[int32]map[uint64]Stream{
@@ -381,7 +381,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	wal := &mockWAL{t: t, ExpectedAppendsTotal: 50}
 
 	// Setup test data with a mix of active and expired streams>
-	usage := &MemUsageStore{
+	usage := &UsageStore{
 		numPartitions: 1,
 		stripes: []map[string]map[int32]map[uint64]Stream{
 			{

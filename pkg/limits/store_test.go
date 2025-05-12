@@ -11,9 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestMemUsageStore_All(t *testing.T) {
+func TestUsageStore_All(t *testing.T) {
 	now := time.Now()
-	m := NewMemUsageStore(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
@@ -29,9 +29,9 @@ func TestMemUsageStore_All(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestMemUsageStore_All_Concurrent(t *testing.T) {
+func TestUsageStore_All_Concurrent(t *testing.T) {
 	now := time.Now()
-	m := NewMemUsageStore(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		tenant := fmt.Sprintf("tenant%d", i)
@@ -59,9 +59,9 @@ func TestMemUsageStore_All_Concurrent(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestMemUsageStore_Usage(t *testing.T) {
+func TestUsageStore_Usage(t *testing.T) {
 	now := time.Now()
-	m := NewMemUsageStore(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		if i%2 == 0 {
@@ -81,9 +81,9 @@ func TestMemUsageStore_Usage(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestMemUsageStore_Usage_Concurrent(t *testing.T) {
+func TestUsageStore_Usage_Concurrent(t *testing.T) {
 	now := time.Now()
-	m := NewMemUsageStore(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		if i%2 == 0 {
@@ -114,7 +114,7 @@ func TestMemUsageStore_Usage_Concurrent(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestMemUsageStore_Store(t *testing.T) {
+func TestUsageStore_Store(t *testing.T) {
 	var (
 		bucketDuration = time.Minute
 		rateWindow     = 5 * time.Minute
@@ -124,7 +124,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 		name string
 
 		// Setup data.
-		metadata *MemUsageStore
+		metadata *UsageStore
 
 		// The test case.
 		tenantID    string
@@ -137,7 +137,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 	}{
 		{
 			name:        "insert new tenant and new partition",
-			metadata:    NewMemUsageStore(1),
+			metadata:    NewUsageStore(1),
 			tenantID:    "tenant1",
 			partitionID: 0,
 			lastSeenAt:  time.Unix(100, 0),
@@ -162,7 +162,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 		},
 		{
 			name: "insert existing tenant and new partition",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -216,7 +216,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 		},
 		{
 			name: "update existing stream",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -266,7 +266,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(852, 0),
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -308,7 +308,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 				TotalSize:  3000,
 			},
 			lastSeenAt: time.Unix(1000, 0), // Current time reference
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -353,7 +353,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(1100, 0),
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -406,7 +406,7 @@ func TestMemUsageStore_Store(t *testing.T) {
 	}
 }
 
-func TestMemUsageStore_Concurrent(t *testing.T) {
+func TestUsageStore_Concurrent(t *testing.T) {
 	var (
 		numTenants     = 6
 		bucketDuration = time.Minute
@@ -417,7 +417,7 @@ func TestMemUsageStore_Concurrent(t *testing.T) {
 		bucketCutOff = lastSeenAt.Add(-rateWindow).UnixNano()
 	)
 
-	m := NewMemUsageStore(numTenants)
+	m := NewUsageStore(numTenants)
 
 	wg := sync.WaitGroup{}
 	wg.Add(numTenants)
@@ -486,7 +486,7 @@ func TestMemUsageStore_Concurrent(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestMemUsageStore_StoreCond(t *testing.T) {
+func TestUsageStore_StoreCond(t *testing.T) {
 	now := time.Now()
 	cutoff := now.Add(-60 * time.Minute).UnixNano()
 	bucketStart := now.Truncate(time.Minute).UnixNano()
@@ -496,7 +496,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		name string
 
 		// setup data
-		metadata         *MemUsageStore
+		metadata         *UsageStore
 		streams          []*proto.StreamMetadata
 		maxActiveStreams uint64
 
@@ -506,7 +506,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 	}{
 		{
 			name: "no streams",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
 				locks:   make([]stripeLock, 1),
 			},
@@ -514,7 +514,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "all streams within partition limit",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 1,
 				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
 				locks:         make([]stripeLock, 1),
@@ -531,7 +531,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "all stream within limit per partition",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 1,
 				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
 				locks:         make([]stripeLock, 1),
@@ -548,7 +548,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 1,
 				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
 				locks:         make([]stripeLock, 1),
@@ -567,7 +567,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped per partition",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 2,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					make(map[string]map[int32]map[uint64]Stream),
@@ -593,7 +593,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped from a single partition",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 2,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -622,7 +622,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "drops new streams but updates existing streams",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 2,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -662,7 +662,7 @@ func TestMemUsageStore_StoreCond(t *testing.T) {
 		},
 		{
 			name: "reset expired but not evicted streams",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
@@ -705,7 +705,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		metadata             *MemUsageStore
+		metadata             *UsageStore
 		cutOff               int64
 		assignedPartitionIDs []int32
 		expectedMetadata     map[string]map[int32]map[uint64]Stream
@@ -713,7 +713,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 	}{
 		{
 			name: "all streams active",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -740,7 +740,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "all streams expired",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -762,7 +762,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "mixed active and expired streams",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -792,7 +792,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "multiple tenants with mixed streams",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -837,7 +837,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "multiple partitions with some empty after eviction",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -882,7 +882,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "unassigned partitions should still be evicted",
-			metadata: &MemUsageStore{
+			metadata: &UsageStore{
 				stripes: []map[string]map[int32]map[uint64]Stream{
 					{
 						"tenant1": {
@@ -936,9 +936,9 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		})
 	}
 }
-func TestMemUsageStore_EvictPartitions(t *testing.T) {
+func TestUsageStore_EvictPartitions(t *testing.T) {
 	numPartitions := 10
-	m := NewMemUsageStore(numPartitions)
+	m := NewUsageStore(numPartitions)
 
 	for i := range numPartitions {
 		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())
@@ -954,9 +954,9 @@ func TestMemUsageStore_EvictPartitions(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestMemUsageStore_EvictPartitions_Concurrent(t *testing.T) {
+func TestUsageStore_EvictPartitions_Concurrent(t *testing.T) {
 	numPartitions := 10
-	m := NewMemUsageStore(numPartitions)
+	m := NewUsageStore(numPartitions)
 
 	for i := range numPartitions {
 		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())

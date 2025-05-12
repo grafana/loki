@@ -106,7 +106,7 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	usage UsageStore
+	usage *UsageStore
 	wal   WAL
 
 	// Track partition assignments
@@ -131,7 +131,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewMemUsageStore(cfg.NumPartitions),
+		usage:            NewUsageStore(cfg.NumPartitions),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
