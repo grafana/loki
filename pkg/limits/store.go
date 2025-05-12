@@ -7,6 +7,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
+// The number of stripe locks.
+const numStripes = 64
+
 // IterateFunc is a closure called for each stream.
 type IterateFunc func(tenant string, partitionID int32, stream Stream)
 
@@ -52,8 +55,8 @@ type stripeLock struct {
 func NewUsageStore(numPartitions int) *UsageStore {
 	s := &UsageStore{
 		numPartitions: numPartitions,
-		stripes:       make([]map[string]tenantUsage, numPartitions),
-		locks:         make([]stripeLock, numPartitions),
+		stripes:       make([]map[string]tenantUsage, numStripes),
+		locks:         make([]stripeLock, numStripes),
 	}
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
