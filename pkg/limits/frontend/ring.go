@@ -62,11 +62,11 @@ func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	}
 	ownedStreams := make(map[string][]*proto.StreamMetadata)
 	for _, s := range req.Streams {
-		partitionID := int32(s.StreamHash % uint64(g.numPartitions))
-		addr, ok := partitionConsumers[partitionID]
+		partition := int32(s.StreamHash % uint64(g.numPartitions))
+		addr, ok := partitionConsumers[partition]
 		if !ok {
 			// TODO(grobinson): Drop streams when ok is false.
-			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partition)
 			continue
 		}
 		ownedStreams[addr] = append(ownedStreams[addr], s)

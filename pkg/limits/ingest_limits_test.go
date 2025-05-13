@@ -25,13 +25,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		name string
 
 		// Setup data.
-		assignedPartitionIDs []int32
-		numPartitions        int
-		usage                *UsageStore
-		windowSize           time.Duration
-		rateWindow           time.Duration
-		bucketDuration       time.Duration
-		maxActiveStreams     int
+		assignedPartitions []int32
+		numPartitions      int
+		usage              *UsageStore
+		windowSize         time.Duration
+		rateWindow         time.Duration
+		bucketDuration     time.Duration
+		maxActiveStreams   int
 
 		// Request data for ExceedsLimits.
 		tenantID string
@@ -45,8 +45,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "tenant not found",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        1,
+			assignedPartitions: []int32{0},
+			numPartitions:      1,
 			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
@@ -80,8 +80,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "all existing streams still active",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        1,
+			assignedPartitions: []int32{0},
+			numPartitions:      1,
 			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
@@ -117,8 +117,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "keep existing active streams and drop new streams",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        1,
+			assignedPartitions: []int32{0},
+			numPartitions:      1,
 			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
@@ -154,8 +154,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "update existing active streams and drop new streams",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        1,
+			assignedPartitions: []int32{0},
+			numPartitions:      1,
 			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
@@ -195,8 +195,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "update active streams and re-activate expired streams",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        1,
+			assignedPartitions: []int32{0},
+			numPartitions:      1,
 			usage: &UsageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
@@ -234,8 +234,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "drop streams per partition limit",
 			// setup data
-			assignedPartitionIDs: []int32{0, 1},
-			numPartitions:        2,
+			assignedPartitions: []int32{0, 1},
+			numPartitions:      2,
 			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
@@ -267,8 +267,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		{
 			name: "skip streams assigned to partitions not owned by instance but enforce limit",
 			// setup data
-			assignedPartitionIDs: []int32{0},
-			numPartitions:        2,
+			assignedPartitions: []int32{0},
+			numPartitions:      2,
 			usage: &UsageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
@@ -339,8 +339,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 
 			// Assign the Partition IDs.
 			partitions := make(map[string][]int32)
-			partitions["test"] = make([]int32, 0, len(tt.assignedPartitionIDs))
-			partitions["test"] = append(partitions["test"], tt.assignedPartitionIDs...)
+			partitions["test"] = make([]int32, 0, len(tt.assignedPartitions))
+			partitions["test"] = append(partitions["test"], tt.assignedPartitions...)
 			s.partitionManager.Assign(context.Background(), nil, partitions)
 
 			// Call ExceedsLimits.
