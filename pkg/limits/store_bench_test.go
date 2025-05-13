@@ -9,13 +9,6 @@ import (
 )
 
 func BenchmarkUsageStore_Store(b *testing.B) {
-	const (
-		windowSize     = time.Hour
-		bucketDuration = time.Minute
-		rateWindow     = 5 * time.Minute
-		rateBuckets    = 5 // One bucket per minute in the 5-minute rate window
-	)
-
 	benchmarks := []struct {
 		name                string
 		numTenants          int
@@ -49,11 +42,15 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := NewUsageStore(Config{NumPartitions: bm.numPartitions})
+		s := NewUsageStore(Config{
+			NumPartitions: bm.numPartitions,
+			WindowSize: time.Hour,
+			RateWindow: 5 * time.Minute,
+			BucketDuration: time.Minute,
+		})
 
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
-			cutoff := now.Add(-windowSize).UnixNano()
 
 			// Run the benchmark
 			for i := range b.N {
@@ -67,16 +64,12 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
-				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-
-				s.Update(tenant, metadata, updateTime.UnixNano(), cutoff, bucketStart, bucketCutOff, nil)
+				s.Update(tenant, metadata, updateTime, nil)
 			}
 		})
 
 		b.Run(fmt.Sprintf("%s_update", bm.name), func(b *testing.B) {
 			now := time.Now()
-			cutoff := now.Add(-windowSize).UnixNano()
 
 			// Run the benchmark
 			for i := range b.N {
@@ -90,10 +83,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
-				bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-
-				s.Update(tenant, metadata, updateTime.UnixNano(), cutoff, bucketStart, bucketCutOff, nil)
+				s.Update(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -102,7 +92,6 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 		// Run parallel benchmark
 		b.Run(bm.name+"_create_parallel", func(b *testing.B) {
 			now := time.Now()
-			cutoff := now.Add(-windowSize).UnixNano()
 			// Run parallel benchmark
 			b.RunParallel(func(pb *testing.PB) {
 				i := 0
@@ -116,10 +105,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
-					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-
-					s.Update(tenant, metadata, updateTime.UnixNano(), cutoff, bucketStart, bucketCutOff, nil)
+					s.Update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
@@ -127,7 +113,6 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 
 		b.Run(bm.name+"_update_parallel", func(b *testing.B) {
 			now := time.Now()
-			cutoff := now.Add(-windowSize).UnixNano()
 			// Run parallel benchmark
 			b.RunParallel(func(pb *testing.PB) {
 				i := 0
@@ -141,10 +126,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					bucketStart := updateTime.Truncate(bucketDuration).UnixNano()
-					bucketCutOff := updateTime.Add(-rateWindow).UnixNano()
-
-					s.Update(tenant, metadata, updateTime.UnixNano(), cutoff, bucketStart, bucketCutOff, nil)
+					s.Update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
