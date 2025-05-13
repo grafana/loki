@@ -158,18 +158,18 @@ func unsafeString(data []byte) string {
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
-	dec := r.obj.dec.LogsDecoder()
 	sec, err := r.findSection(ctx)
 	if err != nil {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	columnDescs, err := dec.Columns(ctx, sec)
+	dec := r.obj.dec.LogsDecoder(sec)
+	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := encoding.LogsDataset(dec, sec)
+	dset := encoding.LogsDataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

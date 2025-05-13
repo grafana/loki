@@ -181,8 +181,8 @@ func inspectLogsSection(ctx context.Context, reader encoding.Decoder, section *f
 		Type: section.Type.String(),
 	}
 
-	dec := reader.LogsDecoder()
-	cols, err := dec.Columns(ctx, section)
+	dec := reader.LogsDecoder(section)
+	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err
 	}
@@ -255,8 +255,8 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section
 		Type: section.Type.String(),
 	}
 
-	dec := reader.StreamsDecoder()
-	cols, err := dec.Columns(ctx, section)
+	dec := reader.StreamsDecoder(section)
+	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err
 	}

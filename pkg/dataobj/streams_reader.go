@@ -127,18 +127,18 @@ func (r *StreamsReader) Read(ctx context.Context, s []Stream) (int, error) {
 }
 
 func (r *StreamsReader) initReader(ctx context.Context) error {
-	dec := r.obj.dec.StreamsDecoder()
 	sec, err := r.findSection(ctx)
 	if err != nil {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	columnDescs, err := dec.Columns(ctx, sec)
+	dec := r.obj.dec.StreamsDecoder(sec)
+	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := encoding.StreamsDataset(dec, sec)
+	dset := encoding.StreamsDataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

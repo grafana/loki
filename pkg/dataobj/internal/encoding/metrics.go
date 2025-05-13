@@ -244,19 +244,14 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 		m.sectionMetadataSize.WithLabelValues(section.Type.String()).Observe(float64(section.MetadataSize))
 	}
 
-	var (
-		streamsDecoder = dec.StreamsDecoder()
-		logsDecoder    = dec.LogsDecoder()
-	)
-
 	var errs []error
 
 	for _, section := range sections {
 		switch section.Type {
 		case filemd.SECTION_TYPE_STREAMS:
-			errs = append(errs, m.observeStreamsSection(ctx, section, streamsDecoder))
+			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(section)))
 		case filemd.SECTION_TYPE_LOGS:
-			errs = append(errs, m.observeLogsSection(ctx, section, logsDecoder))
+			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(section)))
 		default:
 			errs = append(errs, fmt.Errorf("unknown section type %q", section.Type.String()))
 		}
@@ -265,10 +260,10 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	return errors.Join(errs...)
 }
 
-func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.SectionInfo, dec StreamsDecoder) error {
-	sectionType := section.Type.String()
+func (m *Metrics) observeStreamsSection(ctx context.Context, dec StreamsDecoder) error {
+	sectionType := filemd.SECTION_TYPE_STREAMS.String()
 
-	columns, err := dec.Columns(ctx, section)
+	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err
 	}
@@ -321,10 +316,10 @@ func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.Sec
 	return nil
 }
 
-func (m *Metrics) observeLogsSection(ctx context.Context, section *filemd.SectionInfo, dec LogsDecoder) error {
-	sectionType := section.Type.String()
+func (m *Metrics) observeLogsSection(ctx context.Context, dec LogsDecoder) error {
+	sectionType := filemd.SECTION_TYPE_LOGS.String()
 
-	columns, err := dec.Columns(ctx, section)
+	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err
 	}

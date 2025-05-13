@@ -19,17 +19,27 @@ type (
 		// Sections returns the list of sections within a data object.
 		Sections(ctx context.Context) ([]*filemd.SectionInfo, error)
 
-		// StreamsDecoder returns a decoder for streams sections.
-		StreamsDecoder() StreamsDecoder
+		// StreamsDecoder returns a decoder for a streams section. The section is
+		// not checked for type until the decoder is used.
+		//
+		// Sections where [filemd.SectionLayout] are defined are prevented from
+		// reading outside of their layout.
+		StreamsDecoder(section *filemd.SectionInfo) StreamsDecoder
 
-		// LogsDecoder returns a decoder for logs sections.
-		LogsDecoder() LogsDecoder
+		// LogsDecoder returns a decoder for a logs section. The section is not
+		// checked for type until the decoder is used.
+		//
+		// Sections where [filemd.SectionLayout] are defined are prevented from
+		// reading outside of their layout.
+		LogsDecoder(section *filemd.SectionInfo) LogsDecoder
 	}
 
-	// StreamsDecoder supports decoding data within a streams section.
+	// StreamsDecoder supports decoding data of a streams section.
 	StreamsDecoder interface {
-		// Columns describes the set of columns in the provided section.
-		Columns(ctx context.Context, section *filemd.SectionInfo) ([]*streamsmd.ColumnDesc, error)
+		// Columns describes the set of columns the section. Columns returns an
+		// error if the section associated with the StreamsDecoder is not a valid
+		// streams section.
+		Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error)
 
 		// Pages retrieves the set of pages for the provided columns. The order of
 		// page lists emitted by the sequence matches the order of columns
@@ -45,8 +55,10 @@ type (
 
 	// LogsDecoder supports decoding data within a logs section.
 	LogsDecoder interface {
-		// Columns describes the set of columns in the provided section.
-		Columns(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnDesc, error)
+		// Columns describes the set of columns in the provided section. Columns
+		// returns an error if the section associated with the LogsDecoder is not a
+		// valid logs section.
+		Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error)
 
 		// Pages retrieves the set of pages for the provided columns. The order of
 		// page lists emitted by the sequence matches the order of columns

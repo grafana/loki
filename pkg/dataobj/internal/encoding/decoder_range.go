@@ -91,24 +91,25 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 	}, nil
 }
 
-func (rd *rangeDecoder) StreamsDecoder() StreamsDecoder {
-	return &rangeStreamsDecoder{rr: rd.r}
+func (rd *rangeDecoder) StreamsDecoder(section *filemd.SectionInfo) StreamsDecoder {
+	return &rangeStreamsDecoder{rr: rd.r, sec: section}
 }
 
-func (rd *rangeDecoder) LogsDecoder() LogsDecoder {
-	return &rangeLogsDecoder{rr: rd.r}
+func (rd *rangeDecoder) LogsDecoder(section *filemd.SectionInfo) LogsDecoder {
+	return &rangeLogsDecoder{rr: rd.r, sec: section}
 }
 
 type rangeStreamsDecoder struct {
-	rr rangeReader
+	rr  rangeReader
+	sec *filemd.SectionInfo
 }
 
-func (rd *rangeStreamsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*streamsmd.ColumnDesc, error) {
-	if got, want := section.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+func (rd *rangeStreamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
+	if got, want := rd.sec.Type, filemd.SECTION_TYPE_STREAMS; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
-	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	rc, err := rd.rr.ReadRange(ctx, int64(rd.sec.MetadataOffset), int64(rd.sec.MetadataSize))
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
 	}
@@ -245,14 +246,15 @@ func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd
 }
 
 type rangeLogsDecoder struct {
-	rr rangeReader
+	rr  rangeReader
+	sec *filemd.SectionInfo
 }
 
-func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnDesc, error) {
-	if got, want := section.Type, filemd.SECTION_TYPE_LOGS; got != want {
+func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
+	if got, want := rd.sec.Type, filemd.SECTION_TYPE_LOGS; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
-	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	rc, err := rd.rr.ReadRange(ctx, int64(rd.sec.MetadataOffset), int64(rd.sec.MetadataSize))
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
 	}
