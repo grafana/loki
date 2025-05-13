@@ -241,7 +241,7 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	m.sectionsCount.Observe(float64(len(sections)))
 	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: sections})))
 	for _, section := range sections {
-		m.sectionMetadataSize.WithLabelValues(section.Type.String()).Observe(float64(section.MetadataSize))
+		m.sectionMetadataSize.WithLabelValues(section.Type.String()).Observe(float64(calculateMetadataSize(section)))
 	}
 
 	var errs []error
@@ -258,6 +258,19 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// calculateMetadataSize returns the size of metadata in a section, accounting
+// for whether it's using the deprecated fields or the new layout.
+func calculateMetadataSize(section *filemd.SectionInfo) uint64 {
+	if section.GetLayout() != nil {
+		// This will return zero if GetMetadata returns nil, which is correct as it
+		// defines the section as having no metadata.
+		return section.GetLayout().GetMetadata().GetLength()
+	}
+
+	// Fallback to the deprecated field.
+	return section.MetadataSize //nolint:staticcheck // MetadataSize is deprecated but still used as a fallback.
 }
 
 func (m *Metrics) observeStreamsSection(ctx context.Context, dec StreamsDecoder) error {
