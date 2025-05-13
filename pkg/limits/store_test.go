@@ -211,11 +211,16 @@ func TestUsageStore_Evict(t *testing.T) {
 	s.All(func(tenant string, _ int32, stream Stream) {
 		actual[tenant] = append(actual[tenant], stream)
 	})
+	// We can't use require.Equal as [All] iterates streams in a non-deterministic
+	// order. Instead use ElementsMatch for each expected tenant.
 	expected := map[string][]Stream{
 		"tenant1": {s1},
 		"tenant2": {s3, s4},
 	}
-	require.Equal(t, expected, actual)
+	require.Len(t, actual, len(expected))
+	for tenant := range expected {
+		require.ElementsMatch(t, expected[tenant], actual[tenant])
+	}
 }
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
