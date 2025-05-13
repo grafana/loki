@@ -102,6 +102,12 @@ variable "batch_size" {
   default     = ""
 }
 
+variable "retry_count" {
+  type        = number
+  description = "Retry count passed as environment variable. It determines how many times the lambda function retries pushing logs"
+  default     = ""
+}
+
 variable "lambda_vpc_subnets" {
   type        = list(string)
   description = "List of subnet IDs associated with the Lambda function."
