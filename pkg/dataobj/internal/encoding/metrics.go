@@ -241,22 +241,17 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	m.sectionsCount.Observe(float64(len(sections)))
 	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: sections})))
 	for _, section := range sections {
-		m.sectionMetadataSize.WithLabelValues(section.Type.String()).Observe(float64(section.MetadataSize))
+		m.sectionMetadataSize.WithLabelValues(section.Type.String()).Observe(float64(calculateMetadataSize(section)))
 	}
-
-	var (
-		streamsDecoder = dec.StreamsDecoder()
-		logsDecoder    = dec.LogsDecoder()
-	)
 
 	var errs []error
 
 	for _, section := range sections {
 		switch section.Type {
 		case filemd.SECTION_TYPE_STREAMS:
-			errs = append(errs, m.observeStreamsSection(ctx, section, streamsDecoder))
+			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(section)))
 		case filemd.SECTION_TYPE_LOGS:
-			errs = append(errs, m.observeLogsSection(ctx, section, logsDecoder))
+			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(section)))
 		default:
 			errs = append(errs, fmt.Errorf("unknown section type %q", section.Type.String()))
 		}
@@ -265,10 +260,23 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	return errors.Join(errs...)
 }
 
-func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.SectionInfo, dec StreamsDecoder) error {
-	sectionType := section.Type.String()
+// calculateMetadataSize returns the size of metadata in a section, accounting
+// for whether it's using the deprecated fields or the new layout.
+func calculateMetadataSize(section *filemd.SectionInfo) uint64 {
+	if section.GetLayout() != nil {
+		// This will return zero if GetMetadata returns nil, which is correct as it
+		// defines the section as having no metadata.
+		return section.GetLayout().GetMetadata().GetLength()
+	}
 
-	columns, err := dec.Columns(ctx, section)
+	// Fallback to the deprecated field.
+	return section.MetadataSize //nolint:staticcheck // MetadataSize is deprecated but still used as a fallback.
+}
+
+func (m *Metrics) observeStreamsSection(ctx context.Context, dec StreamsDecoder) error {
+	sectionType := filemd.SECTION_TYPE_STREAMS.String()
+
+	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err
 	}
@@ -321,10 +329,10 @@ func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.Sec
 	return nil
 }
 
-func (m *Metrics) observeLogsSection(ctx context.Context, section *filemd.SectionInfo, dec LogsDecoder) error {
-	sectionType := section.Type.String()
+func (m *Metrics) observeLogsSection(ctx context.Context, dec LogsDecoder) error {
+	sectionType := filemd.SECTION_TYPE_LOGS.String()
 
-	columns, err := dec.Columns(ctx, section)
+	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err
 	}
