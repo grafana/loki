@@ -92,7 +92,7 @@ func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 	})
 }
 
-func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	stored := make([]*proto.StreamMetadata, 0, len(streams))
 	rejected := make([]*proto.StreamMetadata, 0, len(streams))
 
@@ -126,7 +126,7 @@ func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, l
 			if !found || (recorded.LastSeenAt < cutoff) {
 				activeStreams[partitionID]++
 
-				if !cond(float64(activeStreams[partitionID]), stream) {
+				if cond != nil && !cond(float64(activeStreams[partitionID]), stream) {
 					rejected = append(rejected, stream)
 					continue
 				}
@@ -144,22 +144,6 @@ func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, l
 	})
 
 	return stored, rejected
-}
-
-func (s *UsageStore) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
-	s.withLock(tenant, func(i int) {
-		// Initialize tenant map if it doesn't exist
-		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(tenantUsage)
-		}
-
-		// Initialize partition map if it doesn't exist
-		if s.stripes[i][tenant][partitionID] == nil {
-			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
-		}
-
-		s.storeStream(i, tenant, partitionID, streamHash, recTotalSize, recordTime, bucketStart, bucketCutOff)
-	})
 }
 
 // Evict removes all streams that have not been seen since cutoff seconds.
