@@ -106,8 +106,8 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	metadata StreamMetadata
-	wal      WAL
+	usage *UsageStore
+	wal   WAL
 
 	// Track partition assignments
 	partitionManager *PartitionManager
@@ -131,7 +131,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		metadata:         NewStreamMetadata(cfg.NumPartitions),
+		usage:            NewUsageStore(cfg.NumPartitions),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
@@ -193,7 +193,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.metadata.All(func(tenant string, _ int32, stream Stream) {
+	s.usage.All(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
@@ -233,7 +233,7 @@ func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Clie
 	s.partitionManager.Remove(ctx, client, partitions)
 
 	for _, ids := range partitions {
-		s.metadata.EvictPartitions(ids)
+		s.usage.EvictPartitions(ids)
 	}
 }
 
@@ -302,30 +302,9 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 			return
 		case <-ticker.C:
 			cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
-			s.metadata.Evict(cutoff)
+			s.usage.Evict(cutoff)
 		}
 	}
-}
-
-// updateMetadata updates the metadata map with the provided StreamMetadata.
-// It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	var (
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-	)
-
-	if assigned := s.partitionManager.Has(partition); !assigned {
-		return
-	}
-
-	s.metadata.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
-
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -395,7 +374,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.metadata.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	accepted, rejected := s.usage.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {

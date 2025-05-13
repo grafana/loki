@@ -11,9 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestStreamMetadata_All(t *testing.T) {
+func TestUsageStore_All(t *testing.T) {
 	now := time.Now()
-	m := NewStreamMetadata(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		m.Store("tenant1", int32(i), uint64(i), 1000, now.UnixNano(), now.Truncate(time.Minute).UnixNano(), now.Add(-time.Hour).UnixNano())
@@ -29,9 +29,9 @@ func TestStreamMetadata_All(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestStreamMetadata_All_Concurrent(t *testing.T) {
+func TestUsageStore_All_Concurrent(t *testing.T) {
 	now := time.Now()
-	m := NewStreamMetadata(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		tenant := fmt.Sprintf("tenant%d", i)
@@ -59,9 +59,9 @@ func TestStreamMetadata_All_Concurrent(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestStreamMetadata_Usage(t *testing.T) {
+func TestUsageStore_ForTenant(t *testing.T) {
 	now := time.Now()
-	m := NewStreamMetadata(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		if i%2 == 0 {
@@ -74,16 +74,16 @@ func TestStreamMetadata_Usage(t *testing.T) {
 	expected := []uint64{0x0, 0x2, 0x4, 0x6, 0x8}
 
 	actual := make([]uint64, 0, 5)
-	m.Usage("tenant1", func(_ int32, stream Stream) {
+	m.ForTenant("tenant1", func(_ string, _ int32, stream Stream) {
 		actual = append(actual, stream.Hash)
 	})
 
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestStreamMetadata_Usage_Concurrent(t *testing.T) {
+func TestUsageStore_Usage_Concurrent(t *testing.T) {
 	now := time.Now()
-	m := NewStreamMetadata(10)
+	m := NewUsageStore(10)
 
 	for i := range 10 {
 		if i%2 == 0 {
@@ -102,7 +102,7 @@ func TestStreamMetadata_Usage_Concurrent(t *testing.T) {
 	for i := range 10 {
 		go func(i int) {
 			defer wg.Done()
-			m.Usage("tenant1", func(_ int32, stream Stream) {
+			m.ForTenant("tenant1", func(_ string, _ int32, stream Stream) {
 				if stream.Hash%2 == 0 {
 					actual[i]++
 				}
@@ -114,7 +114,7 @@ func TestStreamMetadata_Usage_Concurrent(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestStreamMetadata_Store(t *testing.T) {
+func TestUsageStore_Store(t *testing.T) {
 	var (
 		bucketDuration = time.Minute
 		rateWindow     = 5 * time.Minute
@@ -124,7 +124,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 		name string
 
 		// Setup data.
-		metadata StreamMetadata
+		metadata *UsageStore
 
 		// The test case.
 		tenantID    string
@@ -133,11 +133,11 @@ func TestStreamMetadata_Store(t *testing.T) {
 		record      *proto.StreamMetadata
 
 		// Expectations.
-		expected map[string]map[int32]map[uint64]Stream
+		expected map[string]tenantUsage
 	}{
 		{
 			name:        "insert new tenant and new partition",
-			metadata:    NewStreamMetadata(1),
+			metadata:    NewUsageStore(1),
 			tenantID:    "tenant1",
 			partitionID: 0,
 			lastSeenAt:  time.Unix(100, 0),
@@ -145,7 +145,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				StreamHash: 123,
 				TotalSize:  1500,
 			},
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						123: {
@@ -162,8 +162,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 		},
 		{
 			name: "insert existing tenant and new partition",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -189,7 +189,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				TotalSize:  3000,
 			},
 			lastSeenAt: time.Unix(200, 0),
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						123: {
@@ -216,8 +216,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 		},
 		{
 			name: "update existing stream",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -242,7 +242,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				TotalSize:  4500,
 			},
 			lastSeenAt: time.Unix(300, 0),
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						123: {
@@ -266,8 +266,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(852, 0),
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -285,7 +285,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						888: {
@@ -308,8 +308,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 				TotalSize:  3000,
 			},
 			lastSeenAt: time.Unix(1000, 0), // Current time reference
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -329,7 +329,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						999: {
@@ -353,8 +353,8 @@ func TestStreamMetadata_Store(t *testing.T) {
 				TotalSize:  1500,
 			},
 			lastSeenAt: time.Unix(1100, 0),
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -372,7 +372,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			expected: map[string]map[int32]map[uint64]Stream{
+			expected: map[string]tenantUsage{
 				"tenant1": {
 					0: {
 						555: {
@@ -406,7 +406,7 @@ func TestStreamMetadata_Store(t *testing.T) {
 	}
 }
 
-func TestStreamMetadata_Store_Concurrent(t *testing.T) {
+func TestUsageStore_Concurrent(t *testing.T) {
 	var (
 		numTenants     = 6
 		bucketDuration = time.Minute
@@ -417,7 +417,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 		bucketCutOff = lastSeenAt.Add(-rateWindow).UnixNano()
 	)
 
-	m := NewStreamMetadata(numTenants)
+	m := NewUsageStore(numTenants)
 
 	wg := sync.WaitGroup{}
 	wg.Add(numTenants)
@@ -486,7 +486,7 @@ func TestStreamMetadata_Store_Concurrent(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestStreamMetadata_StoreCond(t *testing.T) {
+func TestUsageStore_StoreCond(t *testing.T) {
 	now := time.Now()
 	cutoff := now.Add(-60 * time.Minute).UnixNano()
 	bucketStart := now.Truncate(time.Minute).UnixNano()
@@ -496,7 +496,7 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		name string
 
 		// setup data
-		metadata         *streamMetadata
+		metadata         *UsageStore
 		streams          []*proto.StreamMetadata
 		maxActiveStreams uint64
 
@@ -506,17 +506,17 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 	}{
 		{
 			name: "no streams",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{make(map[string]tenantUsage)},
 				locks:   make([]stripeLock, 1),
 			},
 			maxActiveStreams: 10,
 		},
 		{
 			name: "all streams within partition limit",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 1,
-				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				stripes:       []map[string]tenantUsage{make(map[string]tenantUsage)},
 				locks:         make([]stripeLock, 1),
 			},
 			streams: []*proto.StreamMetadata{
@@ -531,9 +531,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "all stream within limit per partition",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 1,
-				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				stripes:       []map[string]tenantUsage{make(map[string]tenantUsage)},
 				locks:         make([]stripeLock, 1),
 			},
 			streams: []*proto.StreamMetadata{
@@ -548,9 +548,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 1,
-				stripes:       []map[string]map[int32]map[uint64]Stream{make(map[string]map[int32]map[uint64]Stream)},
+				stripes:       []map[string]tenantUsage{make(map[string]tenantUsage)},
 				locks:         make([]stripeLock, 1),
 			},
 			streams: []*proto.StreamMetadata{
@@ -567,11 +567,11 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped per partition",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 2,
-				stripes: []map[string]map[int32]map[uint64]Stream{
-					make(map[string]map[int32]map[uint64]Stream),
-					make(map[string]map[int32]map[uint64]Stream),
+				stripes: []map[string]tenantUsage{
+					make(map[string]tenantUsage),
+					make(map[string]tenantUsage),
 				},
 				locks: make([]stripeLock, 2),
 			},
@@ -593,9 +593,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "some streams dropped from a single partition",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 2,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {},
@@ -622,9 +622,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "drops new streams but updates existing streams",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 2,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -662,9 +662,9 @@ func TestStreamMetadata_StoreCond(t *testing.T) {
 		},
 		{
 			name: "reset expired but not evicted streams",
-			metadata: &streamMetadata{
+			metadata: &UsageStore{
 				numPartitions: 1,
-				stripes: []map[string]map[int32]map[uint64]Stream{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -705,7 +705,7 @@ func TestStreamMetadata_Evict(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		metadata             *streamMetadata
+		metadata             *UsageStore
 		cutOff               int64
 		assignedPartitionIDs []int32
 		expectedMetadata     map[string]map[int32]map[uint64]Stream
@@ -713,8 +713,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 	}{
 		{
 			name: "all streams active",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -740,8 +740,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "all streams expired",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -762,8 +762,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "mixed active and expired streams",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -792,8 +792,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "multiple tenants with mixed streams",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -837,8 +837,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "multiple partitions with some empty after eviction",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -882,8 +882,8 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		},
 		{
 			name: "unassigned partitions should still be evicted",
-			metadata: &streamMetadata{
-				stripes: []map[string]map[int32]map[uint64]Stream{
+			metadata: &UsageStore{
+				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
 							0: {
@@ -936,9 +936,9 @@ func TestStreamMetadata_Evict(t *testing.T) {
 		})
 	}
 }
-func TestStreamMetadata_EvictPartitions(t *testing.T) {
+func TestUsageStore_EvictPartitions(t *testing.T) {
 	numPartitions := 10
-	m := NewStreamMetadata(numPartitions)
+	m := NewUsageStore(numPartitions)
 
 	for i := range numPartitions {
 		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())
@@ -954,9 +954,9 @@ func TestStreamMetadata_EvictPartitions(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func TestStreamMetadata_EvictPartitions_Concurrent(t *testing.T) {
+func TestUsageStore_EvictPartitions_Concurrent(t *testing.T) {
 	numPartitions := 10
-	m := NewStreamMetadata(numPartitions)
+	m := NewUsageStore(numPartitions)
 
 	for i := range numPartitions {
 		m.Store("tenant1", int32(i), 1, 1000, time.Now().UnixNano(), time.Now().Truncate(time.Minute).UnixNano(), time.Now().Add(-time.Hour).UnixNano())
