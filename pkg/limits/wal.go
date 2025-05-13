@@ -21,18 +21,20 @@ type WAL interface {
 
 // KafkaWAL is a write-ahead log on top of Kafka.
 type KafkaWAL struct {
-	client     *kgo.Client
-	topic      string
-	partitions uint64
-	logger     log.Logger
+	kafkaReader *kgo.Client
+	kafkaWriter *kgo.Client
+	topic       string
+	partitions  uint64
+	logger      log.Logger
 }
 
-func NewKafkaWAL(client *kgo.Client, topic string, partitions uint64, logger log.Logger) *KafkaWAL {
+func NewKafkaWAL(kafkaReader, kafkaWriter *kgo.Client, topic string, partitions uint64, logger log.Logger) *KafkaWAL {
 	return &KafkaWAL{
-		client:     client,
-		topic:      topic,
-		partitions: partitions,
-		logger:     logger,
+		kafkaReader: kafkaReader,
+		kafkaWriter: kafkaWriter,
+		topic:       topic,
+		partitions:  partitions,
+		logger:      logger,
 	}
 }
 
@@ -56,13 +58,14 @@ func (w *KafkaWAL) Append(ctx context.Context, tenant string, metadata *proto.St
 		Partition: partition,
 		Topic:     w.topic,
 	}
-	w.client.Produce(ctx, &r, w.logProduceErr)
+	w.kafkaWriter.Produce(ctx, &r, w.logProduceErr)
 	return nil
 }
 
 // Close implements the WAL interface.
 func (w *KafkaWAL) Close() error {
-	w.client.Close()
+	w.kafkaReader.Close()
+	w.kafkaWriter.Close()
 	return nil
 }
 
