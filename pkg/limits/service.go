@@ -131,7 +131,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewUsageStore(cfg.NumPartitions),
+		usage:            NewUsageStore(cfg),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
@@ -301,8 +301,7 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
-			s.usage.Evict(cutoff)
+			s.usage.Evict()
 		}
 	}
 }

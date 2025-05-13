@@ -49,7 +49,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := NewUsageStore(bm.numPartitions)
+		s := NewUsageStore(Config{NumPartitions: bm.numPartitions})
 
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
@@ -97,7 +97,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 			}
 		})
 
-		s = NewUsageStore(bm.numPartitions)
+		s = NewUsageStore(Config{NumPartitions: bm.numPartitions})
 
 		// Run parallel benchmark
 		b.Run(bm.name+"_create_parallel", func(b *testing.B) {

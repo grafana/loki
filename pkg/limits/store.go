@@ -4,6 +4,8 @@ import (
 	"hash/fnv"
 	"sync"
 
+	"github.com/coder/quartz"
+
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -20,9 +22,12 @@ type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
 
 // UsageStore stores per-tenant stream usage data.
 type UsageStore struct {
-	numPartitions int
-	stripes       []map[string]tenantUsage
-	locks         []stripeLock
+	cfg     Config
+	stripes []map[string]tenantUsage
+	locks   []stripeLock
+
+	// Used for tests.
+	clock quartz.Clock
 }
 
 // tenantUsage contains the per-partition stream usage for a tenant.
@@ -52,11 +57,12 @@ type stripeLock struct {
 }
 
 // NewUsageStore returns a new UsageStore.
-func NewUsageStore(numPartitions int) *UsageStore {
+func NewUsageStore(cfg Config) *UsageStore {
 	s := &UsageStore{
-		numPartitions: numPartitions,
-		stripes:       make([]map[string]tenantUsage, numStripes),
-		locks:         make([]stripeLock, numStripes),
+		cfg:     cfg,
+		stripes: make([]map[string]tenantUsage, numStripes),
+		locks:   make([]stripeLock, numStripes),
+		clock:   quartz.NewReal(),
 	}
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
@@ -104,7 +110,7 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 		activeStreams := make(map[int32]int)
 
 		for _, stream := range streams {
-			partition := int32(stream.StreamHash % uint64(s.numPartitions))
+			partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 			if _, ok := s.stripes[i][tenant][partition]; !ok {
 				s.stripes[i][tenant][partition] = make(map[uint64]Stream)
@@ -146,8 +152,9 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 	return stored, rejected
 }
 
-// Evict removes all streams that have not been seen since cutoff seconds.
-func (s *UsageStore) Evict(cutoff int64) map[string]int {
+// Evict evicts all streams that have not been seen within the window.
+func (s *UsageStore) Evict() map[string]int {
+	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
@@ -164,7 +171,7 @@ func (s *UsageStore) Evict(cutoff int64) map[string]int {
 	return evicted
 }
 
-// EvictPartitions deletes the usage data for the specified partitions.
+// EvictPartitions evicts all streams for the specified partitions.
 func (s *UsageStore) EvictPartitions(partitionsToEvict []int32) {
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
@@ -272,6 +279,21 @@ func (s *UsageStore) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
+}
+
+// Used in tests.
+func (s *UsageStore) set(tenant string, stream Stream) {
+	partition := int32(stream.Hash % uint64(s.cfg.NumPartitions))
+	s.withLock(tenant, func(i int) {
+		if _, ok := s.stripes[i][tenant]; !ok {
+			s.stripes[i][tenant] = make(tenantUsage)
+		}
+		if _, ok := s.stripes[i][tenant][partition]; !ok {
+			s.stripes[i][tenant][partition] = make(map[uint64]Stream)
+		}
+		s.stripes[i][tenant][partition][stream.Hash] = stream
+	})
+
 }
 
 // streamLimitExceeded returns a CondFunc that checks if the number of active streams
