@@ -1168,3 +1168,58 @@ func TestMigrateMarkers(t *testing.T) {
 		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
 }
+
+func TestDuplicateSeriesDetection(t *testing.T) {
+	chk := createChunk(t, "1", labels.FromStrings("foo", "1"), model.Now().Add(-time.Hour), model.Now())
+
+	expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{
+		getChunkID(chk.ChunkRef): {isExpired: false},
+	}, nil)
+
+	// Create a custom index processor that will loop on same series
+	loopIndexProcessor := &loopIndexProcessor{
+		series: series{
+			seriesID: []byte(chk.Metric.String()),
+			userID:   []byte(chk.UserID),
+			labels:   chk.Metric,
+			chunks: []Chunk{
+				{
+					ChunkID: []byte(getChunkID(chk.ChunkRef)),
+					From:    chk.From,
+					Through: chk.Through,
+				},
+			},
+		},
+	}
+
+	// Attempt to mark for deletion - this should fail due to duplicate series
+	empty, isModified, err := markForDelete(
+		context.Background(),
+		0,
+		"test_table",
+		&noopWriter{},
+		loopIndexProcessor,
+		expirationChecker,
+		nil,
+		util_log.Logger,
+	)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "series should not be repeated")
+	require.False(t, empty)
+	require.False(t, isModified)
+}
+
+// loopIndexProcessor implements IndexProcessor which loops on same series for iteration
+type loopIndexProcessor struct {
+	IndexProcessor
+	series series
+}
+
+func (p *loopIndexProcessor) ForEachSeries(_ context.Context, callback SeriesCallback) error {
+	for {
+		if err := callback(&p.series); err != nil {
+			return err
+		}
+	}
+}

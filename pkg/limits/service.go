@@ -360,11 +360,11 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams := req.Streams
 	valid := 0
 	for _, stream := range streams {
-		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partitionID); !assigned {
-			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition_id", partitionID)
+		if assigned := s.partitionManager.Has(partition); !assigned {
+			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
 
@@ -374,7 +374,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
