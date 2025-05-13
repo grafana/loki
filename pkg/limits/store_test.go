@@ -212,8 +212,8 @@ func TestUsageStore_Evict(t *testing.T) {
 		actual[tenant] = append(actual[tenant], stream)
 	})
 	expected := map[string][]Stream{
-		"tenant1": []Stream{s1},
-		"tenant2": []Stream{s3, s4},
+		"tenant1": {s1},
+		"tenant2": {s3, s4},
 	}
 	require.Equal(t, expected, actual)
 }
