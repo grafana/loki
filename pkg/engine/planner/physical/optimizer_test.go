@@ -2,6 +2,7 @@ package physical
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -28,7 +29,7 @@ func TestCanApplyPredicate(t *testing.T) {
 		{
 			predicate: &BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(1743424636000000000)),
+				Right: NewLiteral(time.Now()),
 				Op:    types.BinaryOpGt,
 			},
 			want: true,
@@ -58,14 +59,14 @@ func dummyPlan() *Plan {
 	filter1 := plan.addNode(&Filter{id: "filter1", Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-			Right: NewLiteral(uint64(1000000000)),
+			Right: NewLiteral(time.Unix(0, 1000000000)),
 			Op:    types.BinaryOpGt,
 		},
 	}})
 	filter2 := plan.addNode(&Filter{id: "filter2", Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-			Right: NewLiteral(uint64(2000000000)),
+			Right: NewLiteral(time.Unix(0, 2000000000)),
 			Op:    types.BinaryOpLte,
 		},
 	}})
@@ -111,24 +112,24 @@ func TestOptimizer(t *testing.T) {
 		scan1 := optimized.addNode(&DataObjScan{id: "scan1", Predicates: []Expression{
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(1000000000)),
+				Right: NewLiteral(time.Unix(0, 1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(2000000000)),
+				Right: NewLiteral(time.Unix(0, 2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})
 		scan2 := optimized.addNode(&DataObjScan{id: "scan2", Predicates: []Expression{
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(1000000000)),
+				Right: NewLiteral(time.Unix(0, 1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(2000000000)),
+				Right: NewLiteral(time.Unix(0, 2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})
@@ -166,14 +167,14 @@ func TestOptimizer(t *testing.T) {
 		filter1 := optimized.addNode(&Filter{id: "filter1", Predicates: []Expression{
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(1000000000)),
+				Right: NewLiteral(time.Unix(0, 1000000000)),
 				Op:    types.BinaryOpGt,
 			},
 		}})
 		filter2 := optimized.addNode(&Filter{id: "filter2", Predicates: []Expression{
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(uint64(2000000000)),
+				Right: NewLiteral(time.Unix(0, 2000000000)),
 				Op:    types.BinaryOpLte,
 			},
 		}})
