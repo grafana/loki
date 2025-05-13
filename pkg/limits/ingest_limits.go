@@ -374,7 +374,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
