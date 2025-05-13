@@ -30,7 +30,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 		}
 
 		for _, section := range sections {
-			if section.Type != filemd.SECTION_TYPE_LOGS {
+			if section.Kind != filemd.SECTION_KIND_LOGS {
 				continue
 			}
 

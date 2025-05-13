@@ -184,7 +184,7 @@ func (r *StreamsReader) findSection(ctx context.Context) (*filemd.SectionInfo, e
 	var n int
 
 	for _, s := range si {
-		if s.Type == filemd.SECTION_TYPE_STREAMS {
+		if s.Kind == filemd.SECTION_KIND_STREAMS {
 			if n == r.idx {
 				return s, nil
 			}

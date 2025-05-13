@@ -27,7 +27,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 		}
 
 		for _, section := range sections {
-			if section.Type != filemd.SECTION_TYPE_STREAMS {
+			if section.Kind != filemd.SECTION_KIND_STREAMS {
 				continue
 			}
 

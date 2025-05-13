@@ -107,7 +107,7 @@ type rangeStreamsDecoder struct {
 }
 
 func (rd *rangeStreamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
-	if got, want := rd.sec.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+	if got, want := rd.sec.Kind, filemd.SECTION_KIND_STREAMS; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
@@ -320,7 +320,7 @@ type rangeLogsDecoder struct {
 }
 
 func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
-	if got, want := rd.sec.Type, filemd.SECTION_TYPE_LOGS; got != want {
+	if got, want := rd.sec.Kind, filemd.SECTION_KIND_LOGS; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 

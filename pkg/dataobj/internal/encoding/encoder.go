@@ -74,7 +74,7 @@ func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	// closed. We temporarily set these fields to the maximum values so they're
 	// accounted for in the MetadataSize estimate.
 	enc.curSection = &filemd.SectionInfo{
-		Type: filemd.SECTION_TYPE_STREAMS,
+		Kind: filemd.SECTION_KIND_STREAMS,
 	}
 
 	return newStreamsEncoder(enc), nil
@@ -88,7 +88,7 @@ func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
 	}
 
 	enc.curSection = &filemd.SectionInfo{
-		Type: filemd.SECTION_TYPE_LOGS,
+		Kind: filemd.SECTION_KIND_LOGS,
 	}
 
 	return newLogsEncoder(enc), nil

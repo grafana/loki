@@ -44,10 +44,10 @@ func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
 
 	var md Metadata
 	for _, s := range si {
-		switch s.Type {
-		case filemd.SECTION_TYPE_STREAMS:
+		switch s.Kind {
+		case filemd.SECTION_KIND_STREAMS:
 			md.StreamsSections++
-		case filemd.SECTION_TYPE_LOGS:
+		case filemd.SECTION_KIND_LOGS:
 			md.LogsSections++
 		}
 	}

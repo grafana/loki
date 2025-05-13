@@ -223,7 +223,7 @@ func (r *LogsReader) findSection(ctx context.Context) (*filemd.SectionInfo, erro
 	var n int
 
 	for _, s := range si {
-		if s.Type == filemd.SECTION_TYPE_LOGS {
+		if s.Kind == filemd.SECTION_KIND_LOGS {
 			if n == r.idx {
 				return s, nil
 			}
