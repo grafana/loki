@@ -746,6 +746,8 @@ test:
 # that it's working correctly
 lokiCanary:
   enabled: true
+  # -- The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.
+  kind: DaemonSet
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
