@@ -26,9 +26,11 @@ type OwnerType struct {
 }
 
 type BucketSummaryType struct {
-	Name         string `json:"name"`
-	Location     string `json:"location"`
-	CreationDate string `json:"creationDate"`
+	Name            string `json:"name"`
+	Location        string `json:"location"`
+	CreationDate    string `json:"creationDate"`
+	LccLocation     string `json:"lccLocation,omitempty"`
+	EnableDedicated bool   `json:"enableDedicated,omitempty"`
 }
 
 // ListBucketsResult defines the result structure of ListBuckets api.
@@ -276,6 +278,8 @@ type PutObjectArgs struct {
 	CannedAcl          string
 	ObjectTagging      string
 	TrafficLimit       int64
+	ContentCrc32c      string
+	ContentCrc32cFlag  bool
 }
 
 // CopyObjectArgs defines the optional args structure for the copy object api.
@@ -290,6 +294,8 @@ type CopyObjectArgs struct {
 	CannedAcl         string
 	TaggingDirective  string
 	ObjectTagging     string
+	ContentCrc32c     string
+	ContentCrc32cFlag bool
 }
 
 type MultiCopyObjectArgs struct {
@@ -303,7 +309,9 @@ type CallbackResult struct {
 }
 
 type PutObjectResult struct {
-	Callback CallbackResult `json:"callback"`
+	Callback      CallbackResult `json:"callback"`
+	ContentCrc32  string         `json:"-"`
+	ContentCrc32c string         `json:"-"`
 }
 
 // CopyObjectResult defines the result json structure for the copy object api.
@@ -333,6 +341,7 @@ type ObjectMeta struct {
 	BceRestore         string
 	BceObjectType      string
 	VersionId          string
+	ContentCrc32c      string
 }
 
 // GetObjectResult defines the result data of the get object api.
@@ -432,6 +441,8 @@ type AppendObjectArgs struct {
 	ContentCrc32       string
 	StorageClass       string
 	TrafficLimit       int64
+	ContentCrc32c      string
+	ContentCrc32cFlag  bool
 }
 
 // AppendObjectResult defines the result data structure for appending object.
@@ -440,6 +451,7 @@ type AppendObjectResult struct {
 	NextAppendOffset int64
 	ContentCrc32     string
 	ETag             string
+	ContentCrc32c    string
 }
 
 // DeleteObjectArgs defines the input args structure for a single object.
@@ -484,10 +496,12 @@ type InitiateMultipartUploadResult struct {
 
 // UploadPartArgs defines the optinoal argumets for uploading part.
 type UploadPartArgs struct {
-	ContentMD5    string
-	ContentSha256 string
-	ContentCrc32  string
-	TrafficLimit  int64
+	ContentMD5        string
+	ContentSha256     string
+	ContentCrc32      string
+	TrafficLimit      int64
+	ContentCrc32c     string
+	ContentCrc32cFlag bool
 }
 
 // UploadPartCopyArgs defines the optional arguments of UploadPartCopy.
@@ -498,6 +512,8 @@ type UploadPartCopyArgs struct {
 	IfModifiedSince   string
 	IfUnmodifiedSince string
 	TrafficLimit      int64
+	ContentCrc32c     string
+	ContentCrc32cFlag bool
 }
 
 type PutSymlinkArgs struct {
@@ -515,19 +531,22 @@ type UploadInfoType struct {
 
 // CompleteMultipartUploadArgs defines the input arguments structure of CompleteMultipartUpload.
 type CompleteMultipartUploadArgs struct {
-	Parts        []UploadInfoType  `json:"parts"`
-	UserMeta     map[string]string `json:"-"`
-	Process      string            `json:"-"`
-	ContentCrc32 string            `json:"-"`
+	Parts             []UploadInfoType  `json:"parts"`
+	UserMeta          map[string]string `json:"-"`
+	Process           string            `json:"-"`
+	ContentCrc32      string            `json:"-"`
+	ContentCrc32c     string            `json:"-"`
+	ContentCrc32cFlag bool              `json:"-"`
 }
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
 type CompleteMultipartUploadResult struct {
-	Location     string `json:"location"`
-	Bucket       string `json:"bucket"`
-	Key          string `json:"key"`
-	ETag         string `json:"eTag"`
-	ContentCrc32 string `json:"-"`
+	Location      string `json:"location"`
+	Bucket        string `json:"bucket"`
+	Key           string `json:"key"`
+	ETag          string `json:"eTag"`
+	ContentCrc32  string `json:"-"`
+	ContentCrc32c string `json:"-"`
 }
 
 // ListPartsArgs defines the input optional arguments of listing parts information.

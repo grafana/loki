@@ -722,7 +722,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	var skipMetadataHashes map[uint64]struct{}
 	if d.cfg.IngestLimitsEnabled {
 		streamsAfterLimits, reasonsForHashes, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
 		if err != nil {
@@ -738,18 +737,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			level.Debug(d.logger).Log("msg", "request exceeded limits, some streams will be dropped", "tenant", tenantID)
 			if !d.cfg.IngestLimitsDryRunEnabled {
 				streams = streamsAfterLimits
-			}
-		}
-
-		if len(reasonsForHashes) > 0 && d.cfg.IngestLimitsDryRunEnabled {
-			// When IngestLimitsDryRunEnabled is true, we need to stop stream hashes
-			// that exceed the stream limit from being written to the metadata topic.
-			// If we don't do this, the stream hashes that should have been rejected
-			// will instead being counted as a known stream, causing a disagreement
-			// in metrics between the limits service and ingesters.
-			skipMetadataHashes = make(map[uint64]struct{})
-			for streamHash := range reasonsForHashes {
-				skipMetadataHashes[streamHash] = struct{}{}
 			}
 		}
 	}
@@ -792,7 +779,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, skipMetadataHashes, tenantID, &tracker, subring)
+		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -1227,10 +1214,10 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, skipMetadataHashes map[uint64]struct{}, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
-			err := d.sendStreamToKafka(ctx, s, skipMetadataHashes, tenant, subring)
+			err := d.sendStreamToKafka(ctx, s, tenant, subring)
 			if err != nil {
 				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
@@ -1239,7 +1226,7 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStr
 	}
 }
 
-func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, skipMetadataHashes map[uint64]struct{}, tenant string, subring *ring.PartitionRing) error {
+func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
@@ -1265,29 +1252,6 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 			"fail",
 		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
-	}
-
-	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-	if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok && d.cfg.IngestLimitsEnabled {
-		// However, unlike stream records, the distributor writes stream metadata
-		// records to one of a fixed number of partitions, the size of which is
-		// determined ahead of time. It does not use a ring. The reason for this
-		// is that we want to be able to scale components that consume metadata
-		// records independent of ingesters.
-		metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
-		metadata, err := kafka.EncodeStreamMetadata(
-			metadataPartitionID,
-			d.cfg.KafkaConfig.Topic,
-			tenant,
-			stream.HashKeyNoShard,
-			entriesSize,
-			structuredMetadataSize,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		records = append(records, metadata)
 	}
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))

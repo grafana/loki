@@ -938,9 +938,10 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				deletionMode:    tc.deletionMode.String(),
 			}}, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.loadDeleteRequestsToProcess())
+			mgr.MarkPhaseStarted()
+			require.NotNil(t, mgr.currentBatch)
 
-			for _, deleteRequests := range mgr.deleteRequestsToProcess {
+			for _, deleteRequests := range mgr.currentBatch.deleteRequestsToProcess {
 				for _, dr := range deleteRequests.requests {
 					require.EqualValues(t, 0, dr.DeletedLines)
 				}
@@ -968,12 +969,13 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, structuredMetadata), filterFunc(start.Time(), line, structuredMetadata), "line", line, "time", start.Time(), "now", now.Time())
 				}
 
-				require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))
+				require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.currentBatch.deleteRequestsToProcess))
 				for userID, dr := range tc.expectedDeletionRangeByUser {
-					require.Equal(t, dr, mgr.deleteRequestsToProcess[userID].requestsInterval)
+					require.Equal(t, dr, mgr.currentBatch.deleteRequestsToProcess[userID].requestsInterval)
 				}
 			}
 
+			duplicateRequests := mgr.currentBatch.duplicateRequests
 			mgr.MarkPhaseFinished()
 
 			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
@@ -983,7 +985,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			for i, reqIdx := range tc.expectedRequestsMarkedAsProcessed {
 				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], processedRequests[i]))
 			}
-			require.Len(t, mgr.duplicateRequests, tc.expectedDuplicateRequestsCount)
+			require.Len(t, duplicateRequests, tc.expectedDuplicateRequestsCount)
 		})
 	}
 }
@@ -1007,7 +1009,8 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range tt {
 		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 		require.NoError(t, err)
-		require.NoError(t, mgr.loadDeleteRequestsToProcess())
+		mgr.MarkPhaseStarted()
+		require.NotNil(t, mgr.currentBatch)
 
 		interval := model.Interval{Start: 300, End: 600}
 		require.Equal(t, tc.hasChunks, mgr.IntervalMayHaveExpiredChunks(interval, tc.user))
@@ -1192,7 +1195,8 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.loadDeleteRequestsToProcess())
+			mgr.MarkPhaseStarted()
+			require.NotNil(t, mgr.currentBatch)
 
 			for _, m := range tc.seriesToMarkProcessed {
 				require.NoError(t, mgr.MarkSeriesAsProcessed(m.userID, m.seriesID, m.lbls, m.tableName))
@@ -1208,7 +1212,8 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 			require.NoError(t, err)
 			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
-			require.NoError(t, mgr.loadDeleteRequestsToProcess())
+			mgr.MarkPhaseStarted()
+			require.NotNil(t, mgr.currentBatch)
 
 			// when the mark phase ends, series progress should get cleared
 			mgr.MarkPhaseFinished()
@@ -1230,7 +1235,8 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 
 	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 	require.NoError(t, err)
-	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+	mgr.MarkPhaseStarted()
+	require.NotNil(t, mgr.currentBatch)
 
 	require.NoError(t, mgr.MarkSeriesAsProcessed(user1, []byte(lblFooBar.String()), lblFooBar, "t1"))
 
@@ -1244,7 +1250,8 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 	require.FileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 
 	// load the requests again for processing
-	require.NoError(t, mgr.loadDeleteRequestsToProcess())
+	mgr.MarkPhaseStarted()
+	require.NotNil(t, mgr.currentBatch)
 
 	// not hitting the timeout should clear the series progress
 	mgr.MarkPhaseFinished()
