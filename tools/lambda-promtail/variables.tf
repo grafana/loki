@@ -46,6 +46,18 @@ variable "username" {
   default     = ""
 }
 
+variable "username_parameter_arn" {
+  type        = string
+  description = "The ARN of the SSM parameter that contains the basic auth username, necessary if writing directly to Grafana Cloud Loki."
+  default     = ""
+}
+
+variable "username_secret_arn" {
+  type        = string
+  description = "The ARN of the Secrets Manager secret that contains the basic auth username, necessary if writing directly to Grafana Cloud Loki."
+  default     = ""
+}
+
 variable "password" {
   type        = string
   description = "The basic auth password, necessary if writing directly to Grafana Cloud Loki."
@@ -53,10 +65,34 @@ variable "password" {
   default     = ""
 }
 
+variable "password_parameter_arn" {
+  type        = string
+  description = "The ARN of the SSM parameter that contains the basic auth password, necessary if writing directly to Grafana Cloud Loki."
+  default     = ""
+}
+
+variable "password_secret_arn" {
+  type        = string
+  description = "The ARN of the Secrets Manager secret that contains the basic auth password, necessary if writing directly to Grafana Cloud Loki."
+  default     = ""
+}
+
 variable "bearer_token" {
   type        = string
   description = "The bearer token, necessary if target endpoint requires it."
   sensitive   = true
+  default     = ""
+}
+
+variable "bearer_token_parameter_arn" {
+  type        = string
+  description = "The ARN of the SSM parameter that contains the bearer token, necessary if target endpoint requires it."
+  default     = ""
+}
+
+variable "bearer_token_secret_arn" {
+  type        = string
+  description = "The ARN of the Secrets Manager secret that contains the bearer token, necessary if target endpoint requires it."
   default     = ""
 }
 

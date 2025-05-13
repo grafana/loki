@@ -140,6 +140,45 @@ data "aws_iam_policy_document" "lambda_kinesis" {
 }
 
 #-------------------------------------------------------------------------------
+# IAM policy assigned to lambda IAM role to be able to access credentials in parameter store or secrets manager
+#-------------------------------------------------------------------------------
+locals {
+  ssm_parameter_arns = compact([var.username_parameter_arn, var.password_parameter_arn, var.bearer_token_parameter_arn])
+  secret_arns        = compact([var.username_secret_arn, var.password_secret_arn, var.bearer_token_secret_arn])
+}
+
+data "aws_iam_policy_document" "lambda_credentials" {
+  count = length(local.ssm_parameter_arns) > 0 || length(local.secret_arns) > 0 ? 1 : 0
+
+  dynamic "statement" {
+    for_each = length(local.ssm_parameter_arns) > 0 ? [1] : []
+
+    content {
+      effect    = "Allow"
+      actions   = ["ssm:GetParameter"]
+      resources = local.ssm_parameter_arns
+    }
+  }
+
+  dynamic "statement" {
+    for_each = length(local.secret_arns) > 0 ? [1] : []
+
+    content {
+      effect    = "Allow"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = local.secret_arns
+    }
+  }
+}
+resource "aws_iam_role_policy" "lambda_credentials" {
+  count = length(local.ssm_parameter_arns) > 0 || length(local.secret_arns) > 0 ? 1 : 0
+
+  name   = "credentials"
+  role   = aws_iam_role.this.name
+  policy = data.aws_iam_policy_document.lambda_credentials[0].json
+}
+
+#-------------------------------------------------------------------------------
 # Lambda function
 #-------------------------------------------------------------------------------
 
@@ -199,9 +238,9 @@ resource "aws_lambda_function" "this" {
   environment {
     variables = {
       WRITE_ADDRESS            = var.write_address
-      USERNAME                 = var.username
-      PASSWORD                 = var.password
-      BEARER_TOKEN             = var.bearer_token
+      USERNAME                 = try(coalesce(var.username_secret_arn, var.username_parameter_arn, var.username), "")
+      PASSWORD                 = try(coalesce(var.password_secret_arn, var.password_parameter_arn, var.password), "")
+      BEARER_TOKEN             = try(coalesce(var.bearer_token_secret_arn, var.bearer_token_parameter_arn, var.bearer_token), "")
       KEEP_STREAM              = var.keep_stream
       BATCH_SIZE               = var.batch_size
       EXTRA_LABELS             = var.extra_labels

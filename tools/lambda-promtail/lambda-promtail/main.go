@@ -43,7 +43,7 @@ var (
 	relabelConfigs                                                           []*relabel.Config
 )
 
-func setupArguments() {
+func setupArguments(ctx context.Context, secretFetcher secretFetcher) {
 	addr := os.Getenv("WRITE_ADDRESS")
 	if addr == "" {
 		panic(errors.New("required environmental variable WRITE_ADDRESS not present, format: https://<hostname>/loki/api/v1/push"))
@@ -69,14 +69,23 @@ func setupArguments() {
 		panic(err)
 	}
 
-	username = os.Getenv("USERNAME")
-	password = os.Getenv("PASSWORD")
+	username, err = loadSensitiveEnv(ctx, secretFetcher, "USERNAME")
+	if err != nil {
+		panic(err)
+	}
+	password, err = loadSensitiveEnv(ctx, secretFetcher, "PASSWORD")
+	if err != nil {
+		panic(err)
+	}
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
 	}
 
-	bearerToken = os.Getenv("BEARER_TOKEN")
+	bearerToken, err = loadSensitiveEnv(ctx, secretFetcher, "BEARER_TOKEN")
+	if err != nil {
+		panic(err)
+	}
 	// If username and password are set, bearer token is not allowed
 	if username != "" && bearerToken != "" {
 		panic("both username and bearerToken are not allowed")
@@ -291,6 +300,6 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 }
 
 func main() {
-	setupArguments()
+	setupArguments(context.Background(), &secretClients{})
 	lambda.Start(handler)
 }
