@@ -26,14 +26,12 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 			return err
 		}
 
-		streamsDec := dec.StreamsDecoder()
-
 		for _, section := range sections {
 			if section.Type != filemd.SECTION_TYPE_STREAMS {
 				continue
 			}
 
-			for result := range IterSection(ctx, streamsDec, section) {
+			for result := range IterSection(ctx, dec.StreamsDecoder(section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -44,19 +42,19 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	})
 }
 
-func IterSection(ctx context.Context, dec encoding.StreamsDecoder, section *filemd.SectionInfo) result.Seq[Stream] {
+func IterSection(ctx context.Context, dec encoding.StreamsDecoder) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx, section)
+		streamsColumns, err := dec.Columns(ctx)
 		if err != nil {
 			return err
 		}
 
-		dset := encoding.StreamsDataset(dec, section)
+		dset := encoding.StreamsDataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {

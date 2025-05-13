@@ -4,28 +4,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestUsageStore_All(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
 	// Create a store with 10 partitions.
-	s := NewUsageStore(10)
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
-		}
+		s.set("tenant", Stream{Hash: uint64(i)})
 	}
-	// Add the streams to the store, all streams should be accepted.
-	accepted, rejected := s.Update("tenant", streams, now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 10)
-	require.Empty(t, rejected)
 	// Check that we can iterate all stored streams.
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
 	actual := make([]uint64, 0, len(expected))
@@ -36,26 +33,22 @@ func TestUsageStore_All(t *testing.T) {
 }
 
 func TestUsageStore_ForTenant(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
 	// Create a store with 10 partitions.
-	s := NewUsageStore(10)
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
+		tenant := "tenant1"
+		if i >= 5 {
+			tenant = "tenant2"
 		}
+		s.set(tenant, Stream{Hash: uint64(i)})
 	}
-	// Add the streams to the store, but with the streams shared between
-	// two tenants.
-	accepted, rejected := s.Update("tenant1", streams[0:5], now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 5)
-	require.Empty(t, rejected)
-	accepted, rejected = s.Update("tenant2", streams[5:], now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 5)
-	require.Empty(t, rejected)
 	// Check we can iterate just the streams for each tenant.
 	expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
 	actual1 := make([]uint64, 0, 5)
@@ -72,11 +65,6 @@ func TestUsageStore_ForTenant(t *testing.T) {
 }
 
 func TestUsageStore_Store(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
-	bucketStart := now.Truncate(time.Minute).UnixNano()
-	bucketCutoff := now.Add(-5 * time.Minute).UnixNano()
-
 	tests := []struct {
 		name             string
 		numPartitions    int
@@ -179,206 +167,67 @@ func TestUsageStore_Store(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewUsageStore(test.numPartitions)
-			s.Update("tenant", test.seed, now.UnixNano(), cutoff, bucketStart, bucketCutoff, nil)
+			s := NewUsageStore(Config{
+				NumPartitions: test.numPartitions,
+				WindowSize:    time.Minute,
+			})
+			clock := quartz.NewMock(t)
+			s.clock = clock
+			s.Update("tenant", test.seed, clock.Now(), nil)
 			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.Update("tenant", test.streams, now.UnixNano(), cutoff, bucketStart, bucketCutoff, streamLimitCond)
+			accepted, rejected := s.Update("tenant", test.streams, clock.Now(), streamLimitCond)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
 	}
 }
 
-func TestStreamMetadata_Evict(t *testing.T) {
-	now := time.Now()
-
-	tests := []struct {
-		name                 string
-		usage                *UsageStore
-		cutOff               int64
-		assignedPartitionIDs []int32
-		expectedEvictions    map[string]int
-		expectedUsage        map[string]map[int32]map[uint64]Stream
-	}{{
-		name: "all streams active",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {
-					0: {
-						1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-						2: {Hash: 2, LastSeenAt: now.UnixNano(), TotalSize: 2000},
-					},
-				},
-			}},
-			locks: make([]stripeLock, 1),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0},
-		expectedEvictions:    map[string]int{},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{
-			"tenant1": {
-				0: {
-					1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-					2: {Hash: 2, LastSeenAt: now.UnixNano(), TotalSize: 2000},
-				},
-			},
-		},
-	}, {
-		name: "all streams expired",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {
-					0: {
-						1: {Hash: 1, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 1000},
-						2: {Hash: 2, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 2000},
-					},
-				},
-			}},
-			locks: make([]stripeLock, 1),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0},
-		expectedEvictions: map[string]int{
-			"tenant1": 2,
-		},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{},
-	}, {
-		name: "mixed active and expired streams",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {
-					0: {
-						1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-						2: {Hash: 2, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 2000},
-						3: {Hash: 3, LastSeenAt: now.UnixNano(), TotalSize: 3000},
-					},
-				},
-			}},
-			locks: make([]stripeLock, 1),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0},
-		expectedEvictions: map[string]int{
-			"tenant1": 1,
-		},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{
-			"tenant1": {
-				0: {
-					1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-					3: {Hash: 3, LastSeenAt: now.UnixNano(), TotalSize: 3000},
-				},
-			},
-		},
-	}, {
-		name: "multiple tenants with mixed streams",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {
-					0: {
-						1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-						2: {Hash: 2, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 2000},
-					},
-				},
-				"tenant2": {
-					0: {
-						3: {Hash: 3, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 3000},
-						4: {Hash: 4, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 4000},
-					},
-				},
-				"tenant3": {0: {5: {Hash: 5, LastSeenAt: now.UnixNano(), TotalSize: 5000}}},
-			}},
-			locks: make([]stripeLock, 1),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0},
-		expectedEvictions: map[string]int{
-			"tenant1": 1,
-			"tenant2": 2,
-		},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{
-			"tenant1": {0: {1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000}}},
-			"tenant3": {0: {5: {Hash: 5, LastSeenAt: now.UnixNano(), TotalSize: 5000}}},
-		},
-	}, {
-		name: "multiple partitions with some empty after eviction",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {
-					0: {
-						1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000},
-						2: {Hash: 2, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 2000},
-					},
-				},
-			}, {
-				"tenant1": {1: {3: {Hash: 3, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 3000}}},
-			}, {
-				"tenant1": {2: {4: {Hash: 4, LastSeenAt: now.UnixNano(), TotalSize: 4000}}},
-			}},
-			locks: make([]stripeLock, 3),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0, 1, 2},
-		expectedEvictions: map[string]int{
-			"tenant1": 2,
-		},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{
-			"tenant1": {
-				0: {1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000}},
-				2: {4: {Hash: 4, LastSeenAt: now.UnixNano(), TotalSize: 4000}},
-			},
-		},
-	}, {
-		name: "unassigned partitions should still be evicted",
-		usage: &UsageStore{
-			stripes: []map[string]tenantUsage{{
-				"tenant1": {0: {1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000}}},
-			}, {
-				"tenant1": {1: {2: {Hash: 2, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 2000}}},
-			}},
-			locks: make([]stripeLock, 2),
-		},
-		cutOff:               now.Add(-time.Hour).UnixNano(),
-		assignedPartitionIDs: []int32{0},
-		expectedEvictions: map[string]int{
-			"tenant1": 1,
-		},
-		expectedUsage: map[string]map[int32]map[uint64]Stream{
-			"tenant1": {0: {1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000}}},
-		},
-	}}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actualEvictions := tt.usage.Evict(tt.cutOff)
-			actualUsage := make(map[string]map[int32]map[uint64]Stream)
-			tt.usage.All(func(tenant string, partitionID int32, stream Stream) {
-				if actualUsage[tenant] == nil {
-					actualUsage[tenant] = make(map[int32]map[uint64]Stream)
-				}
-				if actualUsage[tenant][partitionID] == nil {
-					actualUsage[tenant][partitionID] = make(map[uint64]Stream)
-				}
-				actualUsage[tenant][partitionID][stream.Hash] = stream
-			})
-			require.Equal(t, tt.expectedEvictions, actualEvictions)
-			require.Equal(t, tt.expectedUsage, actualUsage)
-		})
+func TestUsageStore_Evict(t *testing.T) {
+	s := NewUsageStore(Config{
+		NumPartitions: 1,
+		WindowSize:    time.Hour,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	s1 := Stream{Hash: 0x1, LastSeenAt: clock.Now().UnixNano()}
+	s.set("tenant1", s1)
+	s2 := Stream{Hash: 0x2, LastSeenAt: clock.Now().Add(-61 * time.Minute).UnixNano()}
+	s.set("tenant1", s2)
+	s3 := Stream{Hash: 0x3, LastSeenAt: clock.Now().UnixNano()}
+	s.set("tenant2", s3)
+	s4 := Stream{Hash: 0x4, LastSeenAt: clock.Now().Add(-59 * time.Minute).UnixNano()}
+	s.set("tenant2", s4)
+	// Evict all streams older than the window size.
+	s.Evict()
+	actual := make(map[string][]Stream)
+	s.All(func(tenant string, _ int32, stream Stream) {
+		actual[tenant] = append(actual[tenant], stream)
+	})
+	// We can't use require.Equal as [All] iterates streams in a non-deterministic
+	// order. Instead use ElementsMatch for each expected tenant.
+	expected := map[string][]Stream{
+		"tenant1": {s1},
+		"tenant2": {s3, s4},
+	}
+	require.Len(t, actual, len(expected))
+	for tenant := range expected {
+		require.ElementsMatch(t, expected[tenant], actual[tenant])
 	}
 }
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := NewUsageStore(10)
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
-		}
+		s.set("tenant", Stream{Hash: uint64(i)})
 	}
-	now := time.Now()
-	s.Update("tenant", streams, now.UnixNano(), now.Add(-time.Minute).UnixNano(), 0, 0, nil)
 	// Evict the first 5 partitions.
 	s.EvictPartitions([]int32{0, 1, 2, 3, 4})
 	// The last 5 partitions should still have data.
