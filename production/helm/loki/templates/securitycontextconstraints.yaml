@@ -5,7 +5,7 @@ metadata:
   name: {{ include "loki.name" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
-allowHostDirVolumePlugin: false
+allowHostDirVolumePlugin: true
 allowHostIPC: false
 allowHostNetwork: false
 allowHostPID: false
