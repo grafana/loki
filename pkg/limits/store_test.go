@@ -11,22 +11,18 @@ import (
 )
 
 func TestUsageStore_All(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{NumPartitions: 10})
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
-		}
+		s.set("tenant", Stream{Hash: uint64(i)})
 	}
-	// Add the streams to the store, all streams should be accepted.
-	accepted, rejected := s.Update("tenant", streams, now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 10)
-	require.Empty(t, rejected)
 	// Check that we can iterate all stored streams.
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
 	actual := make([]uint64, 0, len(expected))
@@ -37,26 +33,22 @@ func TestUsageStore_All(t *testing.T) {
 }
 
 func TestUsageStore_ForTenant(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{NumPartitions: 10})
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
+		tenant := "tenant1"
+		if i >= 5 {
+			tenant = "tenant2"
 		}
+		s.set(tenant, Stream{Hash: uint64(i)})
 	}
-	// Add the streams to the store, but with the streams shared between
-	// two tenants.
-	accepted, rejected := s.Update("tenant1", streams[0:5], now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 5)
-	require.Empty(t, rejected)
-	accepted, rejected = s.Update("tenant2", streams[5:], now.UnixNano(), cutoff, 0, 0, nil)
-	require.Len(t, accepted, 5)
-	require.Empty(t, rejected)
 	// Check we can iterate just the streams for each tenant.
 	expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
 	actual1 := make([]uint64, 0, 5)
@@ -73,11 +65,6 @@ func TestUsageStore_ForTenant(t *testing.T) {
 }
 
 func TestUsageStore_Store(t *testing.T) {
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute).UnixNano()
-	bucketStart := now.Truncate(time.Minute).UnixNano()
-	bucketCutoff := now.Add(-5 * time.Minute).UnixNano()
-
 	tests := []struct {
 		name             string
 		numPartitions    int
@@ -180,10 +167,15 @@ func TestUsageStore_Store(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewUsageStore(Config{NumPartitions: test.numPartitions})
-			s.Update("tenant", test.seed, now.UnixNano(), cutoff, bucketStart, bucketCutoff, nil)
+			s := NewUsageStore(Config{
+				NumPartitions: test.numPartitions,
+				WindowSize:    time.Minute,
+			})
+			clock := quartz.NewMock(t)
+			s.clock = clock
+			s.Update("tenant", test.seed, clock.Now(), nil)
 			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.Update("tenant", test.streams, now.UnixNano(), cutoff, bucketStart, bucketCutoff, streamLimitCond)
+			accepted, rejected := s.Update("tenant", test.streams, clock.Now(), streamLimitCond)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
@@ -225,17 +217,17 @@ func TestUsageStore_Evict(t *testing.T) {
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{NumPartitions: 10})
+	s := NewUsageStore(Config{
+		NumPartitions: 10,
+		WindowSize:    time.Minute,
+	})
+	clock := quartz.NewMock(t)
+	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	streams := make([]*proto.StreamMetadata, 10)
 	for i := 0; i < 10; i++ {
-		streams[i] = &proto.StreamMetadata{
-			StreamHash: uint64(i),
-		}
+		s.set("tenant", Stream{Hash: uint64(i)})
 	}
-	now := time.Now()
-	s.Update("tenant", streams, now.UnixNano(), now.Add(-time.Minute).UnixNano(), 0, 0, nil)
 	// Evict the first 5 partitions.
 	s.EvictPartitions([]int32{0, 1, 2, 3, 4})
 	// The last 5 partitions should still have data.

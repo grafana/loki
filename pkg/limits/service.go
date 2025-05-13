@@ -344,14 +344,6 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssi
 func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		// Calculate the max active streams per tenant per partition
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
 	)
@@ -373,7 +365,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.Update(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {

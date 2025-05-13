@@ -3,6 +3,7 @@ package limits
 import (
 	"hash/fnv"
 	"sync"
+	"time"
 
 	"github.com/coder/quartz"
 
@@ -98,10 +99,17 @@ func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 	})
 }
 
-func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
-	stored := make([]*proto.StreamMetadata, 0, len(streams))
-	rejected := make([]*proto.StreamMetadata, 0, len(streams))
-
+func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+	var (
+		// Calculate the cutoff for the window size
+		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
+		// Get the bucket for this timestamp using the configured interval duration
+		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		// Calculate the rate window cutoff for cleaning up old buckets
+		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+		stored       = make([]*proto.StreamMetadata, 0, len(streams))
+		rejected     = make([]*proto.StreamMetadata, 0, len(streams))
+	)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
@@ -139,11 +147,11 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 
 				// If the stream is stored and expired, reset the stream
 				if found && recorded.LastSeenAt < cutoff {
-					s.stripes[i][tenant][partition][stream.StreamHash] = Stream{Hash: stream.StreamHash, LastSeenAt: lastSeenAt}
+					s.stripes[i][tenant][partition][stream.StreamHash] = Stream{Hash: stream.StreamHash, LastSeenAt: lastSeenAt.UnixNano()}
 				}
 			}
 
-			s.storeStream(i, tenant, partition, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutOff)
+			s.storeStream(i, tenant, partition, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutoff)
 
 			stored = append(stored, stream)
 		}
@@ -185,7 +193,7 @@ func (s *UsageStore) EvictPartitions(partitionsToEvict []int32) {
 	})
 }
 
-func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
+func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
 	// Check if the stream already exists in the metadata
 	recorded, ok := s.stripes[i][tenant][partition][streamHash]
 
@@ -193,7 +201,7 @@ func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHa
 	if !ok {
 		s.stripes[i][tenant][partition][streamHash] = Stream{
 			Hash:        streamHash,
-			LastSeenAt:  recordTime,
+			LastSeenAt:  recordTime.UnixNano(),
 			TotalSize:   recTotalSize,
 			RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: recTotalSize}},
 		}
