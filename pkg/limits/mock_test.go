@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type MockLimits struct {
@@ -27,24 +26,26 @@ func (m *MockLimits) IngestionBurstSizeBytes(_ string) int {
 	return 1000
 }
 
-type mockWAL struct {
-	t                    *testing.T
-	NumAppendsTotal      int
-	ExpectedAppendsTotal int
-	mtx                  sync.Mutex
+// mockKafka mocks a [kgo.Client].
+type mockKafka struct {
+	t   *testing.T
+	mtx sync.Mutex
+
+	expectedNumRecords int
+	numRecords         int
 }
 
-func (m *mockWAL) Append(_ context.Context, _ string, _ *proto.StreamMetadata) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	m.NumAppendsTotal++
-	return nil
+func (k *mockKafka) Produce(
+	_ context.Context,
+	r *kgo.Record,
+	promise func(*kgo.Record, error),
+) {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
+	k.numRecords++
+	promise(r, nil)
 }
 
-func (m *mockWAL) Close() error {
-	return nil
-}
-
-func (m *mockWAL) AssertAppendsTotal() {
-	require.Equal(m.t, m.ExpectedAppendsTotal, m.NumAppendsTotal)
+func (k *mockKafka) AssertExpectedNumRecords() {
+	require.Equal(k.t, k.expectedNumRecords, k.numRecords)
 }
