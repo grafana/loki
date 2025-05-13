@@ -9,7 +9,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 const (
@@ -21,25 +21,24 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-// RingStreamUsageGatherer implements StreamUsageGatherer. It uses a ring to find
-// limits instances.
-type RingStreamUsageGatherer struct {
+// RingGatherer uses a ring to find limits instances.
+type RingGatherer struct {
 	logger                  log.Logger
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
 	numPartitions           int
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
 }
 
-// NewRingStreamUsageGatherer returns a new RingStreamUsageGatherer.
-func NewRingStreamUsageGatherer(
+// NewRingGatherer returns a new RingGatherer.
+func NewRingGatherer(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse],
+	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
-) *RingStreamUsageGatherer {
-	return &RingStreamUsageGatherer{
+) *RingGatherer {
+	return &RingGatherer{
 		logger:                  logger,
 		ring:                    ring,
 		pool:                    pool,
@@ -48,74 +47,58 @@ func NewRingStreamUsageGatherer(
 	}
 }
 
-// GetStreamUsage implements StreamUsageGatherer.
-func (g *RingStreamUsageGatherer) GetStreamUsage(ctx context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	if len(r.StreamHashes) == 0 {
+// ExceedsLimits implements ExceedsLimitsGatherer.
+func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+	if len(req.Streams) == 0 {
 		return nil, nil
 	}
-	return g.forAllBackends(ctx, r)
-}
-
-// TODO(grobinson): Need to rename this to something more accurate.
-func (g *RingStreamUsageGatherer) forAllBackends(ctx context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
 	rs, err := g.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
-	return g.forGivenReplicaSet(ctx, rs, r)
-}
-
-func (g *RingStreamUsageGatherer) forGivenReplicaSet(ctx context.Context, rs ring.ReplicationSet, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
 	partitionConsumers, err := g.getPartitionConsumers(ctx, rs.Instances)
 	if err != nil {
 		return nil, err
 	}
-
-	instancesToQuery := make(map[string][]uint64)
-	for _, hash := range r.StreamHashes {
-		partitionID := int32(hash % uint64(g.numPartitions))
+	ownedStreams := make(map[string][]*proto.StreamMetadata)
+	for _, s := range req.Streams {
+		partitionID := int32(s.StreamHash % uint64(g.numPartitions))
 		addr, ok := partitionConsumers[partitionID]
 		if !ok {
-			// TODO Replace with a metric for partitions missing owners.
+			// TODO(grobinson): Drop streams when ok is false.
 			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partitionID)
 			continue
 		}
-		instancesToQuery[addr] = append(instancesToQuery[addr], hash)
+		ownedStreams[addr] = append(ownedStreams[addr], s)
 	}
-
 	errg, ctx := errgroup.WithContext(ctx)
-	responses := make([]GetStreamUsageResponse, len(instancesToQuery))
-
-	// Query each instance for stream usage
-	i := 0
-	for addr, hashes := range instancesToQuery {
-		j := i
-		i++
+	responseCh := make(chan *proto.ExceedsLimitsResponse, len(ownedStreams))
+	for addr, streams := range ownedStreams {
 		errg.Go(func() error {
 			client, err := g.pool.GetClientFor(addr)
 			if err != nil {
+				level.Error(g.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
 				return err
 			}
-
-			protoReq := &logproto.GetStreamUsageRequest{
-				Tenant:       r.Tenant,
-				StreamHashes: hashes,
-			}
-
-			resp, err := client.(logproto.IngestLimitsClient).GetStreamUsage(ctx, protoReq)
+			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
+				Tenant:  req.Tenant,
+				Streams: streams,
+			})
 			if err != nil {
 				return err
 			}
-
-			responses[j] = GetStreamUsageResponse{Addr: addr, Response: resp}
+			responseCh <- resp
 			return nil
 		})
 	}
-
-	if err := errg.Wait(); err != nil {
+	if err = errg.Wait(); err != nil {
 		return nil, err
 	}
-
+	close(responseCh)
+	responses := make([]*proto.ExceedsLimitsResponse, 0, len(rs.Instances))
+	for resp := range responseCh {
+		responses = append(responses, resp)
+	}
 	return responses, nil
 }
 
@@ -128,8 +111,8 @@ type zonePartitionConsumersResult struct {
 // in the replication set. If a zone has no active partition consumers, the
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
-// a psuedo-zone ("").
-func (g *RingStreamUsageGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
+// a pseudo-zone ("").
+func (g *RingGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
@@ -163,7 +146,7 @@ func (g *RingStreamUsageGatherer) getZoneAwarePartitionConsumers(ctx context.Con
 
 type getAssignedPartitionsResponse struct {
 	addr     string
-	response *logproto.GetAssignedPartitionsResponse
+	response *proto.GetAssignedPartitionsResponse
 }
 
 // getPartitionConsumers returns the consumer for each partition.
@@ -182,7 +165,7 @@ type getAssignedPartitionsResponse struct {
 // should be called once for each zone, and instances should be filtered to
 // the respective zone. Alternatively, you can pass all instances for all zones
 // to find the most up to date consumer for each partition across all zones.
-func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
+func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responseCh := make(chan getAssignedPartitionsResponse, len(instances))
 	for _, instance := range instances {
@@ -202,7 +185,7 @@ func (g *RingStreamUsageGatherer) getPartitionConsumers(ctx context.Context, ins
 				level.Error(g.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+			resp, err := client.(proto.IngestLimitsClient).GetAssignedPartitions(ctx, &proto.GetAssignedPartitionsRequest{})
 			if err != nil {
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil

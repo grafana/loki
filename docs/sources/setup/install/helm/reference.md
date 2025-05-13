@@ -54,6 +54,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnv": [],
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
@@ -129,6 +130,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4204,7 +4214,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.27-alpine"
+"1.28-alpine"
 </pre>
 </td>
 		</tr>
@@ -10507,6 +10517,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "sidecar": false,
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -10783,6 +10794,15 @@ null
 			<td>Labels for ruler service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.sidecar</td>
+			<td>bool</td>
+			<td>Whether to enable the rules sidecar</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>

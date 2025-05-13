@@ -11,16 +11,15 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -55,13 +54,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, metastore, limits, logger),
+		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
 		logger:   logger,
 	}
 }

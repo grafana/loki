@@ -2,6 +2,7 @@ package physical
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -50,7 +51,7 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(uint64(1742826126000000000)),
+			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)

@@ -13,12 +13,12 @@ import (
 
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
 func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
-	var compare func(a, b uint64) bool
+	var compare func(a, b int64) bool
 	switch order {
 	case physical.ASC:
-		compare = func(a, b uint64) bool { return a <= b }
+		compare = func(a, b int64) bool { return a <= b }
 	case physical.DESC:
-		compare = func(a, b uint64) bool { return a >= b }
+		compare = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
@@ -42,7 +42,7 @@ type KWayMerge struct {
 	exhausted   []bool
 	offsets     []int64
 	columnEval  evalFunc
-	compare     func(a, b uint64) bool
+	compare     func(a, b int64) bool
 }
 
 var _ Pipeline = (*KWayMerge)(nil)
@@ -92,7 +92,7 @@ func (p *KWayMerge) init() {
 	p.offsets = make([]int64, n)
 
 	if p.compare == nil {
-		p.compare = func(a, b uint64) bool { return a <= b }
+		p.compare = func(a, b int64) bool { return a <= b }
 	}
 }
 
@@ -106,7 +106,7 @@ func (p *KWayMerge) read() error {
 		p.state.batch.Release()
 	}
 
-	timestamps := make([]uint64, 0, len(p.inputs))
+	timestamps := make([]int64, 0, len(p.inputs))
 	batchIndexes := make([]int, 0, len(p.inputs))
 
 	for i := range len(p.inputs) {
@@ -119,7 +119,7 @@ func (p *KWayMerge) read() error {
 		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			err := p.inputs[i].Read()
 			if err != nil {
-				if err == EOF {
+				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
 					continue
 				}
@@ -136,7 +136,8 @@ func (p *KWayMerge) read() error {
 		if err != nil {
 			return err
 		}
-		tsCol, ok := col.ToArray().(*array.Uint64)
+		arr := col.ToArray()
+		tsCol, ok := arr.(*array.Timestamp)
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}
@@ -144,7 +145,7 @@ func (p *KWayMerge) read() error {
 
 		// Populate slices for sorting
 		batchIndexes = append(batchIndexes, i)
-		timestamps = append(timestamps, ts)
+		timestamps = append(timestamps, int64(ts))
 	}
 
 	// Pipeline is exhausted if no more input batches are available
@@ -182,7 +183,7 @@ func (p *KWayMerge) read() error {
 		return err
 	}
 	// We assume the column is a Uint64 array
-	tsCol, ok := col.ToArray().(*array.Uint64)
+	tsCol, ok := col.ToArray().(*array.Timestamp)
 	if !ok {
 		return errors.New("column is not a timestamp column")
 	}
@@ -193,7 +194,7 @@ func (p *KWayMerge) read() error {
 	for end < p.batches[j].NumRows() {
 		ts := tsCol.Value(int(end))
 		end++
-		if p.compare(ts, timestamps[1]) {
+		if p.compare(int64(ts), timestamps[1]) {
 			break
 		}
 	}

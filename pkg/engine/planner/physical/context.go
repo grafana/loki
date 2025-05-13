@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -98,7 +99,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 			if err != nil {
 				return nil, err
 			}
-			value, err := convertLiteral(expr.Right)
+			value, err := convertLiteralToString(expr.Right)
 			if err != nil {
 				return nil, err
 			}
@@ -115,15 +116,15 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 	}
 }
 
-func convertLiteral(expr Expression) (string, error) {
+func convertLiteralToString(expr Expression) (string, error) {
 	l, ok := expr.(*LiteralExpr)
 	if !ok {
 		return "", fmt.Errorf("expected literal expression, got %T", expr)
 	}
-	if l.ValueType() != types.ValueTypeStr {
+	if l.ValueType() != datatype.String {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
 	}
-	return l.Value.Str(), nil
+	return l.Any().(string), nil
 }
 
 func convertColumnRef(expr Expression) (string, error) {
