@@ -45,6 +45,11 @@ type Encoder struct {
 	sections   []*filemd.SectionInfo
 	curSection *filemd.SectionInfo
 
+	typesReady    bool
+	dictionary    []string
+	rawTypes      []*filemd.SectionType
+	typeRefLookup map[SectionType]uint32
+
 	data *bytes.Buffer
 }
 
@@ -74,10 +79,45 @@ func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	// closed. We temporarily set these fields to the maximum values so they're
 	// accounted for in the MetadataSize estimate.
 	enc.curSection = &filemd.SectionInfo{
-		Type: filemd.SECTION_TYPE_STREAMS,
+		TypeRef: enc.getTypeRef(SectionTypeStreams),
 	}
 
 	return newStreamsEncoder(enc), nil
+}
+
+// getTypeRef returns the type reference for the given type.
+//
+// getTypeRef panics if typ is not SectionTypeLogs or SectionTypeStreams.
+func (enc *Encoder) getTypeRef(typ SectionType) uint32 {
+	// TODO(rfratto): support arbitrary SectionType values.
+	if !enc.typesReady {
+		enc.initTypeRefs()
+	}
+
+	ref, ok := enc.typeRefLookup[typ]
+	if !ok {
+		panic(fmt.Sprintf("unknown type reference for %s", typ))
+	}
+	return ref
+}
+
+func (enc *Encoder) initTypeRefs() {
+	// Reserve the zero index in the dictionary for an invalid entry. This is
+	// only required for the type refs, but it's still easier to debug.
+	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
+
+	enc.rawTypes = []*filemd.SectionType{
+		{NameRef: nil}, // Invalid type.
+		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2}}, // Streams.
+		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3}}, // Logs.
+	}
+
+	enc.typeRefLookup = map[SectionType]uint32{
+		SectionTypeStreams: 1,
+		SectionTypeLogs:    2,
+	}
+
+	enc.typesReady = true
 }
 
 // OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
@@ -88,7 +128,7 @@ func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
 	}
 
 	enc.curSection = &filemd.SectionInfo{
-		Type: filemd.SECTION_TYPE_LOGS,
+		TypeRef: enc.getTypeRef(SectionTypeLogs),
 	}
 
 	return newLogsEncoder(enc), nil
@@ -104,7 +144,12 @@ func (enc *Encoder) metadata() proto.Message {
 	if enc.curSection != nil {
 		sections = append(sections, enc.curSection)
 	}
-	return &filemd.Metadata{Sections: sections}
+	return &filemd.Metadata{
+		Sections: sections,
+
+		Dictionary: enc.dictionary,
+		Types:      enc.rawTypes,
+	}
 }
 
 // Flush flushes any buffered data to the underlying writer. After flushing,
@@ -157,11 +202,19 @@ func (enc *Encoder) Flush() error {
 }
 
 func (enc *Encoder) Reset(w streamio.Writer) {
-	enc.data.Reset()
+	enc.w = w
+
+	enc.startOffset = len(magic)
+
 	enc.sections = nil
 	enc.curSection = nil
-	enc.w = w
-	enc.startOffset = len(magic)
+
+	enc.typesReady = false
+	enc.dictionary = nil
+	enc.rawTypes = nil
+	enc.typeRefLookup = nil
+
+	enc.data.Reset()
 }
 
 func (enc *Encoder) append(data, metadata []byte) error {

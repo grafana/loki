@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -21,17 +20,22 @@ import (
 // iterated over in order.
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		sections, err := dec.Sections(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
 
-		for _, section := range sections {
-			if section.Type != filemd.SECTION_TYPE_STREAMS {
+		for _, section := range metadata.Sections {
+			typ, err := encoding.GetSectionType(metadata, section)
+			if err != nil {
+				return fmt.Errorf("getting section type: %w", err)
+			}
+
+			if typ != encoding.SectionTypeStreams {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.StreamsDecoder(section)) {
+			for result := range IterSection(ctx, dec.StreamsDecoder(metadata, section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}

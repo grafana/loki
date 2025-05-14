@@ -9,7 +9,6 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
 // An Object is a representation of a data object.
@@ -37,19 +36,24 @@ type Metadata struct {
 // Metadata returns the metadata of the Object. Metadata returns an error if
 // the object cannot be read.
 func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
-	si, err := o.dec.Sections(ctx)
+	metadata, err := o.dec.Metadata(ctx)
 	if err != nil {
 		return Metadata{}, fmt.Errorf("reading sections: %w", err)
 	}
 
-	var md Metadata
-	for _, s := range si {
-		switch s.Type {
-		case filemd.SECTION_TYPE_STREAMS:
-			md.StreamsSections++
-		case filemd.SECTION_TYPE_LOGS:
-			md.LogsSections++
+	var res Metadata
+	for _, s := range metadata.Sections {
+		typ, err := encoding.GetSectionType(metadata, s)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("getting section type: %w", err)
+		}
+
+		switch typ {
+		case encoding.SectionTypeStreams:
+			res.StreamsSections++
+		case encoding.SectionTypeLogs:
+			res.LogsSections++
 		}
 	}
-	return md, nil
+	return res, nil
 }

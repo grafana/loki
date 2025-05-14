@@ -37,7 +37,7 @@ type rangeDecoder struct {
 	r rangeReader
 }
 
-func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, error) {
+func (rd *rangeDecoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	tailer, err := rd.tailer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading tailer: %w", err)
@@ -52,11 +52,7 @@ func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, er
 	br, release := getBufioReader(rc)
 	defer release()
 
-	md, err := decodeFileMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Sections, nil
+	return decodeFileMetadata(br)
 }
 
 type tailer struct {
@@ -91,23 +87,27 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 	}, nil
 }
 
-func (rd *rangeDecoder) StreamsDecoder(section *filemd.SectionInfo) StreamsDecoder {
-	return &rangeStreamsDecoder{rr: rd.r, sec: section}
+func (rd *rangeDecoder) StreamsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder {
+	return &rangeStreamsDecoder{rr: rd.r, md: metadata, sec: section}
 }
 
-func (rd *rangeDecoder) LogsDecoder(section *filemd.SectionInfo) LogsDecoder {
-	return &rangeLogsDecoder{rr: rd.r, sec: section}
+func (rd *rangeDecoder) LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder {
+	return &rangeLogsDecoder{rr: rd.r, md: metadata, sec: section}
 }
 
 type rangeStreamsDecoder struct {
 	// TODO(rfratto): restrict sections from reading outside of their regions.
 
 	rr  rangeReader // Reader for absolute ranges within the file.
+	md  *filemd.Metadata
 	sec *filemd.SectionInfo
 }
 
 func (rd *rangeStreamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
-	if got, want := rd.sec.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+	typ, err := GetSectionType(rd.md, rd.sec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read section type: %w", err)
+	} else if got, want := typ, SectionTypeStreams; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
@@ -316,11 +316,15 @@ type rangeLogsDecoder struct {
 	// TODO(rfratto): restrict sections from reading outside of their regions.
 
 	rr  rangeReader // Reader for absolute ranges within the file.
+	md  *filemd.Metadata
 	sec *filemd.SectionInfo
 }
 
 func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
-	if got, want := rd.sec.Type, filemd.SECTION_TYPE_LOGS; got != want {
+	typ, err := GetSectionType(rd.md, rd.sec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read section type: %w", err)
+	} else if got, want := typ, SectionTypeLogs; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 

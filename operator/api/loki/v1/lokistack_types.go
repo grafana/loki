@@ -335,6 +335,17 @@ type LokiComponentSpec struct {
 // LokiTemplateSpec defines the template of all requirements to configure
 // scheduling of all Loki components to be deployed.
 type LokiTemplateSpec struct {
+	// When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+	// requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+	// spikes, whether on the ingestion or query side.
+	//
+	// Note: This is currently a tech-preview feature.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Use resource requests as limits"
+	UseRequestsAsLimits bool `json:"useRequestsAsLimits,omitempty"`
+
 	// Compactor defines the compaction component spec.
 	//
 	// +optional

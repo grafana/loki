@@ -15,33 +15,34 @@ import (
 func Inspect(dataobj io.ReaderAt, size int64) {
 	reader := encoding.ReaderAtDecoder(dataobj, size)
 
-	sections, err := reader.Sections(context.Background())
+	metadata, err := reader.Metadata(context.Background())
 	if err != nil {
 		log.Printf("failed to read sections: %v", err)
 		return
 	}
 
-	for _, section := range sections {
-		switch section.Type {
-		case filemd.SECTION_TYPE_LOGS:
-			printLogsInfo(reader, section)
-		case filemd.SECTION_TYPE_STREAMS:
-			printStreamInfo(reader, section)
+	for _, section := range metadata.Sections {
+		typ, err := encoding.GetSectionType(metadata, section)
+		if err != nil {
+			log.Printf("failed to get section type: %s", err)
+			continue
+		}
+
+		switch typ {
+		case encoding.SectionTypeLogs:
+			printLogsInfo(reader, metadata, section)
+		case encoding.SectionTypeStreams:
+			printStreamInfo(reader, metadata, section)
 		}
 	}
 }
 
-func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
-	if section.Type != filemd.SECTION_TYPE_STREAMS {
-		log.Printf("Input section is a %v, expected streams section\n", section.Type)
-		return
-	}
-
-	dec := reader.StreamsDecoder(section)
+func printStreamInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
+	dec := reader.StreamsDecoder(metadata, section)
 	fmt.Println("---- Streams Section ----")
 	cols, err := dec.Columns(context.Background())
 	if err != nil {
-		log.Printf("failed to read columns for section %s: %v", section.Type.String(), err)
+		log.Printf("failed to read columns for streams section: %v", err)
 		return
 	}
 	totalCompressedSize := uint64(0)
@@ -56,17 +57,12 @@ func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	fmt.Println("")
 }
 
-func printLogsInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
-	if section.Type != filemd.SECTION_TYPE_LOGS {
-		log.Printf("Input section is a %v, expected logs section\n", section.Type)
-		return
-	}
-
+func printLogsInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
 	fmt.Println("---- Logs Section ----")
-	dec := reader.LogsDecoder(section)
+	dec := reader.LogsDecoder(metadata, section)
 	cols, err := dec.Columns(context.Background())
 	if err != nil {
-		log.Printf("failed to read columns for section %s: %v", section.Type.String(), err)
+		log.Printf("failed to read columns for logs section: %v", err)
 		return
 	}
 	totalCompressedSize := uint64(0)
