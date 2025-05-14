@@ -6,13 +6,11 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
-	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// PartitionManager keeps track of the partitions assigned and for
-// each partition a timestamp of when it was last updated.
+// PartitionManager keeps track of the partitions assigned and the timestamp
+// of when it was assigned.
 type PartitionManager struct {
-	// partitions maps partitionID to last updated (unix nanoseconds).
 	partitions map[int32]int64
 	mtx        sync.Mutex
 	logger     log.Logger
@@ -30,15 +28,12 @@ func NewPartitionManager(logger log.Logger) *PartitionManager {
 	}
 }
 
-// Assign assigns the partitions and sets the last updated timestamp for each
-// partition to the current time.
-func (m *PartitionManager) Assign(_ context.Context, _ *kgo.Client, topicPartitions map[string][]int32) {
+// Assign assigns the partitions.
+func (m *PartitionManager) Assign(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	for _, partitions := range topicPartitions {
-		for _, partition := range partitions {
-			m.partitions[partition] = m.clock.Now().UnixNano()
-		}
+	for _, partition := range partitions {
+		m.partitions[partition] = m.clock.Now().UnixNano()
 	}
 }
 
@@ -50,23 +45,23 @@ func (m *PartitionManager) Has(partition int32) bool {
 	return ok
 }
 
-// List returns a map of all assigned partitions and their last updated timestamps.
+// List returns a map of all assigned partitions and the timestamp of when
+// each partition was assigned.
 func (m *PartitionManager) List() map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	v := make(map[int32]int64)
+	result := make(map[int32]int64)
 	for partition, lastUpdated := range m.partitions {
-		v[partition] = lastUpdated
+		result[partition] = lastUpdated
 	}
-	return v
+	return result
 }
 
-func (m *PartitionManager) Remove(_ context.Context, _ *kgo.Client, topicPartitions map[string][]int32) {
+// Revoke revokes the partitions.
+func (m *PartitionManager) Revoke(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	for _, partitions := range topicPartitions {
-		for _, partition := range partitions {
-			delete(m.partitions, partition)
-		}
+	for _, partition := range partitions {
+		delete(m.partitions, partition)
 	}
 }
