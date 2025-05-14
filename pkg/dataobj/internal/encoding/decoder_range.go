@@ -37,7 +37,7 @@ type rangeDecoder struct {
 	r rangeReader
 }
 
-func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, error) {
+func (rd *rangeDecoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	tailer, err := rd.tailer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading tailer: %w", err)
@@ -52,11 +52,7 @@ func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, er
 	br, release := getBufioReader(rc)
 	defer release()
 
-	md, err := decodeFileMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Sections, nil
+	return decodeFileMetadata(br)
 }
 
 type tailer struct {

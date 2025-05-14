@@ -230,7 +230,7 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 
 // Observe observes the data object statistics for the given [Decoder].
 func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
-	sections, err := dec.Sections(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
 		return err
 	}
@@ -238,15 +238,15 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	// TODO(rfratto): our Decoder interface should be updated to not hide the
 	// metadata types to avoid recreating them here.
 
-	m.sectionsCount.Observe(float64(len(sections)))
-	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: sections})))
-	for _, section := range sections {
+	m.sectionsCount.Observe(float64(len(metadata.Sections)))
+	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: metadata.Sections})))
+	for _, section := range metadata.Sections {
 		m.sectionMetadataSize.WithLabelValues(section.Kind.String()).Observe(float64(calculateMetadataSize(section)))
 	}
 
 	var errs []error
 
-	for _, section := range sections {
+	for _, section := range metadata.Sections {
 		switch section.Kind {
 		case filemd.SECTION_KIND_STREAMS:
 			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(section)))

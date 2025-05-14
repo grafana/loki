@@ -37,19 +37,19 @@ type Metadata struct {
 // Metadata returns the metadata of the Object. Metadata returns an error if
 // the object cannot be read.
 func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
-	si, err := o.dec.Sections(ctx)
+	metadata, err := o.dec.Metadata(ctx)
 	if err != nil {
 		return Metadata{}, fmt.Errorf("reading sections: %w", err)
 	}
 
-	var md Metadata
-	for _, s := range si {
+	var res Metadata
+	for _, s := range metadata.Sections {
 		switch s.Kind {
 		case filemd.SECTION_KIND_STREAMS:
-			md.StreamsSections++
+			res.StreamsSections++
 		case filemd.SECTION_KIND_LOGS:
-			md.LogsSections++
+			res.LogsSections++
 		}
 	}
-	return md, nil
+	return res, nil
 }

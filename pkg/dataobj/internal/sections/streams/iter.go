@@ -21,12 +21,12 @@ import (
 // iterated over in order.
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		sections, err := dec.Sections(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
 
-		for _, section := range sections {
+		for _, section := range metadata.Sections {
 			if section.Kind != filemd.SECTION_KIND_STREAMS {
 				continue
 			}

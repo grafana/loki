@@ -16,8 +16,8 @@ import (
 type (
 	// A Decoder decodes a data object.
 	Decoder interface {
-		// Sections returns the list of sections within a data object.
-		Sections(ctx context.Context) ([]*filemd.SectionInfo, error)
+		// Metadata returns the top-level metadata of the data object.
+		Metadata(ctx context.Context) (*filemd.Metadata, error)
 
 		// StreamsDecoder returns a decoder for a streams section. The section is
 		// not checked for type until the decoder is used.

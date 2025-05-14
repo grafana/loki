@@ -176,14 +176,14 @@ func (r *StreamsReader) initReader(ctx context.Context) error {
 }
 
 func (r *StreamsReader) findSection(ctx context.Context) (*filemd.SectionInfo, error) {
-	si, err := r.obj.dec.Sections(ctx)
+	metadata, err := r.obj.dec.Metadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading sections: %w", err)
 	}
 
 	var n int
 
-	for _, s := range si {
+	for _, s := range metadata.Sections {
 		if s.Kind == filemd.SECTION_KIND_STREAMS {
 			if n == r.idx {
 				return s, nil

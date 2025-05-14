@@ -24,12 +24,12 @@ import (
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		sections, err := dec.Sections(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
 
-		for _, section := range sections {
+		for _, section := range metadata.Sections {
 			if section.Kind != filemd.SECTION_KIND_LOGS {
 				continue
 			}

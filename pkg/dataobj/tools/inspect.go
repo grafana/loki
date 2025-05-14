@@ -15,13 +15,13 @@ import (
 func Inspect(dataobj io.ReaderAt, size int64) {
 	reader := encoding.ReaderAtDecoder(dataobj, size)
 
-	sections, err := reader.Sections(context.Background())
+	metadata, err := reader.Metadata(context.Background())
 	if err != nil {
 		log.Printf("failed to read sections: %v", err)
 		return
 	}
 
-	for _, section := range sections {
+	for _, section := range metadata.Sections {
 		switch section.Kind {
 		case filemd.SECTION_KIND_LOGS:
 			printLogsInfo(reader, section)

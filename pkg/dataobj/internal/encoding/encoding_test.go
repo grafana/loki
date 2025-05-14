@@ -92,12 +92,12 @@ func TestStreams(t *testing.T) {
 
 	t.Run("Decode", func(t *testing.T) {
 		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		sections, err := dec.Sections(context.TODO())
+		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
-		require.Len(t, sections, 1)
-		require.Equal(t, filemd.SECTION_KIND_STREAMS, sections[0].Kind)
+		require.Len(t, metadata.Sections, 1)
+		require.Equal(t, filemd.SECTION_KIND_STREAMS, metadata.Sections[0].Kind)
 
-		dset := encoding.StreamsDataset(dec.StreamsDecoder(sections[0]))
+		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata.Sections[0]))
 
 		columns, err := result.Collect(dset.ListColumns(context.Background()))
 		require.NoError(t, err)
@@ -177,12 +177,12 @@ func TestLogs(t *testing.T) {
 
 	t.Run("Decode", func(t *testing.T) {
 		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		sections, err := dec.Sections(context.TODO())
+		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
-		require.Len(t, sections, 1)
-		require.Equal(t, filemd.SECTION_KIND_LOGS, sections[0].Kind)
+		require.Len(t, metadata.Sections, 1)
+		require.Equal(t, filemd.SECTION_KIND_LOGS, metadata.Sections[0].Kind)
 
-		logsDec := dec.LogsDecoder(sections[0])
+		logsDec := dec.LogsDecoder(metadata.Sections[0])
 		columns, err := logsDec.Columns(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, columns, 2)
