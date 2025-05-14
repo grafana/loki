@@ -97,7 +97,7 @@ func TestStreams(t *testing.T) {
 		require.Len(t, metadata.Sections, 1)
 		require.Equal(t, filemd.SECTION_KIND_STREAMS, metadata.Sections[0].Kind)
 
-		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata.Sections[0]))
+		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata, metadata.Sections[0]))
 
 		columns, err := result.Collect(dset.ListColumns(context.Background()))
 		require.NoError(t, err)
@@ -182,7 +182,7 @@ func TestLogs(t *testing.T) {
 		require.Len(t, metadata.Sections, 1)
 		require.Equal(t, filemd.SECTION_KIND_LOGS, metadata.Sections[0].Kind)
 
-		logsDec := dec.LogsDecoder(metadata.Sections[0])
+		logsDec := dec.LogsDecoder(metadata, metadata.Sections[0])
 		columns, err := logsDec.Columns(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, columns, 2)

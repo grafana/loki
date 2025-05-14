@@ -31,7 +31,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.StreamsDecoder(section)) {
+			for result := range IterSection(ctx, dec.StreamsDecoder(metadata, section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}

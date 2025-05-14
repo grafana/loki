@@ -249,9 +249,9 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 	for _, section := range metadata.Sections {
 		switch section.Kind {
 		case filemd.SECTION_KIND_STREAMS:
-			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(section)))
+			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(metadata, section)))
 		case filemd.SECTION_KIND_LOGS:
-			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(section)))
+			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(metadata, section)))
 		default:
 			errs = append(errs, fmt.Errorf("unknown section type %q", section.Kind.String()))
 		}

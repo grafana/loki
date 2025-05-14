@@ -24,14 +24,14 @@ type (
 		//
 		// Sections where [filemd.SectionLayout] are defined are prevented from
 		// reading outside of their layout.
-		StreamsDecoder(section *filemd.SectionInfo) StreamsDecoder
+		StreamsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder
 
 		// LogsDecoder returns a decoder for a logs section. The section is not
 		// checked for type until the decoder is used.
 		//
 		// Sections where [filemd.SectionLayout] are defined are prevented from
 		// reading outside of their layout.
-		LogsDecoder(section *filemd.SectionInfo) LogsDecoder
+		LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder
 	}
 
 	// StreamsDecoder supports decoding data of a streams section.

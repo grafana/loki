@@ -24,20 +24,20 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 	for _, section := range metadata.Sections {
 		switch section.Kind {
 		case filemd.SECTION_KIND_LOGS:
-			printLogsInfo(reader, section)
+			printLogsInfo(reader, metadata, section)
 		case filemd.SECTION_KIND_STREAMS:
-			printStreamInfo(reader, section)
+			printStreamInfo(reader, metadata, section)
 		}
 	}
 }
 
-func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
+func printStreamInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
 	if section.Kind != filemd.SECTION_KIND_STREAMS {
 		log.Printf("Input section is a %v, expected streams section\n", section.Kind)
 		return
 	}
 
-	dec := reader.StreamsDecoder(section)
+	dec := reader.StreamsDecoder(metadata, section)
 	fmt.Println("---- Streams Section ----")
 	cols, err := dec.Columns(context.Background())
 	if err != nil {
@@ -56,14 +56,14 @@ func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	fmt.Println("")
 }
 
-func printLogsInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
+func printLogsInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
 	if section.Kind != filemd.SECTION_KIND_LOGS {
 		log.Printf("Input section is a %v, expected logs section\n", section.Kind)
 		return
 	}
 
 	fmt.Println("---- Logs Section ----")
-	dec := reader.LogsDecoder(section)
+	dec := reader.LogsDecoder(metadata, section)
 	cols, err := dec.Columns(context.Background())
 	if err != nil {
 		log.Printf("failed to read columns for section %s: %v", section.Kind.String(), err)

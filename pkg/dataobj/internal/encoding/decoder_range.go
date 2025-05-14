@@ -87,11 +87,11 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 	}, nil
 }
 
-func (rd *rangeDecoder) StreamsDecoder(section *filemd.SectionInfo) StreamsDecoder {
+func (rd *rangeDecoder) StreamsDecoder(_ *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder {
 	return &rangeStreamsDecoder{rr: rd.r, sec: section}
 }
 
-func (rd *rangeDecoder) LogsDecoder(section *filemd.SectionInfo) LogsDecoder {
+func (rd *rangeDecoder) LogsDecoder(_ *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder {
 	return &rangeLogsDecoder{rr: rd.r, sec: section}
 }
 

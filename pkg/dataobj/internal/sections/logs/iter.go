@@ -34,7 +34,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.LogsDecoder(section)) {
+			for result := range IterSection(ctx, dec.LogsDecoder(metadata, section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}

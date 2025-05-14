@@ -153,7 +153,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 
 		switch section.Kind {
 		case filemd.SECTION_KIND_LOGS:
-			sectionMeta, err = inspectLogsSection(ctx, reader, section)
+			sectionMeta, err = inspectLogsSection(ctx, reader, metadata, section)
 			if err != nil {
 				return FileMetadata{
 					Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
@@ -161,7 +161,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 				}
 			}
 		case filemd.SECTION_KIND_STREAMS:
-			sectionMeta, err = inspectStreamsSection(ctx, reader, section)
+			sectionMeta, err = inspectStreamsSection(ctx, reader, metadata, section)
 			if err != nil {
 				return FileMetadata{
 					Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
@@ -176,12 +176,12 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	return result
 }
 
-func inspectLogsSection(ctx context.Context, reader encoding.Decoder, section *filemd.SectionInfo) (SectionMetadata, error) {
+func inspectLogsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
 	meta := SectionMetadata{
 		Type: section.Kind.String(),
 	}
 
-	dec := reader.LogsDecoder(section)
+	dec := reader.LogsDecoder(metadata, section)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err
@@ -250,12 +250,12 @@ func inspectLogsSection(ctx context.Context, reader encoding.Decoder, section *f
 	return meta, nil
 }
 
-func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section *filemd.SectionInfo) (SectionMetadata, error) {
+func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
 	meta := SectionMetadata{
 		Type: section.Kind.String(),
 	}
 
-	dec := reader.StreamsDecoder(section)
+	dec := reader.StreamsDecoder(metadata, section)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err
