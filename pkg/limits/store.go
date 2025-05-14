@@ -3,6 +3,9 @@ package limits
 import (
 	"hash/fnv"
 	"sync"
+	"time"
+
+	"github.com/coder/quartz"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
@@ -11,7 +14,7 @@ import (
 const numStripes = 64
 
 // IterateFunc is a closure called for each stream.
-type IterateFunc func(tenant string, partitionID int32, stream Stream)
+type IterateFunc func(tenant string, partition int32, stream Stream)
 
 // CondFunc is a function that is called for each stream passed to StoreCond,
 // and is often used to check if a stream can be stored (for example, with
@@ -20,9 +23,12 @@ type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
 
 // UsageStore stores per-tenant stream usage data.
 type UsageStore struct {
-	numPartitions int
-	stripes       []map[string]tenantUsage
-	locks         []stripeLock
+	cfg     Config
+	stripes []map[string]tenantUsage
+	locks   []stripeLock
+
+	// Used for tests.
+	clock quartz.Clock
 }
 
 // tenantUsage contains the per-partition stream usage for a tenant.
@@ -52,11 +58,12 @@ type stripeLock struct {
 }
 
 // NewUsageStore returns a new UsageStore.
-func NewUsageStore(numPartitions int) *UsageStore {
+func NewUsageStore(cfg Config) *UsageStore {
 	s := &UsageStore{
-		numPartitions: numPartitions,
-		stripes:       make([]map[string]tenantUsage, numStripes),
-		locks:         make([]stripeLock, numStripes),
+		cfg:     cfg,
+		stripes: make([]map[string]tenantUsage, numStripes),
+		locks:   make([]stripeLock, numStripes),
+		clock:   quartz.NewReal(),
 	}
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
@@ -70,9 +77,9 @@ func NewUsageStore(numPartitions int) *UsageStore {
 func (s *UsageStore) All(fn IterateFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			for partitionID, partition := range partitions {
-				for _, stream := range partition {
-					fn(tenant, partitionID, stream)
+			for partition, streams := range partitions {
+				for _, stream := range streams {
+					fn(tenant, partition, stream)
 				}
 			}
 		}
@@ -84,18 +91,25 @@ func (s *UsageStore) All(fn IterateFunc) {
 // closure must not make blocking calls while iterating streams.
 func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 	s.withRLock(tenant, func(i int) {
-		for partitionID, partition := range s.stripes[i][tenant] {
-			for _, stream := range partition {
-				fn(tenant, partitionID, stream)
+		for partition, streams := range s.stripes[i][tenant] {
+			for _, stream := range streams {
+				fn(tenant, partition, stream)
 			}
 		}
 	})
 }
 
-func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt, cutoff, bucketStart, bucketCutOff int64, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
-	stored := make([]*proto.StreamMetadata, 0, len(streams))
-	rejected := make([]*proto.StreamMetadata, 0, len(streams))
-
+func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+	var (
+		// Calculate the cutoff for the window size
+		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
+		// Get the bucket for this timestamp using the configured interval duration
+		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		// Calculate the rate window cutoff for cleaning up old buckets
+		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+		stored       = make([]*proto.StreamMetadata, 0, len(streams))
+		rejected     = make([]*proto.StreamMetadata, 0, len(streams))
+	)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
@@ -104,40 +118,40 @@ func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, l
 		activeStreams := make(map[int32]int)
 
 		for _, stream := range streams {
-			partitionID := int32(stream.StreamHash % uint64(s.numPartitions))
+			partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
-			if _, ok := s.stripes[i][tenant][partitionID]; !ok {
-				s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
+			if _, ok := s.stripes[i][tenant][partition]; !ok {
+				s.stripes[i][tenant][partition] = make(map[uint64]Stream)
 			}
 
 			// Count as active streams all streams that are not expired.
-			if _, ok := activeStreams[partitionID]; !ok {
-				for _, stored := range s.stripes[i][tenant][partitionID] {
+			if _, ok := activeStreams[partition]; !ok {
+				for _, stored := range s.stripes[i][tenant][partition] {
 					if stored.LastSeenAt >= cutoff {
-						activeStreams[partitionID]++
+						activeStreams[partition]++
 					}
 				}
 			}
 
-			recorded, found := s.stripes[i][tenant][partitionID][stream.StreamHash]
+			recorded, found := s.stripes[i][tenant][partition][stream.StreamHash]
 
 			// If the stream is new or expired, check if it exceeds the limit.
 			// If limit is not exceeded and the stream is expired, reset the stream.
 			if !found || (recorded.LastSeenAt < cutoff) {
-				activeStreams[partitionID]++
+				activeStreams[partition]++
 
-				if !cond(float64(activeStreams[partitionID]), stream) {
+				if cond != nil && !cond(float64(activeStreams[partition]), stream) {
 					rejected = append(rejected, stream)
 					continue
 				}
 
 				// If the stream is stored and expired, reset the stream
 				if found && recorded.LastSeenAt < cutoff {
-					s.stripes[i][tenant][partitionID][stream.StreamHash] = Stream{Hash: stream.StreamHash, LastSeenAt: lastSeenAt}
+					s.stripes[i][tenant][partition][stream.StreamHash] = Stream{Hash: stream.StreamHash, LastSeenAt: lastSeenAt.UnixNano()}
 				}
 			}
 
-			s.storeStream(i, tenant, partitionID, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutOff)
+			s.storeStream(i, tenant, partition, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutoff)
 
 			stored = append(stored, stream)
 		}
@@ -146,31 +160,16 @@ func (s *UsageStore) StoreCond(tenant string, streams []*proto.StreamMetadata, l
 	return stored, rejected
 }
 
-func (s *UsageStore) Store(tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
-	s.withLock(tenant, func(i int) {
-		// Initialize tenant map if it doesn't exist
-		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(tenantUsage)
-		}
-
-		// Initialize partition map if it doesn't exist
-		if s.stripes[i][tenant][partitionID] == nil {
-			s.stripes[i][tenant][partitionID] = make(map[uint64]Stream)
-		}
-
-		s.storeStream(i, tenant, partitionID, streamHash, recTotalSize, recordTime, bucketStart, bucketCutOff)
-	})
-}
-
-// Evict removes all streams that have not been seen since cutoff seconds.
-func (s *UsageStore) Evict(cutoff int64) map[string]int {
+// Evict evicts all streams that have not been seen within the window.
+func (s *UsageStore) Evict() map[string]int {
+	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
-		for tenant, streams := range s.stripes[i] {
-			for partitionID, partition := range streams {
-				for streamHash, stream := range partition {
+		for tenant, partitions := range s.stripes[i] {
+			for partition, streams := range partitions {
+				for streamHash, stream := range streams {
 					if stream.LastSeenAt < cutoff {
-						delete(s.stripes[i][tenant][partitionID], streamHash)
+						delete(s.stripes[i][tenant][partition], streamHash)
 						evicted[tenant]++
 					}
 				}
@@ -180,29 +179,29 @@ func (s *UsageStore) Evict(cutoff int64) map[string]int {
 	return evicted
 }
 
-// EvictPartitions deletes the usage data for the specified partitions.
-func (s *UsageStore) EvictPartitions(partitions []int32) {
+// EvictPartitions evicts all streams for the specified partitions.
+func (s *UsageStore) EvictPartitions(partitionsToEvict []int32) {
 	s.forEachLock(func(i int) {
-		for tenant, tenantPartitions := range s.stripes[i] {
-			for _, deleteID := range partitions {
-				delete(tenantPartitions, deleteID)
+		for tenant, partitions := range s.stripes[i] {
+			for _, partitionToEvict := range partitionsToEvict {
+				delete(partitions, partitionToEvict)
 			}
-			if len(tenantPartitions) == 0 {
+			if len(partitions) == 0 {
 				delete(s.stripes[i], tenant)
 			}
 		}
 	})
 }
 
-func (s *UsageStore) storeStream(i int, tenant string, partitionID int32, streamHash, recTotalSize uint64, recordTime, bucketStart, bucketCutOff int64) {
+func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
 	// Check if the stream already exists in the metadata
-	recorded, ok := s.stripes[i][tenant][partitionID][streamHash]
+	recorded, ok := s.stripes[i][tenant][partition][streamHash]
 
 	// Create new stream metadata with the initial interval
 	if !ok {
-		s.stripes[i][tenant][partitionID][streamHash] = Stream{
+		s.stripes[i][tenant][partition][streamHash] = Stream{
 			Hash:        streamHash,
-			LastSeenAt:  recordTime,
+			LastSeenAt:  recordTime.UnixNano(),
 			TotalSize:   recTotalSize,
 			RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: recTotalSize}},
 		}
@@ -246,7 +245,7 @@ func (s *UsageStore) storeStream(i int, tenant string, partitionID int32, stream
 
 	recorded.TotalSize = totalSize
 	recorded.RateBuckets = sb
-	s.stripes[i][tenant][partitionID][streamHash] = recorded
+	s.stripes[i][tenant][partition][streamHash] = recorded
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
@@ -288,6 +287,21 @@ func (s *UsageStore) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
+}
+
+// Used in tests.
+func (s *UsageStore) set(tenant string, stream Stream) {
+	partition := int32(stream.Hash % uint64(s.cfg.NumPartitions))
+	s.withLock(tenant, func(i int) {
+		if _, ok := s.stripes[i][tenant]; !ok {
+			s.stripes[i][tenant] = make(tenantUsage)
+		}
+		if _, ok := s.stripes[i][tenant][partition]; !ok {
+			s.stripes[i][tenant][partition] = make(map[uint64]Stream)
+		}
+		s.stripes[i][tenant][partition][stream.Hash] = stream
+	})
+
 }
 
 // streamLimitExceeded returns a CondFunc that checks if the number of active streams

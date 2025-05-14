@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -75,15 +74,10 @@ func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	// closed. We temporarily set these fields to the maximum values so they're
 	// accounted for in the MetadataSize estimate.
 	enc.curSection = &filemd.SectionInfo{
-		Type:           filemd.SECTION_TYPE_STREAMS,
-		MetadataOffset: math.MaxUint32,
-		MetadataSize:   math.MaxUint32,
+		Type: filemd.SECTION_TYPE_STREAMS,
 	}
 
-	return newStreamsEncoder(
-		enc,
-		enc.startOffset+enc.data.Len(),
-	), nil
+	return newStreamsEncoder(enc), nil
 }
 
 // OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
@@ -94,15 +88,10 @@ func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
 	}
 
 	enc.curSection = &filemd.SectionInfo{
-		Type:           filemd.SECTION_TYPE_LOGS,
-		MetadataOffset: math.MaxUint32,
-		MetadataSize:   math.MaxUint32,
+		Type: filemd.SECTION_TYPE_LOGS,
 	}
 
-	return newLogsEncoder(
-		enc,
-		enc.startOffset+enc.data.Len(),
-	), nil
+	return newLogsEncoder(enc), nil
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
@@ -186,8 +175,17 @@ func (enc *Encoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curSection.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
-	enc.curSection.MetadataSize = uint64(len(metadata))
+	enc.curSection.Layout = &filemd.SectionLayout{
+		Data: &filemd.Region{
+			Offset: uint64(enc.startOffset + enc.data.Len()),
+			Length: uint64(len(data)),
+		},
+
+		Metadata: &filemd.Region{
+			Offset: uint64(enc.startOffset + enc.data.Len() + len(data)),
+			Length: uint64(len(metadata)),
+		},
+	}
 
 	// bytes.Buffer.Write never fails.
 	enc.data.Grow(len(data) + len(metadata))

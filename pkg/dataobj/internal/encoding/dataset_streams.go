@@ -11,9 +11,9 @@ import (
 )
 
 // StreamsDataset implements returns a [dataset.Dataset] from a
-// [StreamsDecoder] for the given section.
-func StreamsDataset(dec StreamsDecoder, sec *filemd.SectionInfo) dataset.Dataset {
-	return &streamsDataset{dec: dec, sec: sec}
+// [StreamsDecoder].
+func StreamsDataset(dec StreamsDecoder) dataset.Dataset {
+	return &streamsDataset{dec: dec}
 }
 
 type streamsDataset struct {
@@ -23,7 +23,7 @@ type streamsDataset struct {
 
 func (ds *streamsDataset) ListColumns(ctx context.Context) result.Seq[dataset.Column] {
 	return result.Iter(func(yield func(dataset.Column) bool) error {
-		columns, err := ds.dec.Columns(ctx, ds.sec)
+		columns, err := ds.dec.Columns(ctx)
 		if err != nil {
 			return err
 		}

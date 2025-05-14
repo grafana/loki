@@ -17,23 +17,20 @@ import (
 type StreamsEncoder struct {
 	parent *Encoder
 
-	startOffset int  // Byte offset in the file where the column starts.
-	closed      bool // true if StreamsEncoder has been closed.
+	closed bool // true if StreamsEncoder has been closed.
 
 	data      *bytes.Buffer
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
 }
 
-func newStreamsEncoder(parent *Encoder, offset int) *StreamsEncoder {
+func newStreamsEncoder(parent *Encoder) *StreamsEncoder {
 	buf := bytesBufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 
 	return &StreamsEncoder{
-		parent:      parent,
-		startOffset: offset,
-
-		data: buf,
+		parent: parent,
+		data:   buf,
 	}
 }
 
@@ -66,10 +63,7 @@ func (enc *StreamsEncoder) OpenColumn(columnType streamsmd.ColumnType, info *dat
 		},
 	}
 
-	return newStreamsColumnEncoder(
-		enc,
-		enc.startOffset+enc.data.Len(),
-	), nil
+	return newStreamsColumnEncoder(enc, enc.data.Len()), nil
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
@@ -149,7 +143,7 @@ func (enc *StreamsEncoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curColumn.Info.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curColumn.Info.MetadataOffset = uint64(enc.data.Len() + len(data))
 	enc.curColumn.Info.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
@@ -167,7 +161,7 @@ func (enc *StreamsEncoder) append(data, metadata []byte) error {
 type StreamsColumnEncoder struct {
 	parent *StreamsEncoder
 
-	startOffset int  // Byte offset in the file where the column starts.
+	startOffset int  // Byte offset in the section where the column starts.
 	closed      bool // true if StreamsColumnEncoder has been closed.
 
 	data        *bytes.Buffer // All page data.

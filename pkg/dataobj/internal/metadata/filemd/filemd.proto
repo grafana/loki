@@ -16,16 +16,73 @@ message Metadata {
   repeated SectionInfo sections = 1;
 }
 
-// SectionInfo describes a section within the data object.
+// SectionInfo describes a section within the data object. Each section is an
+// independent unit of the data object.
 message SectionInfo {
   // Type of the section within the data object.
   SectionType type = 1;
 
   // Byte offset of the section's metadata from the start of the data object.
-  uint64 metadata_offset = 2;
+  //
+  // Deprecated: Use layout to describe the location of regions of a section.
+  uint64 metadata_offset = 2 [deprecated = true];
 
   // Size of the section's metadata in bytes.
-  uint64 metadata_size = 3;
+  //
+  // Deprecated: Use layout to describe the location of regions of a section.
+  uint64 metadata_size = 3 [deprecated = true];
+
+  // The physical layout of the section within the data object. Setting
+  // layout is mutually exclusive with specifying the metadata_offset and
+  // metadata_size fields.
+  //
+  // For backwards compatibility with older versions of data objects where
+  // layout isn't provided, implementations must assume that:
+  //
+  //   - A section has data, but its offset and length are unknown.
+  //
+  //   - Range reads of section data are done relative to the start of the
+  //     dataobj.
+  //
+  // If the SectionLayout is specified for a section, range reads are instead
+  // relative to the start of the data region. If the data region is undefined,
+  // then the section has no data.
+  //
+  // Setting the layout is mutually exclusive with specfiying the
+  // metadata_offset and metadata_size fields, and readers must reject data
+  // objects that set both.
+  SectionLayout layout = 4;
+}
+
+// SectionLayout describes the physical placement of the regions that form a
+// complete section: its data and its metadata.
+//
+// The metadata of a section is intended to be lightweight and is typically
+// used to aid reading the section's data in smaller chunks.
+//
+// There are no guarantees about the placement or ordering of a section's
+// regions; they may be contiguous, disjoint, or interleaved with regions from
+// other sections.
+//
+// Implementations can use region information to ensure that a section does not
+// access bytes outside of its layout.
+message SectionLayout {
+  // The region covering the data of a section. If the data region is
+  // undefined, implementations must assume that the section has no data.
+  Region data = 1;
+
+  // The region covering the metadata of a section. If the metadata region is
+  // undefined, implementations must assume that the section has no metadata.
+  Region metadata = 2;
+}
+
+// Region describes a contiguous range of bytes within a data object.
+message Region {
+  // Byte offset of the region from the start of the data object.
+  uint64 offset = 1;
+
+  // Length of the region in bytes.
+  uint64 length = 2;
 }
 
 enum SectionType {

@@ -78,9 +78,9 @@ func decodeStreamsColumnMetadata(r streamio.Reader) (*streamsmd.ColumnMetadata, 
 func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
-		return nil, fmt.Errorf("read streams section format version: %w", err)
+		return nil, fmt.Errorf("read logs section format version: %w", err)
 	} else if gotVersion != streamsFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
+		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
 	}
 
 	var md logsmd.Metadata
