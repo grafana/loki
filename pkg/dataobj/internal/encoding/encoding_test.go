@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -92,12 +91,15 @@ func TestStreams(t *testing.T) {
 
 	t.Run("Decode", func(t *testing.T) {
 		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		sections, err := dec.Sections(context.TODO())
+		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
-		require.Len(t, sections, 1)
-		require.Equal(t, filemd.SECTION_TYPE_STREAMS, sections[0].Type)
+		require.Len(t, metadata.Sections, 1)
 
-		dset := encoding.StreamsDataset(dec.StreamsDecoder(sections[0]))
+		typ, err := encoding.GetSectionType(metadata, metadata.Sections[0])
+		require.NoError(t, err)
+		require.Equal(t, encoding.SectionTypeStreams, typ)
+
+		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata, metadata.Sections[0]))
 
 		columns, err := result.Collect(dset.ListColumns(context.Background()))
 		require.NoError(t, err)
@@ -177,12 +179,15 @@ func TestLogs(t *testing.T) {
 
 	t.Run("Decode", func(t *testing.T) {
 		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		sections, err := dec.Sections(context.TODO())
+		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
-		require.Len(t, sections, 1)
-		require.Equal(t, filemd.SECTION_TYPE_LOGS, sections[0].Type)
+		require.Len(t, metadata.Sections, 1)
 
-		logsDec := dec.LogsDecoder(sections[0])
+		typ, err := encoding.GetSectionType(metadata, metadata.Sections[0])
+		require.NoError(t, err)
+		require.Equal(t, encoding.SectionTypeLogs, typ)
+
+		logsDec := dec.LogsDecoder(metadata, metadata.Sections[0])
 		columns, err := logsDec.Columns(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, columns, 2)

@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -24,17 +23,22 @@ import (
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		sections, err := dec.Sections(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
 
-		for _, section := range sections {
-			if section.Type != filemd.SECTION_TYPE_LOGS {
+		for _, section := range metadata.Sections {
+			typ, err := encoding.GetSectionType(metadata, section)
+			if err != nil {
+				return fmt.Errorf("getting section type: %w", err)
+			}
+
+			if typ != encoding.SectionTypeLogs {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.LogsDecoder(section)) {
+			for result := range IterSection(ctx, dec.LogsDecoder(metadata, section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}

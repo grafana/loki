@@ -25,34 +25,38 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-type SectionType int32
+// SectionKind describes the kind of section stored within a data object.
+//
+// Deprecated: Types are now specified as values in the Metadata's types field
+// instead of structurally.
+type SectionKind int32
 
 const (
-	// SECTION_TYPE_UNSPECIFIED is an invalid section type.
-	SECTION_TYPE_UNSPECIFIED SectionType = 0
-	// SECTION_TYPE_STREAMS is a section containing references to streams that
-	// exist within the data object. SECTION_TYPE_STREAMS does not contain any
+	// SECTION_KIND_UNSPECIFIED is an invalid section kind.
+	SECTION_KIND_UNSPECIFIED SectionKind = 0
+	// SECTION_KIND_STREAMS is a section containing references to streams that
+	// exist within the data object. SECTION_KIND_STREAMS does not contain any
 	// actual log data.
-	SECTION_TYPE_STREAMS SectionType = 1
-	// SECTION_TYPE_LOGS is a section containing log records across multiple
+	SECTION_KIND_STREAMS SectionKind = 1
+	// SECTION_KIND_LOGS is a section containing log records across multiple
 	// streams. Each log record contains a stream ID which refers to a stream
-	// from SECTION_TYPE_STREAMS.
-	SECTION_TYPE_LOGS SectionType = 2
+	// from SECTION_KIND_STREAMS.
+	SECTION_KIND_LOGS SectionKind = 2
 )
 
-var SectionType_name = map[int32]string{
-	0: "SECTION_TYPE_UNSPECIFIED",
-	1: "SECTION_TYPE_STREAMS",
-	2: "SECTION_TYPE_LOGS",
+var SectionKind_name = map[int32]string{
+	0: "SECTION_KIND_UNSPECIFIED",
+	1: "SECTION_KIND_STREAMS",
+	2: "SECTION_KIND_LOGS",
 }
 
-var SectionType_value = map[string]int32{
-	"SECTION_TYPE_UNSPECIFIED": 0,
-	"SECTION_TYPE_STREAMS":     1,
-	"SECTION_TYPE_LOGS":        2,
+var SectionKind_value = map[string]int32{
+	"SECTION_KIND_UNSPECIFIED": 0,
+	"SECTION_KIND_STREAMS":     1,
+	"SECTION_KIND_LOGS":        2,
 }
 
-func (SectionType) EnumDescriptor() ([]byte, []int) {
+func (SectionKind) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_be80f52d1e05bad9, []int{0}
 }
 
@@ -60,6 +64,11 @@ func (SectionType) EnumDescriptor() ([]byte, []int) {
 type Metadata struct {
 	// Sections within the data object.
 	Sections []*SectionInfo `protobuf:"bytes,1,rep,name=sections,proto3" json:"sections,omitempty"`
+	// A list of strings used to resolve type name references.
+	Dictionary []string `protobuf:"bytes,2,rep,name=dictionary,proto3" json:"dictionary,omitempty"`
+	// A list of types used by sections. The zero index is reserved for an
+	// invalid type.
+	Types []*SectionType `protobuf:"bytes,3,rep,name=types,proto3" json:"types,omitempty"`
 }
 
 func (m *Metadata) Reset()      { *m = Metadata{} }
@@ -101,11 +110,134 @@ func (m *Metadata) GetSections() []*SectionInfo {
 	return nil
 }
 
+func (m *Metadata) GetDictionary() []string {
+	if m != nil {
+		return m.Dictionary
+	}
+	return nil
+}
+
+func (m *Metadata) GetTypes() []*SectionType {
+	if m != nil {
+		return m.Types
+	}
+	return nil
+}
+
+// SectionType specifies a namespaced type of section within a data object.
+// Applications are responsible for interpreting SectionType for decoding.
+type SectionType struct {
+	// The reference to the type name.
+	NameRef *SectionType_NameRef `protobuf:"bytes,1,opt,name=name_ref,json=nameRef,proto3" json:"name_ref,omitempty"`
+}
+
+func (m *SectionType) Reset()      { *m = SectionType{} }
+func (*SectionType) ProtoMessage() {}
+func (*SectionType) Descriptor() ([]byte, []int) {
+	return fileDescriptor_be80f52d1e05bad9, []int{1}
+}
+func (m *SectionType) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SectionType) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SectionType.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SectionType) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SectionType.Merge(m, src)
+}
+func (m *SectionType) XXX_Size() int {
+	return m.Size()
+}
+func (m *SectionType) XXX_DiscardUnknown() {
+	xxx_messageInfo_SectionType.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SectionType proto.InternalMessageInfo
+
+func (m *SectionType) GetNameRef() *SectionType_NameRef {
+	if m != nil {
+		return m.NameRef
+	}
+	return nil
+}
+
+// NameRef is a tuple of references into the Metadata.dictionary which
+// specifies the fully-qualified name of this type.
+//
+// Two data objects may have the same NameRef which refer to different names
+// when resolved. Applications must resolve the name before interpreting the
+// type.
+type SectionType_NameRef struct {
+	// An index into Metadata.dictionary specifying the namespace string of
+	// this type (e.g., "github.com/grafana/loki").
+	NamespaceRef uint32 `protobuf:"varint,1,opt,name=namespace_ref,json=namespaceRef,proto3" json:"namespace_ref,omitempty"`
+	// An index into Metadata.dictionary specifying the kind of this type
+	// (e.g., "logs").
+	KindRef uint32 `protobuf:"varint,2,opt,name=kind_ref,json=kindRef,proto3" json:"kind_ref,omitempty"`
+}
+
+func (m *SectionType_NameRef) Reset()      { *m = SectionType_NameRef{} }
+func (*SectionType_NameRef) ProtoMessage() {}
+func (*SectionType_NameRef) Descriptor() ([]byte, []int) {
+	return fileDescriptor_be80f52d1e05bad9, []int{1, 0}
+}
+func (m *SectionType_NameRef) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SectionType_NameRef) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SectionType_NameRef.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SectionType_NameRef) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SectionType_NameRef.Merge(m, src)
+}
+func (m *SectionType_NameRef) XXX_Size() int {
+	return m.Size()
+}
+func (m *SectionType_NameRef) XXX_DiscardUnknown() {
+	xxx_messageInfo_SectionType_NameRef.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SectionType_NameRef proto.InternalMessageInfo
+
+func (m *SectionType_NameRef) GetNamespaceRef() uint32 {
+	if m != nil {
+		return m.NamespaceRef
+	}
+	return 0
+}
+
+func (m *SectionType_NameRef) GetKindRef() uint32 {
+	if m != nil {
+		return m.KindRef
+	}
+	return 0
+}
+
 // SectionInfo describes a section within the data object. Each section is an
 // independent unit of the data object.
 type SectionInfo struct {
-	// Type of the section within the data object.
-	Type SectionType `protobuf:"varint,1,opt,name=type,proto3,enum=dataobj.metadata.file.v1.SectionType" json:"type,omitempty"`
+	// Kind of the section within the data object.
+	//
+	// Deprecated: Use type_index to refer to the type of a section.
+	Kind SectionKind `protobuf:"varint,1,opt,name=kind,proto3,enum=dataobj.metadata.file.v1.SectionKind" json:"kind,omitempty"` // Deprecated: Do not use.
 	// Byte offset of the section's metadata from the start of the data object.
 	//
 	// Deprecated: Use layout to describe the location of regions of a section.
@@ -124,22 +256,27 @@ type SectionInfo struct {
 	//   - A section has data, but its offset and length are unknown.
 	//
 	//   - Range reads of section data are done relative to the start of the
-	//     dataobj.
+	//     data object.
 	//
 	// If the SectionLayout is specified for a section, range reads are instead
 	// relative to the start of the data region. If the data region is undefined,
 	// then the section has no data.
 	//
-	// Setting the layout is mutually exclusive with specfiying the
+	// Setting the layout is mutually exclusive with specifying the
 	// metadata_offset and metadata_size fields, and readers must reject data
 	// objects that set both.
 	Layout *SectionLayout `protobuf:"bytes,4,opt,name=layout,proto3" json:"layout,omitempty"`
+	// An index into Metadata.types specifying the type of this section.
+	//
+	// This field supersedes the deprecated kind field. Either this or the kind
+	// field must be set to a non-zero value.
+	TypeRef uint32 `protobuf:"varint,5,opt,name=type_ref,json=typeRef,proto3" json:"type_ref,omitempty"`
 }
 
 func (m *SectionInfo) Reset()      { *m = SectionInfo{} }
 func (*SectionInfo) ProtoMessage() {}
 func (*SectionInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_be80f52d1e05bad9, []int{1}
+	return fileDescriptor_be80f52d1e05bad9, []int{2}
 }
 func (m *SectionInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -168,11 +305,12 @@ func (m *SectionInfo) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SectionInfo proto.InternalMessageInfo
 
-func (m *SectionInfo) GetType() SectionType {
+// Deprecated: Do not use.
+func (m *SectionInfo) GetKind() SectionKind {
 	if m != nil {
-		return m.Type
+		return m.Kind
 	}
-	return SECTION_TYPE_UNSPECIFIED
+	return SECTION_KIND_UNSPECIFIED
 }
 
 // Deprecated: Do not use.
@@ -196,6 +334,13 @@ func (m *SectionInfo) GetLayout() *SectionLayout {
 		return m.Layout
 	}
 	return nil
+}
+
+func (m *SectionInfo) GetTypeRef() uint32 {
+	if m != nil {
+		return m.TypeRef
+	}
+	return 0
 }
 
 // SectionLayout describes the physical placement of the regions that form a
@@ -222,7 +367,7 @@ type SectionLayout struct {
 func (m *SectionLayout) Reset()      { *m = SectionLayout{} }
 func (*SectionLayout) ProtoMessage() {}
 func (*SectionLayout) Descriptor() ([]byte, []int) {
-	return fileDescriptor_be80f52d1e05bad9, []int{2}
+	return fileDescriptor_be80f52d1e05bad9, []int{3}
 }
 func (m *SectionLayout) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -276,7 +421,7 @@ type Region struct {
 func (m *Region) Reset()      { *m = Region{} }
 func (*Region) ProtoMessage() {}
 func (*Region) Descriptor() ([]byte, []int) {
-	return fileDescriptor_be80f52d1e05bad9, []int{3}
+	return fileDescriptor_be80f52d1e05bad9, []int{4}
 }
 func (m *Region) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -320,8 +465,10 @@ func (m *Region) GetLength() uint64 {
 }
 
 func init() {
-	proto.RegisterEnum("dataobj.metadata.file.v1.SectionType", SectionType_name, SectionType_value)
+	proto.RegisterEnum("dataobj.metadata.file.v1.SectionKind", SectionKind_name, SectionKind_value)
 	proto.RegisterType((*Metadata)(nil), "dataobj.metadata.file.v1.Metadata")
+	proto.RegisterType((*SectionType)(nil), "dataobj.metadata.file.v1.SectionType")
+	proto.RegisterType((*SectionType_NameRef)(nil), "dataobj.metadata.file.v1.SectionType.NameRef")
 	proto.RegisterType((*SectionInfo)(nil), "dataobj.metadata.file.v1.SectionInfo")
 	proto.RegisterType((*SectionLayout)(nil), "dataobj.metadata.file.v1.SectionLayout")
 	proto.RegisterType((*Region)(nil), "dataobj.metadata.file.v1.Region")
@@ -332,40 +479,47 @@ func init() {
 }
 
 var fileDescriptor_be80f52d1e05bad9 = []byte{
-	// 455 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x92, 0xb1, 0x6a, 0xdb, 0x40,
-	0x18, 0xc7, 0xf5, 0x39, 0xc2, 0x98, 0xcf, 0x4d, 0xea, 0x1e, 0x6d, 0xb9, 0xa1, 0x1c, 0xc2, 0x50,
-	0x62, 0x5a, 0x90, 0x88, 0xd3, 0xa1, 0x85, 0x42, 0x48, 0x52, 0xb5, 0x18, 0xe2, 0x38, 0x9c, 0xdc,
-	0xa1, 0xa5, 0x60, 0xe4, 0xe4, 0xa4, 0xa8, 0x91, 0x75, 0xc6, 0x3e, 0x07, 0x9c, 0xa9, 0xd0, 0x17,
-	0xe8, 0x63, 0xf4, 0x51, 0x3a, 0x7a, 0xcc, 0xd6, 0x5a, 0x5e, 0x3a, 0xe6, 0x11, 0x8a, 0x64, 0x49,
-	0xd4, 0x83, 0x89, 0x27, 0x71, 0xff, 0xdf, 0xef, 0x7f, 0xd2, 0x7d, 0x3a, 0xdc, 0x1b, 0x5e, 0xf9,
-	0xd6, 0x85, 0xab, 0x5c, 0xd9, 0xff, 0x6a, 0x05, 0x91, 0x12, 0xa3, 0xc8, 0x0d, 0xad, 0x81, 0x50,
-	0x6e, 0x12, 0x5a, 0x5e, 0x10, 0x8a, 0xc1, 0x45, 0xf6, 0x30, 0x87, 0x23, 0xa9, 0x24, 0xa1, 0x99,
-	0x6e, 0xe6, 0x96, 0x99, 0x60, 0xf3, 0x7a, 0xaf, 0xde, 0xc6, 0x4a, 0x3b, 0xcb, 0xc8, 0x21, 0x56,
-	0xc6, 0xe2, 0x5c, 0x05, 0x32, 0x1a, 0x53, 0x30, 0xb6, 0x1a, 0xd5, 0xe6, 0x73, 0x73, 0x5d, 0xd1,
-	0x74, 0x96, 0x66, 0x2b, 0xf2, 0x24, 0x2f, 0x6a, 0xf5, 0xdf, 0x80, 0xd5, 0xff, 0x08, 0x79, 0x83,
-	0xba, 0x9a, 0x0e, 0x05, 0x05, 0x03, 0x1a, 0x3b, 0x1b, 0x6c, 0xd7, 0x9d, 0x0e, 0x05, 0x4f, 0x2b,
-	0xe4, 0x25, 0x3e, 0xcc, 0xad, 0x9e, 0xf4, 0xbc, 0xb1, 0x50, 0xb4, 0x64, 0x40, 0x43, 0x3f, 0x2a,
-	0x51, 0xe0, 0x3b, 0x39, 0xea, 0xa4, 0x84, 0xec, 0xe2, 0x76, 0x21, 0x8f, 0x83, 0x1b, 0x41, 0xb7,
-	0x0a, 0xf5, 0x41, 0x0e, 0x9c, 0xe0, 0x46, 0x90, 0x03, 0x2c, 0x87, 0xee, 0x54, 0x4e, 0x14, 0xd5,
-	0x0d, 0x68, 0x54, 0x9b, 0xbb, 0xf7, 0x7e, 0xd2, 0x49, 0xaa, 0xf3, 0xac, 0x56, 0xff, 0x0e, 0xb8,
-	0xbd, 0x42, 0xc8, 0x2b, 0xd4, 0x93, 0x5e, 0x7a, 0xc6, 0x6a, 0xd3, 0x58, 0xbf, 0x21, 0x17, 0x7e,
-	0x20, 0x23, 0x9e, 0xda, 0xe4, 0x2d, 0x56, 0x72, 0x21, 0x3d, 0xd7, 0x26, 0xcd, 0xa2, 0x51, 0x7f,
-	0x8d, 0xe5, 0x65, 0x46, 0x9e, 0x62, 0x39, 0x9b, 0x4e, 0xf2, 0x7e, 0x9d, 0x67, 0xab, 0x24, 0x0f,
-	0x45, 0xe4, 0xab, 0xcb, 0xe5, 0xd4, 0x78, 0xb6, 0x7a, 0xf1, 0xa5, 0xf8, 0x41, 0xc9, 0xac, 0xc9,
-	0x33, 0xa4, 0x8e, 0x7d, 0xdc, 0x6d, 0x75, 0x4e, 0x7b, 0xdd, 0x4f, 0x67, 0x76, 0xef, 0xe3, 0xa9,
-	0x73, 0x66, 0x1f, 0xb7, 0xde, 0xb7, 0xec, 0x77, 0x35, 0x8d, 0x50, 0x7c, 0xbc, 0x42, 0x9d, 0x2e,
-	0xb7, 0x0f, 0xdb, 0x4e, 0x0d, 0xc8, 0x13, 0x7c, 0xb4, 0x42, 0x4e, 0x3a, 0x1f, 0x9c, 0x5a, 0xe9,
-	0x68, 0x32, 0x9b, 0x33, 0xed, 0x76, 0xce, 0xb4, 0xbb, 0x39, 0x83, 0x6f, 0x31, 0x83, 0x9f, 0x31,
-	0x83, 0x5f, 0x31, 0x83, 0x59, 0xcc, 0xe0, 0x4f, 0xcc, 0xe0, 0x6f, 0xcc, 0xb4, 0xbb, 0x98, 0xc1,
-	0x8f, 0x05, 0xd3, 0x66, 0x0b, 0xa6, 0xdd, 0x2e, 0x98, 0xf6, 0xf9, 0xc0, 0x0f, 0xd4, 0xe5, 0xa4,
-	0x6f, 0x9e, 0xcb, 0x81, 0xe5, 0x8f, 0x5c, 0xcf, 0x8d, 0x5c, 0x2b, 0x94, 0x57, 0x81, 0x75, 0xbd,
-	0x6f, 0x6d, 0x72, 0xd9, 0xfb, 0xe5, 0xf4, 0x9a, 0xef, 0xff, 0x0b, 0x00, 0x00, 0xff, 0xff, 0xfb,
-	0x1e, 0xdd, 0x80, 0x1b, 0x03, 0x00, 0x00,
+	// 567 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x4d, 0x6f, 0x12, 0x4f,
+	0x18, 0xdf, 0x01, 0x4a, 0xf9, 0x3f, 0x2d, 0xfd, 0xe3, 0x44, 0xcd, 0x6a, 0xcc, 0x84, 0x60, 0x4c,
+	0x89, 0xc6, 0xdd, 0xb4, 0xf5, 0x60, 0xa2, 0xa6, 0xe9, 0x0b, 0xea, 0xa6, 0x2d, 0x98, 0x59, 0xbc,
+	0x18, 0x13, 0x32, 0xc0, 0x2c, 0x5d, 0x81, 0x59, 0xc2, 0x2e, 0x4d, 0xe8, 0xc9, 0xc4, 0x2f, 0xe0,
+	0x67, 0xf0, 0x64, 0xfc, 0x24, 0x1e, 0x39, 0xf6, 0x28, 0xcb, 0xc5, 0x63, 0x3f, 0x81, 0x31, 0x33,
+	0xbb, 0x6c, 0xcb, 0xa1, 0x91, 0xd3, 0xee, 0xf3, 0x7b, 0x79, 0x9e, 0x99, 0xdf, 0x93, 0x0c, 0x6c,
+	0x0d, 0xba, 0x1d, 0xb3, 0xcd, 0x02, 0xe6, 0x35, 0x3f, 0x99, 0xae, 0x08, 0xf8, 0x50, 0xb0, 0x9e,
+	0xd9, 0xe7, 0x01, 0x93, 0xa0, 0xe9, 0xb8, 0x3d, 0xde, 0x6f, 0xc7, 0x1f, 0x63, 0x30, 0xf4, 0x02,
+	0x0f, 0xeb, 0xb1, 0xdc, 0x98, 0xab, 0x0c, 0x49, 0x1b, 0x67, 0x5b, 0xa5, 0x1f, 0x08, 0x72, 0x27,
+	0x31, 0x88, 0xf7, 0x20, 0xe7, 0xf3, 0x56, 0xe0, 0x7a, 0xc2, 0xd7, 0x51, 0x31, 0x5d, 0x5e, 0xdb,
+	0x7e, 0x64, 0xdc, 0xe4, 0x34, 0xec, 0x48, 0x69, 0x09, 0xc7, 0xa3, 0x89, 0x0d, 0x13, 0x80, 0xb6,
+	0xab, 0xfe, 0xd9, 0x70, 0xac, 0xa7, 0x8a, 0xe9, 0xf2, 0x7f, 0xf4, 0x1a, 0x82, 0x5f, 0xc0, 0x4a,
+	0x30, 0x1e, 0x70, 0x5f, 0x4f, 0x2f, 0xd9, 0xbf, 0x3e, 0x1e, 0x70, 0x1a, 0x79, 0x4a, 0xdf, 0x10,
+	0xac, 0x5d, 0x83, 0xf1, 0x5b, 0xc8, 0x09, 0xd6, 0xe7, 0x8d, 0x21, 0x77, 0x74, 0x54, 0x44, 0xe5,
+	0xb5, 0xed, 0xa7, 0x4b, 0xf5, 0x33, 0xaa, 0xac, 0xcf, 0x29, 0x77, 0xe8, 0xaa, 0x88, 0x7e, 0xee,
+	0x5b, 0xb0, 0x1a, 0x63, 0xf8, 0x21, 0xe4, 0x25, 0xea, 0x0f, 0x58, 0xeb, 0xaa, 0x73, 0x9e, 0xae,
+	0x27, 0xa0, 0x14, 0xdd, 0x83, 0x5c, 0xd7, 0x15, 0x6d, 0xc5, 0xa7, 0x14, 0xbf, 0x2a, 0x6b, 0xca,
+	0x9d, 0xd2, 0x9f, 0xab, 0x43, 0xca, 0x6c, 0xf0, 0x2b, 0xc8, 0x48, 0x4a, 0xb5, 0xd9, 0x58, 0xe2,
+	0xc2, 0x47, 0xae, 0x68, 0xef, 0xa7, 0x74, 0x44, 0x95, 0x0d, 0x3f, 0x81, 0xff, 0xe7, 0xca, 0x86,
+	0xe7, 0x38, 0x3e, 0x0f, 0xd4, 0xc0, 0x8c, 0x92, 0x6c, 0xcc, 0xa9, 0x9a, 0x62, 0xf0, 0x26, 0xe4,
+	0x13, 0xb1, 0xef, 0x9e, 0x73, 0x3d, 0x9d, 0x48, 0xd7, 0xe7, 0x84, 0xed, 0x9e, 0x73, 0xbc, 0x0b,
+	0xd9, 0x1e, 0x1b, 0x7b, 0xa3, 0x40, 0xcf, 0xa8, 0xdc, 0x36, 0xff, 0x79, 0xac, 0x63, 0x25, 0xa7,
+	0xb1, 0x4d, 0x06, 0x20, 0x77, 0xa2, 0x02, 0x58, 0x89, 0x02, 0x90, 0xb5, 0x0c, 0xe0, 0x0b, 0x82,
+	0xfc, 0x82, 0x09, 0x3f, 0x83, 0x8c, 0x6c, 0x19, 0xef, 0xa8, 0x78, 0xf3, 0x2c, 0xca, 0x3b, 0xae,
+	0x27, 0xa8, 0x52, 0xe3, 0x97, 0x90, 0x9b, 0x0b, 0xd4, 0x95, 0x97, 0x71, 0x26, 0x8e, 0xd2, 0x73,
+	0xc8, 0x46, 0x18, 0xbe, 0x0b, 0xd9, 0x38, 0x38, 0x39, 0x3f, 0x43, 0xe3, 0x4a, 0xe2, 0x3d, 0x2e,
+	0x3a, 0xc1, 0x69, 0x14, 0x28, 0x8d, 0xab, 0xc7, 0x1f, 0x93, 0xfd, 0xc9, 0x55, 0xe0, 0x07, 0xa0,
+	0xdb, 0x95, 0x83, 0xba, 0x55, 0xab, 0x36, 0x8e, 0xac, 0xea, 0x61, 0xe3, 0x7d, 0xd5, 0x7e, 0x57,
+	0x39, 0xb0, 0x5e, 0x5b, 0x95, 0xc3, 0x82, 0x86, 0x75, 0xb8, 0xbd, 0xc0, 0xda, 0x75, 0x5a, 0xd9,
+	0x3b, 0xb1, 0x0b, 0x08, 0xdf, 0x81, 0x5b, 0x0b, 0xcc, 0x71, 0xed, 0x8d, 0x5d, 0x48, 0xed, 0x8f,
+	0x26, 0x53, 0xa2, 0x5d, 0x4c, 0x89, 0x76, 0x39, 0x25, 0xe8, 0x73, 0x48, 0xd0, 0xf7, 0x90, 0xa0,
+	0x9f, 0x21, 0x41, 0x93, 0x90, 0xa0, 0x5f, 0x21, 0x41, 0xbf, 0x43, 0xa2, 0x5d, 0x86, 0x04, 0x7d,
+	0x9d, 0x11, 0x6d, 0x32, 0x23, 0xda, 0xc5, 0x8c, 0x68, 0x1f, 0x76, 0x3b, 0x6e, 0x70, 0x3a, 0x6a,
+	0x1a, 0x2d, 0xaf, 0x6f, 0x76, 0x86, 0xcc, 0x61, 0x82, 0x99, 0x3d, 0xaf, 0xeb, 0x9a, 0x67, 0x3b,
+	0xe6, 0x32, 0xcf, 0x41, 0x33, 0xab, 0x1e, 0x82, 0x9d, 0xbf, 0x01, 0x00, 0x00, 0xff, 0xff, 0x0f,
+	0x5f, 0x97, 0x92, 0x3d, 0x04, 0x00, 0x00,
 }
 
-func (x SectionType) String() string {
-	s, ok := SectionType_name[int32(x)]
+func (x SectionKind) String() string {
+	s, ok := SectionKind_name[int32(x)]
 	if ok {
 		return s
 	}
@@ -398,6 +552,73 @@ func (this *Metadata) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if len(this.Dictionary) != len(that1.Dictionary) {
+		return false
+	}
+	for i := range this.Dictionary {
+		if this.Dictionary[i] != that1.Dictionary[i] {
+			return false
+		}
+	}
+	if len(this.Types) != len(that1.Types) {
+		return false
+	}
+	for i := range this.Types {
+		if !this.Types[i].Equal(that1.Types[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *SectionType) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionType)
+	if !ok {
+		that2, ok := that.(SectionType)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.NameRef.Equal(that1.NameRef) {
+		return false
+	}
+	return true
+}
+func (this *SectionType_NameRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionType_NameRef)
+	if !ok {
+		that2, ok := that.(SectionType_NameRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.NamespaceRef != that1.NamespaceRef {
+		return false
+	}
+	if this.KindRef != that1.KindRef {
+		return false
+	}
 	return true
 }
 func (this *SectionInfo) Equal(that interface{}) bool {
@@ -419,7 +640,7 @@ func (this *SectionInfo) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.Type != that1.Type {
+	if this.Kind != that1.Kind {
 		return false
 	}
 	if this.MetadataOffset != that1.MetadataOffset {
@@ -429,6 +650,9 @@ func (this *SectionInfo) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.Layout.Equal(that1.Layout) {
+		return false
+	}
+	if this.TypeRef != that1.TypeRef {
 		return false
 	}
 	return true
@@ -491,11 +715,38 @@ func (this *Metadata) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 5)
+	s := make([]string, 0, 7)
 	s = append(s, "&filemd.Metadata{")
 	if this.Sections != nil {
 		s = append(s, "Sections: "+fmt.Sprintf("%#v", this.Sections)+",\n")
 	}
+	s = append(s, "Dictionary: "+fmt.Sprintf("%#v", this.Dictionary)+",\n")
+	if this.Types != nil {
+		s = append(s, "Types: "+fmt.Sprintf("%#v", this.Types)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SectionType) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&filemd.SectionType{")
+	if this.NameRef != nil {
+		s = append(s, "NameRef: "+fmt.Sprintf("%#v", this.NameRef)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SectionType_NameRef) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&filemd.SectionType_NameRef{")
+	s = append(s, "NamespaceRef: "+fmt.Sprintf("%#v", this.NamespaceRef)+",\n")
+	s = append(s, "KindRef: "+fmt.Sprintf("%#v", this.KindRef)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -503,14 +754,15 @@ func (this *SectionInfo) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 9)
 	s = append(s, "&filemd.SectionInfo{")
-	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
 	s = append(s, "MetadataOffset: "+fmt.Sprintf("%#v", this.MetadataOffset)+",\n")
 	s = append(s, "MetadataSize: "+fmt.Sprintf("%#v", this.MetadataSize)+",\n")
 	if this.Layout != nil {
 		s = append(s, "Layout: "+fmt.Sprintf("%#v", this.Layout)+",\n")
 	}
+	s = append(s, "TypeRef: "+fmt.Sprintf("%#v", this.TypeRef)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -568,6 +820,29 @@ func (m *Metadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Types) > 0 {
+		for iNdEx := len(m.Types) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Types[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintFilemd(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Dictionary) > 0 {
+		for iNdEx := len(m.Dictionary) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Dictionary[iNdEx])
+			copy(dAtA[i:], m.Dictionary[iNdEx])
+			i = encodeVarintFilemd(dAtA, i, uint64(len(m.Dictionary[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.Sections) > 0 {
 		for iNdEx := len(m.Sections) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -581,6 +856,74 @@ func (m *Metadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0xa
 		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SectionType) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SectionType) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SectionType) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.NameRef != nil {
+		{
+			size, err := m.NameRef.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintFilemd(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SectionType_NameRef) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SectionType_NameRef) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SectionType_NameRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.KindRef != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.KindRef))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.NamespaceRef != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.NamespaceRef))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -605,6 +948,11 @@ func (m *SectionInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.TypeRef != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.TypeRef))
+		i--
+		dAtA[i] = 0x28
+	}
 	if m.Layout != nil {
 		{
 			size, err := m.Layout.MarshalToSizedBuffer(dAtA[:i])
@@ -627,8 +975,8 @@ func (m *SectionInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.Type != 0 {
-		i = encodeVarintFilemd(dAtA, i, uint64(m.Type))
+	if m.Kind != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.Kind))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -738,6 +1086,46 @@ func (m *Metadata) Size() (n int) {
 			n += 1 + l + sovFilemd(uint64(l))
 		}
 	}
+	if len(m.Dictionary) > 0 {
+		for _, s := range m.Dictionary {
+			l = len(s)
+			n += 1 + l + sovFilemd(uint64(l))
+		}
+	}
+	if len(m.Types) > 0 {
+		for _, e := range m.Types {
+			l = e.Size()
+			n += 1 + l + sovFilemd(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *SectionType) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NameRef != nil {
+		l = m.NameRef.Size()
+		n += 1 + l + sovFilemd(uint64(l))
+	}
+	return n
+}
+
+func (m *SectionType_NameRef) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NamespaceRef != 0 {
+		n += 1 + sovFilemd(uint64(m.NamespaceRef))
+	}
+	if m.KindRef != 0 {
+		n += 1 + sovFilemd(uint64(m.KindRef))
+	}
 	return n
 }
 
@@ -747,8 +1135,8 @@ func (m *SectionInfo) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Type != 0 {
-		n += 1 + sovFilemd(uint64(m.Type))
+	if m.Kind != 0 {
+		n += 1 + sovFilemd(uint64(m.Kind))
 	}
 	if m.MetadataOffset != 0 {
 		n += 1 + sovFilemd(uint64(m.MetadataOffset))
@@ -759,6 +1147,9 @@ func (m *SectionInfo) Size() (n int) {
 	if m.Layout != nil {
 		l = m.Layout.Size()
 		n += 1 + l + sovFilemd(uint64(l))
+	}
+	if m.TypeRef != 0 {
+		n += 1 + sovFilemd(uint64(m.TypeRef))
 	}
 	return n
 }
@@ -810,8 +1201,36 @@ func (this *Metadata) String() string {
 		repeatedStringForSections += strings.Replace(f.String(), "SectionInfo", "SectionInfo", 1) + ","
 	}
 	repeatedStringForSections += "}"
+	repeatedStringForTypes := "[]*SectionType{"
+	for _, f := range this.Types {
+		repeatedStringForTypes += strings.Replace(f.String(), "SectionType", "SectionType", 1) + ","
+	}
+	repeatedStringForTypes += "}"
 	s := strings.Join([]string{`&Metadata{`,
 		`Sections:` + repeatedStringForSections + `,`,
+		`Dictionary:` + fmt.Sprintf("%v", this.Dictionary) + `,`,
+		`Types:` + repeatedStringForTypes + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SectionType) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SectionType{`,
+		`NameRef:` + strings.Replace(fmt.Sprintf("%v", this.NameRef), "SectionType_NameRef", "SectionType_NameRef", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SectionType_NameRef) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SectionType_NameRef{`,
+		`NamespaceRef:` + fmt.Sprintf("%v", this.NamespaceRef) + `,`,
+		`KindRef:` + fmt.Sprintf("%v", this.KindRef) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -821,10 +1240,11 @@ func (this *SectionInfo) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&SectionInfo{`,
-		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
 		`MetadataOffset:` + fmt.Sprintf("%v", this.MetadataOffset) + `,`,
 		`MetadataSize:` + fmt.Sprintf("%v", this.MetadataSize) + `,`,
 		`Layout:` + strings.Replace(this.Layout.String(), "SectionLayout", "SectionLayout", 1) + `,`,
+		`TypeRef:` + fmt.Sprintf("%v", this.TypeRef) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -922,6 +1342,252 @@ func (m *Metadata) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dictionary", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Dictionary = append(m.Dictionary, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Types", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Types = append(m.Types, &SectionType{})
+			if err := m.Types[len(m.Types)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFilemd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SectionType) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFilemd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SectionType: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SectionType: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NameRef", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.NameRef == nil {
+				m.NameRef = &SectionType_NameRef{}
+			}
+			if err := m.NameRef.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFilemd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SectionType_NameRef) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFilemd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NameRef: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NameRef: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NamespaceRef", wireType)
+			}
+			m.NamespaceRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NamespaceRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KindRef", wireType)
+			}
+			m.KindRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.KindRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFilemd(dAtA[iNdEx:])
@@ -977,9 +1643,9 @@ func (m *SectionInfo) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
 			}
-			m.Type = 0
+			m.Kind = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowFilemd
@@ -989,7 +1655,7 @@ func (m *SectionInfo) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Type |= SectionType(b&0x7F) << shift
+				m.Kind |= SectionKind(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1068,6 +1734,25 @@ func (m *SectionInfo) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TypeRef", wireType)
+			}
+			m.TypeRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TypeRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFilemd(dAtA[iNdEx:])

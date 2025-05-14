@@ -158,12 +158,17 @@ func unsafeString(data []byte) string {
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
-	sec, err := r.findSection(ctx)
+	metadata, err := r.obj.dec.Metadata(ctx)
+	if err != nil {
+		return fmt.Errorf("reading sections: %w", err)
+	}
+
+	sec, err := r.findSection(metadata)
 	if err != nil {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	dec := r.obj.dec.LogsDecoder(sec)
+	dec := r.obj.dec.LogsDecoder(metadata, sec)
 	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -214,16 +219,19 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 	return nil
 }
 
-func (r *LogsReader) findSection(ctx context.Context) (*filemd.SectionInfo, error) {
-	si, err := r.obj.dec.Sections(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading sections: %w", err)
-	}
-
+func (r *LogsReader) findSection(metadata *filemd.Metadata) (*filemd.SectionInfo, error) {
 	var n int
 
-	for _, s := range si {
-		if s.Type == filemd.SECTION_TYPE_LOGS {
+	for _, s := range metadata.Sections {
+		typ, err := encoding.GetSectionType(metadata, s)
+		if err != nil {
+			// We don't want to just continue here; it's possible that the section
+			// type we couldn't read was a logs section, in which case our index
+			// would be off.
+			return nil, fmt.Errorf("getting section type: %w", err)
+		}
+
+		if typ == encoding.SectionTypeLogs {
 			if n == r.idx {
 				return s, nil
 			}
