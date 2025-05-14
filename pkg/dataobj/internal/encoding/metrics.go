@@ -240,20 +240,25 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 
 	m.sectionsCount.Observe(float64(len(metadata.Sections)))
 	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: metadata.Sections})))
-	for _, section := range metadata.Sections {
-		m.sectionMetadataSize.WithLabelValues(section.Kind.String()).Observe(float64(calculateMetadataSize(section)))
-	}
 
 	var errs []error
 
 	for _, section := range metadata.Sections {
-		switch section.Kind {
-		case filemd.SECTION_KIND_STREAMS:
+		typ, err := GetSectionType(metadata, section)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("getting section type: %w", err))
+			continue
+		}
+
+		m.sectionMetadataSize.WithLabelValues(typ.String()).Observe(float64(calculateMetadataSize(section)))
+
+		switch typ {
+		case SectionTypeStreams:
 			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(metadata, section)))
-		case filemd.SECTION_KIND_LOGS:
+		case SectionTypeLogs:
 			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(metadata, section)))
 		default:
-			errs = append(errs, fmt.Errorf("unknown section type %q", section.Kind.String()))
+			errs = append(errs, fmt.Errorf("unknown section type %q", typ.String()))
 		}
 	}
 

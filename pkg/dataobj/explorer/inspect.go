@@ -147,12 +147,20 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	}
 
 	for _, section := range metadata.Sections {
-		sectionMeta := SectionMetadata{
-			Type: section.Kind.String(),
+		typ, err := encoding.GetSectionType(metadata, section)
+		if err != nil {
+			return FileMetadata{
+				Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
+				Error:    fmt.Sprintf("failed to get section type: %v", err),
+			}
 		}
 
-		switch section.Kind {
-		case filemd.SECTION_KIND_LOGS:
+		sectionMeta := SectionMetadata{
+			Type: typ.String(),
+		}
+
+		switch typ {
+		case encoding.SectionTypeLogs:
 			sectionMeta, err = inspectLogsSection(ctx, reader, metadata, section)
 			if err != nil {
 				return FileMetadata{
@@ -160,7 +168,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 					Error:    fmt.Sprintf("failed to inspect logs section: %v", err),
 				}
 			}
-		case filemd.SECTION_KIND_STREAMS:
+		case encoding.SectionTypeLogs:
 			sectionMeta, err = inspectStreamsSection(ctx, reader, metadata, section)
 			if err != nil {
 				return FileMetadata{
@@ -178,7 +186,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 
 func inspectLogsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
 	meta := SectionMetadata{
-		Type: section.Kind.String(),
+		Type: encoding.SectionTypeLogs.String(),
 	}
 
 	dec := reader.LogsDecoder(metadata, section)
@@ -252,7 +260,7 @@ func inspectLogsSection(ctx context.Context, reader encoding.Decoder, metadata *
 
 func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
 	meta := SectionMetadata{
-		Type: section.Kind.String(),
+		Type: encoding.SectionTypeStreams.String(),
 	}
 
 	dec := reader.StreamsDecoder(metadata, section)

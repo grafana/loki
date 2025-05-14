@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -95,7 +94,10 @@ func TestStreams(t *testing.T) {
 		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, metadata.Sections, 1)
-		require.Equal(t, filemd.SECTION_KIND_STREAMS, metadata.Sections[0].Kind)
+
+		typ, err := encoding.GetSectionType(metadata, metadata.Sections[0])
+		require.NoError(t, err)
+		require.Equal(t, encoding.SectionTypeStreams, typ)
 
 		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata, metadata.Sections[0]))
 
@@ -180,7 +182,10 @@ func TestLogs(t *testing.T) {
 		metadata, err := dec.Metadata(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, metadata.Sections, 1)
-		require.Equal(t, filemd.SECTION_KIND_LOGS, metadata.Sections[0].Kind)
+
+		typ, err := encoding.GetSectionType(metadata, metadata.Sections[0])
+		require.NoError(t, err)
+		require.Equal(t, encoding.SectionTypeLogs, typ)
 
 		logsDec := dec.LogsDecoder(metadata, metadata.Sections[0])
 		columns, err := logsDec.Columns(context.TODO())

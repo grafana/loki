@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -30,7 +29,12 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 		}
 
 		for _, section := range metadata.Sections {
-			if section.Kind != filemd.SECTION_KIND_LOGS {
+			typ, err := encoding.GetSectionType(metadata, section)
+			if err != nil {
+				return fmt.Errorf("getting section type: %w", err)
+			}
+
+			if typ != encoding.SectionTypeLogs {
 				continue
 			}
 

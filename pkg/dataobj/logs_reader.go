@@ -223,7 +223,15 @@ func (r *LogsReader) findSection(metadata *filemd.Metadata) (*filemd.SectionInfo
 	var n int
 
 	for _, s := range metadata.Sections {
-		if s.Kind == filemd.SECTION_KIND_LOGS {
+		typ, err := encoding.GetSectionType(metadata, s)
+		if err != nil {
+			// We don't want to just continue here; it's possible that the section
+			// type we couldn't read was a logs section, in which case our index
+			// would be off.
+			return nil, fmt.Errorf("getting section type: %w", err)
+		}
+
+		if typ == encoding.SectionTypeLogs {
 			if n == r.idx {
 				return s, nil
 			}
