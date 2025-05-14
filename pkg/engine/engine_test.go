@@ -43,6 +43,8 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 				builder.Field(j).(*array.Int64Builder).Append(val.(int64))
 			case *array.Float64Builder:
 				builder.Field(j).(*array.Float64Builder).Append(val.(float64))
+			case *array.TimestampBuilder:
+				builder.Field(j).(*array.TimestampBuilder).Append(val.(arrow.Timestamp))
 			default:
 				t.Fatal("invalid field type")
 			}
@@ -59,17 +61,17 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 			},
 			nil,
 		)
 
 		data := [][]interface{}{
-			{uint64(1620000000000000001), nil, "prod"},
+			{arrow.Timestamp(1620000000000000001), nil, "prod"},
 			{nil, "log line", "prod"},
-			{uint64(1620000000000000003), "log line", nil},
+			{arrow.Timestamp(1620000000000000003), "log line", nil},
 		}
 
 		record := createRecord(t, schema, data)
@@ -88,17 +90,17 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 	t.Run("fields without metadata are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64},
-				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns},
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
 				{Name: "env", Type: arrow.BinaryTypes.String},
 			},
 			nil,
 		)
 
 		data := [][]interface{}{
-			{uint64(1620000000000000001), "log line 1", "prod"},
-			{uint64(1620000000000000002), "log line 2", "prod"},
-			{uint64(1620000000000000003), "log line 3", "prod"},
+			{arrow.Timestamp(1620000000000000001), "log line 1", "prod"},
+			{arrow.Timestamp(1620000000000000002), "log line 2", "prod"},
+			{arrow.Timestamp(1620000000000000003), "log line 3", "prod"},
 		}
 
 		record := createRecord(t, schema, data)
@@ -117,8 +119,8 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameBuiltinLine, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinLine},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "traceID", Type: arrow.BinaryTypes.String, Metadata: mdTypeMetadata},
@@ -127,11 +129,11 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 		)
 
 		data := [][]interface{}{
-			{uint64(1620000000000000001), "log line 1", "dev", "loki-dev-001", "860e403fcf754312"},
-			{uint64(1620000000000000002), "log line 2", "prod", "loki-prod-001", "46ce02549441e41c"},
-			{uint64(1620000000000000003), "log line 3", "dev", "loki-dev-002", "61330481e1e59b18"},
-			{uint64(1620000000000000004), "log line 4", "prod", "loki-prod-001", "40e50221e284b9d2"},
-			{uint64(1620000000000000005), "log line 5", "dev", "loki-dev-002", "0cf883f112ad239b"},
+			{arrow.Timestamp(1620000000000000001), "log line 1", "dev", "loki-dev-001", "860e403fcf754312"},
+			{arrow.Timestamp(1620000000000000002), "log line 2", "prod", "loki-prod-001", "46ce02549441e41c"},
+			{arrow.Timestamp(1620000000000000003), "log line 3", "dev", "loki-dev-002", "61330481e1e59b18"},
+			{arrow.Timestamp(1620000000000000004), "log line 4", "prod", "loki-prod-001", "40e50221e284b9d2"},
+			{arrow.Timestamp(1620000000000000005), "log line 5", "dev", "loki-dev-002", "0cf883f112ad239b"},
 		}
 
 		record := createRecord(t, schema, data)

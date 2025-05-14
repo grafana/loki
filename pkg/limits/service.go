@@ -93,7 +93,8 @@ type IngestLimits struct {
 
 	cfg    Config
 	logger log.Logger
-	client *kgo.Client
+	reader *kgo.Client
+	writer *kgo.Client
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
@@ -105,7 +106,8 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	metadata StreamMetadata
+	usage *UsageStore
+	wal   WAL
 
 	// Track partition assignments
 	partitionManager *PartitionManager
@@ -129,7 +131,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		metadata:         NewStreamMetadata(cfg.NumPartitions),
+		usage:            NewUsageStore(cfg),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
@@ -157,7 +159,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
-	s.client, err = client.NewReaderClient("ingest-limits", kCfg, logger, reg,
+	s.reader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
@@ -169,6 +171,12 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
+
+	s.writer, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka client: %w", err)
+	}
+	s.wal = NewKafkaWAL(s.writer, kCfg.Topic, uint64(s.cfg.NumPartitions), logger)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -185,7 +193,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.metadata.All(func(tenant string, _ int32, stream Stream) {
+	s.usage.All(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
@@ -225,7 +233,7 @@ func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Clie
 	s.partitionManager.Remove(ctx, client, partitions)
 
 	for _, ids := range partitions {
-		s.metadata.EvictPartitions(ids)
+		s.usage.EvictPartitions(ids)
 	}
 }
 
@@ -293,31 +301,9 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
-			s.metadata.Evict(cutoff)
+			s.usage.Evict()
 		}
 	}
-}
-
-// updateMetadata updates the metadata map with the provided StreamMetadata.
-// It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	var (
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-	)
-
-	if assigned := s.partitionManager.Has(partition); !assigned {
-		return
-	}
-
-	s.metadata.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
-
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -325,9 +311,14 @@ func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, 
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *IngestLimits) stopping(failureCase error) error {
-	if s.client != nil {
-		s.client.Close()
+	if s.reader != nil {
+		s.reader.Close()
 	}
+
+	if s.wal != nil {
+		s.wal.Close()
+	}
+
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
@@ -350,55 +341,51 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssi
 
 // ExceedsLimits implements the proto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		// Calculate the max active streams per tenant per partition
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
-		// Create a map of streams per partition
-		streams = make(map[int32][]Stream)
 	)
 
-	for _, stream := range req.Streams {
-		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+	streams := req.Streams
+	valid := 0
+	for _, stream := range streams {
+		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partitionID); !assigned {
-			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition_id", partitionID)
+		if assigned := s.partitionManager.Has(partition); !assigned {
+			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
 
-		streams[partitionID] = append(streams[partitionID], Stream{
-			Hash:       stream.StreamHash,
-			LastSeenAt: recordTime,
-			TotalSize:  stream.TotalSize,
-		})
+		streams[valid] = stream
+		valid++
 	}
+	streams = streams[:valid]
 
-	storeRes := make(map[Reason][]uint64)
-	cond := streamLimitExceeded(maxActiveStreams, storeRes)
+	cond := streamLimitExceeded(maxActiveStreams)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
 
-	ingestedBytes := s.metadata.StoreCond(req.Tenant, streams, cutoff, bucketStart, bucketCutoff, cond)
+	var ingestedBytes uint64
+	for _, stream := range accepted {
+		ingestedBytes += stream.TotalSize
 
-	var results []*proto.ExceedsLimitsResult
-	for reason, streamHashes := range storeRes {
-		for _, streamHash := range streamHashes {
-			results = append(results, &proto.ExceedsLimitsResult{
-				StreamHash: streamHash,
-				Reason:     uint32(reason),
-			})
+		err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, stream)
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to append stream metadata to WAL", "error", err)
 		}
 	}
 
 	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
+
+	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
+	for _, stream := range rejected {
+		results = append(results, &proto.ExceedsLimitsResult{
+			StreamHash: stream.StreamHash,
+			Reason:     uint32(ReasonExceedsMaxStreams),
+		})
+	}
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }

@@ -37,9 +37,9 @@ func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 		return
 	}
 
-	dec := reader.StreamsDecoder()
+	dec := reader.StreamsDecoder(section)
 	fmt.Println("---- Streams Section ----")
-	cols, err := dec.Columns(context.Background(), section)
+	cols, err := dec.Columns(context.Background())
 	if err != nil {
 		log.Printf("failed to read columns for section %s: %v", section.Type.String(), err)
 		return
@@ -63,8 +63,8 @@ func printLogsInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	}
 
 	fmt.Println("---- Logs Section ----")
-	dec := reader.LogsDecoder()
-	cols, err := dec.Columns(context.Background(), section)
+	dec := reader.LogsDecoder(section)
+	cols, err := dec.Columns(context.Background())
 	if err != nil {
 		log.Printf("failed to read columns for section %s: %v", section.Type.String(), err)
 		return
