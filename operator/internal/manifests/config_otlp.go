@@ -14,18 +14,13 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		return config.OTLPAttributeConfig{}
 	}
 
-	disableRecommended := false
-	if ts.Openshift != nil && ts.Openshift.OTLP != nil {
-		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
-	}
-
 	return config.OTLPAttributeConfig{
 		RemoveDefaultLabels: true,
 		Global: &config.OTLPTenantAttributeConfig{
 			ResourceAttributes: []config.OTLPAttribute{
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
-					Names:  otlp.DefaultOTLPAttributes(disableRecommended),
+					Names:  otlp.DefaultOTLPAttributes(false),
 				},
 			},
 		},

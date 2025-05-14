@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-03-17T11:00:10Z"
+    createdAt: "2025-05-14T17:16:15Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1019,26 +1019,6 @@ spec:
            - dedicated-admin
         displayName: Admin Groups
         path: tenants.openshift.adminGroups
-      - description: OTLP contains settings for ingesting data using OTLP in the OpenShift
-          tenancy mode.
-        displayName: OpenTelemetry Protocol
-        path: tenants.openshift.otlp
-      - description: |-
-          DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
-
-
-          Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-          some stream labels to disappear from the index, potentially making queries more expensive and less performant.
-
-
-          Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-          added to the configuration, even if this field is set to true.
-
-
-          This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-          should continue to exist.
-        displayName: Disable recommended OTLP attributes
-        path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

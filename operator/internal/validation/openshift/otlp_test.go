@@ -59,6 +59,37 @@ func TestValidateOTLPInvalidDrop(t *testing.T) {
 				},
 			),
 		},
+		{
+			desc: "lokistack using openshift-logging tenancy mode trying to remove a recommended attribute",
+			spec: lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Limits: &lokiv1.LimitsSpec{
+						Global: &lokiv1.LimitsTemplateSpec{
+							OTLP: &lokiv1.OTLPSpec{
+								Drop: &lokiv1.OTLPMetadataSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "k8s.container.name",
+										},
+									},
+								},
+							},
+						},
+					},
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV13,
+								EffectiveDate: "2024-10-22",
+							},
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -74,7 +105,7 @@ func TestValidateOTLPInvalidDrop(t *testing.T) {
 				)
 				require.Equal(t, tc.err, testErr)
 			} else {
-				require.Nil(t, errList)
+				require.Equal(t, field.ErrorList{}, errList)
 			}
 		})
 	}
