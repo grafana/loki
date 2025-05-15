@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -865,12 +866,12 @@ func TestShardSections(t *testing.T) {
 }
 
 func TestBuildLogsPredicateFromPipeline(t *testing.T) {
-	var evalPredicate func(p dataobj.Predicate, item []byte) bool
-	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
+	var evalPredicate func(p logs.RowPredicate, item []byte) bool
+	evalPredicate = func(p logs.RowPredicate, line []byte) bool {
 		switch p := p.(type) {
-		case dataobj.LogMessageFilterPredicate:
+		case logs.LogMessageFilterRowPredicate:
 			return p.Keep(line)
-		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+		case logs.AndRowPredicate:
 			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
 		default:
 			t.Fatalf("unsupported predicate type: %T", p)
@@ -879,7 +880,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 	}
 
 	// helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
+	testPredicate := func(t *testing.T, pred logs.RowPredicate, testData [][]byte, expected []bool) {
 		t.Helper()
 		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
 
@@ -901,15 +902,15 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 		name         string
 		query        syntax.LogSelectorExpr
 		expectedExpr syntax.LogSelectorExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "single line match equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -920,9 +921,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "single line match not equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} != "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{false, false, true, true}
@@ -933,11 +934,11 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "multiple line filters",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
 				// we might expect AND predicate here, but the original expression
 				// only contains a single Filterer stage with chained OR filters
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// The result should match logs containing both "error" and "critical"
 				expected := []bool{false, true, false, false}
@@ -948,7 +949,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after line_format",
 			query:        mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`), // No filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				// Line filters after stages that mutate the line should be ignored
 				require.Nil(t, pred, "expected nil predicate for line filter after parser")
 			},
@@ -957,7 +958,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "no line filter",
 			query:        mustParseLogSelector(t, `{app="foo"} | json | bar>100`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | bar>100`), // No filters to remove
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.Nil(t, pred, "expected nil predicate for query without line filter")
 			},
 		},
@@ -965,9 +966,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after label_fmt",
 			query:        mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -978,9 +979,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "mixed filters with some removable",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
+				require.IsType(t, logs.AndRowPredicate{}, pred)
 				expected := []bool{false, true, false, false}
 				testPredicate(t, pred, testData, expected)
 			},
@@ -1002,31 +1003,31 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 		name         string
 		query        syntax.SampleExpr
 		expectedExpr syntax.SampleExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "range aggregation with line filter",
 			query:        mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
 			expectedExpr: mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "vector aggregation with line filter",
 			query:        mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "binary expressions are not modified",
 			query:        mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.Nil(t, p)
 			},
 		},
@@ -1034,9 +1035,9 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 			name:         "label replace with line filter",
 			query:        mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
 			expectedExpr: mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 	} {

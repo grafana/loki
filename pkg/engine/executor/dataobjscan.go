@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -29,7 +30,7 @@ type dataobjScan struct {
 	opts dataobjScanOptions
 
 	initialized bool
-	readers     []*dataobj.LogsReader
+	readers     []*logs.RowReader
 	streams     map[int64]labels.Labels
 
 	state state
@@ -42,7 +43,7 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
-	Predicates  []dataobj.LogsPredicate     // Predicate to apply to the logs.
+	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
 	Direction physical.Direction // Direction of timestamps to return.
@@ -88,7 +89,7 @@ func (s *dataobjScan) init() error {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
-	s.readers = make([]*dataobj.LogsReader, 0, md.LogsSections)
+	s.readers = make([]*logs.RowReader, 0, md.LogsSections)
 
 	for section := range md.LogsSections {
 		// TODO(rfratto): There's a few problems with using LogsReader as it is:
@@ -101,7 +102,12 @@ func (s *dataobjScan) init() error {
 		//
 		// For the sake of the initial implementation I'm ignoring these issues,
 		// but we'll absolutely need to solve this prior to production use.
-		lr := dataobj.NewLogsReader(s.opts.Object, section)
+		dec, err := s.opts.Object.LogsDecoder(s.ctx, section)
+		if err != nil {
+			return fmt.Errorf("creating logs decoder: %w", err)
+		}
+
+		lr := logs.NewRowReader(dec)
 
 		// The calls below can't fail because we're always using a brand new logs
 		// reader.
@@ -188,7 +194,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	var (
 		heapMut sync.Mutex
-		heap    = topk.Heap[dataobj.Record]{
+		heap    = topk.Heap[logs.Record]{
 			Limit: int(s.opts.Limit),
 			Less:  s.getLessFunc(s.opts.Direction),
 		}
@@ -200,7 +206,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			buf := make([]dataobj.Record, 512)
+			buf := make([]logs.Record, 512)
 			for {
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
@@ -253,9 +259,9 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	return rb.NewRecord(), nil
 }
 
-func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Record) bool {
+func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b logs.Record) bool {
 	// compareStreams is used when two records have the same timestamp.
-	compareStreams := func(a, b dataobj.Record) bool {
+	compareStreams := func(a, b logs.Record) bool {
 		aStream, ok := s.streams[a.StreamID]
 		if !ok {
 			return false
@@ -271,14 +277,14 @@ func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Reco
 
 	switch dir {
 	case physical.Forward:
-		return func(a, b dataobj.Record) bool {
+		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
 			}
 			return a.Timestamp.After(b.Timestamp)
 		}
 	case physical.Backwards:
-		return func(a, b dataobj.Record) bool {
+		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
 			}
@@ -301,7 +307,7 @@ func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Reco
 // * Log message
 //
 // effectiveProjections does not mutate h.
-func (s *dataobjScan) effectiveProjections(h *topk.Heap[dataobj.Record]) ([]physical.ColumnExpression, error) {
+func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physical.ColumnExpression, error) {
 	if len(s.opts.Projections) > 0 {
 		return s.opts.Projections, nil
 	}
@@ -495,7 +501,7 @@ func builtinColumnType(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
 // builder. The metadata of field is used to determine the category of column.
 // appendToBuilder panics if the type of field does not match the datatype of
 // builder.
-func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field, record *dataobj.Record) {
+func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field, record *logs.Record) {
 	columnType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
 	if !ok {
 		// This shouldn't happen; we control the metadata here on the fields.
@@ -517,7 +523,7 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		}
 
 	case types.ColumnTypeMetadata.String():
-		val := record.Metadata.Get(field.Name)
+		val := getMetadataValue(record.Metadata, field.Name)
 		if val == "" {
 			builder.(*array.StringBuilder).AppendNull()
 		} else {
@@ -540,6 +546,15 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		// This shouldn't happen; we control the metadata here on the fields.
 		panic(fmt.Sprintf("unsupported column type %s", columnType))
 	}
+}
+
+func getMetadataValue(md []logs.RecordMetadata, name string) string {
+	for _, m := range md {
+		if m.Name == name {
+			return string(m.Value)
+		}
+	}
+	return ""
 }
 
 // Value returns the current [arrow.Record] retrieved by the previous call to
