@@ -42,8 +42,8 @@ type Encoder struct {
 
 	startOffset int // Byte offset in the file where data starts after the header.
 
-	sections   []*filemd.SectionInfo
-	curSection *filemd.SectionInfo
+	sections       []*filemd.SectionInfo
+	curSectionType SectionType
 
 	typesReady    bool
 	dictionary    []string
@@ -68,20 +68,43 @@ func NewEncoder(w streamio.Writer) *Encoder {
 	}
 }
 
+// AppendSection appends a section to the data object. AppendSection panics if
+// typ is not SectionTypeLogs or SectionTypeStreams.
+func (enc *Encoder) AppendSection(typ SectionType, data, metadata []byte) {
+	info := &filemd.SectionInfo{
+		TypeRef: enc.getTypeRef(typ),
+		Layout: &filemd.SectionLayout{
+			Data: &filemd.Region{
+				Offset: uint64(enc.startOffset + enc.data.Len()),
+				Length: uint64(len(data)),
+			},
+
+			Metadata: &filemd.Region{
+				Offset: uint64(enc.startOffset + enc.data.Len() + len(data)),
+				Length: uint64(len(metadata)),
+			},
+		},
+	}
+
+	// bytes.Buffer.Write never fails.
+	enc.data.Grow(len(data) + len(metadata))
+	_, _ = enc.data.Write(data)
+	_, _ = enc.data.Write(metadata)
+
+	enc.sections = append(enc.sections, info)
+}
+
 // OpenStreams opens a [StreamsEncoder]. OpenStreams fails if there is another
 // open section.
 func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
-	if enc.curSection != nil {
+	if enc.curSectionType.Valid() {
 		return nil, ErrElementExist
 	}
 
 	// MetadtaOffset and MetadataSize aren't available until the section is
 	// closed. We temporarily set these fields to the maximum values so they're
 	// accounted for in the MetadataSize estimate.
-	enc.curSection = &filemd.SectionInfo{
-		TypeRef: enc.getTypeRef(SectionTypeStreams),
-	}
-
+	enc.curSectionType = SectionTypeStreams
 	return newStreamsEncoder(enc), nil
 }
 
@@ -123,27 +146,21 @@ func (enc *Encoder) initTypeRefs() {
 // OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
 // section.
 func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
-	if enc.curSection != nil {
+	if enc.curSectionType.Valid() {
 		return nil, ErrElementExist
 	}
 
-	enc.curSection = &filemd.SectionInfo{
-		TypeRef: enc.getTypeRef(SectionTypeLogs),
-	}
-
+	enc.curSectionType = SectionTypeLogs
 	return newLogsEncoder(enc), nil
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
-// data object. MetadataSize does not include the size of data appended. The
-// estimate includes the currently open element.
+// data object. MetadataSize does not include the size of data appended or the
+// currently open stream.
 func (enc *Encoder) MetadataSize() int { return elementMetadataSize(enc) }
 
 func (enc *Encoder) metadata() proto.Message {
 	sections := enc.sections[:len(enc.sections):cap(enc.sections)]
-	if enc.curSection != nil {
-		sections = append(sections, enc.curSection)
-	}
 	return &filemd.Metadata{
 		Sections: sections,
 
@@ -155,7 +172,7 @@ func (enc *Encoder) metadata() proto.Message {
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset. Flush fails if there is currently an open section.
 func (enc *Encoder) Flush() error {
-	if enc.curSection != nil {
+	if enc.curSectionType.Valid() {
 		return ErrElementExist
 	}
 
@@ -207,7 +224,7 @@ func (enc *Encoder) Reset(w streamio.Writer) {
 	enc.startOffset = len(magic)
 
 	enc.sections = nil
-	enc.curSection = nil
+	enc.curSectionType = SectionTypeInvalid
 
 	enc.typesReady = false
 	enc.dictionary = nil
@@ -218,34 +235,17 @@ func (enc *Encoder) Reset(w streamio.Writer) {
 }
 
 func (enc *Encoder) append(data, metadata []byte) error {
-	if enc.curSection == nil {
+	if !enc.curSectionType.Valid() {
 		return errElementNoExist
 	}
 
 	if len(data) == 0 && len(metadata) == 0 {
 		// Section was discarded.
-		enc.curSection = nil
+		enc.curSectionType = SectionTypeInvalid
 		return nil
 	}
 
-	enc.curSection.Layout = &filemd.SectionLayout{
-		Data: &filemd.Region{
-			Offset: uint64(enc.startOffset + enc.data.Len()),
-			Length: uint64(len(data)),
-		},
-
-		Metadata: &filemd.Region{
-			Offset: uint64(enc.startOffset + enc.data.Len() + len(data)),
-			Length: uint64(len(metadata)),
-		},
-	}
-
-	// bytes.Buffer.Write never fails.
-	enc.data.Grow(len(data) + len(metadata))
-	_, _ = enc.data.Write(data)
-	_, _ = enc.data.Write(metadata)
-
-	enc.sections = append(enc.sections, enc.curSection)
-	enc.curSection = nil
+	enc.AppendSection(enc.curSectionType, data, metadata)
+	enc.curSectionType = SectionTypeInvalid
 	return nil
 }
