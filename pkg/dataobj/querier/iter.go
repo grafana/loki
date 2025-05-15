@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -49,7 +50,7 @@ type entryWithLabels struct {
 // The topk heap is used to maintain the top k entries based on the direction.
 // The final result is returned as a slice of entries.
 func newEntryIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
+	streams map[int64]streams.Stream,
 	reader *dataobj.LogsReader,
 	req logql.SelectLogParams,
 ) (iter.EntryIterator, error) {
@@ -198,7 +199,7 @@ func (s *sliceIterator) Close() error {
 }
 
 func newSampleIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
+	streamsMap map[int64]streams.Stream,
 	extractors []syntax.SampleExtractor,
 	reader *dataobj.LogsReader,
 ) (iter.SampleIterator, error) {
@@ -232,7 +233,7 @@ func newSampleIterator(ctx context.Context,
 
 		// Process records in the current batch
 		for _, record := range buf[:n] {
-			stream, ok := streams[record.StreamID]
+			stream, ok := streamsMap[record.StreamID]
 			if !ok {
 				continue
 			}

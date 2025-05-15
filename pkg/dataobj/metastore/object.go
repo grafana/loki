@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 const (
@@ -169,13 +170,13 @@ func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time
 	return nil
 }
 
-func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) dataobj.StreamsPredicate {
+func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) streams.RowPredicate {
 	if len(matchers) == 0 {
 		return nil
 	}
 
-	predicates := make([]dataobj.StreamsPredicate, 0, len(matchers)+1)
-	predicates = append(predicates, dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
+	predicates := make([]streams.RowPredicate, 0, len(matchers)+1)
+	predicates = append(predicates, streams.TimeRangeRowPredicate{
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
@@ -184,27 +185,27 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) da
 	for _, matcher := range matchers {
 		switch matcher.Type {
 		case labels.MatchEqual:
-			predicates = append(predicates, dataobj.LabelMatcherPredicate{
+			predicates = append(predicates, streams.LabelMatcherRowPredicate{
 				Name:  matcher.Name,
 				Value: matcher.Value,
 			})
 		case labels.MatchNotEqual:
-			predicates = append(predicates, dataobj.NotPredicate[dataobj.StreamsPredicate]{
-				Inner: dataobj.LabelMatcherPredicate{
+			predicates = append(predicates, streams.NotRowPredicate{
+				Inner: streams.LabelMatcherRowPredicate{
 					Name:  matcher.Name,
 					Value: matcher.Value,
 				},
 			})
 		case labels.MatchRegexp:
-			predicates = append(predicates, dataobj.LabelFilterPredicate{
+			predicates = append(predicates, streams.LabelFilterRowPredicate{
 				Name: matcher.Name,
 				Keep: func(_, value string) bool {
 					return matcher.Matches(value)
 				},
 			})
 		case labels.MatchNotRegexp:
-			predicates = append(predicates, dataobj.NotPredicate[dataobj.StreamsPredicate]{
-				Inner: dataobj.LabelFilterPredicate{
+			predicates = append(predicates, streams.NotRowPredicate{
+				Inner: streams.LabelFilterRowPredicate{
 					Name: matcher.Name,
 					Keep: func(_, value string) bool {
 						return !matcher.Matches(value)
@@ -218,12 +219,12 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) da
 		return predicates[0]
 	}
 
-	current := dataobj.AndPredicate[dataobj.StreamsPredicate]{
+	current := streams.AndRowPredicate{
 		Left: predicates[0],
 	}
 
 	for _, predicate := range predicates[1:] {
-		and := dataobj.AndPredicate[dataobj.StreamsPredicate]{
+		and := streams.AndRowPredicate{
 			Left:  predicate,
 			Right: current,
 		}
@@ -257,9 +258,9 @@ func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths 
 	return dedupeAndSort(objects), nil
 }
 
-func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate dataobj.StreamsPredicate) ([]*labels.Labels, error) {
+func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
 	mu := sync.Mutex{}
-	streams := make(map[uint64][]*labels.Labels, 1024)
+	foundStreams := make(map[uint64][]*labels.Labels, 1024)
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -268,8 +269,8 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 		g.Go(func() error {
 			object := dataobj.FromBucket(m.bucket, path)
 
-			return forEachStream(ctx, object, predicate, func(stream dataobj.Stream) {
-				addLabels(&mu, streams, &stream.Labels)
+			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
+				addLabels(&mu, foundStreams, &stream.Labels)
 			})
 		})
 	}
@@ -278,15 +279,15 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 		return nil, err
 	}
 
-	streamsSlice := make([]*labels.Labels, 0, len(streams))
-	for _, labels := range streams {
+	streamsSlice := make([]*labels.Labels, 0, len(foundStreams))
+	for _, labels := range foundStreams {
 		streamsSlice = append(streamsSlice, labels...)
 	}
 
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate dataobj.StreamsPredicate) ([][]int64, error) {
+func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, error) {
 	streamIDs := make([][]int64, len(paths))
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -297,7 +298,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 			g.Go(func() error {
 				object := dataobj.FromBucket(m.bucket, path)
 
-				return forEachStream(ctx, object, predicate, func(stream dataobj.Stream) {
+				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 					streamIDs[idx] = append(streamIDs[idx], stream.ID)
 				})
 			})
@@ -345,7 +346,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	object := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
 	var objectPaths []string
 
-	err = forEachStream(ctx, object, nil, func(stream dataobj.Stream) {
+	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {
 		ok, objPath := objectOverlapsRange(stream.Labels, start, end)
 		if ok {
 			objectPaths = append(objectPaths, objPath)
@@ -357,18 +358,23 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	return objectPaths, nil
 }
 
-func forEachStream(ctx context.Context, object *dataobj.Object, predicate dataobj.StreamsPredicate, f func(dataobj.Stream)) error {
+func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
 	md, err := object.Metadata(ctx)
 	if err != nil {
 		return err
 	}
 
-	var reader dataobj.StreamsReader
+	var reader streams.RowReader
 	defer reader.Close()
 
-	streams := make([]dataobj.Stream, 1024)
+	streams := make([]streams.Stream, 1024)
 	for i := 0; i < md.StreamsSections; i++ {
-		reader.Reset(object, i)
+		dec, err := object.StreamsDecoder(ctx, i)
+		if err != nil {
+			return fmt.Errorf("getting streams decoder: %w", err)
+		}
+
+		reader.Reset(dec)
 		if predicate != nil {
 			err := reader.SetPredicate(predicate)
 			if err != nil {

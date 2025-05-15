@@ -28,7 +28,7 @@ var (
 	now = time.Now().UTC()
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
-	streams = []logproto.Stream{
+	testStreams = []logproto.Stream{
 		{
 			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(-2 * time.Hour)}},
@@ -234,7 +234,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 
 	builder := newTestDataBuilder(t, tenantID)
 
-	for _, stream := range streams {
+	for _, stream := range testStreams {
 		builder.addStreamAndFlush(stream)
 	}
 

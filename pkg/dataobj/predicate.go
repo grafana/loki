@@ -10,13 +10,6 @@ type (
 		isPredicate()
 	}
 
-	// StreamsPredicate is a [Predicate] that can be used to filter streams in a
-	// [StreamsReader].
-	StreamsPredicate interface {
-		Predicate
-		predicateKind(StreamsPredicate)
-	}
-
 	// LogsPredicate is a [Predicate] that can be used to filter logs in a
 	// [LogsReader].
 	LogsPredicate interface {
@@ -45,24 +38,6 @@ type (
 		StartTime, EndTime time.Time
 		IncludeStart       bool // Whether StartTime is inclusive.
 		IncludeEnd         bool // Whether EndTime is inclusive.
-	}
-
-	// A LabelMatcherPredicate is a [StreamsPredicate] which requires a label
-	// named Name to exist with a value of Value.
-	LabelMatcherPredicate struct{ Name, Value string }
-
-	// A LabelFilterPredicate is a [StreamsPredicate] that requires that labels
-	// with the provided name pass a Keep function.
-	//
-	// The name is is provided to the keep function to allow the same function to
-	// be used for multiple filter predicates.
-	//
-	// Uses of LabelFilterPredicate are not eligible for page filtering and
-	// should only be used when a condition cannot be expressed by other basic
-	// predicates.
-	LabelFilterPredicate struct {
-		Name string
-		Keep func(name, value string) bool
 	}
 
 	// A LogMessageFilterPredicate is a [LogsPredicate] that requires the log message
@@ -94,8 +69,6 @@ func (AndPredicate[P]) isPredicate()           {}
 func (OrPredicate[P]) isPredicate()            {}
 func (NotPredicate[P]) isPredicate()           {}
 func (TimeRangePredicate[P]) isPredicate()     {}
-func (LabelMatcherPredicate) isPredicate()     {}
-func (LabelFilterPredicate) isPredicate()      {}
 func (MetadataMatcherPredicate) isPredicate()  {}
 func (MetadataFilterPredicate) isPredicate()   {}
 func (LogMessageFilterPredicate) isPredicate() {}
@@ -104,8 +77,6 @@ func (AndPredicate[P]) predicateKind(P)                       {}
 func (OrPredicate[P]) predicateKind(P)                        {}
 func (NotPredicate[P]) predicateKind(P)                       {}
 func (TimeRangePredicate[P]) predicateKind(P)                 {}
-func (LabelMatcherPredicate) predicateKind(StreamsPredicate)  {}
-func (LabelFilterPredicate) predicateKind(StreamsPredicate)   {}
 func (MetadataMatcherPredicate) predicateKind(LogsPredicate)  {}
 func (MetadataFilterPredicate) predicateKind(LogsPredicate)   {}
 func (LogMessageFilterPredicate) predicateKind(LogsPredicate) {}

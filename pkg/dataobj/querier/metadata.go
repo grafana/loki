@@ -16,7 +16,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -24,7 +24,7 @@ import (
 
 var streamsPool = sync.Pool{
 	New: func() any {
-		streams := make([]dataobj.Stream, 1024)
+		streams := make([]streams.Stream, 1024)
 		return &streams
 	},
 }
@@ -60,7 +60,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
-	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
+	err = processor.ProcessParallel(ctx, func(h uint64, stream streams.Stream) {
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
 	})
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueNames := sync.Map{}
 
-	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
+	err = processor.ProcessParallel(ctx, func(_ uint64, stream streams.Stream) {
 		for _, label := range stream.Labels {
 			uniqueNames.Store(label.Name, nil)
 		}
@@ -139,7 +139,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueValues := sync.Map{}
 
-	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
+	err = processor.ProcessParallel(ctx, func(_ uint64, stream streams.Stream) {
 		uniqueValues.Store(stream.Labels.Get(labelName), nil)
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 
 // streamProcessor handles processing of unique series with custom collection logic
 type streamProcessor struct {
-	predicate  dataobj.StreamsPredicate
+	predicate  streams.RowPredicate
 	seenSeries *sync.Map
 	objects    []object
 	shard      logql.Shard
@@ -179,7 +179,7 @@ func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, object
 
 // ProcessParallel processes series from multiple readers in parallel
 // dataobj.Stream objects returned to onNewStream may be reused and must be deep copied for further use, including the stream.Labels keys and values.
-func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func(uint64, dataobj.Stream)) error {
+func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func(uint64, streams.Stream)) error {
 	readers, err := shardStreamReaders(ctx, sp.objects, sp.shard)
 	if err != nil {
 		return err
@@ -236,9 +236,9 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	return nil
 }
 
-func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) (int64, error) {
+func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *streams.RowReader, onNewStream func(uint64, streams.Stream)) (int64, error) {
 	var (
-		streamsPtr = streamsPool.Get().(*[]dataobj.Stream)
+		streamsPtr = streamsPool.Get().(*[]streams.Stream)
 		streams    = *streamsPtr
 		buf        = make([]byte, 0, 1024)
 		h          uint64
@@ -282,7 +282,7 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 }
 
 // shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
-func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
+func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard) ([]*streams.RowReader, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "shardStreamReaders")
 	defer span.Finish()
 
@@ -295,7 +295,7 @@ func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard
 
 	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
 	var sectionIndex uint64
-	var readers []*dataobj.StreamsReader
+	var readers []*streams.RowReader
 	for i, metadata := range metadatas {
 		if metadata.StreamsSections > 1 {
 			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
@@ -309,8 +309,14 @@ func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard
 				continue
 			}
 		}
-		reader := streamReaderPool.Get().(*dataobj.StreamsReader)
-		reader.Reset(objects[i].Object, 0)
+
+		dec, err := objects[i].StreamsDecoder(ctx, 0)
+		if err != nil {
+			return nil, fmt.Errorf("creating streams decoder: %w", err)
+		}
+
+		reader := streamReaderPool.Get().(*streams.RowReader)
+		reader.Reset(dec)
 		readers = append(readers, reader)
 		sectionIndex++
 	}

@@ -256,3 +256,5 @@ func BenchmarkLogsReader(b *testing.B) {
 		cnt = 0
 	}
 }
+
+func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }

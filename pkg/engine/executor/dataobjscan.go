@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -117,9 +118,9 @@ func (s *dataobjScan) init() error {
 // initStreams retrieves all requested stream records from streams sections so
 // that emitted [arrow.Record]s can include stream labels in results.
 func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
-	var sr dataobj.StreamsReader
+	var sr streams.RowReader
 
-	streams := make([]dataobj.Stream, 512)
+	streamsBuf := make([]streams.Stream, 512)
 
 	// Initialize entries in the map so we can do a presence test in the loop
 	// below.
@@ -129,21 +130,26 @@ func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
 	}
 
 	for section := range md.StreamsSections {
+		dec, err := s.opts.Object.StreamsDecoder(s.ctx, section)
+		if err != nil {
+			return fmt.Errorf("creating streams decoder: %w", err)
+		}
+
 		// TODO(rfratto): dataobj.StreamsPredicate is missing support for filtering
 		// on stream IDs when we already know them in advance; this can cause the
 		// Read here to take longer than it needs to since we're reading the
 		// entirety of every row.
-		sr.Reset(s.opts.Object, section)
+		sr.Reset(dec)
 
 		for {
-			n, err := sr.Read(s.ctx, streams)
+			n, err := sr.Read(s.ctx, streamsBuf)
 			if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			} else if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
 
-			for i, stream := range streams[:n] {
+			for i, stream := range streamsBuf[:n] {
 				if _, found := s.streams[stream.ID]; !found {
 					continue
 				}
@@ -152,7 +158,7 @@ func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
 
 				// Zero out the stream entry from the slice so the next call to sr.Read
 				// doesn't overwrite any memory we just moved to s.streams.
-				streams[i] = dataobj.Stream{}
+				streamsBuf[i] = streams.Stream{}
 			}
 		}
 	}

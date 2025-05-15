@@ -17,6 +17,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -173,13 +174,18 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		return errors.Wrap(err, "resolving object metadata")
 	}
 
-	var streamsReader dataobj.StreamsReader
+	var streamsReader streams.RowReader
 	defer streamsReader.Close()
 
 	// Read streams from existing metastore object and write them to the builder for the new object
-	streams := make([]dataobj.Stream, 100)
+	streams := make([]streams.Stream, 100)
 	for i := 0; i < si.StreamsSections; i++ {
-		streamsReader.Reset(object, i)
+		dec, err := object.StreamsDecoder(ctx, i)
+		if err != nil {
+			return errors.Wrap(err, "creating streams decoder")
+		}
+
+		streamsReader.Reset(dec)
 		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading streams")
