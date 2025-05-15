@@ -216,7 +216,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 }
 
 func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
-	var logsEnc encoding.LogsEncoder
+	var logsEnc encoder
 	defer logsEnc.Reset()
 
 	{
@@ -236,7 +236,7 @@ func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 	return err
 }
 
-func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, column dataset.Column) error {
+func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Column) error {
 	columnEnc, err := enc.OpenColumn(columnType, column.ColumnInfo())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
