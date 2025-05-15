@@ -14,33 +14,25 @@ import (
 
 // StreamsEncoder encodes an individual streams section in a data object.
 // StreamsEncoder are created by [Encoder]s.
+//
+// The zero value of StreamsEncoder is ready for use.
 type StreamsEncoder struct {
-	parent *Encoder
+	data *bytes.Buffer
 
-	closed bool // true if StreamsEncoder has been closed.
-
-	data      *bytes.Buffer
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
 }
 
-func newStreamsEncoder(parent *Encoder) *StreamsEncoder {
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-
-	return &StreamsEncoder{
-		parent: parent,
-		data:   buf,
-	}
+// NewStreamsEncoder creates a new StreamsEncoder.
+func NewStreamsEncoder() *StreamsEncoder {
+	return &StreamsEncoder{}
 }
 
 // OpenColumn opens a new column in the streams section. OpenColumn fails if
-// there is another open column or if the StreamsEncoder has been closed.
+// there is another open column.
 func (enc *StreamsEncoder) OpenColumn(columnType streamsmd.ColumnType, info *dataset.ColumnInfo) (*StreamsColumnEncoder, error) {
 	if enc.curColumn != nil {
 		return nil, ErrElementExist
-	} else if enc.closed {
-		return nil, ErrClosed
 	}
 
 	// MetadataOffset and MetadataSize aren't available until the column is
@@ -63,7 +55,15 @@ func (enc *StreamsEncoder) OpenColumn(columnType streamsmd.ColumnType, info *dat
 		},
 	}
 
-	return newStreamsColumnEncoder(enc, enc.data.Len()), nil
+	return newStreamsColumnEncoder(enc, enc.size()), nil
+}
+
+// size returns the current number of buffered data bytes.
+func (enc *StreamsEncoder) size() int {
+	if enc.data == nil {
+		return 0
+	}
+	return enc.data.Len()
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
@@ -78,23 +78,21 @@ func (enc *StreamsEncoder) metadata() proto.Message {
 	return &streamsmd.Metadata{Columns: columns}
 }
 
-// Commit closes the section, flushing all data to the parent element. After
-// Commit is called, the StreamsEncoder can no longer be modified.
+// EncodeTo writes the section to the given [Encoder]. EncodeTo returns an
+// error if there is an open column.
 //
-// Commit fails if there is an open column.
-func (enc *StreamsEncoder) Commit() error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn != nil {
-		return ErrElementExist
+// EncodeTo returns 0, nil if there is no data to write.
+//
+// After EncodeTo is called successfully, the StreamsEncoder is reset to a
+// fresh state and can be reused.
+func (enc *StreamsEncoder) EncodeTo(dst *Encoder) (int64, error) {
+	if enc.curColumn != nil {
+		return 0, ErrElementExist
 	}
-	enc.closed = true
-
-	defer bytesBufferPool.Put(enc.data)
+	defer enc.Reset()
 
 	if len(enc.columns) == 0 {
-		// No data was written; discard.
-		return enc.parent.append(nil, nil)
+		return 0, nil
 	}
 
 	metadataBuffer := bytesBufferPool.Get().(*bytes.Buffer)
@@ -103,37 +101,30 @@ func (enc *StreamsEncoder) Commit() error {
 
 	// The section metadata should start with its version.
 	if err := streamio.WriteUvarint(metadataBuffer, streamsFormatVersion); err != nil {
-		return err
+		return 0, err
 	} else if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
-		return err
+		return 0, err
 	}
-	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
+
+	dst.AppendSection(SectionTypeStreams, enc.data.Bytes(), metadataBuffer.Bytes())
+	return int64(len(enc.data.Bytes()) + len(metadataBuffer.Bytes())), nil
 }
 
-// Discard discards the section, discarding any data written to it. After
-// Discard is called, the StreamsEncoder can no longer be modified.
-//
-// Discard fails if there is an open column.
-func (enc *StreamsEncoder) Discard() error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn != nil {
-		return ErrElementExist
+// Reset resets the StreamsEncoder to a fresh state, discarding any in-progress
+// columns.
+func (enc *StreamsEncoder) Reset() {
+	if enc.data != nil {
+		bytesBufferPool.Put(enc.data)
+		enc.data = nil
 	}
-	enc.closed = true
-
-	defer bytesBufferPool.Put(enc.data)
-
-	return enc.parent.append(nil, nil)
+	enc.curColumn = nil
 }
 
 // append adds data and metadata to enc. append must only be called from child
 // elements on Close and Discard. Discard calls must pass nil for both data and
 // metadata to denote a discard.
 func (enc *StreamsEncoder) append(data, metadata []byte) error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn == nil {
+	if enc.curColumn == nil {
 		return errElementNoExist
 	}
 
@@ -141,6 +132,11 @@ func (enc *StreamsEncoder) append(data, metadata []byte) error {
 		// Column was discarded.
 		enc.curColumn = nil
 		return nil
+	}
+
+	if enc.data == nil {
+		enc.data = bytesBufferPool.Get().(*bytes.Buffer)
+		enc.data.Reset()
 	}
 
 	enc.curColumn.Info.MetadataOffset = uint64(enc.data.Len() + len(data))
@@ -183,7 +179,7 @@ func newStreamsColumnEncoder(parent *StreamsEncoder, offset int) *StreamsColumnE
 	}
 }
 
-// AppendPage appens a new [dataset.MemPage] to the column. AppendPage fails if
+// AppendPage appends a new [dataset.MemPage] to the column. AppendPage fails if
 // the column has been closed.
 func (enc *StreamsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	if enc.closed {

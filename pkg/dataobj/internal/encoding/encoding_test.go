@@ -60,9 +60,8 @@ func TestStreams(t *testing.T) {
 		require.NoError(t, err)
 
 		enc := encoding.NewEncoder(&buf)
-		streamsEnc, err := enc.OpenStreams()
-		require.NoError(t, err)
 
+		streamsEnc := encoding.NewStreamsEncoder()
 		colEnc, err := streamsEnc.OpenColumn(streamsmd.COLUMN_TYPE_LABEL, &nameColumn.Info)
 		require.NoError(t, err)
 		for _, page := range nameColumn.Pages {
@@ -77,7 +76,8 @@ func TestStreams(t *testing.T) {
 		}
 		require.NoError(t, colEnc.Commit())
 
-		require.NoError(t, streamsEnc.Commit())
+		_, err = streamsEnc.EncodeTo(enc)
+		require.NoError(t, err)
 		require.NoError(t, enc.Flush())
 	})
 

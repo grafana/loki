@@ -300,15 +300,8 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
-	streamsEnc, err := enc.OpenStreams()
-	if err != nil {
-		return fmt.Errorf("opening streams section: %w", err)
-	}
-	defer func() {
-		// Discard on defer for safety. This will return an error if we
-		// successfully committed.
-		_ = streamsEnc.Discard()
-	}()
+	streamsEnc := encoding.NewStreamsEncoder()
+	defer streamsEnc.Reset()
 
 	{
 		var errs []error
@@ -333,7 +326,8 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		}
 	}
 
-	return streamsEnc.Commit()
+	_, err = streamsEnc.EncodeTo(enc)
+	return err
 }
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {

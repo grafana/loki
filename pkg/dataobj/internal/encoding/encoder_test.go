@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
@@ -44,22 +43,6 @@ func getEncoders(t *testing.T) []newEncoder {
 	t.Helper()
 
 	return []newEncoder{
-		func() encoder {
-			enc := encoding.NewEncoder(streamio.Discard)
-			streamsEnc, err := enc.OpenStreams()
-			require.NoError(t, err)
-			return streamsEnc
-		},
-
-		func() encoder {
-			enc := encoding.NewEncoder(streamio.Discard)
-			streamsEnc, err := enc.OpenStreams()
-			require.NoError(t, err)
-			columnEnc, err := streamsEnc.OpenColumn(streamsmd.COLUMN_TYPE_LABEL, &dataset.ColumnInfo{})
-			require.NoError(t, err)
-			return columnEnc
-		},
-
 		func() encoder {
 			enc := encoding.NewEncoder(streamio.Discard)
 			logsEnc, err := enc.OpenLogs()

@@ -94,20 +94,6 @@ func (enc *Encoder) AppendSection(typ SectionType, data, metadata []byte) {
 	enc.sections = append(enc.sections, info)
 }
 
-// OpenStreams opens a [StreamsEncoder]. OpenStreams fails if there is another
-// open section.
-func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
-	if enc.curSectionType.Valid() {
-		return nil, ErrElementExist
-	}
-
-	// MetadtaOffset and MetadataSize aren't available until the section is
-	// closed. We temporarily set these fields to the maximum values so they're
-	// accounted for in the MetadataSize estimate.
-	enc.curSectionType = SectionTypeStreams
-	return newStreamsEncoder(enc), nil
-}
-
 // getTypeRef returns the type reference for the given type.
 //
 // getTypeRef panics if typ is not SectionTypeLogs or SectionTypeStreams.
