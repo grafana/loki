@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
@@ -38,8 +39,8 @@ func (rd *streamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc,
 	}
 	defer rc.Close()
 
-	br, release := getBufioReader(rc)
-	defer release()
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
 
 	md, err := decodeStreamsMetadata(br)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
@@ -40,8 +41,8 @@ func (rd *rangeDecoder) Metadata(ctx context.Context) (*filemd.Metadata, error) 
 	}
 	defer rc.Close()
 
-	br, release := getBufioReader(rc)
-	defer release()
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
 
 	return decodeFileMetadata(br)
 }
@@ -64,8 +65,8 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 	}
 	defer rc.Close()
 
-	br, release := getBufioReader(rc)
-	defer release()
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
 
 	metadataSize, err := decodeTailer(br)
 	if err != nil {
@@ -231,8 +232,8 @@ func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, 
 	}
 	defer rc.Close()
 
-	br, release := getBufioReader(rc)
-	defer release()
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
 
 	md, err := decodeLogsMetadata(br)
 	if err != nil {
