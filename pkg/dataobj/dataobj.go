@@ -16,18 +16,60 @@ import (
 // An Object is a representation of a data object.
 type Object struct {
 	dec encoding.Decoder
+
+	sections []*Section
 }
 
 // FromBucket opens an Object from the given storage bucket and path.
-func FromBucket(bucket objstore.Bucket, path string) *Object {
-	return &Object{dec: encoding.BucketDecoder(bucket, path)}
+// FromBucket returns an error if the metadata of the Object cannot be read or
+// if the provided ctx times out.
+func FromBucket(ctx context.Context, bucket objstore.Bucket, path string) (*Object, error) {
+	obj := &Object{dec: encoding.BucketDecoder(bucket, path)}
+	if err := obj.init(ctx); err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
 
 // FromReadSeeker opens an Object from the given ReaderAt. The size argument
-// specifies the size of the data object in bytes.
-func FromReaderAt(r io.ReaderAt, size int64) *Object {
-	return &Object{dec: encoding.ReaderAtDecoder(r, size)}
+// specifies the size of the data object in bytes. FromReaderAt returns an
+// error if the metadata of the Object cannot be read.
+func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
+	obj := &Object{dec: encoding.ReaderAtDecoder(r, size)}
+	if err := obj.init(context.Background()); err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
+
+func (o *Object) init(ctx context.Context) error {
+	metadata, err := o.dec.Metadata(ctx)
+	if err != nil {
+		return fmt.Errorf("reading metadata: %w", err)
+	}
+
+	readSections := make([]*Section, 0, len(metadata.Sections))
+	for i, sec := range metadata.Sections {
+		reader := o.dec.SectionReader(metadata, sec)
+
+		typ, err := reader.Type()
+		if err != nil {
+			return fmt.Errorf("getting section %d type: %w", i, err)
+		}
+
+		readSections = append(readSections, &Section{
+			Type:   SectionType(typ),
+			Reader: reader,
+		})
+	}
+
+	o.sections = readSections
+	return nil
+}
+
+// Sections returns the list of sections available in the Object. The slice of
+// returned sections must not be mutated.
+func (o *Object) Sections() []*Section { return o.sections }
 
 // Metadata holds high-level metadata about an [Object].
 type Metadata struct {
@@ -38,22 +80,12 @@ type Metadata struct {
 // Metadata returns the metadata of the Object. Metadata returns an error if
 // the object cannot be read.
 func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
-	metadata, err := o.dec.Metadata(ctx)
-	if err != nil {
-		return Metadata{}, fmt.Errorf("reading sections: %w", err)
-	}
-
 	var res Metadata
-	for _, s := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, s)
-		if err != nil {
-			return Metadata{}, fmt.Errorf("getting section type: %w", err)
-		}
-
-		switch typ {
-		case encoding.SectionTypeStreams:
+	for _, s := range o.sections {
+		switch s.Type {
+		case SectionType(encoding.SectionTypeStreams):
 			res.StreamsSections++
-		case encoding.SectionTypeLogs:
+		case SectionType(encoding.SectionTypeLogs):
 			res.LogsSections++
 		}
 	}

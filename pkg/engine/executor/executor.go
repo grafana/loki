@@ -79,8 +79,13 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		predicates = append(predicates, conv)
 	}
 
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	if err != nil {
+		return errorPipeline(fmt.Errorf("creating data object: %w", err))
+	}
+
 	return newDataobjScanPipeline(ctx, dataobjScanOptions{
-		Object:      dataobj.FromBucket(c.bucket, string(node.Location)),
+		Object:      obj,
 		StreamIDs:   node.StreamIDs,
 		Predicates:  predicates,
 		Projections: node.Projections,

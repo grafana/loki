@@ -267,7 +267,10 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object := dataobj.FromBucket(m.bucket, path)
+			object, err := dataobj.FromBucket(ctx, m.bucket, path)
+			if err != nil {
+				return fmt.Errorf("getting object from bucket: %w", err)
+			}
 
 			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 				addLabels(&mu, foundStreams, &stream.Labels)
@@ -296,7 +299,10 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	for i, path := range paths {
 		func(idx int) {
 			g.Go(func() error {
-				object := dataobj.FromBucket(m.bucket, path)
+				object, err := dataobj.FromBucket(ctx, m.bucket, path)
+				if err != nil {
+					return fmt.Errorf("getting object from bucket: %w", err)
+				}
 
 				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 					streamIDs[idx] = append(streamIDs[idx], stream.ID)
@@ -343,7 +349,10 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, fmt.Errorf("reading metastore object: %w", err)
 	}
-	object := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
+	object, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
+	if err != nil {
+		return nil, fmt.Errorf("getting object from reader: %w", err)
+	}
 	var objectPaths []string
 
 	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {

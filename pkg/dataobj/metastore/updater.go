@@ -121,7 +121,10 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
-					object := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+					if err != nil {
+						return nil, errors.Wrap(err, "creating object from buffer")
+					}
 					if err := m.readFromExisting(ctx, object); err != nil {
 						return nil, errors.Wrap(err, "reading existing metastore version")
 					}

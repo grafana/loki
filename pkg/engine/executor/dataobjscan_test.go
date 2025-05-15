@@ -297,5 +297,8 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	require.NoError(t, err)
 
 	r := bytes.NewReader(buf.Bytes())
-	return dataobj.FromReaderAt(r, r.Size())
+
+	obj, err := dataobj.FromReaderAt(r, r.Size())
+	require.NoError(t, err)
+	return obj
 }

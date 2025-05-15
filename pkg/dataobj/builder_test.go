@@ -85,7 +85,8 @@ func TestBuilder(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		obj := FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		obj, err := FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		require.NoError(t, err)
 		md, err := obj.Metadata(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, 1, md.StreamsSections)
@@ -107,7 +108,8 @@ func TestBuilder(t *testing.T) {
 	})
 
 	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
-		obj := FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
+		obj, err := FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
+		require.NoError(t, err)
 		md, err := obj.Metadata(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, 1, md.StreamsSections)

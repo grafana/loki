@@ -206,10 +206,11 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 
 	objects := make([]object, 0, len(files))
 	for _, path := range files {
-		objects = append(objects, object{
-			Object: dataobj.FromBucket(s.bucket, path),
-			path:   path,
-		})
+		obj, err := dataobj.FromBucket(ctx, s.bucket, path)
+		if err != nil {
+			return nil, fmt.Errorf("getting object from bucket: %w", err)
+		}
+		objects = append(objects, object{Object: obj, path: path})
 	}
 	return objects, nil
 }
