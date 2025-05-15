@@ -3,7 +3,6 @@ package log
 import (
 	"context"
 
-	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"sync"
@@ -102,9 +101,6 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata labels.Labels) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
-	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = otlptranslator.NormalizeLabel(lb.Name)
-	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata)
 	return line, n.builder.LabelsResult(), true
 }
@@ -224,10 +220,6 @@ func (p *streamPipeline) ReferencedStructuredMetadata() bool {
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
-
-	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = otlptranslator.NormalizeLabel(lb.Name)
-	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata)
 

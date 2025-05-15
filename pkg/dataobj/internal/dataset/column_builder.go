@@ -149,11 +149,11 @@ func (cb *ColumnBuilder) Backfill(row int) {
 }
 
 func (cb *ColumnBuilder) backfill(row int) bool {
-	for row > cb.rows {
-		if !cb.pageBuilder.AppendNull() {
+	if row > cb.rows {
+		if !cb.pageBuilder.AppendNulls(uint64(row - cb.rows)) {
 			return false
 		}
-		cb.rows++
+		cb.rows = row
 	}
 
 	return true

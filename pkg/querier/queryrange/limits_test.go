@@ -667,7 +667,7 @@ func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
 
 func Test_WeightedParallelism(t *testing.T) {
 	limits := &fakeLimits{
-		tsdbMaxQueryParallelism: 100,
+		tsdbMaxQueryParallelism: 2048,
 		maxQueryParallelism:     10,
 	}
 
@@ -727,19 +727,25 @@ func Test_WeightedParallelism(t *testing.T) {
 				desc:  "50% each",
 				start: borderTime.Add(-time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   55,
+				exp:   1029,
 			},
 			{
 				desc:  "75/25 split",
 				start: borderTime.Add(-3 * time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   32,
+				exp:   519,
 			},
 			{
 				desc:  "start==end",
 				start: borderTime.Add(time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   100,
+				exp:   2048,
+			},
+			{
+				desc:  "huge range to make sure we don't int overflow in the calculations.",
+				start: borderTime,
+				end:   borderTime.Add(24 * time.Hour * 365 * 20),
+				exp:   2048,
 			},
 		} {
 			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {

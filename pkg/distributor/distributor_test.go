@@ -40,8 +40,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -621,7 +623,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	t.Run("with kafka, any failure fails the request", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
 		distributors, _ := prepare(t, 1, 0, limits, nil)
@@ -638,7 +640,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 	})
 
 	t.Run("with kafka, no failures is successful", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
 		distributors, _ := prepare(t, 1, 0, limits, nil)
@@ -653,11 +655,11 @@ func TestDistributorPushToKafka(t *testing.T) {
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, kafkaWriter.pushed)
+		require.Equal(t, uint64(1), kafkaWriter.pushes)
 	})
 
 	t.Run("with kafka and ingesters, both must complete", func(t *testing.T) {
-		kafkaWriter := &mockKafkaWriter{
+		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
 		distributors, ingesters := prepare(t, 1, 3, limits, nil)
@@ -676,7 +678,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		_, err := distributors[0].Push(ctx, request)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, kafkaWriter.pushed)
+		require.Equal(t, uint64(1), kafkaWriter.pushes)
 
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
@@ -2012,28 +2014,32 @@ func makeWriteRequest(lines, size int) *logproto.PushRequest {
 	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`}, false, false, false)
 }
 
-type mockKafkaWriter struct {
-	failOnWrite bool
-	pushed      int
+type mockKafkaProducer struct {
+	failOnWrite     bool
+	pushes          uint64
+	records         []*kgo.Record
+	recordsPerTopic map[string][]*kgo.Record
+	mu              sync.Mutex
 }
 
-func (m *mockKafkaWriter) ProduceSync(_ context.Context, _ []*kgo.Record) kgo.ProduceResults {
+func (m *mockKafkaProducer) ProduceSync(_ context.Context, records []*kgo.Record) kgo.ProduceResults {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.failOnWrite {
-		return kgo.ProduceResults{
-			{
-				Err: kgo.ErrRecordTimeout,
-			},
-		}
+		return kgo.ProduceResults{{Err: kgo.ErrRecordTimeout}}
 	}
-	m.pushed++
-	return kgo.ProduceResults{
-		{
-			Err: nil,
-		},
+	m.pushes++
+	m.records = append(m.records, records...)
+	if m.recordsPerTopic == nil {
+		m.recordsPerTopic = make(map[string][]*kgo.Record)
 	}
+	for _, r := range records {
+		m.recordsPerTopic[r.Topic] = append(m.recordsPerTopic[r.Topic], r)
+	}
+	return kgo.ProduceResults{{Err: nil}}
 }
 
-func (m *mockKafkaWriter) Close() {}
+func (m *mockKafkaProducer) Close() {}
 
 type mockPartitionRingReader struct {
 	ring *ring.PartitionRing
@@ -2391,8 +2397,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		tenant                    string
 		streams                   logproto.PushRequest
 		expectedLimitsCalls       uint64
-		expectedLimitsRequest     *logproto.ExceedsLimitsRequest
-		limitsResponse            *logproto.ExceedsLimitsResponse
+		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
+		limitsResponse            *limitsproto.ExceedsLimitsResponse
 		limitsResponseErr         error
 		expectedErr               string
 	}{{
@@ -2419,17 +2425,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
-			Results: []*logproto.ExceedsLimitsResult{},
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{},
 		},
 	}, {
 		name:                "max stream limit is exceeded",
@@ -2445,19 +2449,17 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
@@ -2475,19 +2477,17 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonExceedsRateLimit),
 			}},
 		},
 		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
@@ -2511,23 +2511,20 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}, {
-				StreamHash:             0x11561609feba8cf6,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+				StreamHash: 0x11561609feba8cf6,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {
@@ -2545,19 +2542,17 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {
@@ -2574,12 +2569,11 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
 		limitsResponseErr: errors.New("failed to check limits"),

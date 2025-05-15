@@ -17,8 +17,6 @@ const (
 // String returns the string representation of the UnaryOp.
 func (t UnaryOp) String() string {
 	switch t {
-	case UnaryOpInvalid:
-		return typeInvalid
 	case UnaryOpNot:
 		return "NOT"
 	case UnaryOpAbs:
@@ -42,6 +40,7 @@ const (
 	BinaryOpGte // Greater than or equal comparison (>=).
 	BinaryOpLt  // Less than comparison (<).
 	BinaryOpLte // Less than or equal comparison (<=).
+
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).
@@ -64,8 +63,6 @@ const (
 // String returns a human-readable representation of the binary operation kind.
 func (t BinaryOp) String() string {
 	switch t {
-	case BinaryOpInvalid:
-		return typeInvalid
 	case BinaryOpEq:
 		return "EQ"
 	case BinaryOpNeq:

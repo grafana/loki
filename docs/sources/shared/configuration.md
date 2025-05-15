@@ -110,6 +110,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [server: <server>]
 
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
   [node_name: <string> | default = "<hostname>"]
@@ -1214,9 +1218,9 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
 
-  # The TTL for the stream usage cache.
-  # CLI flag: -ingest-limits-frontend.partition-id-cache-ttl
-  [partition_id_cache_ttl: <duration> | default = 1m]
+  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
+  [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -2153,7 +2157,7 @@ The `compactor` block configures the compactor component, which compacts index s
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
-[working_directory: <string> | default = ""]
+[working_directory: <string> | default = "/var/loki/compactor"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
@@ -2605,6 +2609,10 @@ tenant_topic:
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
   [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -4261,7 +4269,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.max-join-retries
 [max_join_retries: <int> | default = 10]
 
-# If this node fails to join memberlist cluster, abort.
+# Abort if this node fails the fast memberlist cluster joining procedure at
+# startup. When enabled, it's guaranteed that other services, depending on
+# memberlist, have an updated view over the cluster state when they're started.
+# CLI flag: -memberlist.abort-if-fast-join-fails
+[abort_if_cluster_fast_join_fails: <boolean> | default = false]
+
+# Abort if this node fails to join memberlist cluster at startup. When enabled,
+# it's not guaranteed that other services are started only after the cluster
+# state has been successfully updated; use 'abort-if-fast-join-fails' instead.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = false]
 
@@ -4298,6 +4314,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # troubleshooting (two buffers). 0 to disable.
 # CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
+
+# Size of the buffered channel for the WatchPrefix function.
+# CLI flag: -memberlist.watch-prefix-buffer-size
+[watch_prefix_buffer_size: <int> | default = 128]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -4506,6 +4526,10 @@ engine:
   # Experimental: Enable next generation query engine for supported queries.
   # CLI flag: -querier.engine.enable-v2-engine
   [enable_v2_engine: <boolean> | default = false]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5545,6 +5569,23 @@ cluster_validation:
     # only together with server.cluster-validation.grpc.enabled
     # CLI flag: -server.cluster-validation.grpc.soft-validation
     [soft_validation: <boolean> | default = false]
+
+  http:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.http.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.http.enabled
+    # CLI flag: -server.cluster-validation.http.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+    # Comma-separated list of url paths that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-paths
+    [excluded_paths: <string> | default = ""]
 ```
 
 ### storage_config

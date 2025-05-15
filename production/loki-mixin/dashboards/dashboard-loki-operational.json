@@ -4041,7 +4041,7 @@
            "steppedLine": false,
            "targets": [
              {
-               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\".*backend.*\"}",
+               "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=~\".*backend.*\"}",
                "instant": false,
                "intervalFactor": 3,
                "legendFormat": "{{pod}}",

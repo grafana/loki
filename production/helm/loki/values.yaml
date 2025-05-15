@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.4.3
+    tag: 3.5.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -601,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.2
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -912,6 +912,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables to add to the admin-api pods
+  extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the admin-api pods
   extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
@@ -1023,7 +1025,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.27-alpine
+    tag: 1.28-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy
@@ -2955,6 +2957,8 @@ patternIngester:
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
   enabled: true
+  # -- Whether to enable the rules sidecar
+  sidecar: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add

@@ -15716,7 +15716,7 @@ type DescribeGroupsResponseGroup struct {
 	ErrorCode int16
 
 	// ErrorMessage is an optional message with more detail for the error code.
-	ErrorMessage *string
+	ErrorMessage *string // v6+
 
 	// Group is the id of this group.
 	Group string
@@ -15811,7 +15811,7 @@ func (v *DescribeGroupsResponse) AppendTo(dst []byte) []byte {
 				v := v.ErrorCode
 				dst = kbin.AppendInt16(dst, v)
 			}
-			{
+			if version >= 6 {
 				v := v.ErrorMessage
 				if isFlexible {
 					dst = kbin.AppendCompactNullableString(dst, v)
@@ -15975,7 +15975,7 @@ func (v *DescribeGroupsResponse) readFrom(src []byte, unsafe bool) error {
 				v := b.Int16()
 				s.ErrorCode = v
 			}
-			{
+			if version >= 6 {
 				var v *string
 				if isFlexible {
 					if unsafe {
@@ -46681,11 +46681,12 @@ type ConsumerGroupHeartbeatRequest struct {
 	UnknownTags Tags
 }
 
-func (*ConsumerGroupHeartbeatRequest) Key() int16                 { return 68 }
-func (*ConsumerGroupHeartbeatRequest) MaxVersion() int16          { return 1 }
-func (v *ConsumerGroupHeartbeatRequest) SetVersion(version int16) { v.Version = version }
-func (v *ConsumerGroupHeartbeatRequest) GetVersion() int16        { return v.Version }
-func (v *ConsumerGroupHeartbeatRequest) IsFlexible() bool         { return v.Version >= 0 }
+func (*ConsumerGroupHeartbeatRequest) Key() int16                   { return 68 }
+func (*ConsumerGroupHeartbeatRequest) MaxVersion() int16            { return 1 }
+func (v *ConsumerGroupHeartbeatRequest) SetVersion(version int16)   { v.Version = version }
+func (v *ConsumerGroupHeartbeatRequest) GetVersion() int16          { return v.Version }
+func (v *ConsumerGroupHeartbeatRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *ConsumerGroupHeartbeatRequest) IsGroupCoordinatorRequest() {}
 func (v *ConsumerGroupHeartbeatRequest) ResponseKind() Response {
 	r := &ConsumerGroupHeartbeatResponse{Version: v.Version}
 	r.Default()

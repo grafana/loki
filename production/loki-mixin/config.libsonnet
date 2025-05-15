@@ -6,6 +6,9 @@
     // Tags for dashboards.
     tags: ['loki'],
 
+    // The label used to differentiate between different Loki components
+    per_component_label: 'container',
+
     // The label used to differentiate between different application instances (i.e. 'pod' in a kubernetes install).
     per_instance_label: 'pod',
 
@@ -16,6 +19,9 @@
     per_cluster_label: 'cluster',
     per_namespace_label: 'namespace',
     per_job_label: 'job',
+
+    // The Log Formater that is used within the Dashboards (logfmt,json)
+    log_format: 'logfmt',
 
     // Grouping labels, to uniquely identify and group by {jobs, clusters}
     job_labels: [$._config.per_cluster_label, $._config.per_namespace_label, $._config.per_job_label],

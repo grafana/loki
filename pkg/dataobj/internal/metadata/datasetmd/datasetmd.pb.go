@@ -141,7 +141,11 @@ type ColumnInfo struct {
 	// Total compressed size of all pages in the column. Compressed size may
 	// match uncompressed size if no compression is used.
 	CompressedSize uint64 `protobuf:"varint,6,opt,name=compressed_size,json=compressedSize,proto3" json:"compressed_size,omitempty"`
-	// Byte offset from the start of the data object to the column's metadata.
+	// Byte offset relative to the start of the section to the column's metadata.
+	//
+	// In older versions of dataobjs, this was an absolute offset from the start
+	// of the data object. For backwards compatibility, interpret this offset as
+	// absolute if filemd.SectionLayout is unset for a section.
 	MetadataOffset uint64 `protobuf:"varint,7,opt,name=metadata_offset,json=metadataOffset,proto3" json:"metadata_offset,omitempty"`
 	// Size of the column's metadata in bytes.
 	MetadataSize uint64 `protobuf:"varint,8,opt,name=metadata_size,json=metadataSize,proto3" json:"metadata_size,omitempty"`
@@ -341,7 +345,11 @@ type PageInfo struct {
 	RowsCount uint64 `protobuf:"varint,4,opt,name=rows_count,json=rowsCount,proto3" json:"rows_count,omitempty"`
 	// Encoding type used for the page.
 	Encoding EncodingType `protobuf:"varint,5,opt,name=encoding,proto3,enum=dataobj.metadata.dataset.v1.EncodingType" json:"encoding,omitempty"`
-	// Byte offset from the start of the data object to the page's data.
+	// Byte offset relative to the start of the section to the page's data
+	//
+	// In older versions of dataobjs, this was an absolute offset from the start
+	// of the data object. For backwards compatibility, interpret this offset as
+	// absolute if filemd.SectionLayout is unset for a section.
 	DataOffset uint64 `protobuf:"varint,6,opt,name=data_offset,json=dataOffset,proto3" json:"data_offset,omitempty"`
 	// Size of the page's data in bytes.
 	DataSize uint64 `protobuf:"varint,7,opt,name=data_size,json=dataSize,proto3" json:"data_size,omitempty"`

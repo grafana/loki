@@ -142,14 +142,14 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 					Through: chk.Through,
 				})
 			}
-			series := Series{}
+			series := series{}
 			series.Reset(
 				[]byte(seriesID),
 				[]byte(userID),
 				labels.NewBuilder(t.chunks[userID][seriesID][0].Metric).Del(labels.MetricName).Labels(),
 			)
 			series.AppendChunks(chunks...)
-			if err := callback(series); err != nil {
+			if err := callback(&series); err != nil {
 				return err
 			}
 		}
@@ -201,9 +201,9 @@ func (t *table) Put(chk chunk.Chunk) {
 func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	var chunks []chunk.Chunk
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 
 	for seriesID := range t.chunks[userID] {
 		for _, chk := range t.chunks[userID][seriesID] {

@@ -283,11 +283,11 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
+		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
-		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
+		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
 		// TODO: cleanup/make independent of whether we write kafka as primary?
@@ -514,8 +514,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	defer d.waitSimulatedLatency(ctx, tenantID, start)
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
 }
 
@@ -526,6 +524,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if err != nil {
 		return nil, err
 	}
+
+	start := time.Now()
+	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
@@ -1252,28 +1253,6 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
-
-	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-	// However, unlike stream records, the distributor writes stream metadata
-	// records to one of a fixed number of partitions, the size of which is
-	// determined ahead of time. It does not use a ring. The reason for this
-	// is that we want to be able to scale components that consume metadata
-	// records independent of ingesters.
-	metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
-	metadata, err := kafka.EncodeStreamMetadata(
-		metadataPartitionID,
-		d.cfg.KafkaConfig.Topic,
-		tenant,
-		stream.HashKeyNoShard,
-		entriesSize,
-		structuredMetadataSize,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	records = append(records, metadata)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 

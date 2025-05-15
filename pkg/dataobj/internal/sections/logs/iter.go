@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -24,19 +23,22 @@ import (
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		sections, err := dec.Sections(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
 
-		logsDec := dec.LogsDecoder()
+		for _, section := range metadata.Sections {
+			typ, err := encoding.GetSectionType(metadata, section)
+			if err != nil {
+				return fmt.Errorf("getting section type: %w", err)
+			}
 
-		for _, section := range sections {
-			if section.Type != filemd.SECTION_TYPE_LOGS {
+			if typ != encoding.SectionTypeLogs {
 				continue
 			}
 
-			for result := range IterSection(ctx, logsDec, section) {
+			for result := range IterSection(ctx, dec.LogsDecoder(metadata, section)) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -47,19 +49,19 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	})
 }
 
-func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.SectionInfo) result.Seq[Record] {
+func IterSection(ctx context.Context, dec encoding.LogsDecoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx, section)
+		streamsColumns, err := dec.Columns(ctx)
 		if err != nil {
 			return err
 		}
 
-		dset := encoding.LogsDataset(dec, section)
+		dset := encoding.LogsDataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
