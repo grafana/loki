@@ -1,4 +1,4 @@
-package encoding
+package logs
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// LogsDataset implements returns a [dataset.Dataset] from a [LogsDecoder].
-func LogsDataset(dec LogsDecoder) dataset.Dataset {
+// Dataset returns a [dataset.Dataset] from a [Decoder].
+func Dataset(dec *Decoder) dataset.Dataset {
 	return &logsDataset{dec: dec}
 }
 
 type logsDataset struct {
-	dec LogsDecoder
+	dec *Decoder
 }
 
 func (ds *logsDataset) ListColumns(ctx context.Context) result.Seq[dataset.Column] {
@@ -33,7 +33,6 @@ func (ds *logsDataset) ListColumns(ctx context.Context) result.Seq[dataset.Colum
 
 		return err
 	})
-
 }
 
 func (ds *logsDataset) ListPages(ctx context.Context, columns []dataset.Column) result.Seq[dataset.Pages] {
@@ -91,7 +90,7 @@ func (ds *logsDataset) ReadPages(ctx context.Context, pages []dataset.Page) resu
 }
 
 type logsDatasetColumn struct {
-	dec  LogsDecoder
+	dec  *Decoder
 	desc *logsmd.ColumnDesc
 
 	info *dataset.ColumnInfo
@@ -137,7 +136,7 @@ func (col *logsDatasetColumn) ListPages(ctx context.Context) result.Seq[dataset.
 }
 
 type logsDatasetPage struct {
-	dec  LogsDecoder
+	dec  *Decoder
 	desc *logsmd.PageDesc
 
 	info *dataset.PageInfo

@@ -330,6 +330,9 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 		case encoding.SectionTypeStreams:
 			dec, _ := streams.NewDecoder(sr)
 			return b.metrics.streams.Observe(context.Background(), dec)
+		case encoding.SectionTypeLogs:
+			dec, _ := logs.NewDecoder(sr)
+			return b.metrics.logs.Observe(context.Background(), dec)
 		}
 
 		return nil

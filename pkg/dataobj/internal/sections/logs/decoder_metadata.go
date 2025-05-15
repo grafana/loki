@@ -1,0 +1,34 @@
+package logs
+
+import (
+	"fmt"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+)
+
+// decodeLogsMetadata decodes logs section metadata from r.
+func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
+	gotVersion, err := streamio.ReadUvarint(r)
+	if err != nil {
+		return nil, fmt.Errorf("read logs section format version: %w", err)
+	} else if gotVersion != encoding.StreamsFormatVersion {
+		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, encoding.StreamsFormatVersion)
+	}
+
+	var md logsmd.Metadata
+	if err := encoding.DecodeProto(r, &md); err != nil {
+		return nil, fmt.Errorf("streams section metadata: %w", err)
+	}
+	return &md, nil
+}
+
+// decodeLogsColumnMetadata decodes logs column metadata from r.
+func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
+	var metadata logsmd.ColumnMetadata
+	if err := encoding.DecodeProto(r, &metadata); err != nil {
+		return nil, fmt.Errorf("streams column metadata: %w", err)
+	}
+	return &metadata, nil
+}

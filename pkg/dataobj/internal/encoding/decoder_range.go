@@ -1,18 +1,13 @@
 package encoding
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
 // rangeReader is an interface that can read a range of bytes from an object.
@@ -81,10 +76,6 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 
 func (rd *rangeDecoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo) SectionReader {
 	return &rangeSectionReader{rr: rd.r, md: metadata, sec: section}
-}
-
-func (rd *rangeDecoder) LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder {
-	return &rangeLogsDecoder{rr: rd.r, md: metadata, sec: section}
 }
 
 type rangeSectionReader struct {
@@ -190,173 +181,4 @@ func findDataOffset(section *filemd.SectionInfo) (uint64, error) {
 		return section.Layout.Data.Offset, nil
 	}
 	return 0, nil
-}
-
-// readAndClose reads exactly size bytes from rc and then closes it.
-func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
-	defer rc.Close()
-
-	data := make([]byte, size)
-	if _, err := io.ReadFull(rc, data); err != nil {
-		return nil, fmt.Errorf("read column data: %w", err)
-	}
-	return data, nil
-}
-
-type rangeLogsDecoder struct {
-	// TODO(rfratto): restrict sections from reading outside of their regions.
-
-	rr  rangeReader // Reader for absolute ranges within the file.
-	md  *filemd.Metadata
-	sec *filemd.SectionInfo
-}
-
-func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
-	typ, err := GetSectionType(rd.md, rd.sec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read section type: %w", err)
-	} else if got, want := typ, SectionTypeLogs; got != want {
-		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
-	}
-
-	metadataRegion, err := findMetadataRegion(rd.sec)
-	if err != nil {
-		return nil, err
-	} else if metadataRegion == nil {
-		return nil, fmt.Errorf("section is missing metadata")
-	}
-
-	rc, err := rd.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
-	if err != nil {
-		return nil, fmt.Errorf("reading logs section metadata: %w", err)
-	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
-
-	md, err := decodeLogsMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Columns, nil
-}
-
-func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) result.Seq[[]*logsmd.PageDesc] {
-	return result.Iter(func(yield func([]*logsmd.PageDesc) bool) error {
-		baseOffset, err := findDataOffset(rd.sec)
-		if err != nil {
-			return err
-		}
-
-		results := make([][]*logsmd.PageDesc, len(columns))
-
-		columnInfo := func(c *logsmd.ColumnDesc) (uint64, uint64) {
-			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
-		}
-
-		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
-			if len(window) == 0 {
-				continue
-			}
-
-			var (
-				windowOffset = window.Start().GetInfo().MetadataOffset
-				windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
-			)
-
-			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
-			if err != nil {
-				return fmt.Errorf("reading column data: %w", err)
-			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
-				return fmt.Errorf("read page data: %w", err)
-			}
-
-			for _, wp := range window {
-				// Find the slice in the data for this column.
-				var (
-					columnOffset = wp.Data.GetInfo().MetadataOffset
-					dataOffset   = columnOffset - windowOffset
-				)
-
-				r := bytes.NewReader(data[dataOffset : dataOffset+wp.Data.GetInfo().MetadataSize])
-
-				md, err := decodeLogsColumnMetadata(r)
-				if err != nil {
-					return err
-				}
-
-				// wp.Index is the position of the column in the original pages slice;
-				// this retains the proper order of data in results.
-				results[wp.Index] = md.Pages
-			}
-		}
-
-		for _, data := range results {
-			if !yield(data) {
-				return nil
-			}
-		}
-
-		return nil
-	})
-}
-
-func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) result.Seq[dataset.PageData] {
-	return result.Iter(func(yield func(dataset.PageData) bool) error {
-		baseOffset, err := findDataOffset(rd.sec)
-		if err != nil {
-			return err
-		}
-
-		results := make([]dataset.PageData, len(pages))
-
-		pageInfo := func(p *logsmd.PageDesc) (uint64, uint64) {
-			return p.GetInfo().DataOffset, p.GetInfo().DataSize
-		}
-
-		// TODO(rfratto): If there are many windows, it may make sense to read them
-		// in parallel.
-		for window := range windowing.Iter(pages, pageInfo, windowing.S3WindowSize) {
-			if len(window) == 0 {
-				continue
-			}
-
-			var (
-				windowOffset = window.Start().GetInfo().DataOffset
-				windowSize   = (window.End().GetInfo().DataOffset + window.End().GetInfo().DataSize) - windowOffset
-			)
-
-			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
-			if err != nil {
-				return fmt.Errorf("reading page data: %w", err)
-			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
-				return fmt.Errorf("read page data: %w", err)
-			}
-
-			for _, wp := range window {
-				// Find the slice in the data for this page.
-				var (
-					pageOffset = wp.Data.GetInfo().DataOffset
-					dataOffset = pageOffset - windowOffset
-				)
-
-				// wp.Index is the position of the page in the original pages slice;
-				// this retains the proper order of data in results.
-				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
-			}
-		}
-
-		for _, data := range results {
-			if !yield(data) {
-				return nil
-			}
-		}
-
-		return nil
-	})
 }

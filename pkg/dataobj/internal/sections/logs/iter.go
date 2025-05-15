@@ -29,7 +29,9 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 		}
 
 		for _, section := range metadata.Sections {
-			typ, err := encoding.GetSectionType(metadata, section)
+			sectionReader := dec.SectionReader(metadata, section)
+
+			typ, err := sectionReader.Type()
 			if err != nil {
 				return fmt.Errorf("getting section type: %w", err)
 			}
@@ -38,7 +40,11 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.LogsDecoder(metadata, section)) {
+			// We ignore the error here because we know the section is a streams
+			// section.
+			logsDec, _ := NewDecoder(sectionReader)
+
+			for result := range IterSection(ctx, logsDec) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -49,7 +55,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	})
 }
 
-func IterSection(ctx context.Context, dec encoding.LogsDecoder) result.Seq[Record] {
+func IterSection(ctx context.Context, dec *Decoder) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
@@ -61,7 +67,7 @@ func IterSection(ctx context.Context, dec encoding.LogsDecoder) result.Seq[Recor
 			return err
 		}
 
-		dset := encoding.LogsDataset(dec)
+		dset := Dataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {

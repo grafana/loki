@@ -14,10 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 )
 
@@ -162,7 +162,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 
 		switch typ {
 		case encoding.SectionTypeLogs:
-			sectionMeta, err = inspectLogsSection(ctx, reader, metadata, section)
+			sectionMeta, err = inspectLogsSection(ctx, sectionReader)
 			if err != nil {
 				return FileMetadata{
 					Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
@@ -185,12 +185,16 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	return result
 }
 
-func inspectLogsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
+func inspectLogsSection(ctx context.Context, reader encoding.SectionReader) (SectionMetadata, error) {
 	meta := SectionMetadata{
 		Type: encoding.SectionTypeLogs.String(),
 	}
 
-	dec := reader.LogsDecoder(metadata, section)
+	dec, err := logs.NewDecoder(reader)
+	if err != nil {
+		return meta, err
+	}
+
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err

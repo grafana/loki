@@ -168,13 +168,17 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	dec := r.obj.dec.LogsDecoder(metadata, sec)
+	dec, err := logs.NewDecoder(r.obj.dec.SectionReader(metadata, sec))
+	if err != nil {
+		return fmt.Errorf("creating logs decoder: %w", err)
+	}
+
 	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := encoding.LogsDataset(dec)
+	dset := logs.Dataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

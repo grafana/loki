@@ -4,10 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 // Decoders. To cleanly separate the APIs per section, section-specific
@@ -24,13 +21,6 @@ type (
 		// Sections where [filemd.SectionLayout] are defined are prevented from
 		// reading outside of their layout.
 		SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo) SectionReader
-
-		// LogsDecoder returns a decoder for a logs section. The section is not
-		// checked for type until the decoder is used.
-		//
-		// Sections where [filemd.SectionLayout] are defined are prevented from
-		// reading outside of their layout.
-		LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder
 	}
 
 	// A SectionReader allows regions of a section to be read for decoding.
@@ -57,24 +47,5 @@ type (
 		// Metadata returns an error if the read fails. The returned reader is only
 		// valid as long as the provided ctx is not canceled.
 		Metadata(ctx context.Context) (io.ReadCloser, error)
-	}
-
-	// LogsDecoder supports decoding data within a logs section.
-	LogsDecoder interface {
-		// Columns describes the set of columns in the provided section. Columns
-		// returns an error if the section associated with the LogsDecoder is not a
-		// valid logs section.
-		Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error)
-
-		// Pages retrieves the set of pages for the provided columns. The order of
-		// page lists emitted by the sequence matches the order of columns
-		// provided: the first page list corresponds to the first column, and so
-		// on.
-		Pages(ctx context.Context, columns []*logsmd.ColumnDesc) result.Seq[[]*logsmd.PageDesc]
-
-		// ReadPages reads the provided set of pages, iterating over their data
-		// matching the argument order. If an error is encountered while retrieving
-		// pages, an error is emitted and iteration stops.
-		ReadPages(ctx context.Context, pages []*logsmd.PageDesc) result.Seq[dataset.PageData]
 	}
 )

@@ -9,7 +9,7 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 )
 
@@ -33,7 +33,8 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 
 		switch typ {
 		case encoding.SectionTypeLogs:
-			printLogsInfo(reader, metadata, section)
+			logsDec, _ := logs.NewDecoder(sectionReader)
+			printLogsInfo(reader, logsDec)
 		case encoding.SectionTypeStreams:
 			streamsDec, _ := streams.NewDecoder(sectionReader)
 			printStreamInfo(reader, streamsDec)
@@ -60,9 +61,8 @@ func printStreamInfo(reader encoding.Decoder, dec *streams.Decoder) {
 	fmt.Println("")
 }
 
-func printLogsInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
+func printLogsInfo(reader encoding.Decoder, dec *logs.Decoder) {
 	fmt.Println("---- Logs Section ----")
-	dec := reader.LogsDecoder(metadata, section)
 	cols, err := dec.Columns(context.Background())
 	if err != nil {
 		log.Printf("failed to read columns for logs section: %v", err)
