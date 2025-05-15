@@ -142,9 +142,9 @@ func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
 // MetadataSize returns an estimate of the current size of the metadata for the
 // data object. MetadataSize does not include the size of data appended or the
 // currently open stream.
-func (enc *Encoder) MetadataSize() int { return elementMetadataSize(enc) }
+func (enc *Encoder) MetadataSize() int { return ElementMetadataSize(enc) }
 
-func (enc *Encoder) metadata() proto.Message {
+func (enc *Encoder) Metadata() proto.Message {
 	sections := enc.sections[:len(enc.sections):cap(enc.sections)]
 	return &filemd.Metadata{
 		Sections: sections,
@@ -167,7 +167,7 @@ func (enc *Encoder) Flush() error {
 	// The file metadata should start with the version.
 	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {
 		return err
-	} else if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
 

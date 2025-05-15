@@ -1,39 +1,42 @@
-package encoding
+package streams
 
 import (
 	"bytes"
+	"errors"
 	"math"
 
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
-// StreamsEncoder encodes an individual streams section in a data object.
-// StreamsEncoder are created by [Encoder]s.
+var (
+	// errElementNoExist is used when a child element tries to notify its parent
+	// of it closing but the parent doesn't have a child open. This would
+	// indicate a bug in the encoder so it's not exposed to callers.
+	errElementNoExist = errors.New("open element does not exist")
+)
+
+// encoder encodes an individual streams section in a data object.
 //
-// The zero value of StreamsEncoder is ready for use.
-type StreamsEncoder struct {
+// The zero value of encoder is ready for use.
+type encoder struct {
 	data *bytes.Buffer
 
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
 }
 
-// NewStreamsEncoder creates a new StreamsEncoder.
-func NewStreamsEncoder() *StreamsEncoder {
-	return &StreamsEncoder{}
-}
-
 // OpenColumn opens a new column in the streams section. OpenColumn fails if
 // there is another open column.
-func (enc *StreamsEncoder) OpenColumn(columnType streamsmd.ColumnType, info *dataset.ColumnInfo) (*StreamsColumnEncoder, error) {
+func (enc *encoder) OpenColumn(columnType streamsmd.ColumnType, info *dataset.ColumnInfo) (*columnEncoder, error) {
 	if enc.curColumn != nil {
-		return nil, ErrElementExist
+		return nil, encoding.ErrElementExist
 	}
 
 	// MetadataOffset and MetadataSize aren't available until the column is
@@ -56,11 +59,11 @@ func (enc *StreamsEncoder) OpenColumn(columnType streamsmd.ColumnType, info *dat
 		},
 	}
 
-	return newStreamsColumnEncoder(enc, enc.size()), nil
+	return newColumnEncoder(enc, enc.size()), nil
 }
 
 // size returns the current number of buffered data bytes.
-func (enc *StreamsEncoder) size() int {
+func (enc *encoder) size() int {
 	if enc.data == nil {
 		return 0
 	}
@@ -69,9 +72,9 @@ func (enc *StreamsEncoder) size() int {
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // stream. MetadataSize includes an estimate for the currently open element.
-func (enc *StreamsEncoder) MetadataSize() int { return elementMetadataSize(enc) }
+func (enc *encoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
 
-func (enc *StreamsEncoder) metadata() proto.Message {
+func (enc *encoder) Metadata() proto.Message {
 	columns := enc.columns[:len(enc.columns):cap(enc.columns)]
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
@@ -79,16 +82,16 @@ func (enc *StreamsEncoder) metadata() proto.Message {
 	return &streamsmd.Metadata{Columns: columns}
 }
 
-// EncodeTo writes the section to the given [Encoder]. EncodeTo returns an
-// error if there is an open column.
+// EncodeTo writes the section to the given [encoding.Encoder]. EncodeTo
+// returns an error if there is an open column.
 //
 // EncodeTo returns 0, nil if there is no data to write.
 //
-// After EncodeTo is called successfully, the StreamsEncoder is reset to a
+// After EncodeTo is called successfully, the encoder is reset to a
 // fresh state and can be reused.
-func (enc *StreamsEncoder) EncodeTo(dst *Encoder) (int64, error) {
+func (enc *encoder) EncodeTo(dst *encoding.Encoder) (int64, error) {
 	if enc.curColumn != nil {
-		return 0, ErrElementExist
+		return 0, encoding.ErrElementExist
 	}
 	defer enc.Reset()
 
@@ -100,19 +103,19 @@ func (enc *StreamsEncoder) EncodeTo(dst *Encoder) (int64, error) {
 	defer bufpool.PutUnsized(metadataBuffer)
 
 	// The section metadata should start with its version.
-	if err := streamio.WriteUvarint(metadataBuffer, streamsFormatVersion); err != nil {
+	if err := streamio.WriteUvarint(metadataBuffer, encoding.StreamsFormatVersion); err != nil {
 		return 0, err
-	} else if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return 0, err
 	}
 
-	dst.AppendSection(SectionTypeStreams, enc.data.Bytes(), metadataBuffer.Bytes())
+	dst.AppendSection(encoding.SectionTypeStreams, enc.data.Bytes(), metadataBuffer.Bytes())
 	return int64(len(enc.data.Bytes()) + len(metadataBuffer.Bytes())), nil
 }
 
-// Reset resets the StreamsEncoder to a fresh state, discarding any in-progress
+// Reset resets the encoder to a fresh state, discarding any in-progress
 // columns.
-func (enc *StreamsEncoder) Reset() {
+func (enc *encoder) Reset() {
 	bufpool.PutUnsized(enc.data)
 	enc.data = nil
 	enc.curColumn = nil
@@ -121,7 +124,7 @@ func (enc *StreamsEncoder) Reset() {
 // append adds data and metadata to enc. append must only be called from child
 // elements on Close and Discard. Discard calls must pass nil for both data and
 // metadata to denote a discard.
-func (enc *StreamsEncoder) append(data, metadata []byte) error {
+func (enc *encoder) append(data, metadata []byte) error {
 	if enc.curColumn == nil {
 		return errElementNoExist
 	}
@@ -149,13 +152,13 @@ func (enc *StreamsEncoder) append(data, metadata []byte) error {
 	return nil
 }
 
-// StreamsColumnEncoder encodes an individual column in a streams section.
-// StreamsColumnEncoder are created by [StreamsEncoder].
-type StreamsColumnEncoder struct {
-	parent *StreamsEncoder
+// columnEncoder encodes an individual column in a streams section.
+// columnEncoder are created by [encoder].
+type columnEncoder struct {
+	parent *encoder
 
 	startOffset int  // Byte offset in the section where the column starts.
-	closed      bool // true if StreamsColumnEncoder has been closed.
+	closed      bool // true if columnEncoder has been closed.
 
 	data        *bytes.Buffer // All page data.
 	pageHeaders []*streamsmd.PageDesc
@@ -164,8 +167,8 @@ type StreamsColumnEncoder struct {
 	totalPageSize int                // Total size of all pages.
 }
 
-func newStreamsColumnEncoder(parent *StreamsEncoder, offset int) *StreamsColumnEncoder {
-	return &StreamsColumnEncoder{
+func newColumnEncoder(parent *encoder, offset int) *columnEncoder {
+	return &columnEncoder{
 		parent:      parent,
 		startOffset: offset,
 
@@ -175,9 +178,9 @@ func newStreamsColumnEncoder(parent *StreamsEncoder, offset int) *StreamsColumnE
 
 // AppendPage appends a new [dataset.MemPage] to the column. AppendPage fails if
 // the column has been closed.
-func (enc *StreamsColumnEncoder) AppendPage(page *dataset.MemPage) error {
+func (enc *columnEncoder) AppendPage(page *dataset.MemPage) error {
 	if enc.closed {
-		return ErrClosed
+		return encoding.ErrClosed
 	}
 
 	// It's possible the caller can pass an incorrect value for UncompressedSize
@@ -206,17 +209,17 @@ func (enc *StreamsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // column. MetadataSize does not include the size of data appended.
-func (enc *StreamsColumnEncoder) MetadataSize() int { return elementMetadataSize(enc) }
+func (enc *columnEncoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
 
-func (enc *StreamsColumnEncoder) metadata() proto.Message {
+func (enc *columnEncoder) Metadata() proto.Message {
 	return &streamsmd.ColumnMetadata{Pages: enc.pageHeaders}
 }
 
 // Commit closes the column, flushing all data to the parent element. After
-// Commit is called, the StreamsColumnEncoder can no longer be modified.
-func (enc *StreamsColumnEncoder) Commit() error {
+// Commit is called, the columnEncoder can no longer be modified.
+func (enc *columnEncoder) Commit() error {
 	if enc.closed {
-		return ErrClosed
+		return encoding.ErrClosed
 	}
 	enc.closed = true
 
@@ -237,17 +240,17 @@ func (enc *StreamsColumnEncoder) Commit() error {
 	metadataBuffer := bufpool.GetUnsized()
 	defer bufpool.PutUnsized(metadataBuffer)
 
-	if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
+	if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
 	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
 }
 
 // Discard discards the column, discarding any data written to it. After
-// Discard is called, the StreamsColumnEncoder can no longer be modified.
-func (enc *StreamsColumnEncoder) Discard() error {
+// Discard is called, the columnEncoder can no longer be modified.
+func (enc *columnEncoder) Discard() error {
 	if enc.closed {
-		return ErrClosed
+		return encoding.ErrClosed
 	}
 	enc.closed = true
 

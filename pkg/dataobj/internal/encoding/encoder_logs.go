@@ -67,9 +67,9 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // section. MetadataSize includes an estimate for the currently open element.
-func (enc *LogsEncoder) MetadataSize() int { return elementMetadataSize(enc) }
+func (enc *LogsEncoder) MetadataSize() int { return ElementMetadataSize(enc) }
 
-func (enc *LogsEncoder) metadata() proto.Message {
+func (enc *LogsEncoder) Metadata() proto.Message {
 	columns := enc.columns[:len(enc.columns):cap(enc.columns)]
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
@@ -102,7 +102,7 @@ func (enc *LogsEncoder) Commit() error {
 	// The section metadata should start with its version.
 	if err := streamio.WriteUvarint(metadataBuffer, logsFormatVersion); err != nil {
 		return err
-	} else if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
 	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
@@ -211,9 +211,9 @@ func (enc *LogsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // column. MetadataSize does not include the size of data appended.
-func (enc *LogsColumnEncoder) MetadataSize() int { return elementMetadataSize(enc) }
+func (enc *LogsColumnEncoder) MetadataSize() int { return ElementMetadataSize(enc) }
 
-func (enc *LogsColumnEncoder) metadata() proto.Message {
+func (enc *LogsColumnEncoder) Metadata() proto.Message {
 	return &logsmd.ColumnMetadata{Pages: enc.pageHeaders}
 }
 
@@ -242,7 +242,7 @@ func (enc *LogsColumnEncoder) Commit() error {
 	metadataBuffer := bufpool.GetUnsized()
 	defer bufpool.PutUnsized(metadataBuffer)
 
-	if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
+	if err := ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
 

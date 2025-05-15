@@ -54,8 +54,8 @@ func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read streams section format version: %w", err)
-	} else if gotVersion != streamsFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
+	} else if gotVersion != StreamsFormatVersion {
+		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, StreamsFormatVersion)
 	}
 
 	var md streamsmd.Metadata
@@ -79,8 +79,8 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read logs section format version: %w", err)
-	} else if gotVersion != streamsFormatVersion {
-		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
+	} else if gotVersion != StreamsFormatVersion {
+		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, StreamsFormatVersion)
 	}
 
 	var md logsmd.Metadata

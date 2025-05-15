@@ -8,20 +8,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
-type element interface {
-	metadata() proto.Message
+type Element interface {
+	Metadata() proto.Message
 }
 
-func elementMetadataSize(e element) int {
-	return proto.Size(e.metadata())
+func ElementMetadataSize(e Element) int {
+	return proto.Size(e.Metadata())
 }
 
-func elementMetadataWrite(e element, w streamio.Writer) error {
+func ElementMetadataWrite(e Element, w streamio.Writer) error {
 	buf := protoBufferPool.Get().(*proto.Buffer)
 	buf.Reset()
 	defer protoBufferPool.Put(buf)
 
-	if err := buf.Marshal(e.metadata()); err != nil {
+	if err := buf.Marshal(e.Metadata()); err != nil {
 		return err
 	}
 

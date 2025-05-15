@@ -300,16 +300,16 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
-	streamsEnc := encoding.NewStreamsEncoder()
+	var streamsEnc encoder
 	defer streamsEnc.Reset()
 
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
-		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
-		errs = append(errs, encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
+		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
+		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
+		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
+		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -320,7 +320,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		// of rows as the other columns (which is the number of streams).
 		labelBuilder.Backfill(len(s.ordered))
 
-		err := encodeColumn(streamsEnc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
+		err := encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
@@ -342,7 +342,7 @@ func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 	})
 }
 
-func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
+func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing %s column: %w", columnType, err)

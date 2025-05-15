@@ -3,137 +3,15 @@ package encoding_test
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
-
-func TestStreams(t *testing.T) {
-	type Country struct {
-		Name    string
-		Capital string
-	}
-
-	countries := []Country{
-		{"India", "New Delhi"},
-		{"USA", "Washington D.C."},
-		{"UK", "London"},
-		{"France", "Paris"},
-		{"Germany", "Berlin"},
-	}
-
-	var buf bytes.Buffer
-
-	t.Run("Encode", func(t *testing.T) {
-		nameBuilder, err := dataset.NewColumnBuilder("name", dataset.BuilderOptions{
-			Value:       datasetmd.VALUE_TYPE_BYTE_ARRAY,
-			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-			Compression: datasetmd.COMPRESSION_TYPE_NONE,
-		})
-		require.NoError(t, err)
-
-		capitalBuilder, err := dataset.NewColumnBuilder("capital", dataset.BuilderOptions{
-			Value:       datasetmd.VALUE_TYPE_BYTE_ARRAY,
-			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-			Compression: datasetmd.COMPRESSION_TYPE_NONE,
-		})
-		require.NoError(t, err)
-
-		for i, c := range countries {
-			require.NoError(t, nameBuilder.Append(i, dataset.ByteArrayValue([]byte(c.Name))))
-			require.NoError(t, capitalBuilder.Append(i, dataset.ByteArrayValue([]byte(c.Capital))))
-		}
-
-		nameColumn, err := nameBuilder.Flush()
-		require.NoError(t, err)
-		capitalColumn, err := capitalBuilder.Flush()
-		require.NoError(t, err)
-
-		enc := encoding.NewEncoder(&buf)
-
-		streamsEnc := encoding.NewStreamsEncoder()
-		colEnc, err := streamsEnc.OpenColumn(streamsmd.COLUMN_TYPE_LABEL, &nameColumn.Info)
-		require.NoError(t, err)
-		for _, page := range nameColumn.Pages {
-			require.NoError(t, colEnc.AppendPage(page))
-		}
-		require.NoError(t, colEnc.Commit())
-
-		colEnc, err = streamsEnc.OpenColumn(streamsmd.COLUMN_TYPE_LABEL, &capitalColumn.Info)
-		require.NoError(t, err)
-		for _, page := range capitalColumn.Pages {
-			require.NoError(t, colEnc.AppendPage(page))
-		}
-		require.NoError(t, colEnc.Commit())
-
-		_, err = streamsEnc.EncodeTo(enc)
-		require.NoError(t, err)
-		require.NoError(t, enc.Flush())
-	})
-
-	t.Run("Metrics", func(t *testing.T) {
-		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-
-		metrics := encoding.NewMetrics()
-		require.NoError(t, metrics.Register(prometheus.NewRegistry()))
-		require.NoError(t, metrics.Observe(context.Background(), dec))
-	})
-
-	t.Run("Decode", func(t *testing.T) {
-		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		metadata, err := dec.Metadata(context.TODO())
-		require.NoError(t, err)
-		require.Len(t, metadata.Sections, 1)
-
-		typ, err := encoding.GetSectionType(metadata, metadata.Sections[0])
-		require.NoError(t, err)
-		require.Equal(t, encoding.SectionTypeStreams, typ)
-
-		dset := encoding.StreamsDataset(dec.StreamsDecoder(metadata, metadata.Sections[0]))
-
-		columns, err := result.Collect(dset.ListColumns(context.Background()))
-		require.NoError(t, err)
-
-		var actual []Country
-
-		r := dataset.NewReader(dataset.ReaderOptions{
-			Dataset: dset,
-			Columns: columns,
-		})
-
-		buf := make([]dataset.Row, 1024)
-		for {
-			n, err := r.Read(context.Background(), buf)
-			if err != nil && !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			} else if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-
-			for _, row := range buf[:n] {
-				require.Len(t, row.Values, 2)
-				require.Equal(t, len(actual), row.Index)
-
-				actual = append(actual, Country{
-					Name:    string(row.Values[0].ByteArray()),
-					Capital: string(row.Values[1].ByteArray()),
-				})
-			}
-		}
-
-		require.Equal(t, countries, actual)
-	})
-}
 
 func TestLogs(t *testing.T) {
 	var (
