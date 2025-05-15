@@ -13,8 +13,8 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read logs section format version: %w", err)
-	} else if gotVersion != encoding.StreamsFormatVersion {
-		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, encoding.StreamsFormatVersion)
+	} else if gotVersion != logsFormatVersion {
+		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, logsFormatVersion)
 	}
 
 	var md logsmd.Metadata

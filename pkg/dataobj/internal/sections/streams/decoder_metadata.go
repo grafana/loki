@@ -13,8 +13,8 @@ func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
 		return nil, fmt.Errorf("read streams section format version: %w", err)
-	} else if gotVersion != encoding.StreamsFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, encoding.StreamsFormatVersion)
+	} else if gotVersion != streamsFormatVersion {
+		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
 	}
 
 	var md streamsmd.Metadata

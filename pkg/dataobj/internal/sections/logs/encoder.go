@@ -15,6 +15,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
+const (
+	logsFormatVersion = 0x1
+)
+
 var (
 	// errElementNoExist is used when a child element tries to notify its parent
 	// of it closing but the parent doesn't have a child open. This would
@@ -103,7 +107,7 @@ func (enc *encoder) EncodeTo(dst *encoding.Encoder) (int64, error) {
 	defer bufpool.PutUnsized(metadataBuffer)
 
 	// The section metadata should start with its version.
-	if err := streamio.WriteUvarint(metadataBuffer, encoding.LogsFormatVersion); err != nil {
+	if err := streamio.WriteUvarint(metadataBuffer, logsFormatVersion); err != nil {
 		return 0, err
 	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return 0, err

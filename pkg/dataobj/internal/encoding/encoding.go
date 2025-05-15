@@ -8,9 +8,7 @@ var (
 )
 
 const (
-	fileFormatVersion    = 0x1
-	StreamsFormatVersion = 0x1
-	LogsFormatVersion    = 0x1
+	fileFormatVersion = 0x1
 )
 
 var (
