@@ -9,10 +9,11 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
-// memory as [bytesBufferPool] is filled with buffers with increasing capacity:
+// memory as [bufpool] is filled with buffers with increasing capacity:
 // each encoding pass has a different number of elements, shuffling which
 // elements of the hierarchy get which pooled buffers.
 //
@@ -22,11 +23,10 @@ import (
 // footprint. Given enough time, all buffers in the pool will have a large
 // capacity.
 //
-// The bufpool package provides a solution to this (bucketing pools by
-// capacity), but using bufpool properly requires knowing how many bytes are
-// needed.
+// The bufpool package provides bucketed pools as a solution to, but this
+// requires knowing how many bytes are needed.
 //
-// Encoder can eventually be moved to the bufpool package by calculating a
+// Encoder can eventually be moved to the bucketed pools by calculating a
 // rolling maximum of encoding size used per element across usages of an
 // Encoder instance. This would then allow larger buffers to be eventually
 // reclaimed regardless of how often encoding is done.
@@ -56,8 +56,7 @@ type Encoder struct {
 // NewEncoder creates a new Encoder which writes a data object to the provided
 // writer.
 func NewEncoder(w streamio.Writer) *Encoder {
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
+	buf := bufpool.GetUnsized()
 
 	return &Encoder{
 		w: w,
@@ -162,9 +161,8 @@ func (enc *Encoder) Flush() error {
 		return ErrElementExist
 	}
 
-	metadataBuffer := bytesBufferPool.Get().(*bytes.Buffer)
-	metadataBuffer.Reset()
-	defer bytesBufferPool.Put(metadataBuffer)
+	metadataBuffer := bufpool.GetUnsized()
+	defer bufpool.PutUnsized(metadataBuffer)
 
 	// The file metadata should start with the version.
 	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {

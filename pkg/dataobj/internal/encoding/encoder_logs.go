@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // LogsEncoder encodes an individual logs section in a data object.
@@ -25,13 +26,10 @@ type LogsEncoder struct {
 }
 
 func newLogsEncoder(parent *Encoder) *LogsEncoder {
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-
 	return &LogsEncoder{
 		parent: parent,
 
-		data: buf,
+		data: bufpool.GetUnsized(),
 	}
 }
 
@@ -91,16 +89,15 @@ func (enc *LogsEncoder) Commit() error {
 	}
 	enc.closed = true
 
-	defer bytesBufferPool.Put(enc.data)
+	defer bufpool.PutUnsized(enc.data)
 
 	if len(enc.columns) == 0 {
 		// No data was written; discard.
 		return enc.parent.append(nil, nil)
 	}
 
-	metadataBuffer := bytesBufferPool.Get().(*bytes.Buffer)
-	metadataBuffer.Reset()
-	defer bytesBufferPool.Put(metadataBuffer)
+	metadataBuffer := bufpool.GetUnsized()
+	defer bufpool.PutUnsized(metadataBuffer)
 
 	// The section metadata should start with its version.
 	if err := streamio.WriteUvarint(metadataBuffer, logsFormatVersion); err != nil {
@@ -123,7 +120,7 @@ func (enc *LogsEncoder) Discard() error {
 	}
 	enc.closed = true
 
-	defer bytesBufferPool.Put(enc.data)
+	defer bufpool.PutUnsized(enc.data)
 
 	return enc.parent.append(nil, nil)
 }
@@ -173,14 +170,11 @@ type LogsColumnEncoder struct {
 }
 
 func newLogsColumnEncoder(parent *LogsEncoder, offset int) *LogsColumnEncoder {
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-
 	return &LogsColumnEncoder{
 		parent:      parent,
 		startOffset: offset,
 
-		data: buf,
+		data: bufpool.GetUnsized(),
 	}
 }
 
@@ -231,7 +225,7 @@ func (enc *LogsColumnEncoder) Commit() error {
 	}
 	enc.closed = true
 
-	defer bytesBufferPool.Put(enc.data)
+	defer bufpool.PutUnsized(enc.data)
 
 	if len(enc.pageHeaders) == 0 {
 		// No data was written; discard.
@@ -245,9 +239,8 @@ func (enc *LogsColumnEncoder) Commit() error {
 		_, _ = enc.data.Write(p.Data) // bytes.Buffer.Write never fails.
 	}
 
-	metadataBuffer := bytesBufferPool.Get().(*bytes.Buffer)
-	metadataBuffer.Reset()
-	defer bytesBufferPool.Put(metadataBuffer)
+	metadataBuffer := bufpool.GetUnsized()
+	defer bufpool.PutUnsized(metadataBuffer)
 
 	if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
@@ -264,7 +257,7 @@ func (enc *LogsColumnEncoder) Discard() error {
 	}
 	enc.closed = true
 
-	defer bytesBufferPool.Put(enc.data)
+	defer bufpool.PutUnsized(enc.data)
 
 	return enc.parent.append(nil, nil) // Notify parent of discard.
 }
