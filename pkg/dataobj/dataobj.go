@@ -9,6 +9,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -59,7 +60,7 @@ func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
 	return res, nil
 }
 
-// StreamsDecoder returns a [Streams.Decoder] for the given streams section
+// StreamsDecoder returns a [streams.Decoder] for the given streams section
 // index. StreamsDecoder returns an error if the section is not a streams
 // section.
 func (o *Object) StreamsDecoder(ctx context.Context, index int) (*streams.Decoder, error) {
@@ -86,4 +87,32 @@ func (o *Object) StreamsDecoder(ctx context.Context, index int) (*streams.Decode
 	}
 
 	return nil, fmt.Errorf("streams section %d not found", index)
+}
+
+// LogsDecoder returns a [logs.Decoder] for the given logs section index.
+// LogsDecoder returns an error if the section is not a logs section.
+func (o *Object) LogsDecoder(ctx context.Context, index int) (*logs.Decoder, error) {
+	metadata, err := o.dec.Metadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading sections: %w", err)
+	}
+
+	var found int
+
+	for _, s := range metadata.Sections {
+		typ, err := encoding.GetSectionType(metadata, s)
+		if err != nil {
+			return nil, fmt.Errorf("getting section type: %w", err)
+		}
+
+		if typ == encoding.SectionTypeLogs {
+			if found == index {
+				reader := o.dec.SectionReader(metadata, s)
+				return logs.NewDecoder(reader)
+			}
+			found++
+		}
+	}
+
+	return nil, fmt.Errorf("logs section %d not found", index)
 }
