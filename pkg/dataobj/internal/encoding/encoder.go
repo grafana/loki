@@ -128,17 +128,6 @@ func (enc *Encoder) initTypeRefs() {
 	enc.typesReady = true
 }
 
-// OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
-// section.
-func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
-	if enc.curSectionType.Valid() {
-		return nil, ErrElementExist
-	}
-
-	enc.curSectionType = SectionTypeLogs
-	return newLogsEncoder(enc), nil
-}
-
 // MetadataSize returns an estimate of the current size of the metadata for the
 // data object. MetadataSize does not include the size of data appended or the
 // currently open stream.

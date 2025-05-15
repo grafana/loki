@@ -14,23 +14,13 @@ import (
 )
 
 // LogsEncoder encodes an individual logs section in a data object.
-// LogsEncoders are created by [Encoder]s.
+//
+// The zero value of LogsEncoder is ready for use.
 type LogsEncoder struct {
-	parent *Encoder
+	data *bytes.Buffer
 
-	closed bool // true if LogsEncoder has been closed.
-
-	data      *bytes.Buffer
 	columns   []*logsmd.ColumnDesc // closed columns.
 	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
-}
-
-func newLogsEncoder(parent *Encoder) *LogsEncoder {
-	return &LogsEncoder{
-		parent: parent,
-
-		data: bufpool.GetUnsized(),
-	}
 }
 
 // OpenColumn opens a new column in the logs section. OpenColumn fails if there
@@ -38,8 +28,6 @@ func newLogsEncoder(parent *Encoder) *LogsEncoder {
 func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.ColumnInfo) (*LogsColumnEncoder, error) {
 	if enc.curColumn != nil {
 		return nil, ErrElementExist
-	} else if enc.closed {
-		return nil, ErrClosed
 	}
 
 	// MetadataOffset and MetadataSize aren't available until the column is
@@ -62,7 +50,15 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 		},
 	}
 
-	return newLogsColumnEncoder(enc, enc.data.Len()), nil
+	return newLogsColumnEncoder(enc, enc.size()), nil
+}
+
+// size returns the current number of buffered data bytes.
+func (enc *LogsEncoder) size() int {
+	if enc.data == nil {
+		return 0
+	}
+	return enc.data.Len()
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
@@ -77,23 +73,21 @@ func (enc *LogsEncoder) Metadata() proto.Message {
 	return &logsmd.Metadata{Columns: columns}
 }
 
-// Commit closes the section, flushing all data to the parent element. After
-// Commit is called, the LogsEncoder can no longer be modified.
+// EncodeTo writes the section to the given [Encoder]. EncodeTo returns an
+// error if there is an open column.
 //
-// Commit fails if there is an open column.
-func (enc *LogsEncoder) Commit() error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn != nil {
-		return ErrElementExist
+// EncodeTo returns 0, nil if there is no data to write.
+//
+// After EncodeTo is called successfully, the LogsEncoder is reset to a fresh
+// state and can be reused.
+func (enc *LogsEncoder) EncodeTo(dst *Encoder) (int64, error) {
+	if enc.curColumn != nil {
+		return 0, ErrElementExist
 	}
-	enc.closed = true
-
-	defer bufpool.PutUnsized(enc.data)
+	defer enc.Reset()
 
 	if len(enc.columns) == 0 {
-		// No data was written; discard.
-		return enc.parent.append(nil, nil)
+		return 0, nil
 	}
 
 	metadataBuffer := bufpool.GetUnsized()
@@ -101,37 +95,28 @@ func (enc *LogsEncoder) Commit() error {
 
 	// The section metadata should start with its version.
 	if err := streamio.WriteUvarint(metadataBuffer, logsFormatVersion); err != nil {
-		return err
+		return 0, err
 	} else if err := ElementMetadataWrite(enc, metadataBuffer); err != nil {
-		return err
+		return 0, err
 	}
-	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
+
+	dst.AppendSection(SectionTypeLogs, enc.data.Bytes(), metadataBuffer.Bytes())
+	return int64(len(enc.data.Bytes()) + len(metadataBuffer.Bytes())), nil
 }
 
-// Discard discards the section, discarding any data written to it. After
-// Discard is called, the LogsEncoder can no longer be modified.
-//
-// Discard fails if there is an open column.
-func (enc *LogsEncoder) Discard() error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn != nil {
-		return ErrElementExist
-	}
-	enc.closed = true
-
-	defer bufpool.PutUnsized(enc.data)
-
-	return enc.parent.append(nil, nil)
+// Reset resets the LogsEncoder to a fresh state, discarding any in-progress
+// columns.
+func (enc *LogsEncoder) Reset() {
+	bufpool.PutUnsized(enc.data)
+	enc.data = nil
+	enc.curColumn = nil
 }
 
 // append adds data and metadata to enc. append must only be called from child
 // elements on Close and Discard. Discard calls must pass nil for both data and
 // metadata to denote a discard.
 func (enc *LogsEncoder) append(data, metadata []byte) error {
-	if enc.closed {
-		return ErrClosed
-	} else if enc.curColumn == nil {
+	if enc.curColumn == nil {
 		return errElementNoExist
 	}
 
@@ -139,6 +124,10 @@ func (enc *LogsEncoder) append(data, metadata []byte) error {
 		// Column was discarded.
 		enc.curColumn = nil
 		return nil
+	}
+
+	if enc.data == nil {
+		enc.data = bufpool.GetUnsized()
 	}
 
 	enc.curColumn.Info.MetadataOffset = uint64(enc.data.Len() + len(data))

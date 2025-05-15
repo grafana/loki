@@ -216,30 +216,24 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 }
 
 func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
-	logsEnc, err := enc.OpenLogs()
-	if err != nil {
-		return fmt.Errorf("opening logs section: %w", err)
-	}
-	defer func() {
-		// Discard on defer for safety. This will return an error if we
-		// successfully committed.
-		_ = logsEnc.Discard()
-	}()
+	var logsEnc encoding.LogsEncoder
+	defer logsEnc.Reset()
 
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
+		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
 		for _, md := range section.Metadatas {
-			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
+			errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
 		}
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
+		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
 	}
 
-	return logsEnc.Commit()
+	_, err := logsEnc.EncodeTo(enc)
+	return err
 }
 
 func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, column dataset.Column) error {

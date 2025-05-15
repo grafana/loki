@@ -34,9 +34,8 @@ func TestLogs(t *testing.T) {
 
 	t.Run("Encode", func(t *testing.T) {
 		enc := encoding.NewEncoder(&buf)
-		logsEnc, err := enc.OpenLogs()
-		require.NoError(t, err)
 
+		var logsEnc encoding.LogsEncoder
 		colEnc, err := logsEnc.OpenColumn(logsmd.COLUMN_TYPE_MESSAGE, &columnA.Info)
 		require.NoError(t, err)
 		for _, page := range columnA.Pages {
@@ -51,7 +50,8 @@ func TestLogs(t *testing.T) {
 		}
 		require.NoError(t, colEnc.Commit())
 
-		require.NoError(t, logsEnc.Commit())
+		_, err = logsEnc.EncodeTo(enc)
+		require.NoError(t, err)
 		require.NoError(t, enc.Flush())
 	})
 
