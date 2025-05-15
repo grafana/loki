@@ -11,17 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
-
-// windowSize specifies the maximum amount of data to download at once from
-// object storage. 16MB is chosen based on S3's [recommendations] for
-// Byte-Range fetches, which recommends either 8MB or 16MB.
-//
-// As windowing is designed to reduce the number of requests made to object
-// storage, 16MB is chosen over 8MB, as it will lead to fewer requests.
-//
-// [recommendations]: https://docs.aws.amazon.com/whitepapers/latest/s3-optimizing-performance-best-practices/use-byte-range-fetches.html
-const windowSize = 16_000_000
 
 // rangeReader is an interface that can read a range of bytes from an object.
 type rangeReader interface {
@@ -263,7 +254,7 @@ func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnD
 			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
 		}
 
-		for window := range iterWindows(columns, columnInfo, windowSize) {
+		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
@@ -296,9 +287,9 @@ func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnD
 					return err
 				}
 
-				// wp.Position is the position of the column in the original pages
-				// slice; this retains the proper order of data in results.
-				results[wp.Position] = md.Pages
+				// wp.Index is the position of the column in the original pages slice;
+				// this retains the proper order of data in results.
+				results[wp.Index] = md.Pages
 			}
 		}
 
@@ -327,7 +318,7 @@ func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageD
 
 		// TODO(rfratto): If there are many windows, it may make sense to read them
 		// in parallel.
-		for window := range iterWindows(pages, pageInfo, windowSize) {
+		for window := range windowing.Iter(pages, pageInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
@@ -353,9 +344,9 @@ func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageD
 					dataOffset = pageOffset - windowOffset
 				)
 
-				// wp.Position is the position of the page in the original pages slice;
+				// wp.Index is the position of the page in the original pages slice;
 				// this retains the proper order of data in results.
-				results[wp.Position] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
+				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
 			}
 		}
 

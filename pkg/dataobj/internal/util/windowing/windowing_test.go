@@ -1,4 +1,4 @@
-package encoding
+package windowing_test
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
 func Test_windowPages(t *testing.T) {
@@ -15,7 +16,7 @@ func Test_windowPages(t *testing.T) {
 		name       string
 		pages      []*fakePageDesc
 		windowSize int64
-		expect     []window[*fakePageDesc]
+		expect     []windowing.Window[*fakePageDesc]
 	}{
 		{
 			name:       "empty pages",
@@ -27,16 +28,16 @@ func Test_windowPages(t *testing.T) {
 			name:       "single page smaller than window",
 			pages:      []*fakePageDesc{newFakePage(0, 100)},
 			windowSize: 1_000_000,
-			expect: []window[*fakePageDesc]{
-				{{Data: newFakePage(0, 100), Position: 0}},
+			expect: []windowing.Window[*fakePageDesc]{
+				{{Data: newFakePage(0, 100), Index: 0}},
 			},
 		},
 		{
 			name:       "single page larger than window",
 			pages:      []*fakePageDesc{newFakePage(0, 5_000_000)},
 			windowSize: 5_000_000,
-			expect: []window[*fakePageDesc]{
-				{{Data: newFakePage(0, 5_000_000), Position: 0}},
+			expect: []windowing.Window[*fakePageDesc]{
+				{{Data: newFakePage(0, 5_000_000), Index: 0}},
 			},
 		},
 		{
@@ -50,15 +51,15 @@ func Test_windowPages(t *testing.T) {
 				newFakePage(1600, 100),
 			},
 			windowSize: 1000,
-			expect: []window[*fakePageDesc]{
+			expect: []windowing.Window[*fakePageDesc]{
 				{
-					{Data: newFakePage(0, 100), Position: 0},
-					{Data: newFakePage(100, 100), Position: 1},
-					{Data: newFakePage(200, 100), Position: 2},
+					{Data: newFakePage(0, 100), Index: 0},
+					{Data: newFakePage(100, 100), Index: 1},
+					{Data: newFakePage(200, 100), Index: 2},
 				},
 				{
-					{Data: newFakePage(1500, 100), Position: 3},
-					{Data: newFakePage(1600, 100), Position: 4},
+					{Data: newFakePage(1500, 100), Index: 3},
+					{Data: newFakePage(1600, 100), Index: 4},
 				},
 			},
 		},
@@ -73,15 +74,15 @@ func Test_windowPages(t *testing.T) {
 				newFakePage(0, 100),
 			},
 			windowSize: 1000,
-			expect: []window[*fakePageDesc]{
+			expect: []windowing.Window[*fakePageDesc]{
 				{
-					{Data: newFakePage(0, 100), Position: 4},
-					{Data: newFakePage(100, 100), Position: 2},
-					{Data: newFakePage(200, 100), Position: 1},
+					{Data: newFakePage(0, 100), Index: 4},
+					{Data: newFakePage(100, 100), Index: 2},
+					{Data: newFakePage(200, 100), Index: 1},
 				},
 				{
-					{Data: newFakePage(1500, 100), Position: 0},
-					{Data: newFakePage(1600, 100), Position: 3},
+					{Data: newFakePage(1500, 100), Index: 0},
+					{Data: newFakePage(1600, 100), Index: 3},
 				},
 			},
 		},
@@ -95,17 +96,17 @@ func Test_windowPages(t *testing.T) {
 				newFakePage(400, 100),
 			},
 			windowSize: 500,
-			expect: []window[*fakePageDesc]{
+			expect: []windowing.Window[*fakePageDesc]{
 				{
-					{Data: newFakePage(0, 100), Position: 0},
-					{Data: newFakePage(100, 100), Position: 1},
+					{Data: newFakePage(0, 100), Index: 0},
+					{Data: newFakePage(100, 100), Index: 1},
 				},
 				{
-					{Data: newFakePage(200, 1000), Position: 2},
+					{Data: newFakePage(200, 1000), Index: 2},
 				},
 				{
-					{Data: newFakePage(300, 100), Position: 3},
-					{Data: newFakePage(400, 100), Position: 4},
+					{Data: newFakePage(300, 100), Index: 3},
+					{Data: newFakePage(400, 100), Index: 4},
 				},
 			},
 		},
@@ -116,7 +117,7 @@ func Test_windowPages(t *testing.T) {
 			getInfo := func(p *fakePageDesc) (uint64, uint64) {
 				return p.Info.DataOffset, p.Info.DataSize
 			}
-			actual := slices.Collect(iterWindows(tc.pages, getInfo, tc.windowSize))
+			actual := slices.Collect(windowing.Iter(tc.pages, getInfo, tc.windowSize))
 
 			for wi, w := range actual {
 				for pi, p := range w {

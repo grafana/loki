@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
 // NewSteramsDecoder creates a new StreamsDecoder for the given section reader.
@@ -55,7 +56,7 @@ func (rd *streamsDecoder) Pages(ctx context.Context, columns []*streamsmd.Column
 			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
 		}
 
-		for window := range iterWindows(columns, columnInfo, windowSize) {
+		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
@@ -88,9 +89,9 @@ func (rd *streamsDecoder) Pages(ctx context.Context, columns []*streamsmd.Column
 					return err
 				}
 
-				// wp.Position is the position of the column in the original pages
+				// wp.Index is the position of the column in the original pages
 				// slice; this retains the proper order of data in results.
-				results[wp.Position] = md.Pages
+				results[wp.Index] = md.Pages
 			}
 		}
 
@@ -114,7 +115,7 @@ func (rd *streamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.Page
 
 		// TODO(rfratto): If there are many windows, it may make sense to read them
 		// in parallel.
-		for window := range iterWindows(pages, pageInfo, windowSize) {
+		for window := range windowing.Iter(pages, pageInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
@@ -142,7 +143,7 @@ func (rd *streamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.Page
 
 				// wp.Position is the position of the page in the original pages slice;
 				// this retains the proper order of data in results.
-				results[wp.Position] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
+				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
 			}
 		}
 
