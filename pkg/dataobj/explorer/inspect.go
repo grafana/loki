@@ -147,7 +147,8 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	}
 
 	for _, section := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, section)
+		sectionReader := reader.SectionReader(metadata, section)
+		typ, err := sectionReader.Type()
 		if err != nil {
 			return FileMetadata{
 				Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
@@ -169,7 +170,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 				}
 			}
 		case encoding.SectionTypeLogs:
-			sectionMeta, err = inspectStreamsSection(ctx, reader, metadata, section)
+			sectionMeta, err = inspectStreamsSection(ctx, sectionReader)
 			if err != nil {
 				return FileMetadata{
 					Sections: make([]SectionMetadata, 0, len(metadata.Sections)),
@@ -258,12 +259,16 @@ func inspectLogsSection(ctx context.Context, reader encoding.Decoder, metadata *
 	return meta, nil
 }
 
-func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) (SectionMetadata, error) {
+func inspectStreamsSection(ctx context.Context, reader encoding.SectionReader) (SectionMetadata, error) {
 	meta := SectionMetadata{
 		Type: encoding.SectionTypeStreams.String(),
 	}
 
-	dec := reader.StreamsDecoder(metadata, section)
+	dec, err := encoding.NewStreamsDecoder(reader)
+	if err != nil {
+		return meta, err
+	}
+
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err
@@ -349,7 +354,7 @@ func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, metadat
 
 	width := int(globalMaxTimestamp.Add(1 * time.Hour).Truncate(time.Hour).Sub(globalMinTimestamp.Truncate(time.Hour)).Hours())
 	counts := make([]uint64, width)
-	for streamVal := range streams.Iter(ctx, reader) {
+	for streamVal := range streams.IterSection(ctx, dec) {
 		stream, err := streamVal.Value()
 		if err != nil {
 			return meta, err

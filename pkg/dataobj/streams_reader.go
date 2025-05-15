@@ -137,7 +137,11 @@ func (r *StreamsReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	dec := r.obj.dec.StreamsDecoder(metadata, sec)
+	dec, err := encoding.NewStreamsDecoder(r.obj.dec.SectionReader(metadata, sec))
+	if err != nil {
+		return fmt.Errorf("opening section: %w", err)
+	}
+
 	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

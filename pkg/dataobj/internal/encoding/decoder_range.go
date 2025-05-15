@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -92,10 +91,6 @@ func (rd *rangeDecoder) SectionReader(metadata *filemd.Metadata, section *filemd
 	return &rangeSectionReader{rr: rd.r, md: metadata, sec: section}
 }
 
-func (rd *rangeDecoder) StreamsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder {
-	return &rangeStreamsDecoder{rr: rd.r, md: metadata, sec: section}
-}
-
 func (rd *rangeDecoder) LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder {
 	return &rangeLogsDecoder{rr: rd.r, md: metadata, sec: section}
 }
@@ -157,45 +152,6 @@ func (rd *rangeSectionReader) Metadata(ctx context.Context) (io.ReadCloser, erro
 	return rd.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
 }
 
-type rangeStreamsDecoder struct {
-	// TODO(rfratto): restrict sections from reading outside of their regions.
-
-	rr  rangeReader // Reader for absolute ranges within the file.
-	md  *filemd.Metadata
-	sec *filemd.SectionInfo
-}
-
-func (rd *rangeStreamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
-	typ, err := GetSectionType(rd.md, rd.sec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read section type: %w", err)
-	} else if got, want := typ, SectionTypeStreams; got != want {
-		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
-	}
-
-	metadataRegion, err := findMetadataRegion(rd.sec)
-	if err != nil {
-		return nil, err
-	} else if metadataRegion == nil {
-		return nil, fmt.Errorf("section is missing metadata")
-	}
-
-	rc, err := rd.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
-	if err != nil {
-		return nil, fmt.Errorf("reading streams section metadata: %w", err)
-	}
-	defer rc.Close()
-
-	br, release := getBufioReader(rc)
-	defer release()
-
-	md, err := decodeStreamsMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Columns, nil
-}
-
 // findMetadataRegion returns the region where a section's metadata is stored.
 // If section specifies the new [filemd.SectionLayout] field, then the region
 // from tha layout is returned. Otherwise, it returns the deprecated
@@ -223,68 +179,6 @@ func findMetadataRegion(section *filemd.SectionInfo) (*filemd.Region, error) {
 		Offset: deprecatedOffset,
 		Length: deprecatedSize,
 	}, nil
-}
-
-func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
-	return result.Iter(func(yield func([]*streamsmd.PageDesc) bool) error {
-		baseOffset, err := findDataOffset(rd.sec)
-		if err != nil {
-			return err
-		}
-
-		results := make([][]*streamsmd.PageDesc, len(columns))
-
-		columnInfo := func(c *streamsmd.ColumnDesc) (uint64, uint64) {
-			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
-		}
-
-		for window := range iterWindows(columns, columnInfo, windowSize) {
-			if len(window) == 0 {
-				continue
-			}
-
-			var (
-				windowOffset = window.Start().GetInfo().MetadataOffset
-				windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
-			)
-
-			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
-			if err != nil {
-				return fmt.Errorf("reading column data: %w", err)
-			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
-				return fmt.Errorf("read column data: %w", err)
-			}
-
-			for _, wp := range window {
-				// Find the slice in the data for this column.
-				var (
-					columnOffset = wp.Data.GetInfo().MetadataOffset
-					dataOffset   = columnOffset - windowOffset
-				)
-
-				r := bytes.NewReader(data[dataOffset : dataOffset+wp.Data.GetInfo().MetadataSize])
-
-				md, err := decodeStreamsColumnMetadata(r)
-				if err != nil {
-					return err
-				}
-
-				// wp.Position is the position of the column in the original pages
-				// slice; this retains the proper order of data in results.
-				results[wp.Position] = md.Pages
-			}
-		}
-
-		for _, data := range results {
-			if !yield(data) {
-				return nil
-			}
-		}
-
-		return nil
-	})
 }
 
 // findDataOffset returns the base byte offset from where all reads of a
@@ -315,63 +209,6 @@ func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 		return nil, fmt.Errorf("read column data: %w", err)
 	}
 	return data, nil
-}
-
-func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
-	return result.Iter(func(yield func(dataset.PageData) bool) error {
-		baseOffset, err := findDataOffset(rd.sec)
-		if err != nil {
-			return err
-		}
-
-		results := make([]dataset.PageData, len(pages))
-
-		pageInfo := func(p *streamsmd.PageDesc) (uint64, uint64) {
-			return p.GetInfo().DataOffset, p.GetInfo().DataSize
-		}
-
-		// TODO(rfratto): If there are many windows, it may make sense to read them
-		// in parallel.
-		for window := range iterWindows(pages, pageInfo, windowSize) {
-			if len(window) == 0 {
-				continue
-			}
-
-			var (
-				windowOffset = window.Start().GetInfo().DataOffset
-				windowSize   = (window.End().GetInfo().DataOffset + window.End().GetInfo().DataSize) - windowOffset
-			)
-
-			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
-			if err != nil {
-				return fmt.Errorf("reading page data: %w", err)
-			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
-				return fmt.Errorf("read page data: %w", err)
-			}
-
-			for _, wp := range window {
-				// Find the slice in the data for this page.
-				var (
-					pageOffset = wp.Data.GetInfo().DataOffset
-					dataOffset = pageOffset - windowOffset
-				)
-
-				// wp.Position is the position of the page in the original pages slice;
-				// this retains the proper order of data in results.
-				results[wp.Position] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
-			}
-		}
-
-		for _, data := range results {
-			if !yield(data) {
-				return nil
-			}
-		}
-
-		return nil
-	})
 }
 
 type rangeLogsDecoder struct {

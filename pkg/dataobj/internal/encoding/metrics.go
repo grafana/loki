@@ -254,7 +254,12 @@ func (m *Metrics) Observe(ctx context.Context, dec Decoder) error {
 
 		switch typ {
 		case SectionTypeStreams:
-			errs = append(errs, m.observeStreamsSection(ctx, dec.StreamsDecoder(metadata, section)))
+			sectionDec, err := NewStreamsDecoder(dec.SectionReader(metadata, section))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("creating streams decoder: %w", err))
+				continue
+			}
+			errs = append(errs, m.observeStreamsSection(ctx, sectionDec))
 		case SectionTypeLogs:
 			errs = append(errs, m.observeLogsSection(ctx, dec.LogsDecoder(metadata, section)))
 		default:

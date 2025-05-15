@@ -26,13 +26,6 @@ type (
 		// reading outside of their layout.
 		SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo) SectionReader
 
-		// StreamsDecoder returns a decoder for a streams section. The section is
-		// not checked for type until the decoder is used.
-		//
-		// Sections where [filemd.SectionLayout] are defined are prevented from
-		// reading outside of their layout.
-		StreamsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder
-
 		// LogsDecoder returns a decoder for a logs section. The section is not
 		// checked for type until the decoder is used.
 		//

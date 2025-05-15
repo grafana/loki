@@ -22,7 +22,9 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 	}
 
 	for _, section := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, section)
+		sectionReader := reader.SectionReader(metadata, section)
+
+		typ, err := sectionReader.Type()
 		if err != nil {
 			log.Printf("failed to get section type: %s", err)
 			continue
@@ -32,13 +34,13 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 		case encoding.SectionTypeLogs:
 			printLogsInfo(reader, metadata, section)
 		case encoding.SectionTypeStreams:
-			printStreamInfo(reader, metadata, section)
+			streamsDec, _ := encoding.NewStreamsDecoder(sectionReader)
+			printStreamInfo(reader, streamsDec)
 		}
 	}
 }
 
-func printStreamInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
-	dec := reader.StreamsDecoder(metadata, section)
+func printStreamInfo(reader encoding.Decoder, dec encoding.StreamsDecoder) {
 	fmt.Println("---- Streams Section ----")
 	cols, err := dec.Columns(context.Background())
 	if err != nil {

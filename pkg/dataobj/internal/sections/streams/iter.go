@@ -26,16 +26,20 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 		}
 
 		for _, section := range metadata.Sections {
-			typ, err := encoding.GetSectionType(metadata, section)
+			sectionReader := dec.SectionReader(metadata, section)
+
+			typ, err := sectionReader.Type()
 			if err != nil {
 				return fmt.Errorf("getting section type: %w", err)
-			}
-
-			if typ != encoding.SectionTypeStreams {
+			} else if typ != encoding.SectionTypeStreams {
 				continue
 			}
 
-			for result := range IterSection(ctx, dec.StreamsDecoder(metadata, section)) {
+			// We ignore the error here because we know the section is a streams
+			// section.
+			streamsDec, _ := encoding.NewStreamsDecoder(sectionReader)
+
+			for result := range IterSection(ctx, streamsDec) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
