@@ -621,7 +621,7 @@ enterprise:
     # -- Comma-separated list of Loki modules to load for tokengen
     targetModule: "tokengen"
     # -- Name of the secret to store the admin token.
-    adminTokenSecret: "admin-token"
+    adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -658,7 +658,7 @@ enterprise:
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
-    hookType: "post-install,post-upgrade"
+    hookType: "post-install"
     # -- url of the admin api to use for the provisioner
     apiUrl: '{{ include "loki.address" . }}'
     # -- Additional tenants to be created. Each tenant will get a read and write policy

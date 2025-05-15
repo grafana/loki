@@ -3097,7 +3097,7 @@ null
     "env": [],
     "extraVolumeMounts": [],
     "extraVolumes": [],
-    "hookType": "post-install,post-upgrade",
+    "hookType": "post-install",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3118,7 +3118,7 @@ null
     "tolerations": []
   },
   "tokengen": {
-    "adminTokenSecret": "admin-token",
+    "adminTokenSecret": null,
     "affinity": {},
     "annotations": {},
     "enabled": true,
@@ -3289,7 +3289,7 @@ null
   "env": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
-  "hookType": "post-install,post-upgrade",
+  "hookType": "post-install",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3389,7 +3389,7 @@ true
 			<td>string</td>
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
 			<td><pre lang="json">
-"post-install,post-upgrade"
+"post-install"
 </pre>
 </td>
 		</tr>
@@ -3518,7 +3518,7 @@ null
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
-  "adminTokenSecret": "admin-token",
+  "adminTokenSecret": null,
   "affinity": {},
   "annotations": {},
   "enabled": true,
@@ -3547,7 +3547,7 @@ null
 			<td>string</td>
 			<td>Name of the secret to store the admin token.</td>
 			<td><pre lang="json">
-"admin-token"
+null
 </pre>
 </td>
 		</tr>
