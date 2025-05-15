@@ -42,8 +42,7 @@ type Encoder struct {
 
 	startOffset int // Byte offset in the file where data starts after the header.
 
-	sections       []*filemd.SectionInfo
-	curSectionType SectionType
+	sections []*filemd.SectionInfo
 
 	typesReady    bool
 	dictionary    []string
@@ -144,12 +143,8 @@ func (enc *Encoder) Metadata() proto.Message {
 }
 
 // Flush flushes any buffered data to the underlying writer. After flushing,
-// enc is reset. Flush fails if there is currently an open section.
+// enc is reset.
 func (enc *Encoder) Flush() error {
-	if enc.curSectionType.Valid() {
-		return ErrElementExist
-	}
-
 	metadataBuffer := bufpool.GetUnsized()
 	defer bufpool.PutUnsized(metadataBuffer)
 
@@ -197,7 +192,6 @@ func (enc *Encoder) Reset(w streamio.Writer) {
 	enc.startOffset = len(magic)
 
 	enc.sections = nil
-	enc.curSectionType = SectionTypeInvalid
 
 	enc.typesReady = false
 	enc.dictionary = nil
@@ -205,20 +199,4 @@ func (enc *Encoder) Reset(w streamio.Writer) {
 	enc.typeRefLookup = nil
 
 	enc.data.Reset()
-}
-
-func (enc *Encoder) append(data, metadata []byte) error {
-	if !enc.curSectionType.Valid() {
-		return errElementNoExist
-	}
-
-	if len(data) == 0 && len(metadata) == 0 {
-		// Section was discarded.
-		enc.curSectionType = SectionTypeInvalid
-		return nil
-	}
-
-	enc.AppendSection(enc.curSectionType, data, metadata)
-	enc.curSectionType = SectionTypeInvalid
-	return nil
 }
