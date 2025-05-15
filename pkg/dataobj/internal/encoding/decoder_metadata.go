@@ -43,7 +43,7 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	}
 
 	var md filemd.Metadata
-	if err := decodeProto(r, &md); err != nil {
+	if err := DecodeProto(r, &md); err != nil {
 		return nil, fmt.Errorf("file metadata: %w", err)
 	}
 	return &md, nil
@@ -59,7 +59,7 @@ func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 	}
 
 	var md streamsmd.Metadata
-	if err := decodeProto(r, &md); err != nil {
+	if err := DecodeProto(r, &md); err != nil {
 		return nil, fmt.Errorf("streams section metadata: %w", err)
 	}
 	return &md, nil
@@ -68,7 +68,7 @@ func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 // decodeStreamsColumnMetadata decodes stream column metadata from r.
 func decodeStreamsColumnMetadata(r streamio.Reader) (*streamsmd.ColumnMetadata, error) {
 	var metadata streamsmd.ColumnMetadata
-	if err := decodeProto(r, &metadata); err != nil {
+	if err := DecodeProto(r, &metadata); err != nil {
 		return nil, fmt.Errorf("streams column metadata: %w", err)
 	}
 	return &metadata, nil
@@ -84,7 +84,7 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	}
 
 	var md logsmd.Metadata
-	if err := decodeProto(r, &md); err != nil {
+	if err := DecodeProto(r, &md); err != nil {
 		return nil, fmt.Errorf("streams section metadata: %w", err)
 	}
 	return &md, nil
@@ -93,16 +93,16 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 // decodeLogsColumnMetadata decodes logs column metadata from r.
 func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
 	var metadata logsmd.ColumnMetadata
-	if err := decodeProto(r, &metadata); err != nil {
+	if err := DecodeProto(r, &metadata); err != nil {
 		return nil, fmt.Errorf("streams column metadata: %w", err)
 	}
 	return &metadata, nil
 }
 
-// decodeProto decodes a proto message from r and stores it in pb. Proto
+// DecodeProto decodes a proto message from r and stores it in pb. Proto
 // messages are expected to be encoded with their size, followed by the proto
 // bytes.
-func decodeProto(r streamio.Reader, pb proto.Message) error {
+func DecodeProto(r streamio.Reader, pb proto.Message) error {
 	size, err := binary.ReadUvarint(r)
 	if err != nil {
 		return fmt.Errorf("read proto message size: %w", err)

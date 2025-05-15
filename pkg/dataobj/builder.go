@@ -319,7 +319,23 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 	// time out; timing out on build would discard anything we built and would
 	// cause data loss.
 	dec := encoding.ReaderAtDecoder(bytes.NewReader(output.Bytes()[initialBufferSize:]), int64(output.Len()-initialBufferSize))
-	return b.metrics.encoding.Observe(context.Background(), dec)
+
+	observeSection := func(ctx context.Context, sr encoding.SectionReader) error {
+		ty, err := sr.Type()
+		if err != nil {
+			return err
+		}
+
+		switch ty {
+		case encoding.SectionTypeStreams:
+			dec, _ := streams.NewDecoder(sr)
+			return b.metrics.streams.Observe(context.Background(), dec)
+		}
+
+		return nil
+	}
+
+	return b.metrics.encoding.Observe(context.Background(), dec, observeSection)
 }
 
 // Reset discards pending data and resets the builder to an empty state.

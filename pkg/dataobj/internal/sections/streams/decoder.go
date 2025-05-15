@@ -1,38 +1,39 @@
-package encoding
+package streams
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
-// NewSteramsDecoder creates a new StreamsDecoder for the given section reader.
-// NewStreamsDecoder returns an error if the section reader is not a streams
-// section.
-func NewStreamsDecoder(reader SectionReader) (StreamsDecoder, error) {
+// NewDecoder creates a new [Decoder] for the given [encoding.SectionReader].
+// NewDecoder returns an error if reader is not for a streams section.
+func NewDecoder(reader encoding.SectionReader) (*Decoder, error) {
 	typ, err := reader.Type()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read section type: %w", err)
-	} else if got, want := typ, SectionTypeStreams; got != want {
+	} else if got, want := typ, encoding.SectionTypeStreams; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
-	return &streamsDecoder{sr: reader}, nil
+	return &Decoder{sr: reader}, nil
 }
 
-type streamsDecoder struct {
-	// TODO(rfratto): restrict sections from reading outside of their regions.
-
-	sr SectionReader
+// Decoder supports decoding the raw underlying data for a streams section.
+type Decoder struct {
+	sr encoding.SectionReader
 }
 
-func (rd *streamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
+// Columns describes the set of columns in the section.
+func (rd *Decoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
 	rc, err := rd.sr.Metadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
@@ -49,7 +50,10 @@ func (rd *streamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc,
 	return md.Columns, nil
 }
 
-func (rd *streamsDecoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
+// Pages retrieves the set of pages for the provided columns. The order of page
+// lists emitted by the sequence matches the order of columns provided: the
+// first page list corresponds to the first column, and so on.
+func (rd *Decoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
 	return result.Iter(func(yield func([]*streamsmd.PageDesc) bool) error {
 		results := make([][]*streamsmd.PageDesc, len(columns))
 
@@ -106,7 +110,21 @@ func (rd *streamsDecoder) Pages(ctx context.Context, columns []*streamsmd.Column
 	})
 }
 
-func (rd *streamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
+// readAndClose reads exactly size bytes from rc and then closes it.
+func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
+	defer rc.Close()
+
+	data := make([]byte, size)
+	if _, err := io.ReadFull(rc, data); err != nil {
+		return nil, fmt.Errorf("read column data: %w", err)
+	}
+	return data, nil
+}
+
+// ReadPages reads the provided set of pages, iterating over their data
+// matching the argument order. If an error is encountered while retrieving
+// pages, an error is emitted from the sequence and iteration stops.
+func (rd *Decoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		results := make([]dataset.PageData, len(pages))
 
@@ -142,7 +160,7 @@ func (rd *streamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.Page
 					dataOffset = pageOffset - windowOffset
 				)
 
-				// wp.Position is the position of the page in the original pages slice;
+				// wp.Index is the position of the page in the original pages slice;
 				// this retains the proper order of data in results.
 				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
 			}

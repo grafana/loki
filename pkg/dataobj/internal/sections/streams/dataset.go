@@ -1,4 +1,4 @@
-package encoding
+package streams
 
 import (
 	"context"
@@ -10,14 +10,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// StreamsDataset implements returns a [dataset.Dataset] from a
-// [StreamsDecoder].
-func StreamsDataset(dec StreamsDecoder) dataset.Dataset {
+// Dataset returns a [dataset.Dataset] from a [Decoder].
+func Dataset(dec *Decoder) dataset.Dataset {
 	return &streamsDataset{dec: dec}
 }
 
 type streamsDataset struct {
-	dec StreamsDecoder
+	dec *Decoder
 	sec *filemd.SectionInfo
 }
 
@@ -94,7 +93,7 @@ func (ds *streamsDataset) ReadPages(ctx context.Context, pages []dataset.Page) r
 }
 
 type streamsDatasetColumn struct {
-	dec  StreamsDecoder
+	dec  *Decoder
 	desc *streamsmd.ColumnDesc
 
 	info *dataset.ColumnInfo
@@ -140,7 +139,7 @@ func (col *streamsDatasetColumn) ListPages(ctx context.Context) result.Seq[datas
 }
 
 type streamsDatasetPage struct {
-	dec  StreamsDecoder
+	dec  *Decoder
 	desc *streamsmd.PageDesc
 
 	info *dataset.PageInfo

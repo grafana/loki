@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 )
 
 func Inspect(dataobj io.ReaderAt, size int64) {
@@ -34,13 +35,13 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 		case encoding.SectionTypeLogs:
 			printLogsInfo(reader, metadata, section)
 		case encoding.SectionTypeStreams:
-			streamsDec, _ := encoding.NewStreamsDecoder(sectionReader)
+			streamsDec, _ := streams.NewDecoder(sectionReader)
 			printStreamInfo(reader, streamsDec)
 		}
 	}
 }
 
-func printStreamInfo(reader encoding.Decoder, dec encoding.StreamsDecoder) {
+func printStreamInfo(reader encoding.Decoder, dec *streams.Decoder) {
 	fmt.Println("---- Streams Section ----")
 	cols, err := dec.Columns(context.Background())
 	if err != nil {

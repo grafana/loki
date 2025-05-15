@@ -7,7 +7,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -58,25 +57,6 @@ type (
 		// Metadata returns an error if the read fails. The returned reader is only
 		// valid as long as the provided ctx is not canceled.
 		Metadata(ctx context.Context) (io.ReadCloser, error)
-	}
-
-	// StreamsDecoder supports decoding data of a streams section.
-	StreamsDecoder interface {
-		// Columns describes the set of columns the section. Columns returns an
-		// error if the section associated with the StreamsDecoder is not a valid
-		// streams section.
-		Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error)
-
-		// Pages retrieves the set of pages for the provided columns. The order of
-		// page lists emitted by the sequence matches the order of columns
-		// provided: the first page list corresponds to the first column, and so
-		// on.
-		Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc]
-
-		// ReadPages reads the provided set of pages, iterating over their data
-		// matching the argument order. If an error is encountered while retrieving
-		// pages, an error is emitted and iteration stops.
-		ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData]
 	}
 
 	// LogsDecoder supports decoding data within a logs section.

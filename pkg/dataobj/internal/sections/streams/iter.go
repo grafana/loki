@@ -37,7 +37,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 
 			// We ignore the error here because we know the section is a streams
 			// section.
-			streamsDec, _ := encoding.NewStreamsDecoder(sectionReader)
+			streamsDec, _ := NewDecoder(sectionReader)
 
 			for result := range IterSection(ctx, streamsDec) {
 				if result.Err() != nil || !yield(result.MustValue()) {
@@ -50,7 +50,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	})
 }
 
-func IterSection(ctx context.Context, dec encoding.StreamsDecoder) result.Seq[Stream] {
+func IterSection(ctx context.Context, dec *Decoder) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
@@ -62,7 +62,7 @@ func IterSection(ctx context.Context, dec encoding.StreamsDecoder) result.Seq[St
 			return err
 		}
 
-		dset := encoding.StreamsDataset(dec)
+		dset := Dataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
