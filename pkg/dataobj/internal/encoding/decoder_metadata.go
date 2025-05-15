@@ -8,8 +8,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
@@ -47,56 +45,6 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 		return nil, fmt.Errorf("file metadata: %w", err)
 	}
 	return &md, nil
-}
-
-// decodeStreamsMetadata decodes stream section metadata from r.
-func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
-	gotVersion, err := streamio.ReadUvarint(r)
-	if err != nil {
-		return nil, fmt.Errorf("read streams section format version: %w", err)
-	} else if gotVersion != StreamsFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, StreamsFormatVersion)
-	}
-
-	var md streamsmd.Metadata
-	if err := DecodeProto(r, &md); err != nil {
-		return nil, fmt.Errorf("streams section metadata: %w", err)
-	}
-	return &md, nil
-}
-
-// decodeStreamsColumnMetadata decodes stream column metadata from r.
-func decodeStreamsColumnMetadata(r streamio.Reader) (*streamsmd.ColumnMetadata, error) {
-	var metadata streamsmd.ColumnMetadata
-	if err := DecodeProto(r, &metadata); err != nil {
-		return nil, fmt.Errorf("streams column metadata: %w", err)
-	}
-	return &metadata, nil
-}
-
-// decodeLogsMetadata decodes logs section metadata from r.
-func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
-	gotVersion, err := streamio.ReadUvarint(r)
-	if err != nil {
-		return nil, fmt.Errorf("read logs section format version: %w", err)
-	} else if gotVersion != StreamsFormatVersion {
-		return nil, fmt.Errorf("unexpected logs section format version: got=%d want=%d", gotVersion, StreamsFormatVersion)
-	}
-
-	var md logsmd.Metadata
-	if err := DecodeProto(r, &md); err != nil {
-		return nil, fmt.Errorf("streams section metadata: %w", err)
-	}
-	return &md, nil
-}
-
-// decodeLogsColumnMetadata decodes logs column metadata from r.
-func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
-	var metadata logsmd.ColumnMetadata
-	if err := DecodeProto(r, &metadata); err != nil {
-		return nil, fmt.Errorf("streams column metadata: %w", err)
-	}
-	return &metadata, nil
 }
 
 // DecodeProto decodes a proto message from r and stores it in pb. Proto

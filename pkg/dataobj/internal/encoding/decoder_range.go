@@ -163,22 +163,3 @@ func findMetadataRegion(section *filemd.SectionInfo) (*filemd.Region, error) {
 		Length: deprecatedSize,
 	}, nil
 }
-
-// findDataOffset returns the base byte offset from where all reads of a
-// section start.
-//
-// Older versions of data objects use absolute offsets for page data. Newer
-// versions (where [filemd.SectionLayout] is provided) use offsets relative to
-// the start of a section's data region.
-//
-// If a section specifies a layout but has no data region, then the section has
-// no data for reading, and findDataOffset returns an error.
-func findDataOffset(section *filemd.SectionInfo) (uint64, error) {
-	if section.Layout != nil {
-		if section.Layout.Data == nil {
-			return 0, fmt.Errorf("section has no data")
-		}
-		return section.Layout.Data.Offset, nil
-	}
-	return 0, nil
-}
