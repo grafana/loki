@@ -9,8 +9,8 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func Inspect(dataobj io.ReaderAt, size int64) {

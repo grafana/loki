@@ -18,7 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
 var recordsTestdata = []logs.Record{

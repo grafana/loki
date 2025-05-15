@@ -14,7 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 var streamsTestdata = []struct {

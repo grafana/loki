@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
 func Test(t *testing.T) {
