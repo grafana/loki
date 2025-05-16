@@ -3,6 +3,8 @@ package dataobj
 import (
 	"context"
 	"io"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 )
 
 // A Section is a subset of an [Object] that holds a specific type of data. Use
@@ -47,4 +49,25 @@ type SectionReader interface {
 	// Metadata returns an error if the read fails. The returned reader is only
 	// valid as long as the provided ctx is not canceled.
 	Metadata(ctx context.Context) (io.ReadCloser, error)
+}
+
+// A SectionBuilder accumulates data for a single in-progress section.
+//
+// Each section package provides an implementation of SectionBuilder that
+// includes utilities to buffer data into that section. Callers should use
+// Bytes or EstimatedSize to determine when enough data has been accumulated
+// into a section.
+type SectionBuilder interface {
+	// Flush encodes and flushes the section to w. Encodings that rely on byte
+	// offsets should be relative to the first byte of the section's data.
+	//
+	// Flush returns the number of bytes written to w, and any error encountered
+	// while encoding or flushing.
+	//
+	// After Flush is called, the SectionBuilder is reset to a fresh state and
+	// can be reused.
+	Flush(w encoding.SectionWriter) (n int64, err error)
+
+	// Reset resets the SectionBuilder to a fresh state.
+	Reset()
 }

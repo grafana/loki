@@ -178,6 +178,36 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 	}, nil
 }
 
+// AppendSection flushes a [SectionBuilder] and buffers its data and metadata
+// to b. Appended sections may be written to the final data object in any
+// order.
+//
+// AppendSection returns an error if the section failed to flush.
+//
+// After succesfully calling AppendSection, sec is reset and can be reused.
+func (b *Builder) AppendSection(typ SectionType, sec SectionBuilder) error {
+	w := builderSectionWriter{typ: typ, enc: b.encoder}
+	if _, err := sec.Flush(w); err != nil {
+		return err
+	}
+
+	// SectionBuilder implementations are expected to automatically Reset after a
+	// Flush, but we'll call it again to be safe.
+	sec.Reset()
+	b.state = builderStateDirty
+	return nil
+}
+
+type builderSectionWriter struct {
+	typ SectionType
+	enc *encoding.Encoder
+}
+
+func (w builderSectionWriter) WriteSection(data, metadata []byte) (n int64, err error) {
+	w.enc.AppendSection(encoding.SectionType(w.typ), data, metadata)
+	return int64(len(data) + len(metadata)), nil
+}
+
 // Append buffers a stream to be written to a data object. Append returns an
 // error if the stream labels cannot be parsed or [ErrBuilderFull] if the
 // builder is full.
