@@ -59,7 +59,7 @@ type (
 func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
-	dec := NewDecoder(section.reader)
+	dec := newDecoder(section.reader)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")
@@ -127,7 +127,7 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 
 	width := int(stats.MaxTimestamp.Add(1 * time.Hour).Truncate(time.Hour).Sub(stats.MinTimestamp.Truncate(time.Hour)).Hours())
 	counts := make([]uint64, width)
-	for streamVal := range IterSection(ctx, dec) {
+	for streamVal := range IterSection(ctx, section) {
 		stream, err := streamVal.Value()
 		if err != nil {
 			return stats, err

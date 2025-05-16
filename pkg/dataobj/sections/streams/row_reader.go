@@ -82,7 +82,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := Decode(r.columnDesc, r.buf[i], &r.stream); err != nil {
+		if err := decodeRow(r.columnDesc, r.buf[i], &r.stream); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 
@@ -104,14 +104,14 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dec := NewDecoder(r.sec.reader)
+	dec := newDecoder(r.sec.reader)
 
 	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := Dataset(dec)
+	dset := wrapDataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)

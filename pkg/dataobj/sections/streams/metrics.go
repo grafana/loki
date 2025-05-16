@@ -272,7 +272,7 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 
 // Observe observes section statistics for a given section.
 func (m *Metrics) Observe(ctx context.Context, section *Section) error {
-	dec := NewDecoder(section.reader)
+	dec := newDecoder(section.reader)
 	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err

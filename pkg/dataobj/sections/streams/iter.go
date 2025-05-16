@@ -8,8 +8,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -18,25 +18,15 @@ import (
 
 // Iter iterates over streams in the provided decoder. All streams sections are
 // iterated over in order.
-func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
+func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		metadata, err := dec.Metadata(ctx)
-		if err != nil {
-			return err
-		}
-
-		for _, section := range metadata.Sections {
-			sectionReader := dec.SectionReader(metadata, section)
-
-			typ, err := sectionReader.Type()
+		for i, section := range obj.Sections().Filter(CheckSection) {
+			streamsSection, err := Open(ctx, section)
 			if err != nil {
-				return fmt.Errorf("getting section type: %w", err)
-			} else if typ != encoding.SectionTypeStreams {
-				continue
+				return fmt.Errorf("opening section %d: %w", i, err)
 			}
 
-			streamsDec := NewDecoder(sectionReader)
-			for result := range IterSection(ctx, streamsDec) {
+			for result := range IterSection(ctx, streamsSection) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -47,8 +37,10 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	})
 }
 
-func IterSection(ctx context.Context, dec *Decoder) result.Seq[Stream] {
+func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
+		dec := newDecoder(section.reader)
+
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
 		//
@@ -59,7 +51,7 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Stream] {
 			return err
 		}
 
-		dset := Dataset(dec)
+		dset := wrapDataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
@@ -83,7 +75,7 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Stream] {
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				if err := Decode(streamsColumns, row, &stream); err != nil {
+				if err := decodeRow(streamsColumns, row, &stream); err != nil {
 					return err
 				}
 
@@ -95,10 +87,10 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Stream] {
 	})
 }
 
-// Decode decodes a stream from a [dataset.Row], using the provided columns to
+// decodeRow decodes a stream from a [dataset.Row], using the provided columns to
 // determine the column type. The list of columns must match the columns used
 // to create the row.
-func Decode(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) error {
+func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) error {
 	labelColumns := labelColumns(columns)
 	stream.Labels = slicegrow.GrowToCap(stream.Labels, labelColumns)
 	stream.Labels = stream.Labels[:labelColumns]

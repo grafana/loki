@@ -10,13 +10,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// Dataset returns a [dataset.Dataset] from a [Decoder].
-func Dataset(dec *Decoder) dataset.Dataset {
+// wrapDataset returns a [dataset.Dataset] from a [decoder].
+func wrapDataset(dec *decoder) dataset.Dataset {
 	return &streamsDataset{dec: dec}
 }
 
 type streamsDataset struct {
-	dec *Decoder
+	dec *decoder
 	sec *filemd.SectionInfo
 }
 
@@ -93,7 +93,7 @@ func (ds *streamsDataset) ReadPages(ctx context.Context, pages []dataset.Page) r
 }
 
 type streamsDatasetColumn struct {
-	dec  *Decoder
+	dec  *decoder
 	desc *streamsmd.ColumnDesc
 
 	info *dataset.ColumnInfo
@@ -139,7 +139,7 @@ func (col *streamsDatasetColumn) ListPages(ctx context.Context) result.Seq[datas
 }
 
 type streamsDatasetPage struct {
-	dec  *Decoder
+	dec  *decoder
 	desc *streamsmd.PageDesc
 
 	info *dataset.PageInfo

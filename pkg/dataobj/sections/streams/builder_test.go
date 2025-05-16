@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -55,10 +56,11 @@ func Test(t *testing.T) {
 		},
 	}
 
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
+	require.NoError(t, err)
 
 	var actual []streams.Stream
-	for result := range streams.Iter(context.Background(), dec) {
+	for result := range streams.Iter(context.Background(), obj) {
 		stream, err := result.Value()
 		require.NoError(t, err)
 		stream.Labels = copyLabels(stream.Labels)

@@ -14,18 +14,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
-// NewDecoder creates a new [Decoder] for the given [dataobj.SectionReader].
-func NewDecoder(reader dataobj.SectionReader) *Decoder {
-	return &Decoder{sr: reader}
+// newDecoder creates a new [decoder] for the given [dataobj.SectionReader].
+func newDecoder(reader dataobj.SectionReader) *decoder {
+	return &decoder{sr: reader}
 }
 
-// Decoder supports decoding the raw underlying data for a streams section.
-type Decoder struct {
+// decoder supports decoding the raw underlying data for a streams section.
+type decoder struct {
 	sr dataobj.SectionReader
 }
 
 // Columns describes the set of columns in the section.
-func (rd *Decoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
+func (rd *decoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
 	rc, err := rd.sr.Metadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
@@ -45,7 +45,7 @@ func (rd *Decoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error)
 // Pages retrieves the set of pages for the provided columns. The order of page
 // lists emitted by the sequence matches the order of columns provided: the
 // first page list corresponds to the first column, and so on.
-func (rd *Decoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
+func (rd *decoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
 	return result.Iter(func(yield func([]*streamsmd.PageDesc) bool) error {
 		results := make([][]*streamsmd.PageDesc, len(columns))
 
@@ -116,7 +116,7 @@ func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 // ReadPages reads the provided set of pages, iterating over their data
 // matching the argument order. If an error is encountered while retrieving
 // pages, an error is emitted from the sequence and iteration stops.
-func (rd *Decoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
+func (rd *decoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		results := make([]dataset.PageData, len(pages))
 
