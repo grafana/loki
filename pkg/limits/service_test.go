@@ -338,10 +338,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			}
 
 			// Assign the Partition IDs.
-			partitions := make(map[string][]int32)
-			partitions["test"] = make([]int32, 0, len(tt.assignedPartitions))
-			partitions["test"] = append(partitions["test"], tt.assignedPartitions...)
-			s.partitionManager.Assign(context.Background(), nil, partitions)
+			s.partitionManager.Assign(context.Background(), tt.assignedPartitions)
 
 			// Call ExceedsLimits.
 			req := &proto.ExceedsLimitsRequest{
@@ -429,8 +426,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	}
 
 	// Assign the Partition IDs.
-	partitions := map[string][]int32{"tenant1": {0}}
-	s.partitionManager.Assign(context.Background(), nil, partitions)
+	s.partitionManager.Assign(context.Background(), []int32{0})
 
 	// Run concurrent requests
 	concurrency := 10

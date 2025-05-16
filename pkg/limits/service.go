@@ -110,7 +110,8 @@ type IngestLimits struct {
 	wal   WAL
 
 	// Track partition assignments
-	partitionManager *PartitionManager
+	partitionManager    *PartitionManager
+	partitionLifecycler *PartitionLifecycler
 
 	// Used for tests.
 	clock quartz.Clock
@@ -137,6 +138,8 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		partitionManager: NewPartitionManager(logger),
 		clock:            quartz.NewReal(),
 	}
+
+	s.partitionLifecycler = NewPartitionLifecycler(s.partitionManager, s.usage, logger)
 
 	// Initialize internal metadata metrics
 	if err := reg.Register(s); err != nil {
@@ -165,8 +168,8 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
-		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
+		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
+		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -223,18 +226,6 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		float64(len(s.partitionManager.List())),
 	)
-}
-
-func (s *IngestLimits) onPartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	s.partitionManager.Assign(ctx, client, partitions)
-}
-
-func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	s.partitionManager.Remove(ctx, client, partitions)
-
-	for _, ids := range partitions {
-		s.usage.EvictPartitions(ids)
-	}
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
