@@ -21,7 +21,7 @@ type Object struct {
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
-func FromBucket(ctx context.Context, bucket objstore.Bucket, path string) (*Object, error) {
+func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
 	obj := &Object{dec: encoding.BucketDecoder(bucket, path)}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
