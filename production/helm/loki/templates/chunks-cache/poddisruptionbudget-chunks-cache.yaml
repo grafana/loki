@@ -11,6 +11,7 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: memcached-chunks-cache
+    matchExpressions:
+    - { key: app.kubernetes.io/component, operator: In, values: [memcached-chunks-cache{{ if ne .Values.chunksCache.suffix "" }}-{{ .Values.chunksCache.suffix }}{{ end }}{{ if .Values.chunksCache.l2.enabled }}, memcached-chunks-cache{{ if ne .Values.chunksCache.l2.suffix "" }}-{{ .Values.chunksCache.l2.suffix }}{{ end }}{{ end }}] }
   maxUnavailable: 1
 {{- end -}}
