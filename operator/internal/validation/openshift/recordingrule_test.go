@@ -241,6 +241,35 @@ func TestRecordingRuleValidator(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "query contains both namespace labels",
+			spec: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "recording-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.RecordingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.RecordingRuleGroup{
+						{
+							Rules: []*lokiv1.RecordingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", k8s_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:     field.ErrorTypeInvalid,
+					Field:    "spec.groups[0].rules[0].expr",
+					BadValue: `sum(rate({kubernetes_namespace_name="example", k8s_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+					Detail:   lokiv1.ErrRuleExclusiveNamespaceLabel.Error(),
+				},
+			},
+		},
 	}
 
 	for _, tc := range tt {
