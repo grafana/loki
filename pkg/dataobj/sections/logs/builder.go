@@ -9,6 +9,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
@@ -169,7 +170,7 @@ func (b *Builder) EstimatedSize() int {
 // Flush flushes b to the provided writer.
 //
 // After successful encoding, the b is reset and can be reused.
-func (b *Builder) Flush(w encoding.SectionWriter) (n int64, err error) {
+func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 

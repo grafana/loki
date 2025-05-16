@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -219,7 +220,7 @@ func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
 // Flush flushes the streams section to the provided writer.
 //
 // After successful encoding, b is reset to a fresh state and can be reused.
-func (b *Builder) Flush(w encoding.SectionWriter) (n int64, err error) {
+func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -124,7 +125,7 @@ func (enc *encoder) EncodeTo(dst *encoding.Encoder) (int64, error) {
 //
 // After Flush is called successfully, the encoder is reset to a fresh state
 // and can be reused.
-func (enc *encoder) Flush(w encoding.SectionWriter) (int64, error) {
+func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 	if enc.curColumn != nil {
 		return 0, encoding.ErrElementExist
 	}
