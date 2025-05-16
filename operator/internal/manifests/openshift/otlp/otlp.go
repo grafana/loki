@@ -33,7 +33,7 @@ var (
 
 // DefaultOTLPAttributes provides the required/recommended set of OTLP attributes for OpenShift Logging.
 func DefaultOTLPAttributes(disableRecommended bool) []string {
-	result := append([]string{}, requiredAttributes...)
+	result := slices.Clone(requiredAttributes)
 	if disableRecommended {
 		return result
 	}

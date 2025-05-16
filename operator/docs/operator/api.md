@@ -3092,42 +3092,6 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
-## OpenshiftOTLPConfig { #loki-grafana-com-v1-OpenshiftOTLPConfig }
-<p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-OpenshiftTenantSpec">OpenshiftTenantSpec</a>)
-</p>
-<div>
-<p>OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<code>disableRecommendedAttributes</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-some stream labels to disappear from the index, potentially making queries more expensive and less performant.</p>
-<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
-added to the configuration, even if this field is set to true.</p>
-<p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-should continue to exist.</p>
-</td>
-</tr>
-</tbody>
-</table>
-
 ## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
@@ -3158,20 +3122,6 @@ Setting this to an empty array disables admin groups.</p>
 - system:cluster-admins
 - cluster-admin
 - dedicated-admin</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>otlp</code><br/>
-<em>
-<a href="#loki-grafana-com-v1-OpenshiftOTLPConfig">
-OpenshiftOTLPConfig
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
 </td>
 </tr>
 </tbody>

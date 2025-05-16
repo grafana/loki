@@ -143,21 +143,20 @@ In case additional stream labels are needed, the normal custom attribute configu
 
 #### Removing Recommended Attributes
 
-In case of issues with the default set of attributes, there is a way to slim down the default set of attributes applied to a LokiStack operating in `openshift-logging` tenancy mode:
+In case of issues with the default set of attributes, users can slim down the default set of attributes applied to a LokiStack operating in `openshift-logging` tenancy mode by adding the undesired attributes to a drop statement:
 
 ```yaml
 # [...]
 spec:
-  tenants:
-    mode: openshift-logging
-    openshift:
+  limits:
+    global:
       otlp:
-        disableRecommendedAttributes: true # Set this to remove recommended attributes
+        drop:
+          resourceAttributes:
+          - name: "k8s.container.name"
 ```
 
-Setting `disableRecommendedAttributes: true` reduces the set of default attributes to only the "required attributes".
-
-Because the set of required attributes only contains a subset of the default stream labels, only setting this option will negatively affect query performance. It needs to be combined with a custom attribute configuration that reintroduces attributes that are needed for queries so that the data contained in those attributes is available again.
+Note that droping some of the recommended attributes might have an impact on query preformance. Required attributes are not possible to drop.
 
 ## References
 

@@ -297,32 +297,6 @@ type OpenshiftTenantSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
 	AdminGroups []string `json:"adminGroups"`
-
-	// OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenTelemetry Protocol"
-	OTLP *OpenshiftOTLPConfig `json:"otlp,omitempty"`
-}
-
-// OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
-type OpenshiftOTLPConfig struct {
-	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
-	//
-	// Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-	// some stream labels to disappear from the index, potentially making queries more expensive and less performant.
-	//
-	// Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-	// added to the configuration, even if this field is set to true.
-	//
-	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-	// should continue to exist.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Disable recommended OTLP attributes"
-	DisableRecommendedAttributes bool `json:"disableRecommendedAttributes,omitempty"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling
