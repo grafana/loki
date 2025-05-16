@@ -122,6 +122,7 @@ type Builder struct {
 
 	currentSizeEstimate int
 
+	encoder *encoding.Encoder
 	streams *streams.Streams
 	logs    *logs.Logs
 
@@ -166,6 +167,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
+		encoder: encoding.NewEncoder(),
 		streams: streams.New(metrics.streams, int(cfg.TargetPageSize)),
 		logs: logs.New(metrics.logs, logs.Options{
 			PageSizeHint:     int(cfg.TargetPageSize),
@@ -331,15 +333,11 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 
 	initialBufferSize := output.Len()
 
-	enc := encoderPool.Get().(*encoding.Encoder)
-	enc.Reset()
-	defer encoderPool.Put(enc)
-
-	if err := b.streams.EncodeTo(enc); err != nil {
+	if err := b.streams.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
-	} else if err := b.logs.EncodeTo(enc); err != nil {
+	} else if err := b.logs.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding logs: %w", err)
-	} else if err := enc.Flush(output); err != nil {
+	} else if err := b.encoder.Flush(output); err != nil {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
@@ -373,6 +371,7 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
+	b.encoder.Reset()
 	b.logs.Reset()
 	b.streams.Reset()
 
