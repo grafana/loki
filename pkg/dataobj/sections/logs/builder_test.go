@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
@@ -86,10 +85,11 @@ func Test(t *testing.T) {
 
 func buildObject(lt *logs.Builder) ([]byte, error) {
 	var buf bytes.Buffer
-	enc := encoding.NewEncoder()
-	if err := lt.EncodeTo(enc); err != nil {
-		return nil, err
-	} else if err := enc.Flush(&buf); err != nil {
+
+	builder := dataobj.NewBuilder()
+	builder.AppendSection(lt.Type(), lt)
+
+	if err := builder.Flush(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

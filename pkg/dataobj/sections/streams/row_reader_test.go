@@ -92,9 +92,9 @@ func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Section {
 
 	var buf bytes.Buffer
 
-	enc := encoding.NewEncoder()
-	require.NoError(t, s.EncodeTo(enc))
-	require.NoError(t, enc.Flush(&buf))
+	builder := dataobj.NewBuilder()
+	require.NoError(t, builder.AppendSection(s.Type(), s))
+	require.NoError(t, builder.Flush(&buf))
 
 	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 

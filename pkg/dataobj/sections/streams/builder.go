@@ -13,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -91,6 +90,9 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		ordered:  make([]*Stream, 0, 1024),
 	}
 }
+
+// Type returns the [dataobj.SectionType] of the streams builder.
+func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // TimeRange returns the minimum and maximum timestamp across all streams.
 func (b *Builder) TimeRange() (time.Time, time.Time) {
@@ -235,24 +237,6 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		b.Reset()
 	}
 	return n, err
-}
-
-// EncodeTo encodes the list of recorded streams to the provided encoder.
-//
-// EncodeTo may generate multiple sections if the list of streams is too big to
-// fit into a single section.
-func (b *Builder) EncodeTo(enc *encoding.Encoder) error {
-	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
-	defer timer.ObserveDuration()
-
-	var streamsEnc encoder
-	defer streamsEnc.Reset()
-	if err := b.encodeTo(&streamsEnc); err != nil {
-		return fmt.Errorf("building encoder: %w", err)
-	}
-
-	_, err := streamsEnc.EncodeTo(enc)
-	return err
 }
 
 func (b *Builder) encodeTo(enc *encoder) error {

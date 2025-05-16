@@ -3,8 +3,6 @@ package dataobj
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 )
 
 // A Builder builds data objects from a set of incoming log data. Log data is
@@ -14,13 +12,13 @@ import (
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronizing calls.
 type Builder struct {
-	encoder *encoding.Encoder
+	encoder *encoder
 }
 
 // A Builder accumulates data from a set of in-progress sections. A Builder can
 // be flushed into a data object by calling [Builder.Flush].
 func NewBuilder() *Builder {
-	return &Builder{encoder: encoding.NewEncoder()}
+	return &Builder{encoder: newEncoder()}
 }
 
 // AppendSection flushes a [SectionBuilder] and buffers its data and metadata
@@ -44,11 +42,11 @@ func (b *Builder) AppendSection(typ SectionType, sec SectionBuilder) error {
 
 type builderSectionWriter struct {
 	typ SectionType
-	enc *encoding.Encoder
+	enc *encoder
 }
 
 func (w builderSectionWriter) WriteSection(data, metadata []byte) (n int64, err error) {
-	w.enc.AppendSection(encoding.SectionType(w.typ), data, metadata)
+	w.enc.AppendSection(w.typ, data, metadata)
 	return int64(len(data) + len(metadata)), nil
 }
 

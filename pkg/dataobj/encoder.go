@@ -1,4 +1,4 @@
-package encoding
+package dataobj
 
 import (
 	"bytes"
@@ -7,9 +7,25 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+)
+
+var (
+	magic = []byte("THOR")
+)
+
+const (
+	fileFormatVersion = 0x1
+)
+
+// (Temporarily) Hard-coded section types.
+var (
+	sectionTypeInvalid = SectionType{}
+	sectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
+	sectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
 )
 
 // TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
@@ -31,13 +47,13 @@ import (
 // Encoder instance. This would then allow larger buffers to be eventually
 // reclaimed regardless of how often encoding is done.
 
-// Encoder encodes a data object. Data objects are hierarchical, split into
+// encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 //
 // To support hierarchical encoding, a set of Open* methods are provided to
 // open a child element. Only one child element may be open at a given time;
 // call Commit or Discard on a child element to close it.
-type Encoder struct {
+type encoder struct {
 	startOffset int // Byte offset in the file where data starts after the header.
 
 	sections []*filemd.SectionInfo
@@ -50,15 +66,15 @@ type Encoder struct {
 	data *bytes.Buffer
 }
 
-// NewEncoder creates a new Encoder which writes a data object to the provided
+// newEncoder creates a new Encoder which writes a data object to the provided
 // writer.
-func NewEncoder() *Encoder {
-	return &Encoder{startOffset: len(magic)}
+func newEncoder() *encoder {
+	return &encoder{startOffset: len(magic)}
 }
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *Encoder) AppendSection(typ SectionType, data, metadata []byte) {
+func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
 	if enc.data == nil {
 		// Lazily initialize enc.data. This allows an Encoder to persist for the
 		// lifetime of a dataobj.Builder without holding onto memory when no data
@@ -92,7 +108,7 @@ func (enc *Encoder) AppendSection(typ SectionType, data, metadata []byte) {
 // getTypeRef returns the type reference for the given type.
 //
 // getTypeRef panics if typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *Encoder) getTypeRef(typ SectionType) uint32 {
+func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 	// TODO(rfratto): support arbitrary SectionType values.
 	if !enc.typesReady {
 		enc.initTypeRefs()
@@ -105,7 +121,7 @@ func (enc *Encoder) getTypeRef(typ SectionType) uint32 {
 	return ref
 }
 
-func (enc *Encoder) initTypeRefs() {
+func (enc *encoder) initTypeRefs() {
 	// Reserve the zero index in the dictionary for an invalid entry. This is
 	// only required for the type refs, but it's still easier to debug.
 	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
@@ -117,8 +133,8 @@ func (enc *Encoder) initTypeRefs() {
 	}
 
 	enc.typeRefLookup = map[SectionType]uint32{
-		SectionTypeStreams: 1,
-		SectionTypeLogs:    2,
+		sectionTypeStreams: 1,
+		sectionTypeLogs:    2,
 	}
 
 	enc.typesReady = true
@@ -127,9 +143,9 @@ func (enc *Encoder) initTypeRefs() {
 // MetadataSize returns an estimate of the current size of the metadata for the
 // data object. MetadataSize does not include the size of data appended or the
 // currently open stream.
-func (enc *Encoder) MetadataSize() int { return ElementMetadataSize(enc) }
+func (enc *encoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
 
-func (enc *Encoder) Metadata() proto.Message {
+func (enc *encoder) Metadata() proto.Message {
 	sections := enc.sections[:len(enc.sections):cap(enc.sections)]
 	return &filemd.Metadata{
 		Sections: sections,
@@ -141,7 +157,7 @@ func (enc *Encoder) Metadata() proto.Message {
 
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset.
-func (enc *Encoder) Flush(w streamio.Writer) error {
+func (enc *encoder) Flush(w streamio.Writer) error {
 	if enc.data == nil {
 		return fmt.Errorf("empty Encoder")
 	}
@@ -152,7 +168,7 @@ func (enc *Encoder) Flush(w streamio.Writer) error {
 	// The file metadata should start with the version.
 	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {
 		return err
-	} else if err := ElementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
 
@@ -187,7 +203,7 @@ func (enc *Encoder) Flush(w streamio.Writer) error {
 }
 
 // Reset resets the Encoder to a fresh state.
-func (enc *Encoder) Reset() {
+func (enc *encoder) Reset() {
 	enc.startOffset = len(magic)
 
 	enc.sections = nil

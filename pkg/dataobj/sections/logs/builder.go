@@ -11,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -89,6 +88,9 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 		opts:    opts,
 	}
 }
+
+// Type returns the [dataobj.SectionType] of the logs builder.
+func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
@@ -201,45 +203,6 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		b.Reset()
 	}
 	return n, err
-}
-
-// EncodeTo encodes the set of logs to the provided encoder. Before encoding,
-// log records are sorted by StreamID and Timestamp.
-//
-// EncodeTo may generate multiple sections if the list of log records is too
-// big to fit into a single section.
-//
-// [Builder.Reset] is invoked after encoding, even if encoding fails.
-func (b *Builder) EncodeTo(enc *encoding.Encoder) error {
-	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
-	defer timer.ObserveDuration()
-
-	defer b.Reset()
-
-	// Flush any remaining buffered data.
-	b.flushRecords()
-
-	section := b.flushSection()
-	if section == nil {
-		return nil
-	}
-
-	// TODO(rfratto): handle an individual section having oversized metadata.
-	// This can happen when the number of columns is very wide, due to a lot of
-	// metadata columns.
-	//
-	// As the caller likely creates many smaller logs sections, the best solution
-	// for this is to aggregate the lowest cardinality columns into a combined
-	// column. This will reduce the number of columns in the section and thus the
-	// metadata size.
-
-	var logsEnc encoder
-	if err := b.encodeSection(&logsEnc, section); err != nil {
-		return fmt.Errorf("encoding section: %w", err)
-	}
-
-	_, err := logsEnc.EncodeTo(enc)
-	return err
 }
 
 func (b *Builder) encodeSection(enc *encoder, section *table) error {
