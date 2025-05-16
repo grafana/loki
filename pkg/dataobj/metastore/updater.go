@@ -17,6 +17,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -28,7 +29,7 @@ const (
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
-var metastoreBuilderCfg = dataobj.BuilderConfig{
+var metastoreBuilderCfg = logsobj.BuilderConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -38,7 +39,7 @@ var metastoreBuilderCfg = dataobj.BuilderConfig{
 }
 
 type Updater struct {
-	metastoreBuilder *dataobj.Builder
+	metastoreBuilder *logsobj.Builder
 	tenantID         string
 	metrics          *metastoreMetrics
 	bucket           objstore.Bucket
@@ -76,7 +77,7 @@ func (m *Updater) UnregisterMetrics(reg prometheus.Registerer) {
 func (m *Updater) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg)
+		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -88,7 +89,7 @@ func (m *Updater) initBuilder() error {
 }
 
 // Update adds provided dataobj path to the metastore. Flush stats are used to determine the stored metadata about this dataobj.
-func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dataobj.FlushStats) error {
+func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
 	var err error
 	processingTime := prometheus.NewTimer(m.metrics.metastoreProcessingTime)
 	defer processingTime.ObserveDuration()
@@ -97,8 +98,6 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 	if err := m.initBuilder(); err != nil {
 		return err
 	}
-
-	minTimestamp, maxTimestamp := flushStats.MinTimestamp, flushStats.MaxTimestamp
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.

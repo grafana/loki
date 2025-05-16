@@ -19,6 +19,7 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -497,7 +498,7 @@ type testDataBuilder struct {
 	dir    string
 
 	tenantID string
-	builder  *dataobj.Builder
+	builder  *logsobj.Builder
 	meta     *metastore.Updater
 	uploader *uploader.Uploader
 }
@@ -511,7 +512,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:    1024 * 1024,      // 1MB
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
@@ -556,7 +557,7 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
