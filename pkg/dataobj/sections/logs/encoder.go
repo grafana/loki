@@ -117,6 +117,40 @@ func (enc *encoder) EncodeTo(dst *encoding.Encoder) (int64, error) {
 	return int64(len(enc.data.Bytes()) + len(metadataBuffer.Bytes())), nil
 }
 
+// Flush writes the section to the given [encoding.SectionWriter]. Flush
+// returns an error if there is an open column.
+//
+// Flush returns 0, nil if there is no data to write.
+//
+// After Flush is called successfully, the encoder is reset to a fresh state
+// and can be reused.
+func (enc *encoder) Flush(w encoding.SectionWriter) (int64, error) {
+	if enc.curColumn != nil {
+		return 0, encoding.ErrElementExist
+	}
+	defer enc.Reset()
+
+	if len(enc.columns) == 0 {
+		return 0, nil
+	}
+
+	metadataBuffer := bufpool.GetUnsized()
+	defer bufpool.PutUnsized(metadataBuffer)
+
+	// The section metadata should start with its version.
+	if err := streamio.WriteUvarint(metadataBuffer, logsFormatVersion); err != nil {
+		return 0, err
+	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
+		return 0, err
+	}
+
+	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes())
+	if err == nil {
+		enc.Reset()
+	}
+	return n, err
+}
+
 // Reset resets the encoder to a fresh state, discarding any in-progress
 // columns.
 func (enc *encoder) Reset() {

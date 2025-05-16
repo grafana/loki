@@ -168,6 +168,42 @@ func (l *Logs) EstimatedSize() int {
 	return size
 }
 
+// Flush flushes the logs section to the provided writer.
+//
+// After successful encoding, the logs section is reset and can be reused.
+func (l *Logs) Flush(w encoding.SectionWriter) (n int64, err error) {
+	timer := prometheus.NewTimer(l.metrics.encodeSeconds)
+	defer timer.ObserveDuration()
+
+	// Flush any remaining buffered data.
+	l.flushRecords()
+
+	section := l.flushSection()
+	if section == nil {
+		return 0, nil
+	}
+
+	// TODO(rfratto): handle an individual section having oversized metadata.
+	// This can happen when the number of columns is very wide, due to a lot of
+	// metadata columns.
+	//
+	// As the caller likely creates many smaller logs sections, the best solution
+	// for this is to aggregate the lowest cardinality columns into a combined
+	// column. This will reduce the number of columns in the section and thus the
+	// metadata size.
+
+	var logsEnc encoder
+	if err := l.encodeSection(&logsEnc, section); err != nil {
+		return 0, fmt.Errorf("encoding section: %w", err)
+	}
+
+	n, err = logsEnc.Flush(w)
+	if err == nil {
+		l.Reset()
+	}
+	return n, err
+}
+
 // EncodeTo encodes the set of logs to the provided encoder. Before encoding,
 // log records are sorted by StreamID and Timestamp.
 //
@@ -197,32 +233,31 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	// for this is to aggregate the lowest cardinality columns into a combined
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
-	if err := l.encodeSection(enc, section); err != nil {
+
+	var logsEnc encoder
+	if err := l.encodeSection(&logsEnc, section); err != nil {
 		return fmt.Errorf("encoding section: %w", err)
 	}
 
-	return nil
+	_, err := logsEnc.EncodeTo(enc)
+	return err
 }
 
-func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
-	var logsEnc encoder
-	defer logsEnc.Reset()
-
+func (l *Logs) encodeSection(enc *encoder, section *table) error {
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
-		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
-		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
+		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
 		for _, md := range section.Metadatas {
-			errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
+			errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_METADATA, md))
 		}
-		errs = append(errs, encodeColumn(&logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
+		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
 	}
 
-	_, err := logsEnc.EncodeTo(enc)
-	return err
+	return nil
 }
 
 func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Column) error {
