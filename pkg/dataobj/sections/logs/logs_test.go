@@ -85,10 +85,10 @@ func Test(t *testing.T) {
 
 func buildObject(lt *logs.Logs) ([]byte, error) {
 	var buf bytes.Buffer
-	enc := encoding.NewEncoder(&buf)
+	enc := encoding.NewEncoder()
 	if err := lt.EncodeTo(enc); err != nil {
 		return nil, err
-	} else if err := enc.Flush(); err != nil {
+	} else if err := enc.Flush(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

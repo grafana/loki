@@ -82,10 +82,10 @@ func copyLabels(in labels.Labels) labels.Labels {
 
 func buildObject(st *streams.Streams) ([]byte, error) {
 	var buf bytes.Buffer
-	enc := encoding.NewEncoder(&buf)
+	enc := encoding.NewEncoder()
 	if err := st.EncodeTo(enc); err != nil {
 		return nil, err
-	} else if err := enc.Flush(); err != nil {
+	} else if err := enc.Flush(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

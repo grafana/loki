@@ -10,6 +10,6 @@ import (
 // always reset pooled encoders before use.
 var encoderPool = sync.Pool{
 	New: func() any {
-		return encoding.NewEncoder(nil)
+		return encoding.NewEncoder()
 	},
 }

@@ -38,8 +38,6 @@ import (
 // open a child element. Only one child element may be open at a given time;
 // call Commit or Discard on a child element to close it.
 type Encoder struct {
-	w streamio.Writer
-
 	startOffset int // Byte offset in the file where data starts after the header.
 
 	sections []*filemd.SectionInfo
@@ -54,21 +52,20 @@ type Encoder struct {
 
 // NewEncoder creates a new Encoder which writes a data object to the provided
 // writer.
-func NewEncoder(w streamio.Writer) *Encoder {
-	buf := bufpool.GetUnsized()
-
-	return &Encoder{
-		w: w,
-
-		startOffset: len(magic),
-
-		data: buf,
-	}
+func NewEncoder() *Encoder {
+	return &Encoder{startOffset: len(magic)}
 }
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
 func (enc *Encoder) AppendSection(typ SectionType, data, metadata []byte) {
+	if enc.data == nil {
+		// Lazily initialize enc.data. This allows an Encoder to persist for the
+		// lifetime of a dataobj.Builder without holding onto memory when no data
+		// is present.
+		enc.data = bufpool.GetUnsized()
+	}
+
 	info := &filemd.SectionInfo{
 		TypeRef: enc.getTypeRef(typ),
 		Layout: &filemd.SectionLayout{
@@ -144,7 +141,11 @@ func (enc *Encoder) Metadata() proto.Message {
 
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset.
-func (enc *Encoder) Flush() error {
+func (enc *Encoder) Flush(w streamio.Writer) error {
+	if enc.data == nil {
+		return fmt.Errorf("empty Encoder")
+	}
+
 	metadataBuffer := bufpool.GetUnsized()
 	defer bufpool.PutUnsized(metadataBuffer)
 
@@ -169,26 +170,24 @@ func (enc *Encoder) Flush() error {
 	// The file metadata size *must not* be varint since we need the last 8 bytes
 	// of the file to consistently retrieve the tailer.
 
-	if _, err := enc.w.Write(magic); err != nil {
+	if _, err := w.Write(magic); err != nil {
 		return fmt.Errorf("writing magic header: %w", err)
-	} else if _, err := enc.w.Write(enc.data.Bytes()); err != nil {
+	} else if _, err := w.Write(enc.data.Bytes()); err != nil {
 		return fmt.Errorf("writing data: %w", err)
-	} else if _, err := enc.w.Write(metadataBuffer.Bytes()); err != nil {
+	} else if _, err := w.Write(metadataBuffer.Bytes()); err != nil {
 		return fmt.Errorf("writing metadata: %w", err)
-	} else if err := binary.Write(enc.w, binary.LittleEndian, uint32(metadataBuffer.Len())); err != nil {
+	} else if err := binary.Write(w, binary.LittleEndian, uint32(metadataBuffer.Len())); err != nil {
 		return fmt.Errorf("writing metadata size: %w", err)
-	} else if _, err := enc.w.Write(magic); err != nil {
+	} else if _, err := w.Write(magic); err != nil {
 		return fmt.Errorf("writing magic tailer: %w", err)
 	}
 
-	enc.sections = nil
-	enc.data.Reset()
+	enc.Reset()
 	return nil
 }
 
-func (enc *Encoder) Reset(w streamio.Writer) {
-	enc.w = w
-
+// Reset resets the Encoder to a fresh state.
+func (enc *Encoder) Reset() {
 	enc.startOffset = len(magic)
 
 	enc.sections = nil
@@ -198,5 +197,6 @@ func (enc *Encoder) Reset(w streamio.Writer) {
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
 
-	enc.data.Reset()
+	bufpool.PutUnsized(enc.data)
+	enc.data = nil
 }

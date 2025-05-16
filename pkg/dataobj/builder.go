@@ -332,14 +332,14 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 	initialBufferSize := output.Len()
 
 	enc := encoderPool.Get().(*encoding.Encoder)
-	enc.Reset(output)
+	enc.Reset()
 	defer encoderPool.Put(enc)
 
 	if err := b.streams.EncodeTo(enc); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
 	} else if err := b.logs.EncodeTo(enc); err != nil {
 		return fmt.Errorf("encoding logs: %w", err)
-	} else if err := enc.Flush(); err != nil {
+	} else if err := enc.Flush(output); err != nil {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
