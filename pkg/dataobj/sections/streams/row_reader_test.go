@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -96,15 +95,10 @@ func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Section {
 	require.NoError(t, builder.AppendSection(s.Type(), s))
 	require.NoError(t, builder.Flush(&buf))
 
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-
-	md, err := dec.Metadata(t.Context())
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 	require.NoError(t, err)
 
-	sec, err := streams.Open(context.Background(), &dataobj.Section{
-		Type:   dataobj.SectionType(encoding.SectionTypeStreams),
-		Reader: dec.SectionReader(md, md.Sections[0]),
-	})
+	sec, err := streams.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)
 	return sec
 }

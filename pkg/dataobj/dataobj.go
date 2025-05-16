@@ -14,7 +14,7 @@ import (
 
 // An Object is a representation of a data object.
 type Object struct {
-	dec encoding.Decoder
+	dec *decoder
 
 	metadata *filemd.Metadata
 	sections []*Section
@@ -24,7 +24,8 @@ type Object struct {
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
-	obj := &Object{dec: encoding.BucketDecoder(bucket, path)}
+	dec := &decoder{rr: &bucketRangeReader{bucket: bucket, path: path}}
+	obj := &Object{dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
@@ -35,7 +36,8 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) 
 // specifies the size of the data object in bytes. FromReaderAt returns an
 // error if the metadata of the Object cannot be read.
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
-	obj := &Object{dec: encoding.ReaderAtDecoder(r, size)}
+	dec := &decoder{rr: &readerAtRangeReader{size: size, r: r}}
+	obj := &Object{dec: dec}
 	if err := obj.init(context.Background()); err != nil {
 		return nil, err
 	}
@@ -50,16 +52,14 @@ func (o *Object) init(ctx context.Context) error {
 
 	readSections := make([]*Section, 0, len(metadata.Sections))
 	for i, sec := range metadata.Sections {
-		reader := o.dec.SectionReader(metadata, sec)
-
-		typ, err := reader.Type()
+		typ, err := encoding.GetSectionType(metadata, sec)
 		if err != nil {
 			return fmt.Errorf("getting section %d type: %w", i, err)
 		}
 
 		readSections = append(readSections, &Section{
 			Type:   SectionType(typ),
-			Reader: reader,
+			Reader: o.dec.SectionReader(metadata, sec),
 		})
 	}
 
