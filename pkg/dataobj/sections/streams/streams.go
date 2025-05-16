@@ -218,16 +218,46 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 	return 0
 }
 
+// Flush flushes the streams section to the provided writer.
+//
+// After successful encoding, Streams is reset to a fresh state and can be
+// reused.
+func (s *Streams) Flush(w encoding.SectionWriter) (n int64, err error) {
+	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
+	defer timer.ObserveDuration()
+
+	var streamsEnc encoder
+	defer streamsEnc.Reset()
+	if err := s.encodeTo(&streamsEnc); err != nil {
+		return 0, fmt.Errorf("building encoder: %w", err)
+	}
+
+	n, err = streamsEnc.Flush(w)
+	if err == nil {
+		s.Reset()
+	}
+	return n, err
+}
+
 // EncodeTo encodes the list of recorded streams to the provided encoder.
 //
 // EncodeTo may generate multiple sections if the list of streams is too big to
 // fit into a single section.
-//
-// [Streams.Reset] is invoked after encoding, even if encoding fails.
 func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
+	var streamsEnc encoder
+	defer streamsEnc.Reset()
+	if err := s.encodeTo(&streamsEnc); err != nil {
+		return fmt.Errorf("building encoder: %w", err)
+	}
+
+	_, err := streamsEnc.EncodeTo(enc)
+	return err
+}
+
+func (s *Streams) encodeTo(enc *encoder) error {
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -307,16 +337,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
-	var streamsEnc encoder
-	defer streamsEnc.Reset()
-
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
-		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
-		errs = append(errs, encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
+		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
+		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
+		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -327,14 +354,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		// of rows as the other columns (which is the number of streams).
 		labelBuilder.Backfill(len(s.ordered))
 
-		err := encodeColumn(&streamsEnc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
+		err := encodeColumn(enc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
 	}
 
-	_, err = streamsEnc.EncodeTo(enc)
-	return err
+	return nil
 }
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
