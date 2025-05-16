@@ -25,6 +25,8 @@ var (
 	// of it closing but the parent doesn't have a child open. This would
 	// indicate a bug in the encoder so it's not exposed to callers.
 	errElementNoExist = errors.New("open element does not exist")
+	errElementExist   = errors.New("open element already exists")
+	errClosed         = errors.New("element is closed")
 )
 
 // encoder encodes an individual logs section in a data object.
@@ -41,7 +43,7 @@ type encoder struct {
 // is another open column or if the encoder has been closed.
 func (enc *encoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.ColumnInfo) (*columnEncoder, error) {
 	if enc.curColumn != nil {
-		return nil, encoding.ErrElementExist
+		return nil, errElementExist
 	}
 
 	// MetadataOffset and MetadataSize aren't available until the column is
@@ -96,7 +98,7 @@ func (enc *encoder) Metadata() proto.Message {
 // and can be reused.
 func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 	if enc.curColumn != nil {
-		return 0, encoding.ErrElementExist
+		return 0, errElementExist
 	}
 	defer enc.Reset()
 
@@ -188,7 +190,7 @@ func newColumnEncoder(parent *encoder, offset int) *columnEncoder {
 // the column has been closed.
 func (enc *columnEncoder) AppendPage(page *dataset.MemPage) error {
 	if enc.closed {
-		return encoding.ErrClosed
+		return errClosed
 	}
 
 	// It's possible the caller can pass an incorrect value for UncompressedSize
@@ -227,7 +229,7 @@ func (enc *columnEncoder) Metadata() proto.Message {
 // Commit is called, the columnEncoder can no longer be modified.
 func (enc *columnEncoder) Commit() error {
 	if enc.closed {
-		return encoding.ErrClosed
+		return errClosed
 	}
 	enc.closed = true
 
@@ -259,7 +261,7 @@ func (enc *columnEncoder) Commit() error {
 // Discard is called, the LogsColumnEncoder can no longer be modified.
 func (enc *columnEncoder) Discard() error {
 	if enc.closed {
-		return encoding.ErrClosed
+		return errClosed
 	}
 	enc.closed = true
 
