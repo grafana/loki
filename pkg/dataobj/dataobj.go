@@ -8,7 +8,6 @@ import (
 
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
@@ -52,7 +51,7 @@ func (o *Object) init(ctx context.Context) error {
 
 	readSections := make([]*Section, 0, len(metadata.Sections))
 	for i, sec := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, sec)
+		typ, err := getSectionType(metadata, sec)
 		if err != nil {
 			return fmt.Errorf("getting section %d type: %w", i, err)
 		}

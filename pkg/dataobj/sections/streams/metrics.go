@@ -10,14 +10,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 var (
-	sectionLabels = prometheus.Labels{"section": encoding.SectionTypeStreams.String()}
+	sectionLabels = prometheus.Labels{"section": sectionType.String()}
 )
 
 // Metrics instruments the streams section.

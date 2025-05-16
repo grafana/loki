@@ -9,7 +9,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
@@ -90,7 +89,7 @@ func (m *Metrics) Observe(ctx context.Context, obj *Object) error {
 	var errs []error
 
 	for _, section := range obj.metadata.Sections {
-		typ, err := encoding.GetSectionType(obj.metadata, section)
+		typ, err := getSectionType(obj.metadata, section)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("getting section type: %w", err))
 			continue

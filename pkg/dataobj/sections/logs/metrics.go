@@ -9,14 +9,13 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 var (
-	sectionLabels = prometheus.Labels{"section": encoding.SectionTypeLogs.String()}
+	sectionLabels = prometheus.Labels{"section": sectionType.String()}
 )
 
 // Metrics instruments the logs section.

@@ -11,7 +11,6 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -124,7 +123,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 					Error: fmt.Sprintf("failed to open streams section: %v", err),
 				}
 			}
-			meta, err := inspectStreamsSection(ctx, streamsSection)
+			meta, err := inspectStreamsSection(ctx, section.Type, streamsSection)
 			if err != nil {
 				return FileMetadata{
 					Error: fmt.Sprintf("failed to inspect streams section: %v", err),
@@ -139,7 +138,7 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 					Error: fmt.Sprintf("failed to open logs section: %v", err),
 				}
 			}
-			meta, err := inspectLogsSection(ctx, logsSection)
+			meta, err := inspectLogsSection(ctx, section.Type, logsSection)
 			if err != nil {
 				return FileMetadata{
 					Error: fmt.Sprintf("failed to inspect logs section: %v", err),
@@ -152,14 +151,14 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	return result
 }
 
-func inspectLogsSection(ctx context.Context, sec *logs.Section) (SectionMetadata, error) {
+func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.Section) (SectionMetadata, error) {
 	stats, err := logs.ReadStats(ctx, sec)
 	if err != nil {
 		return SectionMetadata{}, err
 	}
 
 	meta := SectionMetadata{
-		Type:                  encoding.SectionTypeLogs.String(),
+		Type:                  ty.String(),
 		TotalCompressedSize:   stats.CompressedSize,
 		TotalUncompressedSize: stats.UncompressedSize,
 		ColumnCount:           len(stats.Columns),
@@ -199,14 +198,14 @@ func inspectLogsSection(ctx context.Context, sec *logs.Section) (SectionMetadata
 	return meta, nil
 }
 
-func inspectStreamsSection(ctx context.Context, sec *streams.Section) (SectionMetadata, error) {
+func inspectStreamsSection(ctx context.Context, ty dataobj.SectionType, sec *streams.Section) (SectionMetadata, error) {
 	stats, err := streams.ReadStats(ctx, sec)
 	if err != nil {
 		return SectionMetadata{}, err
 	}
 
 	meta := SectionMetadata{
-		Type:                  encoding.SectionTypeLogs.String(),
+		Type:                  ty.String(),
 		TotalCompressedSize:   stats.CompressedSize,
 		TotalUncompressedSize: stats.UncompressedSize,
 		ColumnCount:           len(stats.Columns),
