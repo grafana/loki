@@ -33,7 +33,7 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 
 		switch typ {
 		case encoding.SectionTypeLogs:
-			logsDec, _ := logs.NewDecoder(sectionReader)
+			logsDec := logs.NewDecoder(sectionReader)
 			printLogsInfo(reader, logsDec)
 		case encoding.SectionTypeStreams:
 			streamsDec := streams.NewDecoder(sectionReader)

@@ -190,11 +190,7 @@ func inspectLogsSection(ctx context.Context, reader encoding.SectionReader) (Sec
 		Type: encoding.SectionTypeLogs.String(),
 	}
 
-	dec, err := logs.NewDecoder(reader)
-	if err != nil {
-		return meta, err
-	}
-
+	dec := logs.NewDecoder(reader)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err

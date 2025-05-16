@@ -368,7 +368,7 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 			dec := streams.NewDecoder(sr)
 			return b.metrics.streams.Observe(context.Background(), dec)
 		case encoding.SectionTypeLogs:
-			dec, _ := logs.NewDecoder(sr)
+			dec := logs.NewDecoder(sr)
 			return b.metrics.logs.Observe(context.Background(), dec)
 		}
 

@@ -40,10 +40,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 				continue
 			}
 
-			// We ignore the error here because we know the section is a streams
-			// section.
-			logsDec, _ := NewDecoder(sectionReader)
-
+			logsDec := NewDecoder(sectionReader)
 			for result := range IterSection(ctx, logsDec) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()

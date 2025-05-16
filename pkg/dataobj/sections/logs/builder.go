@@ -1,5 +1,3 @@
-// Package logs defines types used for the data object logs section. The logs
-// section holds a list of log records across multiple streams.
 package logs
 
 import (

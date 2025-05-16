@@ -24,7 +24,7 @@ import (
 
 // RowReader reads the set of logs from an [Object].
 type RowReader struct {
-	dec   *Decoder
+	sec   *Section
 	ready bool
 
 	matchIDs   map[int64]struct{}
@@ -40,10 +40,10 @@ type RowReader struct {
 	symbols *symbolizer.Symbolizer
 }
 
-// NewRowReader creates a new WowReader that reads from the given decoder.
-func NewRowReader(dec *Decoder) *RowReader {
+// NewRowReader creates a new WowReader that reads from the provided [Section].
+func NewRowReader(sec *Section) *RowReader {
 	var lr RowReader
-	lr.Reset(dec)
+	lr.Reset(sec)
 	return &lr
 }
 
@@ -86,7 +86,7 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 // into s. It returns the number of records read and any error encountered. At
 // the end of the logs section, Read returns 0, io.EOF.
 func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
-	if r.dec == nil {
+	if r.sec == nil {
 		return 0, io.EOF
 	}
 
@@ -143,12 +143,14 @@ func unsafeString(data []byte) string {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	columnDescs, err := r.dec.Columns(ctx)
+	dec := NewDecoder(r.sec.reader)
+
+	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := Dataset(r.dec)
+	dset := Dataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -207,15 +209,15 @@ func convertMetadata(md push.LabelsAdapter) []RecordMetadata {
 	return l
 }
 
-// Reset resets the RowReader with a new decoder to read from. Reset allows
+// Reset resets the RowReader with a new Section to read from. Reset allows
 // reusing a RowReader without allocating a new one.
 //
 // Any set predicate is cleared when Reset is called.
 //
 // Reset may be called with a nil object and a negative section index to clear
 // the RowReader without needing a new object.
-func (r *RowReader) Reset(dec *Decoder) {
-	r.dec = dec
+func (r *RowReader) Reset(sec *Section) {
+	r.sec = sec
 	r.ready = false
 
 	clear(r.matchIDs)

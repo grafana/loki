@@ -339,7 +339,7 @@ type shardedObject struct {
 // shardSections returns a list of section indices to read per metadata based on the sharding configuration.
 // The returned slice has the same length as the input metadatas, and each element contains the list of section indices
 // that should be read for that metadata.
-func shardSections(metadatas []dataobj.Metadata, shard logql.Shard) [][]int {
+func shardSections(metadatas []sectionsStats, shard logql.Shard) [][]int {
 	// Count total sections before sharding
 	var totalSections int
 	for _, metadata := range metadatas {
@@ -382,7 +382,7 @@ func shardObjects(
 	span, ctx := opentracing.StartSpanFromContext(ctx, "shardObjects")
 	defer span.Finish()
 
-	metadatas, err := fetchMetadatas(ctx, objects)
+	metadatas, err := fetchSectionsStats(ctx, objects)
 	if err != nil {
 		return nil, err
 	}
@@ -416,13 +416,13 @@ func shardObjects(
 		reader.streamReader.Reset(sec)
 
 		for _, section := range sections {
-			dec, err := objects[i].LogsDecoder(ctx, section)
+			sec, err := findLogsSection(ctx, objects[i].Object, section)
 			if err != nil {
-				return nil, fmt.Errorf("creating logs decoder: %w", err)
+				return nil, fmt.Errorf("finding logs section: %w", err)
 			}
 
 			logReader := logReaderPool.Get().(*logs.RowReader)
-			logReader.Reset(dec)
+			logReader.Reset(sec)
 			reader.logReaders = append(reader.logReaders, logReader)
 		}
 		shardedReaders = append(shardedReaders, reader)
@@ -448,6 +448,22 @@ func shardObjects(
 	}
 
 	return shardedReaders, nil
+}
+
+func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs.Section, error) {
+	var count int
+
+	for _, section := range obj.Sections() {
+		if !logs.CheckSection(section) {
+			continue
+		}
+		if count == index {
+			return logs.Open(ctx, section)
+		}
+		count++
+	}
+
+	return nil, fmt.Errorf("object does not have logs section %d (max %d)", index, count)
 }
 
 func findStreamsSection(ctx context.Context, obj *dataobj.Object) (*streams.Section, error) {
@@ -591,25 +607,36 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 	return nil
 }
 
-// fetchMetadatas fetches metadata of objects in parallel
-func fetchMetadatas(ctx context.Context, objects []object) ([]dataobj.Metadata, error) {
+// fetchSectionsStats retrieves section count of objects.
+func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats, error) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("msg", "fetching metadata", "objects", len(objects))
 		defer sp.LogKV("msg", "fetched metadata")
 	}
-	g, ctx := errgroup.WithContext(ctx)
-	metadatas := make([]dataobj.Metadata, len(objects))
-	for i, obj := range objects {
-		g.Go(func() error {
-			var err error
-			metadatas[i], err = obj.Object.Metadata(ctx)
-			return err
-		})
+
+	res := make([]sectionsStats, 0, len(objects))
+
+	for _, obj := range objects {
+		var stats sectionsStats
+
+		for _, section := range obj.Sections() {
+			switch {
+			case streams.CheckSection(section):
+				stats.StreamsSections++
+			case logs.CheckSection(section):
+				stats.LogsSections++
+			}
+		}
+
+		res = append(res, stats)
 	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return metadatas, nil
+
+	return res, nil
+}
+
+type sectionsStats struct {
+	StreamsSections int
+	LogsSections    int
 }
 
 // streamPredicate creates a dataobj.StreamsPredicate from a list of matchers and a time range

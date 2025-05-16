@@ -80,18 +80,22 @@ func (s *dataobjScan) init() error {
 		return nil
 	}
 
-	md, err := s.opts.Object.Metadata(s.ctx)
-	if err != nil {
-		return fmt.Errorf("reading metadata: %w", err)
-	}
-
-	if err := s.initStreams(md); err != nil {
+	if err := s.initStreams(); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
-	s.readers = make([]*logs.RowReader, 0, md.LogsSections)
+	s.readers = nil
 
-	for section := range md.LogsSections {
+	for _, section := range s.opts.Object.Sections() {
+		if !logs.CheckSection(section) {
+			continue
+		}
+
+		sec, err := logs.Open(s.ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening logs section: %w", err)
+		}
+
 		// TODO(rfratto): There's a few problems with using LogsReader as it is:
 		//
 		// 1. LogsReader doesn't support providing a subset of columns to read
@@ -102,12 +106,7 @@ func (s *dataobjScan) init() error {
 		//
 		// For the sake of the initial implementation I'm ignoring these issues,
 		// but we'll absolutely need to solve this prior to production use.
-		dec, err := s.opts.Object.LogsDecoder(s.ctx, section)
-		if err != nil {
-			return fmt.Errorf("creating logs decoder: %w", err)
-		}
-
-		lr := logs.NewRowReader(dec)
+		lr := logs.NewRowReader(sec)
 
 		// The calls below can't fail because we're always using a brand new logs
 		// reader.
@@ -123,7 +122,7 @@ func (s *dataobjScan) init() error {
 
 // initStreams retrieves all requested stream records from streams sections so
 // that emitted [arrow.Record]s can include stream labels in results.
-func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
+func (s *dataobjScan) initStreams() error {
 	var sr streams.RowReader
 
 	streamsBuf := make([]streams.Stream, 512)

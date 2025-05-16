@@ -18,7 +18,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -598,13 +597,13 @@ func readAllEntries(it iter.EntryIterator) ([]entryWithLabels, error) {
 func TestShardSections(t *testing.T) {
 	tests := []struct {
 		name      string
-		metadatas []dataobj.Metadata
+		metadatas []sectionsStats
 		shard     logql.Shard
 		want      [][]int
 	}{
 		{
 			name: "single section, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -619,7 +618,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -636,7 +635,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -653,7 +652,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -670,7 +669,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -685,7 +684,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -700,7 +699,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 0,4
 				{LogsSections: 5}, // sections 0,4
 				{LogsSections: 3}, // sections 0
@@ -719,7 +718,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 1,5
 				{LogsSections: 5}, // sections 1
 				{LogsSections: 3}, // sections 1
@@ -738,7 +737,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 2 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 2,6
 				{LogsSections: 5}, // sections 2
 				{LogsSections: 3}, // sections 2
@@ -757,7 +756,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 3 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 3
 				{LogsSections: 5}, // sections 3
 				{LogsSections: 3}, // no sections
@@ -776,7 +775,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -789,7 +788,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -802,7 +801,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple streams sections not supported",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1, StreamsSections: 2},
 			},
 			shard: logql.Shard{
