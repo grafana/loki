@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -355,29 +354,48 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 
 	b.metrics.builtSize.Observe(float64(output.Len() - initialBufferSize))
 
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(output.Bytes()[initialBufferSize:]), int64(output.Len()-initialBufferSize))
-
-	observeSection := func(ctx context.Context, sr encoding.SectionReader) error {
-		ty, err := sr.Type()
-		if err != nil {
-			return err
-		}
-
-		switch ty {
-		case encoding.SectionTypeStreams:
-			dec := streams.NewDecoder(sr)
-			return b.metrics.streams.Observe(context.Background(), dec)
-		case encoding.SectionTypeLogs:
-			dec := logs.NewDecoder(sr)
-			return b.metrics.logs.Observe(context.Background(), dec)
-		}
-
-		return nil
+	var (
+		objReader = bytes.NewReader(output.Bytes()[initialBufferSize:])
+		objLength = int64(output.Len() - initialBufferSize)
+	)
+	obj, err := dataobj.FromReaderAt(objReader, objLength)
+	if err != nil {
+		b.metrics.flushFailures.Inc()
+		return FlushStats{}, fmt.Errorf("failed to create readable object: %w", err)
 	}
-	err := b.metrics.encoding.Observe(context.Background(), dec, observeSection)
+
+	err = b.observeObject(context.Background(), obj)
 
 	b.Reset()
 	return FlushStats{MinTimestamp: minTime, MaxTimestamp: maxTime}, err
+}
+
+func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
+	var errs []error
+
+	errs = append(errs, b.metrics.dataobj.Observe(context.Background(), obj))
+
+	for _, sec := range obj.Sections() {
+		switch {
+		case streams.CheckSection(sec):
+			streamSection, err := streams.Open(context.Background(), sec)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, b.metrics.streams.Observe(ctx, streamSection))
+
+		case logs.CheckSection(sec):
+			logsSection, err := logs.Open(context.Background(), sec)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, b.metrics.logs.Observe(ctx, logsSection))
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // Reset discards pending data and resets the builder to an empty state.

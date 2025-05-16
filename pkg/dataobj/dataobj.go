@@ -9,12 +9,14 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
 // An Object is a representation of a data object.
 type Object struct {
 	dec encoding.Decoder
 
+	metadata *filemd.Metadata
 	sections []*Section
 }
 
@@ -61,6 +63,7 @@ func (o *Object) init(ctx context.Context) error {
 		})
 	}
 
+	o.metadata = metadata
 	o.sections = readSections
 	return nil
 }

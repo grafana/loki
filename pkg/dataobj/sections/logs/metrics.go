@@ -247,8 +247,9 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.datasetPageValues)
 }
 
-// Observe observes section statistics for a given section's [Decoder].
-func (m *Metrics) Observe(ctx context.Context, dec *Decoder) error {
+// Observe observes section statistics for a given section.
+func (m *Metrics) Observe(ctx context.Context, section *Section) error {
+	dec := NewDecoder(section.reader)
 	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-package encoding
+package dataobj
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
@@ -81,36 +82,21 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.sectionMetadataSize)
 }
 
-// SectionObserver is invoked by [Metrics.Observe] for each section in the object.
-type SectionObserver func(ctx context.Context, sr SectionReader) error
-
-// Observe observes the data object statistics for the given [Decoder].
-func (m *Metrics) Observe(ctx context.Context, dec Decoder, onSection SectionObserver) error {
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return err
-	}
-
-	// TODO(rfratto): our Decoder interface should be updated to not hide the
-	// metadata types to avoid recreating them here.
-
-	m.sectionsCount.Observe(float64(len(metadata.Sections)))
-	m.fileMetadataSize.Observe(float64(proto.Size(&filemd.Metadata{Sections: metadata.Sections})))
+// Observe updates metrics with statistics about the given [Object].
+func (m *Metrics) Observe(ctx context.Context, obj *Object) error {
+	m.sectionsCount.Observe(float64(len(obj.sections)))
+	m.fileMetadataSize.Observe(float64(proto.Size(obj.metadata)))
 
 	var errs []error
 
-	for _, section := range metadata.Sections {
-		typ, err := GetSectionType(metadata, section)
+	for _, section := range obj.metadata.Sections {
+		typ, err := encoding.GetSectionType(obj.metadata, section)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("getting section type: %w", err))
 			continue
 		}
 
 		m.sectionMetadataSize.WithLabelValues(typ.String()).Observe(float64(calculateMetadataSize(section)))
-
-		if onSection != nil {
-			onSection(ctx, dec.SectionReader(metadata, section))
-		}
 	}
 
 	return errors.Join(errs...)

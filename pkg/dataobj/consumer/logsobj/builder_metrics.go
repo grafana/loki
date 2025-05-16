@@ -5,16 +5,16 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // builderMetrics provides instrumnetation for a [Builder].
 type builderMetrics struct {
-	logs     *logs.Metrics
-	streams  *streams.Metrics
-	encoding *encoding.Metrics
+	logs    *logs.Metrics
+	streams *streams.Metrics
+	dataobj *dataobj.Metrics
 
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
@@ -31,9 +31,9 @@ type builderMetrics struct {
 // logs objects.
 func newBuilderMetrics() *builderMetrics {
 	return &builderMetrics{
-		logs:     logs.NewMetrics(),
-		streams:  streams.NewMetrics(),
-		encoding: encoding.NewMetrics(),
+		logs:    logs.NewMetrics(),
+		streams: streams.NewMetrics(),
+		dataobj: dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -118,7 +118,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 
 	errs = append(errs, m.logs.Register(reg))
 	errs = append(errs, m.streams.Register(reg))
-	errs = append(errs, m.encoding.Register(reg))
+	errs = append(errs, m.dataobj.Register(reg))
 
 	errs = append(errs, reg.Register(m.targetPageSize))
 	errs = append(errs, reg.Register(m.targetObjectSize))
@@ -137,7 +137,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	m.logs.Unregister(reg)
 	m.streams.Unregister(reg)
-	m.encoding.Unregister(reg)
+	m.dataobj.Unregister(reg)
 
 	reg.Unregister(m.targetPageSize)
 	reg.Unregister(m.targetObjectSize)

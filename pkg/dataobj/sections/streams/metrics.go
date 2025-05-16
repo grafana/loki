@@ -8,11 +8,12 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -269,8 +270,9 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.datasetPageValues)
 }
 
-// Observe observes section statistics for a given section's [Decoder].
-func (m *Metrics) Observe(ctx context.Context, dec *Decoder) error {
+// Observe observes section statistics for a given section.
+func (m *Metrics) Observe(ctx context.Context, section *Section) error {
+	dec := NewDecoder(section.reader)
 	columns, err := dec.Columns(ctx)
 	if err != nil {
 		return err
