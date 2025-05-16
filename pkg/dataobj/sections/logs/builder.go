@@ -31,8 +31,8 @@ type RecordMetadata struct {
 	Value []byte
 }
 
-// Options configures the behavior of the logs section.
-type Options struct {
+// BuilderOptions configures the behavior of the logs section.
+type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
 	PageSizeHint int
 
@@ -48,10 +48,10 @@ type Options struct {
 	StripeMergeLimit int
 }
 
-// Logs accumulate a set of [Record]s within a data object.
-type Logs struct {
+// Builder accumulate a set of [Record]s within a data object.
+type Builder struct {
 	metrics *Metrics
-	opts    Options
+	opts    BuilderOptions
 
 	// Sorting the entire set of logs is very expensive, so we need to break it
 	// up into smaller pieces:
@@ -78,31 +78,31 @@ type Logs struct {
 	sectionBuffer tableBuffer
 }
 
-// Nwe creates a new Logs section. The pageSize argument specifies how large
+// Nwe creates a new logs section. The pageSize argument specifies how large
 // pages should be.
-func New(metrics *Metrics, opts Options) *Logs {
+func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 
-	return &Logs{
+	return &Builder{
 		metrics: metrics,
 		opts:    opts,
 	}
 }
 
-// Append adds a new entry to the set of Logs.
-func (l *Logs) Append(entry Record) {
-	l.metrics.appendsTotal.Inc()
+// Append adds a new entry to b.
+func (b *Builder) Append(entry Record) {
+	b.metrics.appendsTotal.Inc()
 
-	l.records = append(l.records, entry)
-	l.recordsSize += recordSize(entry)
+	b.records = append(b.records, entry)
+	b.recordsSize += recordSize(entry)
 
-	if l.recordsSize >= l.opts.BufferSize {
-		l.flushRecords()
+	if b.recordsSize >= b.opts.BufferSize {
+		b.flushRecords()
 	}
 
-	l.metrics.recordCount.Inc()
+	b.metrics.recordCount.Inc()
 }
 
 func recordSize(record Record) int {
@@ -118,8 +118,8 @@ func recordSize(record Record) int {
 	return size
 }
 
-func (l *Logs) flushRecords() {
-	if len(l.records) == 0 {
+func (b *Builder) flushRecords() {
+	if len(b.records) == 0 {
 		return
 	}
 
@@ -130,16 +130,16 @@ func (l *Logs) flushRecords() {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
 	}
 
-	stripe := buildTable(&l.stripeBuffer, l.opts.PageSizeHint, compressionOpts, l.records)
-	l.stripes = append(l.stripes, stripe)
-	l.stripesSize += stripe.Size()
+	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, compressionOpts, b.records)
+	b.stripes = append(b.stripes, stripe)
+	b.stripesSize += stripe.Size()
 
-	l.records = sliceclear.Clear(l.records)
-	l.recordsSize = 0
+	b.records = sliceclear.Clear(b.records)
+	b.recordsSize = 0
 }
 
-func (l *Logs) flushSection() *table {
-	if len(l.stripes) == 0 {
+func (b *Builder) flushSection() *table {
+	if len(b.stripes) == 0 {
 		return nil
 	}
 
@@ -147,38 +147,38 @@ func (l *Logs) flushSection() *table {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
-	section, err := mergeTablesIncremental(&l.sectionBuffer, l.opts.PageSizeHint, compressionOpts, l.stripes, l.opts.StripeMergeLimit)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
 
-	l.stripes = sliceclear.Clear(l.stripes)
-	l.stripesSize = 0
+	b.stripes = sliceclear.Clear(b.stripes)
+	b.stripesSize = 0
 	return section
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
-func (l *Logs) EstimatedSize() int {
+func (b *Builder) EstimatedSize() int {
 	var size int
 
-	size += l.recordsSize
-	size += l.stripesSize
+	size += b.recordsSize
+	size += b.stripesSize
 
 	return size
 }
 
-// Flush flushes the logs section to the provided writer.
+// Flush flushes b to the provided writer.
 //
-// After successful encoding, the logs section is reset and can be reused.
-func (l *Logs) Flush(w encoding.SectionWriter) (n int64, err error) {
-	timer := prometheus.NewTimer(l.metrics.encodeSeconds)
+// After successful encoding, the b is reset and can be reused.
+func (b *Builder) Flush(w encoding.SectionWriter) (n int64, err error) {
+	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
 	// Flush any remaining buffered data.
-	l.flushRecords()
+	b.flushRecords()
 
-	section := l.flushSection()
+	section := b.flushSection()
 	if section == nil {
 		return 0, nil
 	}
@@ -193,13 +193,13 @@ func (l *Logs) Flush(w encoding.SectionWriter) (n int64, err error) {
 	// metadata size.
 
 	var logsEnc encoder
-	if err := l.encodeSection(&logsEnc, section); err != nil {
+	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
-		l.Reset()
+		b.Reset()
 	}
 	return n, err
 }
@@ -210,17 +210,17 @@ func (l *Logs) Flush(w encoding.SectionWriter) (n int64, err error) {
 // EncodeTo may generate multiple sections if the list of log records is too
 // big to fit into a single section.
 //
-// [Logs.Reset] is invoked after encoding, even if encoding fails.
-func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
-	timer := prometheus.NewTimer(l.metrics.encodeSeconds)
+// [Builder.Reset] is invoked after encoding, even if encoding fails.
+func (b *Builder) EncodeTo(enc *encoding.Encoder) error {
+	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	defer l.Reset()
+	defer b.Reset()
 
 	// Flush any remaining buffered data.
-	l.flushRecords()
+	b.flushRecords()
 
-	section := l.flushSection()
+	section := b.flushSection()
 	if section == nil {
 		return nil
 	}
@@ -235,7 +235,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	// metadata size.
 
 	var logsEnc encoder
-	if err := l.encodeSection(&logsEnc, section); err != nil {
+	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return fmt.Errorf("encoding section: %w", err)
 	}
 
@@ -243,7 +243,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	return err
 }
 
-func (l *Logs) encodeSection(enc *encoder, section *table) error {
+func (b *Builder) encodeSection(enc *encoder, section *table) error {
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
 		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
@@ -296,16 +296,16 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 	return columnEnc.Commit()
 }
 
-// Reset resets all state, allowing Logs to be reused.
-func (l *Logs) Reset() {
-	l.metrics.recordCount.Set(0)
+// Reset resets all state, allowing b to be reused.
+func (b *Builder) Reset() {
+	b.metrics.recordCount.Set(0)
 
-	l.records = sliceclear.Clear(l.records)
-	l.recordsSize = 0
+	b.records = sliceclear.Clear(b.records)
+	b.recordsSize = 0
 
-	l.stripes = sliceclear.Clear(l.stripes)
-	l.stripeBuffer.Reset()
-	l.stripesSize = 0
+	b.stripes = sliceclear.Clear(b.stripes)
+	b.stripeBuffer.Reset()
+	b.stripesSize = 0
 
-	l.sectionBuffer.Reset()
+	b.sectionBuffer.Reset()
 }

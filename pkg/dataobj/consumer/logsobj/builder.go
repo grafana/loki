@@ -141,7 +141,7 @@ type Builder struct {
 
 	builder *dataobj.Builder // Inner builder for accumulating sections.
 	streams *streams.Builder
-	logs    *logs.Logs
+	logs    *logs.Builder
 
 	state builderState
 }
@@ -180,7 +180,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		builder: dataobj.NewBuilder(),
 		streams: streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
-		logs: logs.New(metrics.logs, logs.Options{
+		logs: logs.NewBuilder(metrics.logs, logs.BuilderOptions{
 			PageSizeHint:     int(cfg.TargetPageSize),
 			BufferSize:       int(cfg.BufferSize),
 			StripeMergeLimit: cfg.SectionStripeMergeLimit,

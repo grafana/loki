@@ -34,13 +34,13 @@ func Test(t *testing.T) {
 		},
 	}
 
-	opts := logs.Options{
+	opts := logs.BuilderOptions{
 		PageSizeHint:     1024,
 		BufferSize:       256,
 		StripeMergeLimit: 2,
 	}
 
-	tracker := logs.New(nil, opts)
+	tracker := logs.NewBuilder(nil, opts)
 	for _, record := range records {
 		tracker.Append(record)
 	}
@@ -82,7 +82,7 @@ func Test(t *testing.T) {
 	}
 }
 
-func buildObject(lt *logs.Logs) ([]byte, error) {
+func buildObject(lt *logs.Builder) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := encoding.NewEncoder()
 	if err := lt.EncodeTo(enc); err != nil {
