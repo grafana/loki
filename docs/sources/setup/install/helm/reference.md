@@ -6562,6 +6562,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.affinity</td>
+			<td>object</td>
+			<td>Affinity for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the `loki-canary` Daemonset</td>
