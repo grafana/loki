@@ -172,24 +172,13 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 	metrics := newBuilderMetrics()
 	metrics.ObserveConfig(cfg)
 
-	innerBuilder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
-		TargetPageSize:          cfg.TargetPageSize,
-		TargetObjectSize:        cfg.TargetObjectSize,
-		TargetSectionSize:       cfg.TargetSectionSize,
-		BufferSize:              cfg.BufferSize,
-		SectionStripeMergeLimit: cfg.SectionStripeMergeLimit,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	return &Builder{
 		cfg:     cfg,
 		metrics: metrics,
 
 		labelCache: labelCache,
 
-		builder: innerBuilder,
+		builder: dataobj.NewBuilder(),
 		streams: streams.New(metrics.streams, int(cfg.TargetPageSize)),
 		logs: logs.New(metrics.logs, logs.Options{
 			PageSizeHint:     int(cfg.TargetPageSize),
