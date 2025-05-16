@@ -172,7 +172,6 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		logs: logs.New(metrics.logs, logs.Options{
 			PageSizeHint:     int(cfg.TargetPageSize),
 			BufferSize:       int(cfg.BufferSize),
-			SectionSize:      int(cfg.TargetSectionSize),
 			StripeMergeLimit: cfg.SectionStripeMergeLimit,
 		}),
 	}, nil
@@ -247,6 +246,14 @@ func (b *Builder) Append(stream logproto.Stream) error {
 			Metadata:  convertMetadata(entry.StructuredMetadata),
 			Line:      []byte(entry.Line),
 		})
+
+		// If our logs section has gotten big enough, we want to flush it to the
+		// encoder and start a new section.
+		if b.logs.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+			if err := b.logs.EncodeTo(b.encoder); err != nil {
+				return err
+			}
+		}
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
@@ -363,6 +370,8 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 
 	initialBufferSize := output.Len()
 
+	// Perform final flushes of our section builders. As some sections are
+	// incrementally flushed (b.logs), the EncodeTo calls here may be no-ops.
 	if err := b.streams.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
 	} else if err := b.logs.EncodeTo(b.encoder); err != nil {

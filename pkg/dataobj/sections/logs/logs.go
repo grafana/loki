@@ -39,11 +39,6 @@ type Options struct {
 	// BufferSize is the size of the buffer to use when accumulating log records.
 	BufferSize int
 
-	// SectionSizeHint is the size of the section to use when encoding the logs
-	// section. If the section size is exceeded, multiple sections will be
-	// created.
-	SectionSize int
-
 	// StripeMergeLimit is the maximum number of stripes to merge at once when
 	// flushing stripes into a section. StripeMergeLimit must be larger than 1.
 	//
@@ -80,7 +75,6 @@ type Logs struct {
 	stripeBuffer tableBuffer
 	stripesSize  int // Estimated byte size of all elements in stripes.
 
-	sections      []*table // Completed sections.
 	sectionBuffer tableBuffer
 }
 
@@ -142,15 +136,11 @@ func (l *Logs) flushRecords() {
 
 	l.records = sliceclear.Clear(l.records)
 	l.recordsSize = 0
-
-	if l.stripesSize >= l.opts.SectionSize {
-		l.flushSection()
-	}
 }
 
-func (l *Logs) flushSection() {
+func (l *Logs) flushSection() *table {
 	if len(l.stripes) == 0 {
-		return
+		return nil
 	}
 
 	compressionOpts := dataset.CompressionOptions{
@@ -162,10 +152,10 @@ func (l *Logs) flushSection() {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
-	l.sections = append(l.sections, section)
 
 	l.stripes = sliceclear.Clear(l.stripes)
 	l.stripesSize = 0
+	return section
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
@@ -174,9 +164,6 @@ func (l *Logs) EstimatedSize() int {
 
 	size += l.recordsSize
 	size += l.stripesSize
-	for _, section := range l.sections {
-		size += section.Size()
-	}
 
 	return size
 }
@@ -196,20 +183,22 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 
 	// Flush any remaining buffered data.
 	l.flushRecords()
-	l.flushSection()
 
-	// TODO(rfratto): handle individual sections having oversized metadata. This
-	// can happen when the number of columns is very wide, due to a lot of
+	section := l.flushSection()
+	if section == nil {
+		return nil
+	}
+
+	// TODO(rfratto): handle an individual section having oversized metadata.
+	// This can happen when the number of columns is very wide, due to a lot of
 	// metadata columns.
 	//
-	// As we're already splitting data into separate sections, the best solution
+	// As the caller likely creates many smaller logs sections, the best solution
 	// for this is to aggregate the lowest cardinality columns into a combined
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
-	for _, section := range l.sections {
-		if err := l.encodeSection(enc, section); err != nil {
-			return fmt.Errorf("encoding section: %w", err)
-		}
+	if err := l.encodeSection(enc, section); err != nil {
+		return fmt.Errorf("encoding section: %w", err)
 	}
 
 	return nil
@@ -283,6 +272,5 @@ func (l *Logs) Reset() {
 	l.stripeBuffer.Reset()
 	l.stripesSize = 0
 
-	l.sections = sliceclear.Clear(l.sections)
 	l.sectionBuffer.Reset()
 }

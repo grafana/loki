@@ -93,8 +93,8 @@ func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
 
 var testBuilderConfig = dataobj.BuilderConfig{
 	TargetPageSize:    2048,
-	TargetObjectSize:  4096,
-	TargetSectionSize: 4096,
+	TargetObjectSize:  1 << 22, // 4 MiB
+	TargetSectionSize: 1 << 22, // 4 MiB
 
 	BufferSize: 2048 * 8,
 
