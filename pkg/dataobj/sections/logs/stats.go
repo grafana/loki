@@ -52,7 +52,7 @@ type (
 func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
-	dec := NewDecoder(section.reader)
+	dec := newDecoder(section.reader)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")

@@ -108,7 +108,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := Decode(r.columnDesc, r.buf[i], &r.record)
+		err := decodeRow(r.columnDesc, r.buf[i], &r.record)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
@@ -143,14 +143,14 @@ func unsafeString(data []byte) string {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dec := NewDecoder(r.sec.reader)
+	dec := newDecoder(r.sec.reader)
 
 	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := Dataset(dec)
+	dset := toDataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -172,7 +172,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	readerOpts := dataset.ReaderOptions{
 		Dataset:    dset,
 		Columns:    columns,
-		Predicates: OrderPredicates(predicates),
+		Predicates: orderPredicates(predicates),
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}

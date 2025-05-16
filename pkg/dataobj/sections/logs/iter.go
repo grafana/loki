@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -21,27 +21,15 @@ import (
 // Iter iterates over records in the provided decoder. All logs sections are
 // iterated over in order.
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
-func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
+func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		metadata, err := dec.Metadata(ctx)
-		if err != nil {
-			return err
-		}
-
-		for _, section := range metadata.Sections {
-			sectionReader := dec.SectionReader(metadata, section)
-
-			typ, err := sectionReader.Type()
+		for i, section := range obj.Sections().Filter(CheckSection) {
+			logsSection, err := Open(ctx, section)
 			if err != nil {
-				return fmt.Errorf("getting section type: %w", err)
+				return fmt.Errorf("opening section %d: %w", i, err)
 			}
 
-			if typ != encoding.SectionTypeLogs {
-				continue
-			}
-
-			logsDec := NewDecoder(sectionReader)
-			for result := range IterSection(ctx, logsDec) {
+			for result := range IterSection(ctx, logsSection) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -52,8 +40,10 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	})
 }
 
-func IterSection(ctx context.Context, dec *Decoder) result.Seq[Record] {
+func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
+		dec := newDecoder(section.reader)
+
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
 		//
@@ -64,7 +54,7 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Record] {
 			return err
 		}
 
-		dset := Dataset(dec)
+		dset := toDataset(dec)
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
@@ -87,7 +77,7 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Record] {
 				return nil
 			}
 			for _, row := range rows[:n] {
-				err := Decode(streamsColumns, row, &record)
+				err := decodeRow(streamsColumns, row, &record)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -96,10 +86,10 @@ func IterSection(ctx context.Context, dec *Decoder) result.Seq[Record] {
 	})
 }
 
-// Decode decodes a record from a [dataset.Row], using the provided columns to
-// determine the column type. The list of columns must match the columns used
-// to create the row.
-func Decode(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
+// decodeRow decodes a record from a [dataset.Row], using the provided columns
+// to determine the column type. The list of columns must match the columns
+// used to create the row.
+func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
 	metadataColumns := metadataColumns(columns)
 	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
 	record.Metadata = record.Metadata[:metadataColumns]

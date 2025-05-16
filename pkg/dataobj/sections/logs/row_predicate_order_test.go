@@ -13,7 +13,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 	tests := []struct {
 		name      string
 		predicate dataset.Predicate
-		want      SelectivityScore
+		want      selectivityScore
 	}{
 		{
 			name: "Equal on low cardinality column should be less selective",
@@ -27,7 +27,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				}).ToMemColumn(t),
 				Value: dataset.Int64Value(50),
 			},
-			want: SelectivityScore(0.1), // expects ~100 matches out of 1000 rows
+			want: selectivityScore(0.1), // expects ~100 matches out of 1000 rows
 		},
 		{
 			name: "Equal on high cardinality column should be more selective",
@@ -41,7 +41,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				}).ToMemColumn(t),
 				Value: dataset.Int64Value(50),
 			},
-			want: SelectivityScore(0.001), // expects ~1 matches out of 1000 rows
+			want: selectivityScore(0.001), // expects ~1 matches out of 1000 rows
 		},
 		{
 			name: "Equal with sparse data should have higher selectivity",
@@ -55,7 +55,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				}).ToMemColumn(t),
 				Value: dataset.Int64Value(50),
 			},
-			want: SelectivityScore(0.005),
+			want: selectivityScore(0.005),
 		},
 		{
 			name: "Equal with out of range value should have zero selectivity",
@@ -67,7 +67,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				}).ToMemColumn(t),
 				Value: dataset.Int64Value(100),
 			},
-			want: SelectivityScore(0.0),
+			want: selectivityScore(0.0),
 		},
 		{
 			name: "GreaterThan selectivity using min/max range",
@@ -77,7 +77,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(70),
 			},
-			want: SelectivityScore(0.3),
+			want: selectivityScore(0.3),
 		},
 		{
 			name: "GreaterThan with operand greater than max value should have zero selectivity",
@@ -87,7 +87,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(51),
 			},
-			want: SelectivityScore(0.0),
+			want: selectivityScore(0.0),
 		},
 		{
 			name: "GreaterThan with operand less than min value should match all rows",
@@ -97,7 +97,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(0),
 			},
-			want: SelectivityScore(1.0),
+			want: selectivityScore(1.0),
 		},
 		{
 			name: "LessThan selectivity using min/max range",
@@ -107,7 +107,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(70),
 			},
-			want: SelectivityScore(0.7),
+			want: selectivityScore(0.7),
 		},
 		{
 			name: "LessThan with operand less than min value should have zero selectivity",
@@ -117,7 +117,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(10),
 			},
-			want: SelectivityScore(0.0),
+			want: selectivityScore(0.0),
 		},
 		{
 			name: "LessThan with operand greater than max value should match all rows",
@@ -127,7 +127,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			}).ToMemColumn(t),
 				Value: dataset.Int64Value(60),
 			},
-			want: SelectivityScore(1.0),
+			want: selectivityScore(1.0),
 		},
 		{
 			name: "Not should invert the selectivity",
@@ -143,7 +143,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 					Value: dataset.Int64Value(50),
 				},
 			},
-			want: SelectivityScore(0.9), // 1 - 0.1
+			want: selectivityScore(0.9), // 1 - 0.1
 		},
 		{
 			name: "In should add up selectivity for valid values",
@@ -157,7 +157,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 				}).ToMemColumn(t),
 				Values: []dataset.Value{dataset.Int64Value(20), dataset.Int64Value(50), dataset.Int64Value(60), dataset.Int64Value(80)}, // 2 values in range. ~200 matching rows
 			},
-			want: SelectivityScore(0.2), // 0.1 + 0.1
+			want: selectivityScore(0.2), // 0.1 + 0.1
 		},
 		{
 			name: "And should take the minimum selectivity of the two predicates",
@@ -183,7 +183,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 					Value: dataset.Int64Value(50),
 				},
 			},
-			want: SelectivityScore(0.05),
+			want: selectivityScore(0.05),
 		},
 		{
 			name: "Or should add up selectivity for valid values",
@@ -209,7 +209,7 @@ func TestGetPredicateSelectivity(t *testing.T) {
 					Value: dataset.Int64Value(50),
 				},
 			},
-			want: SelectivityScore(0.15),
+			want: selectivityScore(0.15),
 		},
 	}
 
@@ -358,7 +358,7 @@ func TestOrderPredicates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := OrderPredicates(tt.predicates)
+			got := orderPredicates(tt.predicates)
 			require.Equal(t, tt.want, got)
 		})
 	}

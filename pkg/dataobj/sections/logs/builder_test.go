@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
@@ -71,10 +72,11 @@ func Test(t *testing.T) {
 		},
 	}
 
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
+	require.NoError(t, err)
 
 	i := 0
-	for result := range logs.Iter(context.Background(), dec) {
+	for result := range logs.Iter(context.Background(), obj) {
 		record, err := result.Value()
 		require.NoError(t, err)
 		require.Equal(t, expect[i], record)
