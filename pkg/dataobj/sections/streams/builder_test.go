@@ -28,7 +28,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
 	}
 
-	tracker := streams.New(nil, 1024)
+	tracker := streams.NewBuilder(nil, 1024)
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
@@ -80,7 +80,7 @@ func copyLabels(in labels.Labels) labels.Labels {
 	return lb
 }
 
-func buildObject(st *streams.Streams) ([]byte, error) {
+func buildObject(st *streams.Builder) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := encoding.NewEncoder()
 	if err := st.EncodeTo(enc); err != nil {

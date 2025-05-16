@@ -60,8 +60,8 @@ var streamPool = sync.Pool{
 	},
 }
 
-// Streams tracks information about streams in a data object.
-type Streams struct {
+// Builder builds a streams section.
+type Builder struct {
 	metrics  *Metrics
 	pageSize int
 	lastID   atomic.Int64
@@ -79,13 +79,13 @@ type Streams struct {
 	ordered []*Stream
 }
 
-// New creates a new Streams section. The pageSize argument specifies how large
-// pages should be.
-func New(metrics *Metrics, pageSize int) *Streams {
+// NewBuilder creates a new sterams section builder. The pageSize argument
+// specifies how large pages should be.
+func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
-	return &Streams{
+	return &Builder{
 		metrics:  metrics,
 		pageSize: pageSize,
 		lookup:   make(map[uint64][]*Stream, 1024),
@@ -94,21 +94,21 @@ func New(metrics *Metrics, pageSize int) *Streams {
 }
 
 // TimeRange returns the minimum and maximum timestamp across all streams.
-func (s *Streams) TimeRange() (time.Time, time.Time) {
-	return s.globalMinTimestamp, s.globalMaxTimestamp
+func (b *Builder) TimeRange() (time.Time, time.Time) {
+	return b.globalMinTimestamp, b.globalMaxTimestamp
 }
 
-// Record a stream record within the Streams section. The provided timestamp is
-// used to track the minimum and maximum timestamp of a stream. The number of
-// calls to Record is used to track the number of rows for a stream.
-// The recordSize is used to track the uncompressed size of the stream.
+// Record a stream record within the section. The provided timestamp is used to
+// track the minimum and maximum timestamp of a stream. The number of calls to
+// Record is used to track the number of rows for a stream. The recordSize is
+// used to track the uncompressed size of the stream.
 //
 // The stream ID of the recorded stream is returned.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, recordSize int64) int64 {
+func (b *Builder) Record(streamLabels labels.Labels, ts time.Time, recordSize int64) int64 {
 	ts = ts.UTC()
-	s.observeRecord(ts)
+	b.observeRecord(ts)
 
-	stream := s.getOrAddStream(streamLabels)
+	stream := b.getOrAddStream(streamLabels)
 	if stream.MinTimestamp.IsZero() || ts.Before(stream.MinTimestamp) {
 		stream.MinTimestamp = ts
 	}
@@ -121,21 +121,21 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, recordSize in
 	return stream.ID
 }
 
-func (s *Streams) observeRecord(ts time.Time) {
-	s.metrics.recordsTotal.Inc()
+func (b *Builder) observeRecord(ts time.Time) {
+	b.metrics.recordsTotal.Inc()
 
-	if ts.Before(s.globalMinTimestamp) || s.globalMinTimestamp.IsZero() {
-		s.globalMinTimestamp = ts
-		s.metrics.minTimestamp.Set(float64(ts.Unix()))
+	if ts.Before(b.globalMinTimestamp) || b.globalMinTimestamp.IsZero() {
+		b.globalMinTimestamp = ts
+		b.metrics.minTimestamp.Set(float64(ts.Unix()))
 	}
-	if ts.After(s.globalMaxTimestamp) || s.globalMaxTimestamp.IsZero() {
-		s.globalMaxTimestamp = ts
-		s.metrics.maxTimestamp.Set(float64(ts.Unix()))
+	if ts.After(b.globalMaxTimestamp) || b.globalMaxTimestamp.IsZero() {
+		b.globalMaxTimestamp = ts
+		b.metrics.maxTimestamp.Set(float64(ts.Unix()))
 	}
 }
 
 // EstimatedSize returns the estimated size of the Streams section in bytes.
-func (s *Streams) EstimatedSize() int {
+func (b *Builder) EstimatedSize() int {
 	// Since columns are only built when encoding, we can't use
 	// [dataset.ColumnBuilder.EstimatedSize] here.
 	//
@@ -155,20 +155,20 @@ func (s *Streams) EstimatedSize() int {
 
 	var sizeEstimate int
 
-	sizeEstimate += len(s.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(s.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(s.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(s.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += s.currentLabelsSize / 2             // All labels (2x compression ratio)
+	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
+	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
+	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
+	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
+	sizeEstimate += b.currentLabelsSize / 2             // All labels (2x compression ratio)
 
 	return sizeEstimate
 }
 
-func (s *Streams) getOrAddStream(streamLabels labels.Labels) *Stream {
+func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	hash := streamLabels.Hash()
-	matches, ok := s.lookup[hash]
+	matches, ok := b.lookup[hash]
 	if !ok {
-		return s.addStream(hash, streamLabels)
+		return b.addStream(hash, streamLabels)
 	}
 
 	for _, stream := range matches {
@@ -177,34 +177,34 @@ func (s *Streams) getOrAddStream(streamLabels labels.Labels) *Stream {
 		}
 	}
 
-	return s.addStream(hash, streamLabels)
+	return b.addStream(hash, streamLabels)
 }
 
-func (s *Streams) addStream(hash uint64, streamLabels labels.Labels) *Stream {
+func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	// Ensure streamLabels are sorted prior to adding to ensure consistent column
 	// ordering.
 	sort.Sort(streamLabels)
 
 	for _, lbl := range streamLabels {
-		s.currentLabelsSize += len(lbl.Value)
+		b.currentLabelsSize += len(lbl.Value)
 	}
 
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
-	newStream.ID = s.lastID.Add(1)
+	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
 
-	s.lookup[hash] = append(s.lookup[hash], newStream)
-	s.ordered = append(s.ordered, newStream)
-	s.metrics.streamCount.Inc()
+	b.lookup[hash] = append(b.lookup[hash], newStream)
+	b.ordered = append(b.ordered, newStream)
+	b.metrics.streamCount.Inc()
 	return newStream
 }
 
 // StreamID returns the stream ID for the provided streamLabels. If the stream
 // has not been recorded, StreamID returns 0.
-func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
+func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
 	hash := streamLabels.Hash()
-	matches, ok := s.lookup[hash]
+	matches, ok := b.lookup[hash]
 	if !ok {
 		return 0
 	}
@@ -220,21 +220,20 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 
 // Flush flushes the streams section to the provided writer.
 //
-// After successful encoding, Streams is reset to a fresh state and can be
-// reused.
-func (s *Streams) Flush(w encoding.SectionWriter) (n int64, err error) {
-	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
+// After successful encoding, b is reset to a fresh state and can be reused.
+func (b *Builder) Flush(w encoding.SectionWriter) (n int64, err error) {
+	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
 	var streamsEnc encoder
 	defer streamsEnc.Reset()
-	if err := s.encodeTo(&streamsEnc); err != nil {
+	if err := b.encodeTo(&streamsEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
 	n, err = streamsEnc.Flush(w)
 	if err == nil {
-		s.Reset()
+		b.Reset()
 	}
 	return n, err
 }
@@ -243,13 +242,13 @@ func (s *Streams) Flush(w encoding.SectionWriter) (n int64, err error) {
 //
 // EncodeTo may generate multiple sections if the list of streams is too big to
 // fit into a single section.
-func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
-	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
+func (b *Builder) EncodeTo(enc *encoding.Encoder) error {
+	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
 	var streamsEnc encoder
 	defer streamsEnc.Reset()
-	if err := s.encodeTo(&streamsEnc); err != nil {
+	if err := b.encodeTo(&streamsEnc); err != nil {
 		return fmt.Errorf("building encoder: %w", err)
 	}
 
@@ -257,7 +256,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	return err
 }
 
-func (s *Streams) encodeTo(enc *encoder) error {
+func (b *Builder) encodeTo(enc *encoder) error {
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -266,23 +265,23 @@ func (s *Streams) encodeTo(enc *encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(s.pageSize)
+	idBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(s.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(s.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(s.pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(s.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -299,7 +298,7 @@ func (s *Streams) encodeTo(enc *encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint: s.pageSize,
+			PageSizeHint: b.pageSize,
 			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
@@ -317,7 +316,7 @@ func (s *Streams) encodeTo(enc *encoder) error {
 	}
 
 	// Populate our column builders.
-	for i, stream := range s.ordered {
+	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
@@ -352,7 +351,7 @@ func (s *Streams) encodeTo(enc *encoder) error {
 	for _, labelBuilder := range labelBuilders {
 		// For consistency we'll make sure each label builder has the same number
 		// of rows as the other columns (which is the number of streams).
-		labelBuilder.Backfill(len(s.ordered))
+		labelBuilder.Backfill(len(b.ordered))
 
 		err := encodeColumn(enc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
 		if err != nil {
@@ -402,18 +401,18 @@ func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *datase
 }
 
 // Reset resets all state, allowing Streams to be reused.
-func (s *Streams) Reset() {
-	s.lastID.Store(0)
-	for _, stream := range s.ordered {
+func (b *Builder) Reset() {
+	b.lastID.Store(0)
+	for _, stream := range b.ordered {
 		streamPool.Put(stream)
 	}
-	clear(s.lookup)
-	s.ordered = sliceclear.Clear(s.ordered)
-	s.currentLabelsSize = 0
-	s.globalMinTimestamp = time.Time{}
-	s.globalMaxTimestamp = time.Time{}
+	clear(b.lookup)
+	b.ordered = sliceclear.Clear(b.ordered)
+	b.currentLabelsSize = 0
+	b.globalMinTimestamp = time.Time{}
+	b.globalMaxTimestamp = time.Time{}
 
-	s.metrics.streamCount.Set(0)
-	s.metrics.minTimestamp.Set(0)
-	s.metrics.maxTimestamp.Set(0)
+	b.metrics.streamCount.Set(0)
+	b.metrics.minTimestamp.Set(0)
+	b.metrics.maxTimestamp.Set(0)
 }

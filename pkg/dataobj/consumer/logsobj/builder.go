@@ -140,7 +140,7 @@ type Builder struct {
 	currentSizeEstimate int
 
 	builder *dataobj.Builder // Inner builder for accumulating sections.
-	streams *streams.Streams
+	streams *streams.Builder
 	logs    *logs.Logs
 
 	state builderState
@@ -179,7 +179,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		labelCache: labelCache,
 
 		builder: dataobj.NewBuilder(),
-		streams: streams.New(metrics.streams, int(cfg.TargetPageSize)),
+		streams: streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
 		logs: logs.New(metrics.logs, logs.Options{
 			PageSizeHint:     int(cfg.TargetPageSize),
 			BufferSize:       int(cfg.BufferSize),
