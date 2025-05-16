@@ -409,11 +409,11 @@ func shardObjects(
 		reader.streamReader = streamReaderPool.Get().(*streams.RowReader)
 		reader.object = objects[i]
 
-		dec, err := objects[i].StreamsDecoder(ctx, 0)
+		sec, err := findStreamsSection(ctx, objects[i].Object)
 		if err != nil {
-			return nil, fmt.Errorf("creating streams decoder: %w", err)
+			return nil, fmt.Errorf("finding streams section: %w", err)
 		}
-		reader.streamReader.Reset(dec)
+		reader.streamReader.Reset(sec)
 
 		for _, section := range sections {
 			dec, err := objects[i].LogsDecoder(ctx, section)
@@ -448,6 +448,17 @@ func shardObjects(
 	}
 
 	return shardedReaders, nil
+}
+
+func findStreamsSection(ctx context.Context, obj *dataobj.Object) (*streams.Section, error) {
+	for _, section := range obj.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+		return streams.Open(ctx, section)
+	}
+
+	return nil, fmt.Errorf("object has no streams sections")
 }
 
 func (s *shardedObject) reset() {

@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -288,19 +289,13 @@ func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard
 
 	span.SetTag("objects", len(objects))
 
-	metadatas, err := fetchMetadatas(ctx, objects)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		// sectionIndex tracks the global section number across all objects to ensure consistent sharding
+		sectionIndex uint64
+		readers      []*streams.RowReader
+	)
 
-	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
-	var sectionIndex uint64
-	var readers []*streams.RowReader
-	for i, metadata := range metadatas {
-		if metadata.StreamsSections > 1 {
-			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
-		}
-
+	for _, object := range objects {
 		// For sharded queries (e.g., "1 of 2"), we only read sections that belong to our shard
 		// The section is assigned to a shard based on its global index across all objects
 		if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
@@ -310,16 +305,30 @@ func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard
 			}
 		}
 
-		dec, err := objects[i].StreamsDecoder(ctx, 0)
+		var found *dataobj.Section
+		for _, section := range object.Sections() {
+			if !streams.CheckSection(section) {
+				continue
+			} else if found != nil {
+				return nil, fmt.Errorf("object has unsupported multiple streams sections")
+			}
+			found = section
+		}
+		if found == nil {
+			return nil, fmt.Errorf("object has no streams sections")
+		}
+
+		sec, err := streams.Open(ctx, found)
 		if err != nil {
-			return nil, fmt.Errorf("creating streams decoder: %w", err)
+			return nil, fmt.Errorf("opening streams section: %w", err)
 		}
 
 		reader := streamReaderPool.Get().(*streams.RowReader)
-		reader.Reset(dec)
+		reader.Reset(sec)
 		readers = append(readers, reader)
 		sectionIndex++
 	}
+
 	span.LogKV("msg", "shardStreamReaders done", "readers", len(readers))
 	return readers, nil
 }

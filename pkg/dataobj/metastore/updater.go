@@ -170,29 +170,27 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 // readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
 func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) error {
-	// Fetch sections
-	si, err := object.Metadata(ctx)
-	if err != nil {
-		return errors.Wrap(err, "resolving object metadata")
-	}
-
 	var streamsReader streams.RowReader
 	defer streamsReader.Close()
 
 	// Read streams from existing metastore object and write them to the builder for the new object
-	streams := make([]streams.Stream, 100)
-	for i := 0; i < si.StreamsSections; i++ {
-		dec, err := object.StreamsDecoder(ctx, i)
+	buf := make([]streams.Stream, 100)
+
+	for _, section := range object.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+		sec, err := streams.Open(ctx, section)
 		if err != nil {
-			return errors.Wrap(err, "creating streams decoder")
+			return errors.Wrap(err, "opening section")
 		}
 
-		streamsReader.Reset(dec)
-		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
+		streamsReader.Reset(sec)
+		for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading streams")
 			}
-			for _, stream := range streams[:n] {
+			for _, stream := range buf[:n] {
 				err = m.metastoreBuilder.Append(logproto.Stream{
 					Labels:  stream.Labels.String(),
 					Entries: []logproto.Entry{{Line: ""}},
@@ -203,5 +201,6 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 			}
 		}
 	}
+
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -81,7 +82,7 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
-func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Decoder {
+func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Section {
 	t.Helper()
 
 	s := streams.NewBuilder(nil, pageSize)
@@ -100,9 +101,12 @@ func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Decoder {
 	md, err := dec.Metadata(t.Context())
 	require.NoError(t, err)
 
-	streamsDecoder, err := streams.NewDecoder(dec.SectionReader(md, md.Sections[0]))
+	sec, err := streams.Open(context.Background(), &dataobj.Section{
+		Type:   dataobj.SectionType(encoding.SectionTypeStreams),
+		Reader: dec.SectionReader(md, md.Sections[0]),
+	})
 	require.NoError(t, err)
-	return streamsDecoder
+	return sec
 }
 
 func readAllStreams(ctx context.Context, r *streams.RowReader) ([]streams.Stream, error) {

@@ -17,7 +17,7 @@ import (
 
 // RowReader reads the set of streams from an [Object].
 type RowReader struct {
-	dec   *Decoder
+	sec   *Section
 	ready bool
 
 	predicate RowPredicate
@@ -33,10 +33,10 @@ type RowReader struct {
 }
 
 // NewRowReader creates a new RowReader that reads rows from the provided
-// [Decoder].
-func NewRowReader(dec *Decoder) *RowReader {
+// [Section].
+func NewRowReader(sec *Section) *RowReader {
 	var sr RowReader
-	sr.Reset(dec)
+	sr.Reset(sec)
 	return &sr
 }
 
@@ -61,7 +61,7 @@ func (r *RowReader) SetPredicate(p RowPredicate) error {
 // into s. It returns the number of streams read and any error encountered. At
 // the end of the stream section, Read returns 0, io.EOF.
 func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
-	if r.dec == nil {
+	if r.sec == nil {
 		return 0, io.EOF
 	}
 
@@ -104,12 +104,14 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	columnDescs, err := r.dec.Columns(ctx)
+	dec := NewDecoder(r.sec.reader)
+
+	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := Dataset(r.dec)
+	dset := Dataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -153,8 +155,8 @@ func (r *RowReader) initReader(ctx context.Context) error {
 //
 // Reset may be called with a nil object and a negative section index to clear
 // the RowReader without needing a new object.
-func (r *RowReader) Reset(dec *Decoder) {
-	r.dec = dec
+func (r *RowReader) Reset(sec *Section) {
+	r.sec = sec
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil

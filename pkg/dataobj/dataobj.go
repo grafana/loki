@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // An Object is a representation of a data object.
@@ -90,35 +89,6 @@ func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
 		}
 	}
 	return res, nil
-}
-
-// StreamsDecoder returns a [streams.Decoder] for the given streams section
-// index. StreamsDecoder returns an error if the section is not a streams
-// section.
-func (o *Object) StreamsDecoder(ctx context.Context, index int) (*streams.Decoder, error) {
-	metadata, err := o.dec.Metadata(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading sections: %w", err)
-	}
-
-	var found int
-
-	for _, s := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, s)
-		if err != nil {
-			return nil, fmt.Errorf("getting section type: %w", err)
-		}
-
-		if typ == encoding.SectionTypeStreams {
-			if found == index {
-				reader := o.dec.SectionReader(metadata, s)
-				return streams.NewDecoder(reader)
-			}
-			found++
-		}
-	}
-
-	return nil, fmt.Errorf("streams section %d not found", index)
 }
 
 // LogsDecoder returns a [logs.Decoder] for the given logs section index.

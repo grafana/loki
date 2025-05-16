@@ -36,7 +36,7 @@ func Inspect(dataobj io.ReaderAt, size int64) {
 			logsDec, _ := logs.NewDecoder(sectionReader)
 			printLogsInfo(reader, logsDec)
 		case encoding.SectionTypeStreams:
-			streamsDec, _ := streams.NewDecoder(sectionReader)
+			streamsDec := streams.NewDecoder(sectionReader)
 			printStreamInfo(reader, streamsDec)
 		}
 	}

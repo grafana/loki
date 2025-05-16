@@ -368,22 +368,22 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
-	md, err := object.Metadata(ctx)
-	if err != nil {
-		return err
-	}
-
 	var reader streams.RowReader
 	defer reader.Close()
 
-	streams := make([]streams.Stream, 1024)
-	for i := 0; i < md.StreamsSections; i++ {
-		dec, err := object.StreamsDecoder(ctx, i)
-		if err != nil {
-			return fmt.Errorf("getting streams decoder: %w", err)
+	buf := make([]streams.Stream, 1024)
+
+	for _, section := range object.Sections() {
+		if !streams.CheckSection(section) {
+			continue
 		}
 
-		reader.Reset(dec)
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		reader.Reset(sec)
 		if predicate != nil {
 			err := reader.SetPredicate(predicate)
 			if err != nil {
@@ -391,14 +391,14 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 			}
 		}
 		for {
-			num, err := reader.Read(ctx, streams)
+			num, err := reader.Read(ctx, buf)
 			if err != nil && err != io.EOF {
 				return err
 			}
 			if num == 0 && err == io.EOF {
 				break
 			}
-			for _, stream := range streams[:num] {
+			for _, stream := range buf[:num] {
 				f(stream)
 			}
 		}

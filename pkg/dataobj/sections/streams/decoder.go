@@ -6,30 +6,22 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
-// NewDecoder creates a new [Decoder] for the given [encoding.SectionReader].
-// NewDecoder returns an error if reader is not for a streams section.
-func NewDecoder(reader encoding.SectionReader) (*Decoder, error) {
-	typ, err := reader.Type()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read section type: %w", err)
-	} else if got, want := typ, encoding.SectionTypeStreams; got != want {
-		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
-	}
-
-	return &Decoder{sr: reader}, nil
+// NewDecoder creates a new [Decoder] for the given [dataobj.SectionReader].
+func NewDecoder(reader dataobj.SectionReader) *Decoder {
+	return &Decoder{sr: reader}
 }
 
 // Decoder supports decoding the raw underlying data for a streams section.
 type Decoder struct {
-	sr encoding.SectionReader
+	sr dataobj.SectionReader
 }
 
 // Columns describes the set of columns in the section.

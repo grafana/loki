@@ -268,11 +268,7 @@ func inspectStreamsSection(ctx context.Context, reader encoding.SectionReader) (
 		Type: encoding.SectionTypeStreams.String(),
 	}
 
-	dec, err := streams.NewDecoder(reader)
-	if err != nil {
-		return meta, err
-	}
-
+	dec := streams.NewDecoder(reader)
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return meta, err

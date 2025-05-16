@@ -1,5 +1,3 @@
-// Package streams defines types used for the data object streams section. The
-// streams section holds a list of streams present in the data object.
 package streams
 
 import (

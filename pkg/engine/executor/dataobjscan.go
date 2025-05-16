@@ -135,17 +135,21 @@ func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
 		s.streams[id] = nil
 	}
 
-	for section := range md.StreamsSections {
-		dec, err := s.opts.Object.StreamsDecoder(s.ctx, section)
+	for _, section := range s.opts.Object.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+
+		sec, err := streams.Open(s.ctx, section)
 		if err != nil {
-			return fmt.Errorf("creating streams decoder: %w", err)
+			return fmt.Errorf("opening streams section: %w", err)
 		}
 
 		// TODO(rfratto): dataobj.StreamsPredicate is missing support for filtering
 		// on stream IDs when we already know them in advance; this can cause the
 		// Read here to take longer than it needs to since we're reading the
 		// entirety of every row.
-		sr.Reset(dec)
+		sr.Reset(sec)
 
 		for {
 			n, err := sr.Read(s.ctx, streamsBuf)
