@@ -26,6 +26,7 @@ type Sender struct {
 	// set in the client.
 	topic      string
 	partitions int
+	zone       string
 	logger     log.Logger
 
 	produced       prometheus.Counter
@@ -33,11 +34,12 @@ type Sender struct {
 }
 
 // NewSender returns a new Sender.
-func NewSender(producer Producer, topic string, partitions int, logger log.Logger, reg prometheus.Registerer) *Sender {
+func NewSender(producer Producer, topic string, partitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Sender {
 	return &Sender{
 		producer:   producer,
 		topic:      topic,
 		partitions: partitions,
+		zone:       zone,
 		logger:     logger,
 		produced: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
@@ -59,6 +61,7 @@ func NewSender(producer Producer, topic string, partitions int, logger log.Logge
 // complete.
 func (s *Sender) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
 	v := proto.StreamMetadataRecord{
+		Zone:     s.zone,
 		Tenant:   tenant,
 		Metadata: metadata,
 	}

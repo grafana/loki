@@ -186,10 +186,18 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		s.partitionManager,
 		s.usage,
 		NewOffsetReadinessCheck(s.partitionManager),
+		cfg.LifecyclerConfig.Zone,
 		logger,
 		reg,
 	)
-	s.sender = NewSender(s.clientWriter, kCfg.Topic, s.cfg.NumPartitions, logger, reg)
+	s.sender = NewSender(
+		s.clientWriter,
+		kCfg.Topic,
+		s.cfg.NumPartitions,
+		cfg.LifecyclerConfig.Zone,
+		logger,
+		reg,
+	)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil

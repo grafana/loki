@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/coder/quartz"
@@ -33,11 +32,15 @@ type PlaybackManager struct {
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
 	readinessCheck PartitionReadinessCheck
-	logger         log.Logger
+	// zone is used to discard our own records.
+	zone   string
+	logger log.Logger
 
 	// Metrics.
-	recordsProcessed *prometheus.CounterVec
 	lag              prometheus.Histogram
+	recordsFetched   prometheus.Counter
+	recordsDiscarded prometheus.Counter
+	recordsInvalid   prometheus.Counter
 
 	// Used for tests.
 	clock quartz.Clock
@@ -49,6 +52,7 @@ func NewPlaybackManager(
 	partitionManager *PartitionManager,
 	usage *UsageStore,
 	readinessCheck PartitionReadinessCheck,
+	zone string,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *PlaybackManager {
@@ -57,15 +61,9 @@ func NewPlaybackManager(
 		partitionManager: partitionManager,
 		usage:            usage,
 		readinessCheck:   readinessCheck,
+		zone:             zone,
 		logger:           logger,
 		clock:            quartz.NewReal(),
-		recordsProcessed: promauto.With(reg).NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "loki_ingest_limits_records_processed_total",
-				Help: "The total number of records processed.",
-			},
-			[]string{"partition"},
-		),
 		lag: promauto.With(reg).NewHistogram(
 			prometheus.HistogramOpts{
 				Name:                            "loki_ingest_limits_lag_seconds",
@@ -74,6 +72,24 @@ func NewPlaybackManager(
 				NativeHistogramMinResetDuration: 1 * time.Hour,
 				NativeHistogramMaxBucketNumber:  100,
 				Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
+			},
+		),
+		recordsFetched: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_records_fetched_total",
+				Help: "The total number of records fetched.",
+			},
+		),
+		recordsDiscarded: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_records_discarded_total",
+				Help: "The total number of records discarded.",
+			},
+		),
+		recordsInvalid: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_records_invalid_total",
+				Help: "The total number of invalid records.",
 			},
 		),
 	}
@@ -121,26 +137,26 @@ func (m *PlaybackManager) processFetchTopicPartition(ctx context.Context) func(k
 			return
 		}
 		logger := log.With(m.logger, "partition", p.Partition)
+		m.recordsFetched.Add(float64(len(p.Records)))
+		// We need the state of the partition so we can discard any records
+		// that we produced (unless replaying) and mark a replaying partition
+		// as ready once it has finished replaying.
 		state, ok := m.partitionManager.GetState(p.Partition)
 		if !ok {
+			m.recordsDiscarded.Add(float64(len(p.Records)))
 			level.Warn(logger).Log("msg", "discarding records for partition as the partition is not assigned to this client")
 			return
 		}
-		if state == PartitionReplaying {
-			// TODO(grobinson): For now we just consume records when replaying
-			// a partition. In a future commit this will be moved outside of
-			// this check, and records will be consumed both when replaying
-			// newly assigned partitions and merging records from other zones.
-			for _, r := range p.Records {
-				if err := m.processRecord(ctx, r); err != nil {
-					level.Error(logger).Log("msg", "failed to process record", "err", err.Error())
-				}
+		for _, r := range p.Records {
+			if err := m.processRecord(ctx, state, r); err != nil {
+				level.Error(logger).Log("msg", "failed to process record", "err", err.Error())
 			}
-			m.recordsProcessed.
-				WithLabelValues(strconv.FormatInt(int64(p.Partition), 10)).
-				Add(float64(len(p.Records)))
-			m.lag.Observe(m.clock.Since(p.Records[len(p.Records)-1].Timestamp).Seconds())
-			passed, err := m.readinessCheck(p.Partition, p.Records[len(p.Records)-1])
+		}
+		// Get the last record (has the latest offset and timestamp).
+		lastRecord := p.Records[len(p.Records)-1]
+		m.lag.Observe(m.clock.Since(lastRecord.Timestamp).Seconds())
+		if state == PartitionReplaying {
+			passed, err := m.readinessCheck(p.Partition, lastRecord)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to run readiness check", "err", err.Error())
 			} else if passed {
@@ -151,10 +167,16 @@ func (m *PlaybackManager) processFetchTopicPartition(ctx context.Context) func(k
 	}
 }
 
-func (m *PlaybackManager) processRecord(_ context.Context, r *kgo.Record) error {
+func (m *PlaybackManager) processRecord(_ context.Context, state PartitionState, r *kgo.Record) error {
 	s := proto.StreamMetadataRecord{}
 	if err := s.Unmarshal(r.Value); err != nil {
+		m.recordsInvalid.Inc()
 		return fmt.Errorf("corrupted record: %w", err)
+	}
+	if state == PartitionReady && m.zone == s.Zone {
+		// Discard our own records so we don't count the same streams twice.
+		m.recordsDiscarded.Inc()
+		return nil
 	}
 	m.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
