@@ -67,25 +67,4 @@ func (o *Object) init(ctx context.Context) error {
 
 // Sections returns the list of sections available in the Object. The slice of
 // returned sections must not be mutated.
-func (o *Object) Sections() []*Section { return o.sections }
-
-// Metadata holds high-level metadata about an [Object].
-type Metadata struct {
-	StreamsSections int // Number of streams sections in the Object.
-	LogsSections    int // Number of logs sections in the Object.
-}
-
-// Metadata returns the metadata of the Object. Metadata returns an error if
-// the object cannot be read.
-func (o *Object) Metadata(ctx context.Context) (Metadata, error) {
-	var res Metadata
-	for _, s := range o.sections {
-		switch s.Type {
-		case SectionType(encoding.SectionTypeStreams):
-			res.StreamsSections++
-		case SectionType(encoding.SectionTypeLogs):
-			res.LogsSections++
-		}
-	}
-	return res, nil
-}
+func (o *Object) Sections() Sections { return o.sections }

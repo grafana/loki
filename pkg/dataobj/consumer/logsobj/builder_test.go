@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -30,7 +32,7 @@ func TestBuilder(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	dirtyBuf := bytes.NewBuffer([]byte("dirty"))
 
-	streams := []logproto.Stream{
+	testStreams := []logproto.Stream{
 		{
 			Labels: `{cluster="test",app="foo"}`,
 			Entries: []push.Entry{
@@ -78,7 +80,7 @@ func TestBuilder(t *testing.T) {
 		builder, err := NewBuilder(testBuilderConfig)
 		require.NoError(t, err)
 
-		for _, entry := range streams {
+		for _, entry := range testStreams {
 			require.NoError(t, builder.Append(entry))
 		}
 		_, err = builder.Flush(buf)
@@ -88,17 +90,15 @@ func TestBuilder(t *testing.T) {
 	t.Run("Read", func(t *testing.T) {
 		obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		require.NoError(t, err)
-		md, err := obj.Metadata(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, 1, md.StreamsSections)
-		require.Equal(t, 1, md.LogsSections)
+		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
 	})
 
 	t.Run("BuildWithDirtyBuffer", func(t *testing.T) {
 		builder, err := NewBuilder(testBuilderConfig)
 		require.NoError(t, err)
 
-		for _, entry := range streams {
+		for _, entry := range testStreams {
 			require.NoError(t, builder.Append(entry))
 		}
 
@@ -111,10 +111,8 @@ func TestBuilder(t *testing.T) {
 	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
 		obj, err := dataobj.FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
 		require.NoError(t, err)
-		md, err := obj.Metadata(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, 1, md.StreamsSections)
-		require.Equal(t, 1, md.LogsSections)
+		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
 	})
 }
 

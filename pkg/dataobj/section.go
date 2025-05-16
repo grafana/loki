@@ -3,7 +3,37 @@ package dataobj
 import (
 	"context"
 	"io"
+	"iter"
 )
+
+// A Sections is a slice of [Section].
+type Sections []*Section
+
+// Filter returns an iterator over sections that pass some predicate. The index
+// field is the number of the section that passed the predicate.
+func (s Sections) Filter(predicate func(*Section) bool) iter.Seq2[int, *Section] {
+	return func(yield func(int, *Section) bool) {
+		var matches int
+
+		for _, sec := range s {
+			if !predicate(sec) {
+				continue
+			} else if !yield(matches, sec) {
+				return
+			}
+			matches++
+		}
+	}
+}
+
+// Count returns the number of sections that pass some predicate.
+func (s Sections) Count(predicate func(*Section) bool) int {
+	var count int
+	for range s.Filter(predicate) {
+		count++
+	}
+	return count
+}
 
 // A Section is a subset of an [Object] that holds a specific type of data. Use
 // section packages for higher-level abstractions around sections.
