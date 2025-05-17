@@ -324,16 +324,16 @@ func (m *Manager) LoadGroups(
 
 			rules := make([]Rule, 0, len(rg.Rules))
 			for _, r := range rg.Rules {
-				expr, err := m.opts.GroupLoader.Parse(r.Expr.Value)
+				expr, err := m.opts.GroupLoader.Parse(r.Expr)
 				if err != nil {
 					return nil, []error{fmt.Errorf("%s: %w", fn, err)}
 				}
 
 				mLabels := FromMaps(rg.Labels, r.Labels)
 
-				if r.Alert.Value != "" {
+				if r.Alert != "" {
 					rules = append(rules, NewAlertingRule(
-						r.Alert.Value,
+						r.Alert,
 						expr,
 						time.Duration(r.For),
 						time.Duration(r.KeepFiringFor),
@@ -347,7 +347,7 @@ func (m *Manager) LoadGroups(
 					continue
 				}
 				rules = append(rules, NewRecordingRule(
-					r.Record.Value,
+					r.Record,
 					expr,
 					mLabels,
 				))
@@ -429,7 +429,7 @@ type Sender interface {
 
 // SendAlerts implements the rules.NotifyFunc for a Notifier.
 func SendAlerts(s Sender, externalURL string) NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*Alert) {
+	return func(_ context.Context, expr string, alerts ...*Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -508,7 +508,7 @@ func newRuleConcurrencyController(maxConcurrency int64) RuleConcurrencyControlle
 	}
 }
 
-func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, rule Rule) bool {
+func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
 	return c.sema.TryAcquire(1)
 }
 
@@ -561,7 +561,7 @@ func (c sequentialRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule)
 	return false
 }
 
-func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
+func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, _ *Group) []ConcurrentRules {
 	return nil
 }
 
