@@ -203,9 +203,6 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 			http.BCE_CONTENT_CRC32C:                  args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG:             strconv.FormatBool(args.ContentCrc32cFlag),
 		})
-		if args.ContentLength != 0 {
-			req.SetHeader(http.CONTENT_LENGTH, fmt.Sprintf("%d", args.ContentLength))
-		}
 		if validMetadataDirective(args.MetadataDirective) {
 			req.SetHeader(http.BCE_COPY_METADATA_DIRECTIVE, args.MetadataDirective)
 		} else {
