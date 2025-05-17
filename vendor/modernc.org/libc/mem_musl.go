@@ -127,6 +127,25 @@ func UsableSize(p uintptr) Tsize_t {
 	return Tsize_t(memory.UintptrUsableSize(p))
 }
 
+type MemAllocatorStat struct {
+	Allocs int
+	Bytes  int
+	Mmaps  int
+}
+
+// MemStat returns the global memory allocator statistics.
+// should be compiled with the memory.counters build tag for the data to be available.
+func MemStat() MemAllocatorStat {
+	allocatorMu.Lock()
+	defer allocatorMu.Unlock()
+
+	return MemAllocatorStat{
+		Allocs: allocator.Allocs,
+		Bytes:  allocator.Bytes,
+		Mmaps:  allocator.Mmaps,
+	}
+}
+
 // MemAuditStart locks the memory allocator, initializes and enables memory
 // auditing. Finaly it unlocks the memory allocator.
 //
