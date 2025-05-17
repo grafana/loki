@@ -269,6 +269,17 @@ func UsableSize(p uintptr) Tsize_t {
 	return Tsize_t(memory.UintptrUsableSize(p))
 }
 
+type MemAllocatorStat struct {
+	Allocs int
+	Bytes  int
+	Mmaps  int
+}
+
+// MemStat no-op for this build tag
+func MemStat() MemAllocatorStat {
+	return MemAllocatorStat{}
+}
+
 func Xmalloc_usable_size(tls *TLS, p uintptr) (r Tsize_t) {
 	return UsableSize(p)
 }

@@ -118,7 +118,7 @@ func (c *confidentialClient) GetToken(ctx context.Context, tro policy.TokenReque
 		msg := fmt.Sprintf(scopeLogFmt, c.name, strings.Join(ar.GrantedScopes, ", "))
 		log.Write(EventAuthentication, msg)
 	}
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC(), RefreshOn: ar.Metadata.RefreshOn.UTC()}, err
 }
 
 func (c *confidentialClient) client(tro policy.TokenRequestOptions) (msalConfidentialClient, *sync.Mutex, error) {
