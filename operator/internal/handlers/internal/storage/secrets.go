@@ -417,7 +417,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	// Determine if we should use path style URLs for S3
 	// default to false for non-AWS endpoints
 	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
-	// Check if the user has specified force_path_style
+	// Check if the user has specified forcepathstyle
 	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
 		strForcePathStyle := string(configForcePathStyle)
 		switch strForcePathStyle {
