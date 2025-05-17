@@ -96,7 +96,6 @@ func (h *serverStatsHandler) unaryInterceptor(ctx context.Context, req any, _ *g
 		metadataExchangeLabels = h.options.MetricsOptions.pluginOption.GetMetadata()
 	}
 
-	// - Server-side: The first stats event after the RPC request is received.
 	sts := grpc.ServerTransportStreamFromContext(ctx)
 
 	alts := &attachLabelsTransportStream{

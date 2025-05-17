@@ -106,6 +106,10 @@ func (ms UInt64Slice) Append(elms ...uint64) {
 func (ms UInt64Slice) MoveTo(dest UInt64Slice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = nil
 }
