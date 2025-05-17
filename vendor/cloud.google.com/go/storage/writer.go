@@ -111,6 +111,9 @@ type Writer struct {
 	// when Writer.Close() is called; otherwise, the object is left unfinalized
 	// and can be appended to later.
 	//
+	// Defaults to false unless the experiemental WithZonalBucketAPIs option was
+	// set.
+	//
 	// Append is only supported for gRPC. This feature is in preview and is not
 	// yet available for general use.
 	Append bool

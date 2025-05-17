@@ -1069,16 +1069,6 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
-  "cloud.google.com/go/debugger/apiv2": {
-    "api_shortname": "clouddebugger",
-    "distribution_name": "cloud.google.com/go/debugger/apiv2",
-    "description": "Stackdriver Debugger API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/debugger/apiv2",
-    "release_level": "preview",
-    "library_type": "GAPIC_AUTO"
-  },
   "cloud.google.com/go/deploy/apiv1": {
     "api_shortname": "clouddeploy",
     "distribution_name": "cloud.google.com/go/deploy/apiv1",
@@ -1096,6 +1086,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/developerconnect/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/devicestreaming/apiv1": {
+    "api_shortname": "devicestreaming",
+    "distribution_name": "cloud.google.com/go/devicestreaming/apiv1",
+    "description": "Device Streaming API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/devicestreaming/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -1459,6 +1459,26 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/iam/apiv3": {
+    "api_shortname": "iam",
+    "distribution_name": "cloud.google.com/go/iam/apiv3",
+    "description": "Identity and Access Management (IAM) API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iam/latest/apiv3",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/iam/apiv3beta": {
+    "api_shortname": "iam",
+    "distribution_name": "cloud.google.com/go/iam/apiv3beta",
+    "description": "Identity and Access Management (IAM) API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iam/latest/apiv3beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/iam/credentials/apiv1": {
     "api_shortname": "iamcredentials",
     "distribution_name": "cloud.google.com/go/iam/credentials/apiv1",
@@ -1599,6 +1619,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/lustre/apiv1": {
+    "api_shortname": "lustre",
+    "distribution_name": "cloud.google.com/go/lustre/apiv1",
+    "description": "Google Cloud Managed Lustre API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/lustre/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/managedidentities/apiv1": {
     "api_shortname": "managedidentities",
     "distribution_name": "cloud.google.com/go/managedidentities/apiv1",
@@ -1632,7 +1662,7 @@
   "cloud.google.com/go/maps/areainsights/apiv1": {
     "api_shortname": "areainsights",
     "distribution_name": "cloud.google.com/go/maps/areainsights/apiv1",
-    "description": "Places Insights API",
+    "description": "Places Aggregate API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/areainsights/apiv1",
@@ -2139,13 +2169,13 @@
     "release_level": "stable",
     "library_type": "GAPIC_MANUAL"
   },
-  "cloud.google.com/go/pubsub/apiv1": {
+  "cloud.google.com/go/pubsub/v2/apiv1": {
     "api_shortname": "pubsub",
-    "distribution_name": "cloud.google.com/go/pubsub/apiv1",
+    "distribution_name": "cloud.google.com/go/pubsub/v2/apiv1",
     "description": "Cloud Pub/Sub API",
     "language": "go",
     "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/pubsub/latest/apiv1",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/pubsub/latest/v2/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -2282,7 +2312,7 @@
   "cloud.google.com/go/retail/apiv2": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2",
-    "description": "Vertex AI Search for Retail API",
+    "description": "Vertex AI Search for commerce API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2",
@@ -2292,7 +2322,7 @@
   "cloud.google.com/go/retail/apiv2alpha": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2alpha",
-    "description": "Vertex AI Search for Retail API",
+    "description": "Vertex AI Search for commerce API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2alpha",
@@ -2302,7 +2332,7 @@
   "cloud.google.com/go/retail/apiv2beta": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2beta",
-    "description": "Vertex AI Search for Retail API",
+    "description": "Vertex AI Search for commerce API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2beta",
@@ -2599,6 +2629,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/shopping/merchant/issueresolution/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/issueresolution/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/issueresolution/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/shopping/merchant/lfp/apiv1beta": {
     "api_shortname": "merchantapi",
     "distribution_name": "cloud.google.com/go/shopping/merchant/lfp/apiv1beta",
@@ -2616,6 +2656,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/notifications/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/ordertracking/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/ordertracking/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/ordertracking/apiv1beta",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -2678,6 +2728,16 @@
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest",
     "release_level": "stable",
     "library_type": "GAPIC_MANUAL"
+  },
+  "cloud.google.com/go/spanner/adapter/apiv1": {
+    "api_shortname": "spanner",
+    "distribution_name": "cloud.google.com/go/spanner/adapter/apiv1",
+    "description": "Cloud Spanner API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest/adapter/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/spanner/admin/database/apiv1": {
     "api_shortname": "spanner",

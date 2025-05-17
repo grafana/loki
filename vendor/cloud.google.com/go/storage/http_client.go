@@ -344,6 +344,10 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		it.query = *q
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
+		var err error
+		// Add trace span around List API call within the fetch.
+		ctx, _ = startSpan(ctx, "httpStorageClient.ObjectsListCall")
+		defer func() { endSpan(ctx, err) }()
 		req := c.raw.Objects.List(bucket)
 		if it.query.SoftDeleted {
 			req.SoftDeleted(it.query.SoftDeleted)
@@ -372,7 +376,6 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Objects
-		var err error
 		err = run(it.ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
