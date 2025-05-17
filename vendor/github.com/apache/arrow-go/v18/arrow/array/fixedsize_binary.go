@@ -37,7 +37,7 @@ type FixedSizeBinary struct {
 // NewFixedSizeBinaryData constructs a new fixed-size binary array from data.
 func NewFixedSizeBinaryData(data arrow.ArrayData) *FixedSizeBinary {
 	a := &FixedSizeBinary{bytewidth: int32(data.DataType().(arrow.FixedWidthDataType).BitWidth() / 8)}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -52,6 +52,7 @@ func (a *FixedSizeBinary) Value(i int) []byte {
 	)
 	return a.valueBytes[beg:end]
 }
+
 func (a *FixedSizeBinary) ValueStr(i int) string {
 	if a.IsNull(i) {
 		return NullValueStr
@@ -83,7 +84,6 @@ func (a *FixedSizeBinary) setData(data *Data) {
 	if vals != nil {
 		a.valueBytes = vals.Bytes()
 	}
-
 }
 
 func (a *FixedSizeBinary) GetOneForMarshal(i int) interface{} {
@@ -118,6 +118,4 @@ func arrayEqualFixedSizeBinary(left, right *FixedSizeBinary) bool {
 	return true
 }
 
-var (
-	_ arrow.Array = (*FixedSizeBinary)(nil)
-)
+var _ arrow.Array = (*FixedSizeBinary)(nil)

@@ -267,6 +267,11 @@ func (s *{{.Name}}MemoTable) WriteOutSubsetLE(start int, out []byte) {
   s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *{{.Name}}MemoTable) Exists(val {{.name}}) bool {
+  _, ok := s.Get(val)
+  return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *{{.Name}}MemoTable) Get(val interface{}) (int, bool) {
@@ -304,31 +309,35 @@ func (s *{{.Name}}MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *{{.Name}}MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
-  {{if and (ne .Name "Float32") (ne .Name "Float64") }}
-  h := hashInt(uint64(val.({{.name}})), 0)
+  return s.InsertOrGet(val.({{.name}}))
+}
+
+func (s *{{.Name}}MemoTable) InsertOrGet(val {{.name}}) (idx int, found bool, err error) {
+  {{if and (ne .Name "Float32") (ne .Name "Float64") -}}
+  h := hashInt(uint64(val), 0)
   e, ok := s.tbl.Lookup(h, func(v {{.name}}) bool {
-    return val.({{.name}}) == v
+    return val == v
   })
 {{ else }}  
   var cmp func({{.name}}) bool
   {{if eq .Name "Float32"}}
-  if math.IsNaN(float64(val.(float32))) {
+  if math.IsNaN(float64(val)) {
     cmp = isNan32Cmp
     // use consistent internal bit pattern for NaN regardless of the pattern
     // that is passed to us. NaN is NaN is NaN
     val = float32(math.NaN()) 
   {{ else -}}
-  if math.IsNaN(val.(float64)) {  
+  if math.IsNaN(val) {  
     cmp = math.IsNaN
     // use consistent internal bit pattern for NaN regardless of the pattern
     // that is passed to us. NaN is NaN is NaN
     val = math.NaN()
   {{end -}}
   } else {
-    cmp = func(v {{.name}}) bool { return val.({{.name}}) == v }
+    cmp = func(v {{.name}}) bool { return val == v }
   }
   
-  h := hash{{.Name}}(val.({{.name}}), 0)
+  h := hash{{.Name}}(val, 0)
   e, ok := s.tbl.Lookup(h, cmp)
 {{ end }}
   if ok {
@@ -336,7 +345,7 @@ func (s *{{.Name}}MemoTable) GetOrInsert(val interface{}) (idx int, found bool, 
     found = true
   } else {
     idx = s.Size()
-    s.tbl.Insert(e, h, val.({{.name}}), int32(idx))
+    s.tbl.Insert(e, h, val, int32(idx))
   }
   return
 }
