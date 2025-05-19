@@ -46,12 +46,12 @@ func (p *BatchedPush) buildPayload(logs []entry) ([]byte, error) {
 	return p.pusher.serializePayload(&logproto.PushRequest{Streams: streams})
 }
 
-// implements `EntryWriter` by delegating to the `Push` reference
+// implements `EntryWriter.WriteEntry` by delegating to the `Push` reference
 func (p *BatchedPush) WriteEntry(ts time.Time, e string) {
 	p.pusher.WriteEntry(ts, e)
 }
 
-// implements `EntryWriter` by delegating to the `Push` reference
+// implements `EntryWriter.Stop` by delegating to the `Push` reference
 func (p *BatchedPush) Stop() {
 	<-p.pusher.quit
 	p.pusher.Stop()
