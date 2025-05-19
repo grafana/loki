@@ -89,7 +89,7 @@ func main() {
 	spotCheckWait := flag.Duration("spot-check-initial-wait", 10*time.Second, "How long should the spot check query wait before starting to check for entries")
 
 	logBatchSize := flag.Int("logs-batch-size", writer.DefaultLogBatchSize, "Send logs to Loki in batches of a specified size.  Must be a non-negative value (0 or 1 will disable batching)")
-	logBatchSizeMax := flag.Int("logs-batch-size-max", writer.DefaultLogBatchSizeMax, "Upper bound on -log-batch-size.  Only increase this value if you have increased memory limits for the canary pods")
+	logBatchSizeMax := flag.Int("logs-batch-size-max", writer.DefaultLogBatchSizeMax, "Upper bound on -logs-batch-size.  Only increase this value if you have increased memory limits for the canary pods")
 
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
