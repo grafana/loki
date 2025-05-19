@@ -1,6 +1,6 @@
 {
-	$schema: "https://docs.renovatebot.com/renovate-schema.json",
-	extends: [
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": [
 		"config:recommended",
 		":semanticCommits",
 		":semanticCommitTypeAll(chore)",
@@ -8,11 +8,16 @@
 		"group:allNonMajor",
 		"schedule:earlyMondays", // Run once a week.
 	],
-	packageRules: [
+	"packageRules": [
 		{
-			matchPackageNames: ["golangci-lint"],
-			matchManagers: ["hermit"],
-			enabled: false,
+			"matchPackageNames": ["golangci-lint"],
+			"matchManagers": ["hermit"],
+			"enabled": false
 		},
-	],
+		{
+			"matchPackageNames": ["github.com/gorilla/csrf"],
+			"matchManagers": ["gomod"],
+			"enabled": false
+		}
+	]
 }
