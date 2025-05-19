@@ -8,13 +8,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func TestNewFilterPipeline(t *testing.T) {
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean},
+		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Bool)},
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {
@@ -28,9 +30,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always true
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -62,9 +62,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create a filter predicate that's always false
-		falsePredicate := &physical.LiteralExpr{
-			Value: createLiteral(false),
-		}
+		falsePredicate := physical.NewLiteral(false)
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -133,6 +131,47 @@ func TestNewFilterPipeline(t *testing.T) {
 		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
 	})
 
+	t.Run("filter on multiple columns with binary expressions", func(t *testing.T) {
+		// Create input data
+		inputCSV := "Alice,true\nBob,false\nBob,true\nCharlie,false"
+		inputRecord, err := CSVToArrow(fields, inputCSV)
+		require.NoError(t, err)
+		defer inputRecord.Release()
+
+		// Create input pipeline
+		inputPipeline := NewBufferedPipeline(inputRecord)
+
+		// Create a Filter node
+		filter := &physical.Filter{
+			Predicates: []physical.Expression{
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
+					Right: physical.NewLiteral("Bob"),
+					Op:    types.BinaryOpEq,
+				},
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
+					Right: physical.NewLiteral(false),
+					Op:    types.BinaryOpNeq,
+				},
+			},
+		}
+
+		// Create filter pipeline
+		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+
+		// Create expected output (only rows where name=="Bob" AND valid!=false)
+		expectedCSV := "Bob,true"
+		expectedRecord, err := CSVToArrow(fields, expectedCSV)
+		require.NoError(t, err)
+		defer expectedRecord.Release()
+
+		expectedPipeline := NewBufferedPipeline(expectedRecord)
+
+		// Assert that the pipelines produce equal results
+		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+	})
+
 	t.Run("filter on empty batch", func(t *testing.T) {
 		// Create empty record with correct schema
 		schema := arrow.NewSchema(fields, nil)
@@ -156,9 +195,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(emptyRecord)
 
 		// Create a simple filter
-		truePredicate := &physical.LiteralExpr{
-			Value: createLiteral(true),
-		}
+		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
 		filter := &physical.Filter{

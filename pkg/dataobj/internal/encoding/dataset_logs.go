@@ -5,25 +5,22 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// LogsDataset implements returns a [dataset.Dataset] from a [LogsDecoder] for
-// the given section.
-func LogsDataset(dec LogsDecoder, sec *filemd.SectionInfo) dataset.Dataset {
-	return &logsDataset{dec: dec, sec: sec}
+// LogsDataset implements returns a [dataset.Dataset] from a [LogsDecoder].
+func LogsDataset(dec LogsDecoder) dataset.Dataset {
+	return &logsDataset{dec: dec}
 }
 
 type logsDataset struct {
 	dec LogsDecoder
-	sec *filemd.SectionInfo
 }
 
 func (ds *logsDataset) ListColumns(ctx context.Context) result.Seq[dataset.Column] {
 	return result.Iter(func(yield func(dataset.Column) bool) error {
-		columns, err := ds.dec.Columns(ctx, ds.sec)
+		columns, err := ds.dec.Columns(ctx)
 		if err != nil {
 			return err
 		}

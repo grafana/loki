@@ -42,8 +42,8 @@ type LogsReader struct {
 	idx   int
 	ready bool
 
-	matchIDs  map[int64]struct{}
-	predicate LogsPredicate
+	matchIDs   map[int64]struct{}
+	predicates []LogsPredicate
 
 	buf    []dataset.Row
 	record logs.Record
@@ -84,17 +84,17 @@ func (r *LogsReader) MatchStreams(ids iter.Seq[int64]) error {
 	return nil
 }
 
-// SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
+// SetPredicate sets the predicates to use for filtering logs. [LogsReader.Read]
 // will only return logs for which the predicate passes.
 //
-// A predicate may only be set before reading begins or after a call to
+// Predicates may only be set before reading begins or after a call to
 // [LogsReader.Reset].
-func (r *LogsReader) SetPredicate(p LogsPredicate) error {
+func (r *LogsReader) SetPredicates(p []LogsPredicate) error {
 	if r.ready {
 		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
-	r.predicate = p
+	r.predicates = p
 	return nil
 }
 
@@ -158,18 +158,23 @@ func unsafeString(data []byte) string {
 }
 
 func (r *LogsReader) initReader(ctx context.Context) error {
-	dec := r.obj.dec.LogsDecoder()
-	sec, err := r.findSection(ctx)
+	metadata, err := r.obj.dec.Metadata(ctx)
+	if err != nil {
+		return fmt.Errorf("reading sections: %w", err)
+	}
+
+	sec, err := r.findSection(metadata)
 	if err != nil {
 		return fmt.Errorf("finding section: %w", err)
 	}
 
-	columnDescs, err := dec.Columns(ctx, sec)
+	dec := r.obj.dec.LogsDecoder(metadata, sec)
+	columnDescs, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := encoding.LogsDataset(dec, sec)
+	dset := encoding.LogsDataset(dec)
 	columns, err := result.Collect(dset.ListColumns(ctx))
 	if err != nil {
 		return fmt.Errorf("reading columns: %w", err)
@@ -177,18 +182,21 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
-	predicate := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs)
-	if r.predicate != nil {
-		predicate = dataset.AndPredicate{
-			Left:  predicate,
-			Right: translateLogsPredicate(r.predicate, columns, columnDescs),
+	var predicates []dataset.Predicate
+	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs); p != nil {
+		predicates = append(predicates, p)
+	}
+
+	for _, predicate := range r.predicates {
+		if p := translateLogsPredicate(predicate, columns, columnDescs); p != nil {
+			predicates = append(predicates, p)
 		}
 	}
 
 	readerOpts := dataset.ReaderOptions{
-		Dataset:   dset,
-		Columns:   columns,
-		Predicate: predicate,
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: OrderPredicates(predicates),
 
 		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
@@ -211,16 +219,19 @@ func (r *LogsReader) initReader(ctx context.Context) error {
 	return nil
 }
 
-func (r *LogsReader) findSection(ctx context.Context) (*filemd.SectionInfo, error) {
-	si, err := r.obj.dec.Sections(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading sections: %w", err)
-	}
-
+func (r *LogsReader) findSection(metadata *filemd.Metadata) (*filemd.SectionInfo, error) {
 	var n int
 
-	for _, s := range si {
-		if s.Type == filemd.SECTION_TYPE_LOGS {
+	for _, s := range metadata.Sections {
+		typ, err := encoding.GetSectionType(metadata, s)
+		if err != nil {
+			// We don't want to just continue here; it's possible that the section
+			// type we couldn't read was a logs section, in which case our index
+			// would be off.
+			return nil, fmt.Errorf("getting section type: %w", err)
+		}
+
+		if typ == encoding.SectionTypeLogs {
 			if n == r.idx {
 				return s, nil
 			}
@@ -258,7 +269,7 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	r.ready = false
 
 	clear(r.matchIDs)
-	r.predicate = nil
+	r.predicates = nil
 
 	r.columns = nil
 	r.columnDesc = nil

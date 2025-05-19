@@ -19,11 +19,6 @@ type httpTenantLimitsResponse struct {
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
 func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// TODO(grobinson): Avoid acquiring the mutex for the entire duration
-	// of the request.
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
 	tenant := mux.Vars(r)["tenant"]
 	if tenant == "" {
 		http.Error(w, "invalid tenant", http.StatusBadRequest)
@@ -43,20 +38,22 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	for _, partitions := range s.metadata[tenant] {
-		for _, stream := range partitions {
-			if stream.lastSeenAt >= cutoff {
-				activeStreams++
+	s.usage.All(func(tenantID string, _ int32, stream Stream) {
+		if tenantID != tenant {
+			return
+		}
 
-				// Calculate size only within the rate window
-				for _, bucket := range stream.rateBuckets {
-					if bucket.timestamp >= rateWindowCutoff {
-						totalSize += bucket.size
-					}
+		if stream.LastSeenAt >= cutoff {
+			activeStreams++
+
+			// Calculate size only within the rate window
+			for _, bucket := range stream.RateBuckets {
+				if bucket.Timestamp >= rateWindowCutoff {
+					totalSize += bucket.Size
 				}
 			}
 		}
-	}
+	})
 
 	// Calculate rate using only data from within the rate window
 	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()

@@ -253,15 +253,21 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata)
+			samples, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata...)
 			require.Equal(t, tt.wantOk, ok)
-			require.Equal(t, tt.want, outval)
-			require.Equal(t, tt.wantLbs, outlbs.Labels())
+			if ok {
+				require.Len(t, samples, 1, "Expected exactly one sample")
+				require.Equal(t, tt.want, samples[0].Value)
+				require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
+			}
 
-			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.structuredMetadata)
+			samples, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.structuredMetadata...)
 			require.Equal(t, tt.wantOk, ok)
-			require.Equal(t, tt.want, outval)
-			require.Equal(t, tt.wantLbs, outlbs.Labels())
+			if ok {
+				require.Len(t, samples, 1, "Expected exactly one sample")
+				require.Equal(t, tt.want, samples[0].Value)
+				require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
+			}
 		})
 	}
 }
@@ -269,10 +275,11 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 func Test_Extract_ExpectedLabels(t *testing.T) {
 	ex := mustSampleExtractor(LabelExtractorWithStages("duration", ConvertDuration, []string{"foo"}, false, false, []Stage{NewJSONParser(false)}, NoopStage))
 
-	f, lbs, ok := ex.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, `{"duration":"20ms","foo":"json"}`, labels.EmptyLabels())
+	samples, ok := ex.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, `{"duration":"20ms","foo":"json"}`)
 	require.True(t, ok)
-	require.Equal(t, (20 * time.Millisecond).Seconds(), f)
-	require.Equal(t, labels.FromStrings("foo", "json"), lbs.Labels())
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, (20 * time.Millisecond).Seconds(), samples[0].Value)
+	require.Equal(t, labels.FromStrings("foo", "json"), samples[0].Labels.Labels())
 
 }
 func TestLabelExtractorWithStages(t *testing.T) {
@@ -320,19 +327,20 @@ func TestLabelExtractorWithStages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, line := range tc.checkLines {
-				v, lbs, ok := tc.extractor.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, line.logLine, labels.EmptyLabels())
+				samples, ok := tc.extractor.ForStream(labels.FromStrings("bar", "foo")).ProcessString(0, line.logLine)
 				skipped := !ok
 				assert.Equal(t, line.skip, skipped, "line", line.logLine)
 				if !skipped {
-					assert.Equal(t, line.sample, v)
+					require.Len(t, samples, 1, "Expected exactly one sample")
+					assert.Equal(t, line.sample, samples[0].Value)
 
 					// lbs shouldn't have __error__ = SampleExtractionError
-					assert.Empty(t, lbs.Labels())
+					assert.Empty(t, samples[0].Labels.Labels())
 					return
 				}
 
-				// if line is skipped, `lbs` will be nil.
-				assert.Nil(t, lbs, "line", line.logLine)
+				// if line is skipped, samples will be nil
+				assert.Nil(t, samples, "line", line.logLine)
 			}
 		})
 	}
@@ -354,28 +362,31 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	)
 
 	sse := se.ForStream(lbs)
-	f, l, ok := sse.Process(0, []byte(`foo`), labels.EmptyLabels())
+	samples, ok := sse.Process(0, []byte(`foo`))
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, lbs, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, lbs, samples[0].Labels)
 
-	f, l, ok = sse.ProcessString(0, `foo`, labels.EmptyLabels())
+	samples, ok = sse.ProcessString(0, `foo`)
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, lbs, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, lbs, samples[0].Labels)
 
 	stage := mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false)
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	f, l, ok = sse.Process(0, []byte(`foo`), labels.EmptyLabels())
+	samples, ok = sse.Process(0, []byte(`foo`))
 	require.True(t, ok)
-	require.Equal(t, 3., f)
-	assertLabelResult(t, labels.FromStrings("namespace", "dev"), l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 3., samples[0].Value)
+	assertLabelResult(t, labels.FromStrings("namespace", "dev"), samples[0].Labels)
 
 	sse = se.ForStream(lbs)
-	_, _, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
+	_, ok = sse.Process(0, []byte(`nope`))
 	require.False(t, ok)
 }
 
@@ -390,30 +401,38 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse := se.ForStream(lbs)
-	f, l, ok := sse.Process(0, []byte(`foo`), structuredMetadata)
+	samples, ok := sse.Process(0, []byte(`foo`), structuredMetadata...)
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, expectedLabelsResults, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, expectedLabelsResults, samples[0].Labels)
 
-	f, l, ok = sse.ProcessString(0, `foo`, structuredMetadata)
+	samples, ok = sse.ProcessString(0, `foo`, structuredMetadata...)
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, expectedLabelsResults, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, expectedLabelsResults, samples[0].Labels)
 
 	// test duplicated structured metadata with stream labels
 	expectedLabelsResults = append(lbs, labels.Label{
 		Name: "foo_extracted", Value: "baz",
 	})
 	expectedLabelsResults = append(expectedLabelsResults, structuredMetadata...)
-	f, l, ok = sse.Process(0, []byte(`foo`), labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
+	samples, ok = sse.Process(0, []byte(`foo`), append(structuredMetadata, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, expectedLabelsResults, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, expectedLabelsResults, samples[0].Labels)
 
-	f, l, ok = sse.ProcessString(0, `foo`, labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
+	samples, ok = sse.ProcessString(0, `foo`, append(structuredMetadata, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
 	require.True(t, ok)
-	require.Equal(t, 1., f)
-	assertLabelResult(t, expectedLabelsResults, l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 1., samples[0].Value)
+	assertLabelResult(t, expectedLabelsResults, samples[0].Labels)
 
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
@@ -423,13 +442,14 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	f, l, ok = sse.Process(0, []byte(`foo`), structuredMetadata)
+	samples, ok = sse.Process(0, []byte(`foo`), structuredMetadata...)
 	require.True(t, ok)
-	require.Equal(t, 3., f)
-	assertLabelResult(t, labels.FromStrings("foo", "bar"), l)
+	require.Len(t, samples, 1, "Expected exactly one sample")
+	require.Equal(t, 3., samples[0].Value)
+	assertLabelResult(t, labels.FromStrings("foo", "bar"), samples[0].Labels)
 
 	sse = se.ForStream(lbs)
-	_, _, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
+	_, ok = sse.Process(0, []byte(`nope`))
 	require.False(t, ok)
 }
 
@@ -461,10 +481,10 @@ func TestFilteringSampleExtractor(t *testing.T) {
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata)
+			_, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata...)
 			require.Equal(t, test.ok, ok)
 
-			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata)
+			_, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata...)
 			require.Equal(t, test.ok, ok)
 		})
 	}
@@ -496,21 +516,27 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 func (p *stubStreamExtractor) Process(
 	_ int64,
 	_ []byte,
-	structuredMetadata labels.Labels,
-) (float64, LabelsResult, bool) {
+	structuredMetadata ...labels.Label,
+) ([]ExtractedSample, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
 	builder.Add(StructuredMetadataLabel, structuredMetadata)
-	return 1.0, builder.LabelsResult(), true
+	result := []ExtractedSample{
+		{Value: 1.0, Labels: builder.LabelsResult()},
+	}
+	return result, true
 }
 
 func (p *stubStreamExtractor) ProcessString(
 	_ int64,
 	_ string,
-	structuredMetadata labels.Labels,
-) (float64, LabelsResult, bool) {
+	structuredMetadata ...labels.Label,
+) ([]ExtractedSample, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
 	builder.Add(StructuredMetadataLabel, structuredMetadata)
-	return 1.0, builder.LabelsResult(), true
+	result := []ExtractedSample{
+		{Value: 1.0, Labels: builder.LabelsResult()},
+	}
+	return result, true
 }
 
 func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
@@ -572,16 +598,18 @@ func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
 			wrapped := NewVariantsStreamSampleExtractorWrapper(tt.index, baseExtractor)
 
 			// Test Process
-			val, lbs, ok := wrapped.Process(0, []byte(tt.input), tt.structuredMetadata)
+			samples, ok := wrapped.Process(0, []byte(tt.input), tt.structuredMetadata...)
 			require.Equal(t, true, ok)
-			require.Equal(t, tt.want, val)
-			require.Equal(t, tt.wantLbs, lbs.Labels())
+			require.Len(t, samples, 1, "Expected exactly one sample")
+			require.Equal(t, tt.want, samples[0].Value)
+			require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
 
 			// Test ProcessString
-			val, lbs, ok = wrapped.ProcessString(0, tt.input, tt.structuredMetadata)
+			samples, ok = wrapped.ProcessString(0, tt.input, tt.structuredMetadata...)
 			require.Equal(t, true, ok)
-			require.Equal(t, tt.want, val)
-			require.Equal(t, tt.wantLbs, lbs.Labels())
+			require.Len(t, samples, 1, "Expected exactly one sample")
+			require.Equal(t, tt.want, samples[0].Value)
+			require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
 
 			// Test BaseLabels
 			baseLbs := wrapped.BaseLabels()

@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -10,14 +11,15 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,6 +30,7 @@ import (
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -51,13 +54,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, metastore, limits, logger),
+		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
 		logger:   logger,
 	}
 }
@@ -127,6 +130,13 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	resp, err := q.querier.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp != nil && q.metricAggregationEnabled(ctx) {
+		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
+	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
@@ -144,6 +154,11 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	return resp, err
 }
 
+func (q *QuerierAPI) metricAggregationEnabled(ctx context.Context) bool {
+	orgID, _ := user.ExtractOrgID(ctx)
+	return q.limits.MetricAggregationEnabled(orgID)
+}
+
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
@@ -153,12 +168,30 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
+	// filtering out aggregated metrics is quicker if we had a matcher for it, ie. __aggregated__metric__=""
+	// however, that only works fo non-empty matchers, so we still need the filter the response
+	aggMetricsRequestedInAnyGroup := false
+	if q.metricAggregationEnabled(ctx) {
+		var grpsWithAggMetricsFilter []string
+		var err error
+		grpsWithAggMetricsFilter, aggMetricsRequestedInAnyGroup, err = q.filterAggregatedMetrics(req.GetGroups())
+		if err != nil {
+			return nil, stats.Result{}, err
+		}
+		req.Groups = grpsWithAggMetricsFilter
+	}
+
 	resp, err := q.querier.Series(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
 	if resp != nil {
 		resLength = len(resp.Series)
+
+		// filter the response to catch the empty matcher case
+		if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
+			resp = q.filterAggregatedMetricsFromSeriesResp(resp)
+		}
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
@@ -258,6 +291,77 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
+}
+
+// filterAggregatedMetrics adds a matcher to exclude aggregated metrics unless explicitly requested
+func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, error) {
+	// cannot add filter to an empty matcher set
+	if len(groups) == 0 {
+		return groups, false, nil
+	}
+
+	noAggMetrics, err := labels.NewMatcher(
+		labels.MatchEqual,
+		constants.AggregatedMetricLabel,
+		"",
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	newGroups := make([]string, 0, len(groups)+1)
+
+	aggMetricsRequestedInAnyGroup := false
+	for _, group := range groups {
+		grp, err := syntax.ParseMatchers(group, false)
+		if err != nil {
+			return nil, false, err
+		}
+
+		aggMetricsRequested := false
+		for _, m := range grp {
+			if m.Name == constants.AggregatedMetricLabel {
+				aggMetricsRequested = true
+				aggMetricsRequestedInAnyGroup = true
+				break
+			}
+		}
+
+		if !aggMetricsRequested {
+			grp = append(grp, noAggMetrics)
+		}
+
+		newGroups = append(newGroups, syntax.MatchersString(grp))
+	}
+	return newGroups, aggMetricsRequestedInAnyGroup, nil
+}
+
+func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
+	for i := 0; i < len(resp.Series); i++ {
+		keys := make([]string, 0, len(resp.Series[i].Labels))
+		for _, label := range resp.Series[i].Labels {
+			keys = append(keys, label.Key)
+		}
+
+		if slices.Contains(keys, constants.AggregatedMetricLabel) {
+			resp.Series = slices.Delete(resp.Series, i, i+1)
+			i--
+		}
+	}
+
+	return resp
+}
+
+func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
+	newLabels := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if label == constants.AggregatedMetricLabel {
+			continue
+		}
+		newLabels = append(newLabels, label)
+	}
+
+	return newLabels
 }
 
 func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {

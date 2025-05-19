@@ -6,13 +6,11 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
-	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// PartitionManager keeps track of the partitions assigned and for
-// each partition a timestamp of when it was last updated.
+// PartitionManager keeps track of the partitions assigned and the timestamp
+// of when it was assigned.
 type PartitionManager struct {
-	// partitions maps partitionID to last updated (unix nanoseconds).
 	partitions map[int32]int64
 	mtx        sync.Mutex
 	logger     log.Logger
@@ -30,43 +28,40 @@ func NewPartitionManager(logger log.Logger) *PartitionManager {
 	}
 }
 
-// Assign assigns the partitions and sets the last updated timestamp for each
-// partition to the current time.
-func (m *PartitionManager) Assign(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+// Assign assigns the partitions.
+func (m *PartitionManager) Assign(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	for _, partitionIDs := range partitions {
-		for _, partitionID := range partitionIDs {
-			m.partitions[partitionID] = m.clock.Now().UnixNano()
-		}
+	for _, partition := range partitions {
+		m.partitions[partition] = m.clock.Now().UnixNano()
 	}
 }
 
 // Has returns true if the partition is assigned, otherwise false.
-func (m *PartitionManager) Has(partitionID int32) bool {
+func (m *PartitionManager) Has(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	_, ok := m.partitions[partitionID]
+	_, ok := m.partitions[partition]
 	return ok
 }
 
-// List returns a map of all assigned partitions and their last updated timestamps.
+// List returns a map of all assigned partitions and the timestamp of when
+// each partition was assigned.
 func (m *PartitionManager) List() map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	v := make(map[int32]int64)
-	for partitionID, lastUpdated := range m.partitions {
-		v[partitionID] = lastUpdated
+	result := make(map[int32]int64)
+	for partition, lastUpdated := range m.partitions {
+		result[partition] = lastUpdated
 	}
-	return v
+	return result
 }
 
-func (m *PartitionManager) Remove(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+// Revoke revokes the partitions.
+func (m *PartitionManager) Revoke(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	for _, partitionIDs := range partitions {
-		for _, partitionID := range partitionIDs {
-			delete(m.partitions, partitionID)
-		}
+	for _, partition := range partitions {
+		delete(m.partitions, partition)
 	}
 }

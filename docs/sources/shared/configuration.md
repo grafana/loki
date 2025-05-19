@@ -2609,6 +2609,10 @@ tenant_topic:
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
   [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -4522,6 +4526,10 @@ engine:
   # Experimental: Enable next generation query engine for supported queries.
   # CLI flag: -querier.engine.enable-v2-engine
   [enable_v2_engine: <boolean> | default = false]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

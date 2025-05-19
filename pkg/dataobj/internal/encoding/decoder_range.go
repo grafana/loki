@@ -37,7 +37,7 @@ type rangeDecoder struct {
 	r rangeReader
 }
 
-func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, error) {
+func (rd *rangeDecoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	tailer, err := rd.tailer(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading tailer: %w", err)
@@ -52,11 +52,7 @@ func (rd *rangeDecoder) Sections(ctx context.Context) ([]*filemd.SectionInfo, er
 	br, release := getBufioReader(rc)
 	defer release()
 
-	md, err := decodeFileMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Sections, nil
+	return decodeFileMetadata(br)
 }
 
 type tailer struct {
@@ -91,24 +87,38 @@ func (rd *rangeDecoder) tailer(ctx context.Context) (tailer, error) {
 	}, nil
 }
 
-func (rd *rangeDecoder) StreamsDecoder() StreamsDecoder {
-	return &rangeStreamsDecoder{rr: rd.r}
+func (rd *rangeDecoder) StreamsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) StreamsDecoder {
+	return &rangeStreamsDecoder{rr: rd.r, md: metadata, sec: section}
 }
 
-func (rd *rangeDecoder) LogsDecoder() LogsDecoder {
-	return &rangeLogsDecoder{rr: rd.r}
+func (rd *rangeDecoder) LogsDecoder(metadata *filemd.Metadata, section *filemd.SectionInfo) LogsDecoder {
+	return &rangeLogsDecoder{rr: rd.r, md: metadata, sec: section}
 }
 
 type rangeStreamsDecoder struct {
-	rr rangeReader
+	// TODO(rfratto): restrict sections from reading outside of their regions.
+
+	rr  rangeReader // Reader for absolute ranges within the file.
+	md  *filemd.Metadata
+	sec *filemd.SectionInfo
 }
 
-func (rd *rangeStreamsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*streamsmd.ColumnDesc, error) {
-	if got, want := section.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+func (rd *rangeStreamsDecoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
+	typ, err := GetSectionType(rd.md, rd.sec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read section type: %w", err)
+	} else if got, want := typ, SectionTypeStreams; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
-	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+	metadataRegion, err := findMetadataRegion(rd.sec)
+	if err != nil {
+		return nil, err
+	} else if metadataRegion == nil {
+		return nil, fmt.Errorf("section is missing metadata")
+	}
+
+	rc, err := rd.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
 	}
@@ -124,8 +134,42 @@ func (rd *rangeStreamsDecoder) Columns(ctx context.Context, section *filemd.Sect
 	return md.Columns, nil
 }
 
+// findMetadataRegion returns the region where a section's metadata is stored.
+// If section specifies the new [filemd.SectionLayout] field, then the region
+// from tha layout is returned. Otherwise, it returns the deprecated
+// MetadataOffset and MetadataSize fields.
+//
+// findMetadataRegion returns an error if both the layout and metadata fields
+// are set.
+//
+// findMetadtaRegion returns nil for sections without metadata.
+func findMetadataRegion(section *filemd.SectionInfo) (*filemd.Region, error) {
+	// Fallbacks to deprecated fields if the layout is not set.
+	var (
+		deprecatedOffset = section.MetadataOffset //nolint:staticcheck // Ignore deprecation warning
+		deprecatedSize   = section.MetadataSize   //nolint:staticcheck // Ignore deprecation warning
+	)
+
+	if section.Layout != nil {
+		if deprecatedOffset != 0 || deprecatedSize != 0 {
+			return nil, fmt.Errorf("invalid section: both layout and deprecated metadata fields are set")
+		}
+		return section.Layout.Metadata, nil
+	}
+
+	return &filemd.Region{
+		Offset: deprecatedOffset,
+		Length: deprecatedSize,
+	}, nil
+}
+
 func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) result.Seq[[]*streamsmd.PageDesc] {
 	return result.Iter(func(yield func([]*streamsmd.PageDesc) bool) error {
+		baseOffset, err := findDataOffset(rd.sec)
+		if err != nil {
+			return err
+		}
+
 		results := make([][]*streamsmd.PageDesc, len(columns))
 
 		columnInfo := func(c *streamsmd.ColumnDesc) (uint64, uint64) {
@@ -142,7 +186,7 @@ func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.C
 				windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
 			)
 
-			rc, err := rd.rr.ReadRange(ctx, int64(windowOffset), int64(windowSize))
+			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
 			if err != nil {
 				return fmt.Errorf("reading column data: %w", err)
 			}
@@ -181,6 +225,25 @@ func (rd *rangeStreamsDecoder) Pages(ctx context.Context, columns []*streamsmd.C
 	})
 }
 
+// findDataOffset returns the base byte offset from where all reads of a
+// section start.
+//
+// Older versions of data objects use absolute offsets for page data. Newer
+// versions (where [filemd.SectionLayout] is provided) use offsets relative to
+// the start of a section's data region.
+//
+// If a section specifies a layout but has no data region, then the section has
+// no data for reading, and findDataOffset returns an error.
+func findDataOffset(section *filemd.SectionInfo) (uint64, error) {
+	if section.Layout != nil {
+		if section.Layout.Data == nil {
+			return 0, fmt.Errorf("section has no data")
+		}
+		return section.Layout.Data.Offset, nil
+	}
+	return 0, nil
+}
+
 // readAndClose reads exactly size bytes from rc and then closes it.
 func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 	defer rc.Close()
@@ -194,6 +257,11 @@ func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 
 func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
+		baseOffset, err := findDataOffset(rd.sec)
+		if err != nil {
+			return err
+		}
+
 		results := make([]dataset.PageData, len(pages))
 
 		pageInfo := func(p *streamsmd.PageDesc) (uint64, uint64) {
@@ -212,7 +280,7 @@ func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd
 				windowSize   = (window.End().GetInfo().DataOffset + window.End().GetInfo().DataSize) - windowOffset
 			)
 
-			rc, err := rd.rr.ReadRange(ctx, int64(windowOffset), int64(windowSize))
+			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}
@@ -245,16 +313,31 @@ func (rd *rangeStreamsDecoder) ReadPages(ctx context.Context, pages []*streamsmd
 }
 
 type rangeLogsDecoder struct {
-	rr rangeReader
+	// TODO(rfratto): restrict sections from reading outside of their regions.
+
+	rr  rangeReader // Reader for absolute ranges within the file.
+	md  *filemd.Metadata
+	sec *filemd.SectionInfo
 }
 
-func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnDesc, error) {
-	if got, want := section.Type, filemd.SECTION_TYPE_LOGS; got != want {
+func (rd *rangeLogsDecoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
+	typ, err := GetSectionType(rd.md, rd.sec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read section type: %w", err)
+	} else if got, want := typ, SectionTypeLogs; got != want {
 		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
-	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
+
+	metadataRegion, err := findMetadataRegion(rd.sec)
 	if err != nil {
-		return nil, fmt.Errorf("reading streams section metadata: %w", err)
+		return nil, err
+	} else if metadataRegion == nil {
+		return nil, fmt.Errorf("section is missing metadata")
+	}
+
+	rc, err := rd.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
+	if err != nil {
+		return nil, fmt.Errorf("reading logs section metadata: %w", err)
 	}
 	defer rc.Close()
 
@@ -270,6 +353,11 @@ func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.Section
 
 func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) result.Seq[[]*logsmd.PageDesc] {
 	return result.Iter(func(yield func([]*logsmd.PageDesc) bool) error {
+		baseOffset, err := findDataOffset(rd.sec)
+		if err != nil {
+			return err
+		}
+
 		results := make([][]*logsmd.PageDesc, len(columns))
 
 		columnInfo := func(c *logsmd.ColumnDesc) (uint64, uint64) {
@@ -286,7 +374,7 @@ func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnD
 				windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
 			)
 
-			rc, err := rd.rr.ReadRange(ctx, int64(windowOffset), int64(windowSize))
+			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
 			if err != nil {
 				return fmt.Errorf("reading column data: %w", err)
 			}
@@ -327,6 +415,11 @@ func (rd *rangeLogsDecoder) Pages(ctx context.Context, columns []*logsmd.ColumnD
 
 func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
+		baseOffset, err := findDataOffset(rd.sec)
+		if err != nil {
+			return err
+		}
+
 		results := make([]dataset.PageData, len(pages))
 
 		pageInfo := func(p *logsmd.PageDesc) (uint64, uint64) {
@@ -345,7 +438,7 @@ func (rd *rangeLogsDecoder) ReadPages(ctx context.Context, pages []*logsmd.PageD
 				windowSize   = (window.End().GetInfo().DataOffset + window.End().GetInfo().DataSize) - windowOffset
 			)
 
-			rc, err := rd.rr.ReadRange(ctx, int64(windowOffset), int64(windowSize))
+			rc, err := rd.rr.ReadRange(ctx, int64(baseOffset+windowOffset), int64(windowSize))
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}

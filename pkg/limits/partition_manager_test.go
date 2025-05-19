@@ -17,9 +17,7 @@ func TestPartitionManager_Assign(t *testing.T) {
 	// Advance the clock so we compare with a time that is not the default
 	// value.
 	c.Advance(1)
-	m.Assign(context.Background(), nil, map[string][]int32{
-		"foo": {1, 2, 3},
-	})
+	m.Assign(context.Background(), []int32{1, 2, 3})
 	// Assert that the partitions were assigned and the timestamps are set to
 	// the current time.
 	now := c.Now().UnixNano()
@@ -32,9 +30,7 @@ func TestPartitionManager_Assign(t *testing.T) {
 	// partition #4. We expect the updated timestamp is equal to the advanced
 	// time.
 	c.Advance(1)
-	m.Assign(context.Background(), nil, map[string][]int32{
-		"foo": {3, 4},
-	})
+	m.Assign(context.Background(), []int32{3, 4})
 	later := c.Now().UnixNano()
 	require.Equal(t, map[int32]int64{
 		1: now,
@@ -48,9 +44,7 @@ func TestPartitionManager_Has(t *testing.T) {
 	m := NewPartitionManager(log.NewNopLogger())
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), nil, map[string][]int32{
-		"foo": {1, 2, 3},
-	})
+	m.Assign(context.Background(), []int32{1, 2, 3})
 	require.True(t, m.Has(1))
 	require.True(t, m.Has(2))
 	require.True(t, m.Has(3))
@@ -64,9 +58,7 @@ func TestPartitionManager_List(t *testing.T) {
 	// Advance the clock so we compare with a time that is not the default
 	// value.
 	c.Advance(1)
-	m.Assign(context.Background(), nil, map[string][]int32{
-		"foo": {1, 2, 3},
-	})
+	m.Assign(context.Background(), []int32{1, 2, 3})
 	now := c.Now().UnixNano()
 	result := m.List()
 	require.Equal(t, map[int32]int64{
@@ -81,13 +73,11 @@ func TestPartitionManager_List(t *testing.T) {
 	require.NotEqual(t, p1, p2)
 }
 
-func TestPartitionManager_Remove(t *testing.T) {
+func TestPartitionManager_Revoke(t *testing.T) {
 	m := NewPartitionManager(log.NewNopLogger())
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), nil, map[string][]int32{
-		"foo": {1, 2, 3},
-	})
+	m.Assign(context.Background(), []int32{1, 2, 3})
 	// Assert that the partitions were assigned and the timestamps are set to
 	// the current time.
 	now := c.Now().UnixNano()
@@ -96,10 +86,8 @@ func TestPartitionManager_Remove(t *testing.T) {
 		2: now,
 		3: now,
 	}, m.partitions)
-	// Remove partitions 2 and 3.
-	m.Remove(context.Background(), nil, map[string][]int32{
-		"foo": {2, 3},
-	})
+	// Revoke partitions 2 and 3.
+	m.Revoke(context.Background(), []int32{2, 3})
 	require.Equal(t, map[int32]int64{
 		1: now,
 	}, m.partitions)

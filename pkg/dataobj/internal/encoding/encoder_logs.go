@@ -17,21 +17,19 @@ import (
 type LogsEncoder struct {
 	parent *Encoder
 
-	startOffset int  // Byte offset in the file where the column starts.
-	closed      bool // true if LogsEncoder has been closed.
+	closed bool // true if LogsEncoder has been closed.
 
 	data      *bytes.Buffer
 	columns   []*logsmd.ColumnDesc // closed columns.
 	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
 }
 
-func newLogsEncoder(parent *Encoder, offset int) *LogsEncoder {
+func newLogsEncoder(parent *Encoder) *LogsEncoder {
 	buf := bytesBufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 
 	return &LogsEncoder{
-		parent:      parent,
-		startOffset: offset,
+		parent: parent,
 
 		data: buf,
 	}
@@ -66,10 +64,7 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 		},
 	}
 
-	return newLogsColumnEncoder(
-		enc,
-		enc.startOffset+enc.data.Len(),
-	), nil
+	return newLogsColumnEncoder(enc, enc.data.Len()), nil
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the
@@ -149,7 +144,7 @@ func (enc *LogsEncoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curColumn.Info.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curColumn.Info.MetadataOffset = uint64(enc.data.Len() + len(data))
 	enc.curColumn.Info.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
@@ -167,7 +162,7 @@ func (enc *LogsEncoder) append(data, metadata []byte) error {
 type LogsColumnEncoder struct {
 	parent *LogsEncoder
 
-	startOffset int  // Byte offset in the file where the column starts.
+	startOffset int  // Byte offset in the section where the column starts.
 	closed      bool // true if LogsColumnEncoder has been closed.
 
 	data        *bytes.Buffer // All page data.

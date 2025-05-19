@@ -23,7 +23,7 @@ There are three primary components to monitoring Loki:
 
 1. [Kubernetes Monitoring Helm](https://github.com/grafana/k8s-monitoring-helm/): The Kubernetes Monitoring Helm chart provides a comprehensive monitoring solution for Kubernetes clusters. It also provides direct integrations for monitoring the full LGTM (Loki, Grafana, Tempo and Mimir) stack. To learn how to deploy the Kubernetes Monitoring Helm chart, refer to [deploy meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy).
 
-1. [Grafana Cloud account](https://grafana.com/products/cloud/) or a seperate LGTM stack: The data collected from the Loki cluster can be sent to a Grafana Cloud account or a separate LGTM stack. We recommend using Grafana Cloud since it is Grafana Lab's responsiblity to maintain the availability and performance of the Grafana Cloud services. 
+1. [Grafana Cloud account](https://grafana.com/products/cloud/) or a separate LGTM stack: The data collected from the Loki cluster can be sent to a Grafana Cloud account or a separate LGTM stack. We recommend using Grafana Cloud since it is Grafana Lab's responsibility to maintain the availability and performance of the Grafana Cloud services.
 
 1. [The Loki mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin-compiled): is an opinionated set of dashboards, alerts, and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance. To install the Loki mixin, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins).
 
