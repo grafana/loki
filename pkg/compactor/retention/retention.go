@@ -217,10 +217,13 @@ func markForDelete(
 	defer cancel()
 
 	err := indexFile.ForEachSeries(iterCtx, func(s Series) error {
+		if seriesMap.HasSeries(s.SeriesID(), s.UserID()) {
+			return fmt.Errorf("series should not be repeated. Series %s already seen earlier", s.SeriesID())
+		}
+		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
+
 		chunks := s.Chunks()
 		if len(chunks) == 0 {
-			// add the series to series map so that it gets cleaned up
-			seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 			return nil
 		}
 
@@ -233,10 +236,10 @@ func markForDelete(
 		}
 
 		if expiration.CanSkipSeries(s.UserID(), s.Labels(), s.SeriesID(), seriesStart, tableName, now) {
+			seriesMap.MarkSeriesNotDeleted(s.SeriesID(), s.UserID())
 			empty = false
 			return nil
 		}
-		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 
 		for i := 0; i < len(chunks) && iterCtx.Err() == nil; i++ {
 			c := chunks[i]

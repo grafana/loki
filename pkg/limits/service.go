@@ -106,11 +106,12 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	metadata StreamMetadata
-	wal      WAL
+	usage *UsageStore
+	wal   WAL
 
 	// Track partition assignments
-	partitionManager *PartitionManager
+	partitionManager    *PartitionManager
+	partitionLifecycler *PartitionLifecycler
 
 	// Used for tests.
 	clock quartz.Clock
@@ -131,12 +132,14 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		metadata:         NewStreamMetadata(cfg.NumPartitions),
+		usage:            NewUsageStore(cfg),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		partitionManager: NewPartitionManager(logger),
 		clock:            quartz.NewReal(),
 	}
+
+	s.partitionLifecycler = NewPartitionLifecycler(s.partitionManager, s.usage, logger)
 
 	// Initialize internal metadata metrics
 	if err := reg.Register(s); err != nil {
@@ -165,8 +168,8 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
-		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
+		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
+		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -193,7 +196,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.metadata.All(func(tenant string, _ int32, stream Stream) {
+	s.usage.All(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
@@ -223,18 +226,6 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		float64(len(s.partitionManager.List())),
 	)
-}
-
-func (s *IngestLimits) onPartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	s.partitionManager.Assign(ctx, client, partitions)
-}
-
-func (s *IngestLimits) onPartitionsRevoked(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	s.partitionManager.Remove(ctx, client, partitions)
-
-	for _, ids := range partitions {
-		s.metadata.EvictPartitions(ids)
-	}
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
@@ -301,31 +292,9 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
-			s.metadata.Evict(cutoff)
+			s.usage.Evict()
 		}
 	}
-}
-
-// updateMetadata updates the metadata map with the provided StreamMetadata.
-// It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(rec *proto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time) {
-	var (
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		rateWindowCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
-	)
-
-	if assigned := s.partitionManager.Has(partition); !assigned {
-		return
-	}
-
-	s.metadata.Store(tenant, partition, rec.StreamHash, rec.TotalSize, recordTime, bucketStart, rateWindowCutoff)
-
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(tenant).Add(float64(rec.TotalSize))
 }
 
 // stopping implements the Service interface's stopping method.
@@ -366,14 +335,6 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssi
 func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
-		// Use the provided lastSeenAt timestamp as the last seen time
-		recordTime = lastSeenAt.UnixNano()
-		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		// Calculate the max active streams per tenant per partition
 		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
 	)
@@ -381,11 +342,11 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams := req.Streams
 	valid := 0
 	for _, stream := range streams {
-		partitionID := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partitionID); !assigned {
-			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition_id", partitionID)
+		if assigned := s.partitionManager.Has(partition); !assigned {
+			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
 
@@ -395,7 +356,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.metadata.StoreCond(req.Tenant, streams, recordTime, cutoff, bucketStart, bucketCutoff, cond)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
