@@ -45,7 +45,7 @@ func (l *PartitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 	for _, partitions := range topics {
 		l.partitionManager.Assign(ctx, partitions)
 		for _, partition := range partitions {
-			if err := l.checkOffsets(ctx, partition); err != nil {
+			if err := l.determineStateFromOffsets(ctx, partition); err != nil {
 				level.Error(l.logger).Log(
 					"msg", "failed to check offsets, partition is ready",
 					"partition", partition,
@@ -69,7 +69,7 @@ func (l *PartitionLifecycler) Revoke(ctx context.Context, _ *kgo.Client, topics 
 	}
 }
 
-func (l *PartitionLifecycler) checkOffsets(ctx context.Context, partition int32) error {
+func (l *PartitionLifecycler) determineStateFromOffsets(ctx context.Context, partition int32) error {
 	logger := log.With(l.logger, "partition", partition)
 	// Get the start offset for the partition. This can be greater than zero
 	// if a retention period has deleted old records.
