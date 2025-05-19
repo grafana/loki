@@ -305,7 +305,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				MaxGlobalStreams: tt.maxActiveStreams,
 			}
 
-			kafkaClient := mockKafka{t: t, expectedNumRecords: tt.expectedNumRecords}
+			kafkaClient := mockKafka{}
 
 			s := &IngestLimits{
 				cfg: Config{
@@ -361,7 +361,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				}
 			}
 
-			kafkaClient.AssertExpectedNumRecords()
+			require.Equal(t, tt.expectedNumRecords, len(kafkaClient.produced))
 		})
 	}
 }
@@ -375,7 +375,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	kafkaClient := mockKafka{t: t, expectedNumRecords: 50}
+	kafkaClient := mockKafka{}
 
 	// Setup test data with a mix of active and expired streams>
 	usage := &UsageStore{
@@ -451,7 +451,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 
 	// Wait for all goroutines to complete
 	wg.Wait()
-	kafkaClient.AssertExpectedNumRecords()
+	require.Equal(t, 50, len(kafkaClient.produced))
 }
 
 func TestNewIngestLimits(t *testing.T) {

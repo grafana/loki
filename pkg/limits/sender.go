@@ -24,23 +24,23 @@ type Sender struct {
 	producer Producer
 	// TODO(grobinson): We should remove topic in future, as it should be
 	// set in the client.
-	topic      string
-	partitions int
-	zone       string
-	logger     log.Logger
+	topic         string
+	numPartitions int
+	zone          string
+	logger        log.Logger
 
 	produced       prometheus.Counter
 	producedFailed prometheus.Counter
 }
 
 // NewSender returns a new Sender.
-func NewSender(producer Producer, topic string, partitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Sender {
+func NewSender(producer Producer, topic string, numPartitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Sender {
 	return &Sender{
-		producer:   producer,
-		topic:      topic,
-		partitions: partitions,
-		zone:       zone,
-		logger:     logger,
+		producer:      producer,
+		topic:         topic,
+		numPartitions: numPartitions,
+		zone:          zone,
+		logger:        logger,
 		produced: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_records_produced_total",
@@ -72,12 +72,12 @@ func (s *Sender) Produce(ctx context.Context, tenant string, metadata *proto.Str
 	// The stream metadata topic expects a fixed number of partitions,
 	// the size of which is determined ahead of time. Streams are
 	// sharded over partitions using a simple mod.
-	partition := int32(metadata.StreamHash % uint64(s.partitions))
+	partition := int32(metadata.StreamHash % uint64(s.numPartitions))
 	r := kgo.Record{
 		Key:       []byte(tenant),
 		Value:     b,
-		Partition: partition,
 		Topic:     s.topic,
+		Partition: partition,
 	}
 	s.produced.Inc()
 	s.producer.Produce(context.WithoutCancel(ctx), &r, s.handleProduceErr)
