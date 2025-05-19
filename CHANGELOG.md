@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.5.1](https://github.com/grafana/loki/compare/v3.5.0...v3.5.1) (2025-05-19)
+
+
+### Features
+
+* prepare Loki 3.5 release ([22a5221](https://github.com/grafana/loki/commit/22a52211cb0603922e284f5bb53d5216d6776d8a))
+
+
+### Bug Fixes
+
+* **build:** Bump loki-build-image for docker-driver (backport release-3.5.x) ([#17741](https://github.com/grafana/loki/issues/17741)) ([d4e637c](https://github.com/grafana/loki/commit/d4e637cebb842a933b21f0753c028821b1ad5c26))
+
 ## [3.5.0](https://github.com/grafana/loki/compare/v3.4.2...v3.5.0) (2025-04-17)
 
 
