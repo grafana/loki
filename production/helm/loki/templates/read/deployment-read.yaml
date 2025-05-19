@@ -25,7 +25,9 @@ spec:
   strategy:
     rollingUpdate:
       maxSurge: 0
-      maxUnavailable: 1
+      {{- with .Values.read.maxUnavailable }}
+      maxUnavailable: {{ . }}
+      {{- end }}
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
