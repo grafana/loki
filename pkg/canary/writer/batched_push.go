@@ -53,14 +53,13 @@ func (p *BatchedPush) WriteEntry(ts time.Time, e string) {
 
 // implements `EntryWriter.Stop` by delegating to the `Push` reference
 func (p *BatchedPush) Stop() {
-	<-p.pusher.quit
 	p.pusher.Stop()
 }
 
-// `run` pulls lines from the `Push` channel and batches them to be pushed
-// to loki.  Once the batch is "full", or after 30s has transpired, the
-// log lines are then serialized to a byte array and the `Push.send()` function
-// is used to send them to loki.
+// `run` pulls lines from the `Push` channel and batches them to before sending
+// to Loki.  Once the batch is "full", or after 30s has transpired, the log lines
+// are then serialized to a byte array and the `Push.send()` function is used
+// to send them to Loki.
 //
 // If the `quit` channel is poked, this function will flush the remaining log
 // lines and then terminate.
@@ -70,15 +69,14 @@ func (p *BatchedPush) run() {
 		close(p.pusher.done)
 	}()
 
-	// lockable structure to keep track of log lines as we receive from the channel
-	logs := make([]entry, 0, p.logBatchSize)
-
-	// use a channel to flush the logs array every 30s at minimum
+	// use a channel to flush the logs array every "timeout" seconds at minimum
 	forceFlush := make(chan bool, 1)
 	go func() {
 		time.Sleep(DefaultLogBatchTimeout * time.Second)
 		forceFlush <- true
 	}()
+
+	logs := make([]entry, 0, p.logBatchSize)
 
 	// helper function to force the list of log lines to be serialized and sent to
 	// Loki.  This may be invoked when receiving from the different channels
@@ -88,7 +86,6 @@ func (p *BatchedPush) run() {
 			return
 		}
 
-		level.Info(p.pusher.logger).Log("msg", "running a batched push", "log_count", len(logs))
 		firstLog := logs[0]
 
 		oldestTs := firstLog.ts.UnixNano()
@@ -132,25 +129,29 @@ func (p *BatchedPush) run() {
 	}
 
 	var lock sync.Mutex
-	withLock := func(runner func()) {
-		lock.Lock()
+
+	// helper function to apply a lock to a function before it executes.
+	// used to ensure the `logs` array is not checked/manipulated while
+	// we are in the process of appending or flushing it
+	withLock := func(f func()) {
 		defer func() {
 			lock.Unlock()
 		}()
-		runner()
+
+		lock.Lock()
+		f()
 	}
 
 	for {
 		select {
 		case <-p.pusher.quit:
-			// flush whatever is remaining before we terminate
+			// ensure all batched logs are pushed before shutting down
 			withLock(flush)
 			cancel()
 			return
 		case <-forceFlush:
-			// force a flush if we've exceeded the min duration
 			// we don't want to keep logs for too long if the
-			// channel is open byt we don't receive more logs
+			// channel is open but not receiving new logs
 			withLock(flush)
 		case e := <-p.pusher.entries:
 			withLock(func() {

@@ -154,6 +154,30 @@ func Test_LargeBatchedPush(t *testing.T) {
 	wg.Wait()
 }
 
+// test sending a batch of logs, and then waiting for the timeout value to
+// pass.  This is a bit of a painful test given we wait for 'n' seconds for
+// the timeout to expire, but it ensures we know the batched push will send
+// whichever logs were received even if it stops receiving more
+func Test_ForceTimeoutBatchedPush(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer func() {
+		testCfg.mock.Close()
+	}()
+
+	logBatch, _ := logbatch(1, 5)
+
+	push, err := newPush(testCfg, 20)
+	require.NoError(t, err)
+
+	for _, l := range logBatch[0] {
+		push.WriteEntry(l.ts, l.entry)
+	}
+
+	time.Sleep(time.Second*DefaultLogBatchTimeout - 1)
+	resp := <-testCfg.responses
+	require.Len(t, resp.pushReq.Streams, 5)
+}
+
 // test sending batches of logs and then terminating the client.  the last sent
 // logs should be sent before the client terminates.
 func Test_TerminateBatchedPush(t *testing.T) {
@@ -163,22 +187,20 @@ func Test_TerminateBatchedPush(t *testing.T) {
 	}()
 
 	// sending 9 logs in 3 batches, but don't worry about checking each is sent only once
-	logBatches, _ := logbatch(3, 3)
+	logBatches, _ := logbatch(1, 9)
 
 	// large batch size to ensure no logs go out before we terminate
 	push, err := newPush(testCfg, 20)
 	require.NoError(t, err)
 
-	for _, logs := range logBatches {
-		for _, log := range logs {
-			// don't monitor the push -- the logs won't send until we stop the client
-			push.WriteEntry(log.ts, log.entry)
-		}
+	for _, l := range logBatches[0] {
+		// don't monitor the push -- the logs won't send until we stop the client
+		push.WriteEntry(l.ts, l.entry)
 	}
 
-	go func() {
-		push.Stop() // force the logs to terminate
-	}()
+	// hacky, but sleep for 5s to ensure the logs have made it through the push channel...
+	time.Sleep(time.Second * 5)
+	push.Stop()
 
 	resp := <-testCfg.responses
 	require.Len(t, resp.pushReq.Streams, 9)

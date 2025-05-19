@@ -124,8 +124,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *logBatchSize >= *logBatchSizeMax {
-		_, _ = fmt.Fprintf(os.Stderr, "Log batch size must not be >= log batch size max: batch size %d, max size %d\n", *logBatchSize, *logBatchSizeMax)
+	if *logBatchSize > *logBatchSizeMax {
+		_, _ = fmt.Fprintf(os.Stderr, "Log batch size must not be > log batch size max: batch size %d, max size %d\n", *logBatchSize, *logBatchSizeMax)
 		os.Exit(1)
 	}
 
