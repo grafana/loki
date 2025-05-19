@@ -89,6 +89,7 @@ func main() {
 	spotCheckWait := flag.Duration("spot-check-initial-wait", 10*time.Second, "How long should the spot check query wait before starting to check for entries")
 
 	logBatchSize := flag.Int("logs-batch-size", writer.DefaultLogBatchSize, "Batch logs based on log line count.  Must be a non-negative value (0 or 1 will disable batching)")
+	logBatchSizeMax := flag.Int("logs-batch-size-max", writer.DefaultLogBatchSizeMax, "Maximum # of logs which may be in a batch before pushed (only increase this if you also increase the resource limits on the canary pods)")
 
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
@@ -114,7 +115,17 @@ func main() {
 	}
 
 	if *logBatchSize < 0 {
-		_, _ = fmt.Fprint(os.Stderr, "Log batch size must not be negative.  A value of '0' or '1' will disable batching entirely")
+		_, _ = fmt.Fprint(os.Stderr, "Log batch size must not be negative.  A value of '0' or '1' will disable batching entirely\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSizeMax < 1 {
+		_, _ = fmt.Fprint(os.Stderr, "Log batch size max must not be <= 0\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSize >= *logBatchSizeMax {
+		_, _ = fmt.Fprintf(os.Stderr, "Log batch size must not be >= log batch size max: batch size %d, max size %d\n", *logBatchSize, *logBatchSizeMax)
 		os.Exit(1)
 	}
 

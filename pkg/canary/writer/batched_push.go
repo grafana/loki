@@ -12,23 +12,23 @@ import (
 )
 
 const (
-	DefaultLogBatchSize    = 1  // don't batch logs -- just send immediately
+	DefaultLogBatchSize    = 1  // '1' means don't batch logs -- just send immediately
+	DefaultLogBatchSizeMax = 20 // w/1MB log line restriction, don't allow more than 20MB in memory -- used only by the CLI to restrict the logBatchSize input
 	DefaultLogBatchTimeout = 30 // every 'n' seconds, force the batch to flush if it's not empty
 )
 
-// BatchedPush is an extension of a Push writer.  This Writer implements
-// the standard `EntryWriter` functions, but implements a different push mechanism
-// from the standard push.
+// BatchedPush is wrapper around the `Push` writer.  This writer delegates
+// the standard `EntryWriter` functions to the wrapped `Push` writer, but
+// reimplements the push mechanism:
 //
 // Rather than receiving a log and pushing a log (effectively, a batch size of 1),
 // this writer builds logs up in-memory and pushes/flushes them based on a few conditions:
-//  1. the batch of logs hits a threshold
+//  1. the batch of logs hits the specified limit
 //  2. a timeout of 30s has been reached
-//  3. the writer is terminating and flushes all remaining logs
+//  3. the writer is terminating
 //
-// This Writer is given a standard Push writer; this writer's standard channels
-// and base functionality is used for listening for logs, building serializable
-// objects, and whatnot
+// This writer utilizes the wrapped `Push` struct's internals for listening for logs,
+// building serializable objects, etc.
 type BatchedPush struct {
 	pusher       *Push
 	logBatchSize int
@@ -155,6 +155,7 @@ func (p *BatchedPush) run() {
 		case e := <-p.pusher.entries:
 			withLock(func() {
 				logs = append(logs, e)
+
 				if len(logs) >= p.logBatchSize {
 					flush()
 				}

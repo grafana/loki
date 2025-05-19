@@ -41,13 +41,9 @@ func Test_CreatePusher(t *testing.T) {
 		testCfg.mock.Close()
 	}()
 
-	// -1 should not return a pusher
-	_, err := newPush(testCfg, -1)
-	require.Error(t, err)
-
+	// batch size of 0/1 means don't batch...
 	push, err := newPush(testCfg, 0)
 	require.NoError(t, err)
-
 	if _, ok := push.(*Push); !ok {
 		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 0")
 	}
@@ -58,12 +54,15 @@ func Test_CreatePusher(t *testing.T) {
 		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 1")
 	}
 
-	push, err = newPush(testCfg, 20)
+	push, err = newPush(testCfg, 10)
 	require.NoError(t, err)
-
 	if _, ok := push.(*BatchedPush); !ok {
-		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 20")
+		require.Fail(t, "NewPush returned an invalid type w/logBatchSize == 10")
 	}
+
+	// batch size of -1 is nonsensical
+	_, err = newPush(testCfg, -1)
+	require.Error(t, err)
 }
 
 // basic test with a few diff HTTP settings
@@ -98,8 +97,8 @@ func Test_Push(t *testing.T) {
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
 }
 
-// test batching log lines and ensure the testing resp contains 10 entries
-func Test_BasicPushWithBatching(t *testing.T) {
+// test batching log lines and ensure the testing resp contains exactly 10 unique entries
+func Test_BatchedPush(t *testing.T) {
 	testCfg := newTestConfig(t)
 	defer func() {
 		testCfg.mock.Close()
@@ -121,7 +120,7 @@ func Test_BasicPushWithBatching(t *testing.T) {
 // test batching 25 log lines in groups of 5
 // we need to ensure the pusher only sends 25 logs and never sends
 // duplicates
-func Test_SendMultipleLogBatches(t *testing.T) {
+func Test_LargeBatchedPush(t *testing.T) {
 	// process for testing batching:
 	// 	1. create a bunch of logs to be ingested (25 in batches of 5)
 	//  2. create a single push client
@@ -144,7 +143,7 @@ func Test_SendMultipleLogBatches(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// monitor the logs which were sent
-	go logbatchMonitor(t, testCfg, &wg)(logsSent, 25)
+	go logbatchMonitor(t, testCfg, &wg, logsSent, 25)
 
 	for _, logs := range logBatches {
 		// routine to send logs through the pusher
@@ -157,21 +156,22 @@ func Test_SendMultipleLogBatches(t *testing.T) {
 
 // test sending batches of logs and then terminating the client.  the last sent
 // logs should be sent before the client terminates.
-func Test_PushWithBatchingTerminate(t *testing.T) {
+func Test_TerminateBatchedPush(t *testing.T) {
 	testCfg := newTestConfig(t)
 	defer func() {
 		testCfg.mock.Close()
 	}()
 
-	// logsSent represents the lines which were sent by the BatchedPusher, when
-	// we receive a log line, we increment the entry in the map by 1
-	logBatches, _ := logbatch(5, 5)
+	// sending 9 logs in 3 batches, but don't worry about checking each is sent only once
+	logBatches, _ := logbatch(3, 3)
 
-	push, err := newPush(testCfg, 1000)
+	// large batch size to ensure no logs go out before we terminate
+	push, err := newPush(testCfg, 20)
 	require.NoError(t, err)
 
 	for _, logs := range logBatches {
 		for _, log := range logs {
+			// don't monitor the push -- the logs won't send until we stop the client
 			push.WriteEntry(log.ts, log.entry)
 		}
 	}
@@ -179,54 +179,14 @@ func Test_PushWithBatchingTerminate(t *testing.T) {
 	go func() {
 		push.Stop() // force the logs to terminate
 	}()
+
 	resp := <-testCfg.responses
-	require.Len(t, resp.pushReq.Streams, 25)
+	require.Len(t, resp.pushReq.Streams, 9)
 }
-
-// testing function which monitors the test config response channel, waiting for 'n'
-// log responses to be returned.  Moreover, this function monitors the log lines sent
-// by the EntryWriter in batches to ensure each line is sent 1x.
-func logbatchMonitor(t *testing.T, testCfg testConfig, wg *sync.WaitGroup) func(map[string]int, int) {
-	t.Helper()
-
-	wg.Add(1)
-	return func(logsSent map[string]int, expectedCount int) {
-		defer func() {
-			wg.Done()
-		}()
-
-		var resp response
-		logCount := 0
-		for {
-			resp = <-testCfg.responses
-
-			for _, log := range resp.pushReq.Streams {
-				for _, entry := range log.Entries {
-					logsSent[entry.Line]++ // received
-					logCount++             // total # expected...
-				}
-			}
-
-			if logCount >= expectedCount {
-				break
-			}
-		}
-
-		// make sure each of the entries in the logsSent was received once
-		for log := range logsSent {
-			require.Equal(t, logsSent[log], 1)
-		}
-
-		// sanity-check: the # of sent logs is 5x5
-		require.Len(t, logsSent, expectedCount)
-	}
-}
-
-// Test helpers
 
 // creates an `n`x`m` nested list of `entry` structs which are sent via the
 // `EntryWriter` to loki.  Returns the double-nested entry list as well as
-// a map of each log line initialized to 0.  This map can be used to ensure'
+// a map of each log line initialized to 0.  This map can be used to ensure
 // each log was sent once and only once
 func logbatch(batchCount int, batchSize int) ([][]entry, map[string]int) {
 	logBatches := [][]entry{}
@@ -259,6 +219,44 @@ func logbatchSender(wg *sync.WaitGroup) func(EntryWriter, []entry) {
 			push.WriteEntry(log.ts, log.entry)
 		}
 	}
+}
+
+// function which monitors the test config response channel, waiting for 'n'
+// log responses to be returned.  Moreover, this function monitors the log
+// lines received in the channel to ensure each log line is only sent once
+func logbatchMonitor(t *testing.T, testCfg testConfig, wg *sync.WaitGroup, logsSent map[string]int, expectedCount int) {
+	t.Helper()
+
+	wg.Add(1)
+	defer func() {
+		wg.Done()
+	}()
+
+	var resp response
+	logCount := 0
+	for {
+		resp = <-testCfg.responses
+
+		for _, log := range resp.pushReq.Streams {
+			for _, entry := range log.Entries {
+				logsSent[entry.Line]++ // received
+				logCount++             // total # expected...
+			}
+		}
+
+		// once we have at least the
+		if logCount >= expectedCount {
+			break
+		}
+	}
+
+	// make sure each of the entries in the logsSent was received once
+	for log := range logsSent {
+		require.Equal(t, logsSent[log], 1)
+	}
+
+	// sanity-check: the # of sent logs is 5x5
+	require.Len(t, logsSent, expectedCount)
 }
 
 func assertResponse(t *testing.T, resp response, testAuth bool, labels model.LabelSet, ts time.Time, payload string, streamCount int) {
