@@ -44,7 +44,7 @@ func NewSender(producer Producer, topic string, partitions int, zone string, log
 		produced: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_records_produced_total",
-				Help: "The total number of produced records.",
+				Help: "The total number of produced records, including failures.",
 			},
 		),
 		producedFailed: promauto.With(reg).NewCounter(
