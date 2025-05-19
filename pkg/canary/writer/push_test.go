@@ -34,6 +34,14 @@ type testConfig struct {
 	mock      *httptest.Server
 }
 
+type response struct {
+	tenantID           string
+	pushReq            logproto.PushRequest
+	contentType        string
+	userAgent          string
+	username, password string
+}
+
 // basic testing to make sure we create the correct pusher or buffered pusher
 func Test_CreatePusher(t *testing.T) {
 	testCfg := newTestConfig(t)
@@ -117,17 +125,9 @@ func Test_BatchedPush(t *testing.T) {
 	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 10)
 }
 
-// test batching 25 log lines in groups of 5
-// we need to ensure the pusher only sends 25 logs and never sends
-// duplicates
+// test sending 25 log lines in batches of 5
+// this ensures the pusher only sends 25 unique logs
 func Test_LargeBatchedPush(t *testing.T) {
-	// process for testing batching:
-	// 	1. create a bunch of logs to be ingested (25 in batches of 5)
-	//  2. create a single push client
-	//  3. listen for responses
-	//  4. spawn a bunch of routines to push logs
-	//  5. when the responses are received, we should only have 25 responses
-	//  6. moreover, we should have 25 unique log lines
 	testCfg := newTestConfig(t)
 	defer func() {
 		testCfg.mock.Close()
@@ -135,7 +135,7 @@ func Test_LargeBatchedPush(t *testing.T) {
 
 	// logsSent represents the lines which were sent by the BatchedPusher, when
 	// we receive a log line, we increment the entry in the map by 1
-	logBatches, logsSent := logbatch(5, 5)
+	logBatches, logsSent := newLogBatch(5, 5)
 
 	push, err := newPush(testCfg, 5)
 	require.NoError(t, err)
@@ -147,7 +147,16 @@ func Test_LargeBatchedPush(t *testing.T) {
 
 	for _, logs := range logBatches {
 		// routine to send logs through the pusher
-		go logbatchSender(&wg)(push, logs)
+		wg.Add(1)
+		go func() {
+			defer func() {
+				wg.Done()
+			}()
+
+			for _, log := range logs {
+				push.WriteEntry(log.ts, log.entry)
+			}
+		}()
 	}
 
 	// wait until all logs are pushed and the monitor function are done running
@@ -164,7 +173,8 @@ func Test_ForceTimeoutBatchedPush(t *testing.T) {
 		testCfg.mock.Close()
 	}()
 
-	logBatch, _ := logbatch(1, 5)
+	// don't worry about checking each log is sent once -- we test that elsewhere
+	logBatch, _ := newLogBatch(1, 5)
 
 	push, err := newPush(testCfg, 20)
 	require.NoError(t, err)
@@ -186,8 +196,8 @@ func Test_TerminateBatchedPush(t *testing.T) {
 		testCfg.mock.Close()
 	}()
 
-	// sending 9 logs in 3 batches, but don't worry about checking each is sent only once
-	logBatches, _ := logbatch(1, 9)
+	// don't worry about checking each is sent only once -- we test that elsewehere
+	logBatches, _ := newLogBatch(1, 9)
 
 	// large batch size to ensure no logs go out before we terminate
 	push, err := newPush(testCfg, 20)
@@ -206,42 +216,7 @@ func Test_TerminateBatchedPush(t *testing.T) {
 	require.Len(t, resp.pushReq.Streams, 9)
 }
 
-// creates an `n`x`m` nested list of `entry` structs which are sent via the
-// `EntryWriter` to loki.  Returns the double-nested entry list as well as
-// a map of each log line initialized to 0.  This map can be used to ensure
-// each log was sent once and only once
-func logbatch(batchCount int, batchSize int) ([][]entry, map[string]int) {
-	logBatches := [][]entry{}
-	logsSent := map[string]int{}
-
-	for i := range batchCount {
-		var logs []entry
-		for j := range batchSize {
-			logs = append(logs, entry{
-				ts:    time.Now().Add(1 * time.Second),
-				entry: fmt.Sprintf("test log %d %d", i, j),
-			})
-			logsSent[fmt.Sprintf("test log %d %d", i, j)] = 0 // sent, not yet received
-		}
-		logBatches = append(logBatches, logs)
-	}
-
-	return logBatches, logsSent
-}
-
-// coroutine function to send logs to the `EntryWriter`
-func logbatchSender(wg *sync.WaitGroup) func(EntryWriter, []entry) {
-	wg.Add(1)
-	return func(push EntryWriter, logs []entry) {
-		defer func() {
-			wg.Done()
-		}()
-
-		for _, log := range logs {
-			push.WriteEntry(log.ts, log.entry)
-		}
-	}
-}
+// -- Helper Functions for Testing Valid Responses -- //
 
 // function which monitors the test config response channel, waiting for 'n'
 // log responses to be returned.  Moreover, this function monitors the log
@@ -312,13 +287,7 @@ func assertResponse(t *testing.T, resp response, testAuth bool, labels model.Lab
 	assert.Equal(t, ts, lastStream.Entries[0].Timestamp)
 }
 
-type response struct {
-	tenantID           string
-	pushReq            logproto.PushRequest
-	contentType        string
-	userAgent          string
-	username, password string
-}
+// -- Utility Functions -- //
 
 func createServerHandler(responses chan response) http.HandlerFunc {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -374,6 +343,29 @@ func labelSet(keyVals ...string) model.LabelSet {
 	}
 
 	return lbs
+}
+
+// creates an nested list of `entry` structs which are sent via the
+// `EntryWriter` to loki.  Returns the 2-dimensional entry/log array
+// as well as a map of each log line initialized to 0.  This map can
+// be used to ensure each log was sent once and only once
+func newLogBatch(batchCount int, batchSize int) ([][]entry, map[string]int) {
+	logBatches := [][]entry{}
+	logsSent := map[string]int{}
+
+	for i := range batchCount {
+		var logs []entry
+		for j := range batchSize {
+			logs = append(logs, entry{
+				ts:    time.Now().Add(1 * time.Second),
+				entry: fmt.Sprintf("test log %d %d", i, j),
+			})
+			logsSent[fmt.Sprintf("test log %d %d", i, j)] = 0 // sent, not yet received
+		}
+		logBatches = append(logBatches, logs)
+	}
+
+	return logBatches, logsSent
 }
 
 func testPayload() (time.Time, string) {
