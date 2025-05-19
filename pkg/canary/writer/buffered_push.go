@@ -53,6 +53,7 @@ func (p *BatchedPush) WriteEntry(ts time.Time, e string) {
 
 // implements `EntryWriter` by delegating to the `Push` reference
 func (p *BatchedPush) Stop() {
+	<-p.pusher.quit
 	p.pusher.Stop()
 }
 

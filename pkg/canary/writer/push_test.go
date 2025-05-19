@@ -165,23 +165,22 @@ func Test_PushWithBatchingTerminate(t *testing.T) {
 
 	// logsSent represents the lines which were sent by the BatchedPusher, when
 	// we receive a log line, we increment the entry in the map by 1
-	logBatches, logsSent := logbatch(10, 10)
+	logBatches, _ := logbatch(5, 5)
 
-	push, err := newPush(testCfg, 5)
+	push, err := newPush(testCfg, 1000)
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-
-	// monitor the logs which were sent
-	go logbatchMonitor(t, testCfg, &wg)(logsSent, 25)
-
 	for _, logs := range logBatches {
-		// routine to send logs through the pusher
-		go logbatchSender(&wg)(push, logs)
+		for _, log := range logs {
+			push.WriteEntry(log.ts, log.entry)
+		}
 	}
 
-	// wait until all logs are pushed and the monitor function are done running
-	wg.Wait()
+	go func() {
+		push.Stop() // force the logs to terminate
+	}()
+	resp := <-testCfg.responses
+	require.Len(t, resp.pushReq.Streams, 25)
 }
 
 // testing function which monitors the test config response channel, waiting for 'n'
