@@ -14,9 +14,9 @@ import (
 const numStripes = 64
 
 // iterateFunc is a closure called for each stream.
-type iterateFunc func(tenant string, partition int32, stream Stream)
+type iterateFunc func(tenant string, partition int32, stream streamUsage)
 
-// condFunc is a function that is called for each stream passed to StoreCond,
+// condFunc is a function that is called for each stream passed to update,
 // and is often used to check if a stream can be stored (for example, with
 // the max series limit). It should return true if the stream can be stored.
 type condFunc func(acc float64, stream *proto.StreamMetadata) bool
@@ -35,16 +35,16 @@ type usageStore struct {
 }
 
 // tenantUsage contains the per-partition stream usage for a tenant.
-type tenantUsage map[int32]map[uint64]Stream
+type tenantUsage map[int32]map[uint64]streamUsage
 
-// Stream represents the metadata for a stream loaded from the kafka topic.
+// streamUsage represents the metadata for a stream loaded from the kafka topic.
 // It contains the minimal information to count per tenant active streams and
 // rate limits.
-type Stream struct {
-	Hash        uint64
-	LastSeenAt  int64
-	TotalSize   uint64
-	RateBuckets []rateBucket
+type streamUsage struct {
+	hash        uint64
+	lastSeenAt  int64
+	totalSize   uint64
+	rateBuckets []rateBucket
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -127,13 +127,13 @@ func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, last
 			partition := int32(stream.StreamHash % uint64(s.numPartitions))
 
 			if _, ok := s.stripes[i][tenant][partition]; !ok {
-				s.stripes[i][tenant][partition] = make(map[uint64]Stream)
+				s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
 			}
 
 			// Count as active streams all streams that are not expired.
 			if _, ok := activeStreams[partition]; !ok {
 				for _, stored := range s.stripes[i][tenant][partition] {
-					if stored.LastSeenAt >= cutoff {
+					if stored.lastSeenAt >= cutoff {
 						activeStreams[partition]++
 					}
 				}
@@ -143,7 +143,7 @@ func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, last
 
 			// If the stream is new or expired, check if it exceeds the limit.
 			// If limit is not exceeded and the stream is expired, reset the stream.
-			if !found || (recorded.LastSeenAt < cutoff) {
+			if !found || (recorded.lastSeenAt < cutoff) {
 				activeStreams[partition]++
 
 				if cond != nil && !cond(float64(activeStreams[partition]), stream) {
@@ -152,8 +152,8 @@ func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, last
 				}
 
 				// If the stream is stored and expired, reset the stream
-				if found && recorded.LastSeenAt < cutoff {
-					s.stripes[i][tenant][partition][stream.StreamHash] = Stream{Hash: stream.StreamHash, LastSeenAt: lastSeenAt.UnixNano()}
+				if found && recorded.lastSeenAt < cutoff {
+					s.stripes[i][tenant][partition][stream.StreamHash] = streamUsage{hash: stream.StreamHash, lastSeenAt: lastSeenAt.UnixNano()}
 				}
 			}
 
@@ -174,7 +174,7 @@ func (s *usageStore) evict() map[string]int {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
 				for streamHash, stream := range streams {
-					if stream.LastSeenAt < cutoff {
+					if stream.lastSeenAt < cutoff {
 						delete(s.stripes[i][tenant][partition], streamHash)
 						evicted[tenant]++
 					}
@@ -205,24 +205,24 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 
 	// Create new stream metadata with the initial interval
 	if !ok {
-		s.stripes[i][tenant][partition][streamHash] = Stream{
-			Hash:        streamHash,
-			LastSeenAt:  recordTime.UnixNano(),
-			TotalSize:   recTotalSize,
-			RateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
+		s.stripes[i][tenant][partition][streamHash] = streamUsage{
+			hash:        streamHash,
+			lastSeenAt:  recordTime.UnixNano(),
+			totalSize:   recTotalSize,
+			rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
 		}
 		return
 	}
 
 	// Update total size
-	totalSize := recTotalSize + recorded.TotalSize
+	totalSize := recTotalSize + recorded.totalSize
 
 	// Update or add size for the current bucket
 	updated := false
-	sb := make([]rateBucket, 0, len(recorded.RateBuckets)+1)
+	sb := make([]rateBucket, 0, len(recorded.rateBuckets)+1)
 
 	// Only keep buckets within the rate window and update the current bucket
-	for _, bucket := range recorded.RateBuckets {
+	for _, bucket := range recorded.rateBuckets {
 		// Clean up buckets outside the rate window
 		if bucket.timestamp < bucketCutOff {
 			continue
@@ -249,8 +249,8 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 		})
 	}
 
-	recorded.TotalSize = totalSize
-	recorded.RateBuckets = sb
+	recorded.totalSize = totalSize
+	recorded.rateBuckets = sb
 	s.stripes[i][tenant][partition][streamHash] = recorded
 }
 
@@ -296,16 +296,16 @@ func (s *usageStore) getStripe(tenant string) int {
 }
 
 // Used in tests.
-func (s *usageStore) set(tenant string, stream Stream) {
-	partition := int32(stream.Hash % uint64(s.numPartitions))
+func (s *usageStore) set(tenant string, stream streamUsage) {
+	partition := int32(stream.hash % uint64(s.numPartitions))
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
 		}
 		if _, ok := s.stripes[i][tenant][partition]; !ok {
-			s.stripes[i][tenant][partition] = make(map[uint64]Stream)
+			s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
 		}
-		s.stripes[i][tenant][partition][stream.Hash] = stream
+		s.stripes[i][tenant][partition][stream.hash] = stream
 	})
 
 }

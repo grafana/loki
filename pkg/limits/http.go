@@ -39,11 +39,11 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	s.usage.forTenant(tenant, func(_ string, _ int32, stream Stream) {
-		if stream.LastSeenAt >= cutoff {
+		if stream.lastSeenAt >= cutoff {
 			activeStreams++
 
 			// Calculate size only within the rate window
-			for _, bucket := range stream.RateBuckets {
+			for _, bucket := range stream.rateBuckets {
 				if bucket.timestamp >= rateWindowCutoff {
 					totalSize += bucket.size
 				}

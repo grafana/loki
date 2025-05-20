@@ -18,13 +18,13 @@ func TestUsageStore_All(t *testing.T) {
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
 	for i := 0; i < 10; i++ {
-		s.set("tenant", Stream{Hash: uint64(i)})
+		s.set("tenant", streamUsage{hash: uint64(i)})
 	}
 	// Check that we can iterate all stored streams.
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
 	actual := make([]uint64, 0, len(expected))
-	s.all(func(_ string, _ int32, s Stream) {
-		actual = append(actual, s.Hash)
+	s.all(func(_ string, _ int32, s streamUsage) {
+		actual = append(actual, s.hash)
 	})
 	require.ElementsMatch(t, expected, actual)
 }
@@ -41,19 +41,19 @@ func TestUsageStore_ForTenant(t *testing.T) {
 		if i >= 5 {
 			tenant = "tenant2"
 		}
-		s.set(tenant, Stream{Hash: uint64(i)})
+		s.set(tenant, streamUsage{hash: uint64(i)})
 	}
 	// Check we can iterate just the streams for each tenant.
 	expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
 	actual1 := make([]uint64, 0, 5)
-	s.forTenant("tenant1", func(_ string, _ int32, stream Stream) {
-		actual1 = append(actual1, stream.Hash)
+	s.forTenant("tenant1", func(_ string, _ int32, stream streamUsage) {
+		actual1 = append(actual1, stream.hash)
 	})
 	require.ElementsMatch(t, expected1, actual1)
 	expected2 := []uint64{0x5, 0x6, 0x7, 0x8, 0x9}
 	actual2 := make([]uint64, 0, 5)
-	s.forTenant("tenant2", func(_ string, _ int32, stream Stream) {
-		actual2 = append(actual2, stream.Hash)
+	s.forTenant("tenant2", func(_ string, _ int32, stream streamUsage) {
+		actual2 = append(actual2, stream.hash)
 	})
 	require.ElementsMatch(t, expected2, actual2)
 }
@@ -177,23 +177,23 @@ func TestUsageStore_Evict(t *testing.T) {
 	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 	clock := quartz.NewMock(t)
 	s.clock = clock
-	s1 := Stream{Hash: 0x1, LastSeenAt: clock.Now().UnixNano()}
+	s1 := streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()}
 	s.set("tenant1", s1)
-	s2 := Stream{Hash: 0x2, LastSeenAt: clock.Now().Add(-61 * time.Minute).UnixNano()}
+	s2 := streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-61 * time.Minute).UnixNano()}
 	s.set("tenant1", s2)
-	s3 := Stream{Hash: 0x3, LastSeenAt: clock.Now().UnixNano()}
+	s3 := streamUsage{hash: 0x3, lastSeenAt: clock.Now().UnixNano()}
 	s.set("tenant2", s3)
-	s4 := Stream{Hash: 0x4, LastSeenAt: clock.Now().Add(-59 * time.Minute).UnixNano()}
+	s4 := streamUsage{hash: 0x4, lastSeenAt: clock.Now().Add(-59 * time.Minute).UnixNano()}
 	s.set("tenant2", s4)
 	// Evict all streams older than the window size.
 	s.evict()
-	actual := make(map[string][]Stream)
-	s.all(func(tenant string, _ int32, stream Stream) {
+	actual := make(map[string][]streamUsage)
+	s.all(func(tenant string, _ int32, stream streamUsage) {
 		actual[tenant] = append(actual[tenant], stream)
 	})
 	// We can't use require.Equal as [All] iterates streams in a non-deterministic
 	// order. Instead use ElementsMatch for each expected tenant.
-	expected := map[string][]Stream{
+	expected := map[string][]streamUsage{
 		"tenant1": {s1},
 		"tenant2": {s3, s4},
 	}
@@ -211,14 +211,14 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
 	for i := 0; i < 10; i++ {
-		s.set("tenant", Stream{Hash: uint64(i)})
+		s.set("tenant", streamUsage{hash: uint64(i)})
 	}
 	// Evict the first 5 partitions.
 	s.evictPartitions([]int32{0, 1, 2, 3, 4})
 	// The last 5 partitions should still have data.
 	expected := []int32{5, 6, 7, 8, 9}
 	actual := make([]int32, 0, len(expected))
-	s.all(func(_ string, partition int32, _ Stream) {
+	s.all(func(_ string, partition int32, _ streamUsage) {
 		actual = append(actual, partition)
 	})
 	require.ElementsMatch(t, expected, actual)

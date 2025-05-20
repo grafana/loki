@@ -53,8 +53,8 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x4: {Hash: 0x4, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								0x4: {hash: 0x4, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
 							},
 						},
 					},
@@ -88,10 +88,10 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								2: {Hash: 2, LastSeenAt: now.UnixNano(), TotalSize: 2000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
-								3: {Hash: 3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								4: {Hash: 4, LastSeenAt: now.UnixNano(), TotalSize: 4000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
+								1: {hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								2: {hash: 2, lastSeenAt: now.UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								3: {hash: 3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								4: {hash: 4, lastSeenAt: now.UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
 							},
 						},
 					},
@@ -125,9 +125,9 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
@@ -162,9 +162,9 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
@@ -203,11 +203,11 @@ func TestService_ExceedsLimits(t *testing.T) {
 					{
 						"tenant1": {
 							0: {
-								0x1: {Hash: 0x1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
-								0x2: {Hash: 0x2, LastSeenAt: now.Add(-120 * time.Minute).UnixNano(), TotalSize: 2000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
-								0x3: {Hash: 0x3, LastSeenAt: now.UnixNano(), TotalSize: 3000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
-								0x4: {Hash: 0x4, LastSeenAt: now.Add(-120 * time.Minute).UnixNano(), TotalSize: 4000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
-								0x5: {Hash: 0x5, LastSeenAt: now.UnixNano(), TotalSize: 5000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
+								0x1: {hash: 0x1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},
+								0x2: {hash: 0x2, lastSeenAt: now.Add(-120 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}},
+								0x3: {hash: 0x3, lastSeenAt: now.UnixNano(), totalSize: 3000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 3000}}},
+								0x4: {hash: 0x4, lastSeenAt: now.Add(-120 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}},
+								0x5: {hash: 0x5, lastSeenAt: now.UnixNano(), totalSize: 5000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 5000}}},
 							},
 						},
 					},
@@ -384,11 +384,11 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 			{
 				"tenant1": {
 					0: {
-						1: {Hash: 1, LastSeenAt: now.UnixNano(), TotalSize: 1000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
-						2: {Hash: 2, LastSeenAt: now.Add(-30 * time.Minute).UnixNano(), TotalSize: 2000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
-						3: {Hash: 3, LastSeenAt: now.Add(-2 * time.Hour).UnixNano(), TotalSize: 3000},                                                                        // expired
-						4: {Hash: 4, LastSeenAt: now.Add(-45 * time.Minute).UnixNano(), TotalSize: 4000, RateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
-						5: {Hash: 5, LastSeenAt: now.Add(-3 * time.Hour).UnixNano(), TotalSize: 5000},                                                                        // expired
+						1: {hash: 1, lastSeenAt: now.UnixNano(), totalSize: 1000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 1000}}},                        // active
+						2: {hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano(), totalSize: 2000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 2000}}}, // active
+						3: {hash: 3, lastSeenAt: now.Add(-2 * time.Hour).UnixNano(), totalSize: 3000},                                                                        // expired
+						4: {hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano(), totalSize: 4000, rateBuckets: []rateBucket{{timestamp: now.UnixNano(), size: 4000}}}, // active
+						5: {hash: 5, lastSeenAt: now.Add(-3 * time.Hour).UnixNano(), totalSize: 5000},                                                                        // expired
 					},
 				},
 			},

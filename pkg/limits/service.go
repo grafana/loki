@@ -220,8 +220,8 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.usage.all(func(tenant string, _ int32, stream Stream) {
-		if stream.LastSeenAt < cutoff {
+	s.usage.all(func(tenant string, _ int32, stream streamUsage) {
+		if stream.lastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
 			active[tenant]++

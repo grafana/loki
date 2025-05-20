@@ -26,13 +26,13 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 					"tenant": {
 						0: {
 							0x1: {
-								Hash:      0x1,
-								TotalSize: 100,
-								RateBuckets: []rateBucket{{
+								hash:      0x1,
+								totalSize: 100,
+								rateBuckets: []rateBucket{{
 									timestamp: time.Now().UnixNano(),
 									size:      1,
 								}},
-								LastSeenAt: time.Now().UnixNano(),
+								lastSeenAt: time.Now().UnixNano(),
 							},
 						},
 					},
