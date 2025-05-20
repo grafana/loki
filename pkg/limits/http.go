@@ -29,7 +29,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cutoff := time.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 
 	// Get the rate window cutoff for rate calculations
-	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
+	rateWindowCutoff := time.Now().Add(-s.cfg.BucketSize).UnixNano()
 
 	// Calculate stream counts and status per tenant
 	var (

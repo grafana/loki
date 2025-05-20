@@ -30,7 +30,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		usage              *UsageStore
 		ActiveWindow       time.Duration
 		rateWindow         time.Duration
-		bucketDuration     time.Duration
+		BucketSize         time.Duration
 		maxActiveStreams   int
 
 		// Request data for ExceedsLimits.
@@ -63,7 +63,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 10,
 			// request data
 			tenantID: "tenant2",
@@ -98,9 +98,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			ActiveWindow:   time.Hour,
-			rateWindow:     5 * time.Minute,
-			bucketDuration: time.Minute,
+			ActiveWindow: time.Hour,
+			rateWindow:   5 * time.Minute,
+			BucketSize:   time.Minute,
 			// request data
 			tenantID:         "tenant1",
 			maxActiveStreams: 10,
@@ -136,7 +136,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -173,7 +173,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -216,7 +216,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 5,
 			// request data
 			tenantID: "tenant1",
@@ -246,7 +246,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -279,7 +279,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -309,10 +309,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 
 			s := &IngestLimits{
 				cfg: Config{
-					NumPartitions:  tt.numPartitions,
-					ActiveWindow:   tt.ActiveWindow,
-					RateWindow:     tt.rateWindow,
-					BucketDuration: tt.bucketDuration,
+					NumPartitions: tt.numPartitions,
+					ActiveWindow:  tt.ActiveWindow,
+					RateWindow:    tt.rateWindow,
+					BucketSize:    tt.BucketSize,
 					LifecyclerConfig: ring.LifecyclerConfig{
 						RingConfig: ring.Config{
 							KVStore: kv.Config{
@@ -398,10 +398,10 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 
 	s := &IngestLimits{
 		cfg: Config{
-			NumPartitions:  1,
-			ActiveWindow:   time.Hour,
-			RateWindow:     5 * time.Minute,
-			BucketDuration: time.Minute,
+			NumPartitions: 1,
+			ActiveWindow:  time.Hour,
+			RateWindow:    5 * time.Minute,
+			BucketSize:    time.Minute,
 			LifecyclerConfig: ring.LifecyclerConfig{
 				RingConfig: ring.Config{
 					KVStore: kv.Config{
