@@ -175,8 +175,8 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
-		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
+		kgo.OnPartitionsAssigned(s.partitionLifecycler.assign),
+		kgo.OnPartitionsRevoked(s.partitionLifecycler.revoke),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)

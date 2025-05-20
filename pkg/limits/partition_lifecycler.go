@@ -39,7 +39,7 @@ func newPartitionLifecycler(
 }
 
 // Assign implements kgo.OnPartitionsAssigned.
-func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
+func (l *partitionLifecycler) assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
@@ -59,7 +59,7 @@ func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
-func (l *partitionLifecycler) Revoke(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
+func (l *partitionLifecycler) revoke(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
