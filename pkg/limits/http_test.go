@@ -42,8 +42,10 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 		},
 		logger: log.NewNopLogger(),
 		partitionManager: &PartitionManager{
-			partitions: map[int32]int64{
-				0: time.Now().UnixNano(),
+			partitions: map[int32]partitionEntry{
+				0: {
+					assignedAt: time.Now().UnixNano(),
+				},
 			},
 		},
 	}
