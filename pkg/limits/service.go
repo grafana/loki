@@ -124,7 +124,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewUsageStore(cfg),
+		usage:            NewUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
 		partitionManager: NewPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
