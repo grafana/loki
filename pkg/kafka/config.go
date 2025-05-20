@@ -71,7 +71,7 @@ type ClientConfig struct {
 }
 
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, prefix+".address", "localhost:9092", "The Kafka backend address.")
+	f.StringVar(&cfg.Address, prefix+".address", "", "The Kafka backend address.")
 	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID.")
 }
 
