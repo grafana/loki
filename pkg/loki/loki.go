@@ -391,7 +391,7 @@ type Loki struct {
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
-	ingestLimits              *limits.IngestLimits
+	ingestLimits              *limits.Service
 	ingestLimitsRing          *ring.Ring
 	ingestLimitsFrontend      *limits_frontend.Frontend
 	ingestLimitsFrontendRing  *ring.Ring
