@@ -49,7 +49,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		// Create a usage store, we will use this to check if the record
 		// was stored.
 		u := NewUsageStore(Config{
-			WindowSize:    time.Hour,
+			ActiveWindow:  time.Hour,
 			NumPartitions: 1,
 		})
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
@@ -96,7 +96,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
 		u := NewUsageStore(Config{
-			WindowSize:    time.Hour,
+			ActiveWindow:  time.Hour,
 			NumPartitions: 1,
 		})
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
@@ -171,7 +171,7 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
 	u := NewUsageStore(Config{
-		WindowSize:    time.Hour,
+		ActiveWindow:  time.Hour,
 		NumPartitions: 1,
 	})
 	p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",

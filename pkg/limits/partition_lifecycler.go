@@ -90,7 +90,7 @@ func (l *PartitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	// Get the first offset produced within the window. This can be the same
 	// offset as the last produced offset if no records have been produced
 	// within that time.
-	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, time.Now().Add(-l.cfg.WindowSize))
+	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, time.Now().Add(-l.cfg.ActiveWindow))
 	if err != nil {
 		return fmt.Errorf("failed to get next offset: %w", err)
 	}

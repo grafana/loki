@@ -16,7 +16,7 @@ import (
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	l := IngestLimits{
 		cfg: Config{
-			WindowSize:     time.Minute,
+			ActiveWindow:   time.Minute,
 			RateWindow:     time.Minute,
 			BucketDuration: 30 * time.Second,
 		},
