@@ -86,6 +86,11 @@ type SectionReader interface {
 // Bytes or EstimatedSize to determine when enough data has been accumulated
 // into a section.
 type SectionBuilder interface {
+	// Type returns the SectionType representing the section being built.
+	// Implementations are responsible for guaranteeing that two no
+	// SectionBuilders return the same SectionType for different encodings.
+	Type() SectionType
+
 	// Flush encodes and flushes the section to w. Encodings that rely on byte
 	// offsets should be relative to the first byte of the section's data.
 	//

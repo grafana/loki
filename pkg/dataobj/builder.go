@@ -21,15 +21,15 @@ func NewBuilder() *Builder {
 	return &Builder{encoder: newEncoder()}
 }
 
-// AppendSection flushes a [SectionBuilder] and buffers its data and metadata
-// to b. Appended sections may be written to the final data object in any
-// order.
+// Append flushes a [SectionBuilder], buffering its data and metadata into b.
+// Append does not enforce ordering; sections may be flushed to the dataobj in
+// any order.
 //
-// AppendSection returns an error if the section failed to flush.
+// Append returns an error if the section failed to flush.
 //
-// After succesfully calling AppendSection, sec is reset and can be reused.
-func (b *Builder) AppendSection(typ SectionType, sec SectionBuilder) error {
-	w := builderSectionWriter{typ: typ, enc: b.encoder}
+// After succesfully calling Append, sec is reset and can be reused.
+func (b *Builder) Append(sec SectionBuilder) error {
+	w := builderSectionWriter{typ: sec.Type(), enc: b.encoder}
 	if _, err := sec.Flush(w); err != nil {
 		return err
 	}

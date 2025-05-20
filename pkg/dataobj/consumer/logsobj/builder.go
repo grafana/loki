@@ -26,21 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-var (
-	// TODO(rfratto): move these to section packages once we've untangled the
-	// dependencies.
-
-	sectionTypeLogs = dataobj.SectionType{
-		Namespace: "github.com/grafana/loki",
-		Kind:      "logs",
-	}
-
-	sectionTypeStreams = dataobj.SectionType{
-		Namespace: "github.com/grafana/loki",
-		Kind:      "streams",
-	}
-)
-
 // ErrBuilderFull is returned by [Builder.Append] when the buffer is
 // full and needs to flush; call [Builder.Flush] to flush it.
 var (
@@ -230,7 +215,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		// If our logs section has gotten big enough, we want to flush it to the
 		// encoder and start a new section.
 		if b.logs.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.AppendSection(sectionTypeLogs, b.logs); err != nil {
+			if err := b.builder.Append(b.logs); err != nil {
 				return err
 			}
 		}
@@ -342,8 +327,8 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 	minTime, maxTime := b.streams.TimeRange()
 
 	// Flush sections one more time in case they have data.
-	b.builder.AppendSection(sectionTypeStreams, b.streams)
-	b.builder.AppendSection(sectionTypeLogs, b.logs)
+	b.builder.Append(b.streams)
+	b.builder.Append(b.logs)
 
 	initialBufferSize := output.Len()
 
