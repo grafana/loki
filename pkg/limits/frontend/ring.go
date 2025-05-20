@@ -27,7 +27,7 @@ type RingGatherer struct {
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
 	numPartitions           int
-	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 }
 
 // NewRingGatherer returns a new RingGatherer.
@@ -35,7 +35,7 @@ func NewRingGatherer(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
-	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse],
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
 ) *RingGatherer {
 	return &RingGatherer{
@@ -173,7 +173,7 @@ func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 			// We use a cache to eliminate redundant gRPC requests for
 			// GetAssignedPartitions as the set of assigned partitions is
 			// expected to be stable outside consumer rebalances.
-			if resp, ok := g.assignedPartitionsCache.Get(instance.Addr); ok {
+			if resp, ok := g.assignedPartitionsCache.get(instance.Addr); ok {
 				responseCh <- getAssignedPartitionsResponse{
 					addr:     instance.Addr,
 					response: resp,
@@ -190,7 +190,7 @@ func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			g.assignedPartitionsCache.Set(instance.Addr, resp)
+			g.assignedPartitionsCache.set(instance.Addr, resp)
 			responseCh <- getAssignedPartitionsResponse{
 				addr:     instance.Addr,
 				response: resp,
