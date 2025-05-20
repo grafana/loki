@@ -7,10 +7,10 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
 var (
@@ -143,7 +143,7 @@ func (enc *encoder) initTypeRefs() {
 // MetadataSize returns an estimate of the current size of the metadata for the
 // data object. MetadataSize does not include the size of data appended or the
 // currently open stream.
-func (enc *encoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
+func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
 
 func (enc *encoder) Metadata() proto.Message {
 	sections := enc.sections[:len(enc.sections):cap(enc.sections)]
@@ -168,7 +168,7 @@ func (enc *encoder) Flush(w streamio.Writer) error {
 	// The file metadata should start with the version.
 	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {
 		return err
-	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := protocodec.Encode(metadataBuffer, enc.Metadata()); err != nil {
 		return err
 	}
 

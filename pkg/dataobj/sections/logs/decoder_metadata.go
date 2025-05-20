@@ -3,9 +3,9 @@ package logs
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
 // decodeLogsMetadata decodes logs section metadata from r.
@@ -18,7 +18,7 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 	}
 
 	var md logsmd.Metadata
-	if err := encoding.DecodeProto(r, &md); err != nil {
+	if err := protocodec.Decode(r, &md); err != nil {
 		return nil, fmt.Errorf("streams section metadata: %w", err)
 	}
 	return &md, nil
@@ -27,7 +27,7 @@ func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
 // decodeLogsColumnMetadata decodes logs column metadata from r.
 func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
 	var metadata logsmd.ColumnMetadata
-	if err := encoding.DecodeProto(r, &metadata); err != nil {
+	if err := protocodec.Decode(r, &metadata); err != nil {
 		return nil, fmt.Errorf("streams column metadata: %w", err)
 	}
 	return &metadata, nil

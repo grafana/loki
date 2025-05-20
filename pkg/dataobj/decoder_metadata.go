@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
 // decode* methods for metadata shared by Decoder implementations.
@@ -39,7 +39,7 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	}
 
 	var md filemd.Metadata
-	if err := encoding.DecodeProto(r, &md); err != nil {
+	if err := protocodec.Decode(r, &md); err != nil {
 		return nil, fmt.Errorf("file metadata: %w", err)
 	}
 	return &md, nil

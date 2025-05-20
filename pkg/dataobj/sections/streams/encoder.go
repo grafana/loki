@@ -9,11 +9,11 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
 const (
@@ -79,7 +79,7 @@ func (enc *encoder) size() int {
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // stream. MetadataSize includes an estimate for the currently open element.
-func (enc *encoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
+func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
 
 func (enc *encoder) Metadata() proto.Message {
 	columns := enc.columns[:len(enc.columns):cap(enc.columns)]
@@ -89,7 +89,7 @@ func (enc *encoder) Metadata() proto.Message {
 	return &streamsmd.Metadata{Columns: columns}
 }
 
-// Flush writes the section to the given [encoding.SectionWriter]. Flush
+// Flush writes the section to the given [dataobj.SectionWriter]. Flush
 // returns an error if there is an open column.
 //
 // Flush returns 0, nil if there is no data to write.
@@ -111,7 +111,7 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 	// The section metadata should start with its version.
 	if err := streamio.WriteUvarint(metadataBuffer, streamsFormatVersion); err != nil {
 		return 0, err
-	} else if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
+	} else if err := protocodec.Encode(metadataBuffer, enc.Metadata()); err != nil {
 		return 0, err
 	}
 
@@ -218,7 +218,7 @@ func (enc *columnEncoder) AppendPage(page *dataset.MemPage) error {
 
 // MetadataSize returns an estimate of the current size of the metadata for the
 // column. MetadataSize does not include the size of data appended.
-func (enc *columnEncoder) MetadataSize() int { return encoding.ElementMetadataSize(enc) }
+func (enc *columnEncoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
 
 func (enc *columnEncoder) Metadata() proto.Message {
 	return &streamsmd.ColumnMetadata{Pages: enc.pageHeaders}
@@ -249,7 +249,7 @@ func (enc *columnEncoder) Commit() error {
 	metadataBuffer := bufpool.GetUnsized()
 	defer bufpool.PutUnsized(metadataBuffer)
 
-	if err := encoding.ElementMetadataWrite(enc, metadataBuffer); err != nil {
+	if err := protocodec.Encode(metadataBuffer, enc.Metadata()); err != nil {
 		return err
 	}
 	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
