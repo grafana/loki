@@ -327,8 +327,15 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 	minTime, maxTime := b.streams.TimeRange()
 
 	// Flush sections one more time in case they have data.
-	b.builder.Append(b.streams)
-	b.builder.Append(b.logs)
+	var flushErrors []error
+
+	flushErrors = append(flushErrors, b.builder.Append(b.streams))
+	flushErrors = append(flushErrors, b.builder.Append(b.logs))
+
+	if err := errors.Join(flushErrors...); err != nil {
+		b.metrics.flushFailures.Inc()
+		return FlushStats{}, fmt.Errorf("building object: %w", err)
+	}
 
 	sz, err := b.builder.Flush(output)
 	if err != nil {
@@ -360,7 +367,7 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
 	var errs []error
 
-	errs = append(errs, b.metrics.dataobj.Observe(context.Background(), obj))
+	errs = append(errs, b.metrics.dataobj.Observe(obj))
 
 	for _, sec := range obj.Sections() {
 		switch {

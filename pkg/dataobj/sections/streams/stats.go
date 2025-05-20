@@ -80,14 +80,14 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 			if err := ts.UnmarshalBinary(col.Info.Statistics.MinValue); err != nil {
 				return stats, fmt.Errorf("unmarshalling min timestamp: %w", err)
 			}
-			stats.MinTimestamp = time.Unix(0, int64(ts.Int64()))
+			stats.MinTimestamp = time.Unix(0, ts.Int64())
 
 		case col.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP && col.Info.Statistics != nil:
 			var ts dataset.Value
 			if err := ts.UnmarshalBinary(col.Info.Statistics.MaxValue); err != nil {
 				return stats, fmt.Errorf("unmarshalling max timestamp: %w", err)
 			}
-			stats.MaxTimestamp = time.Unix(0, int64(ts.Int64()))
+			stats.MaxTimestamp = time.Unix(0, ts.Int64())
 		}
 
 		columnStats := ColumnStats{

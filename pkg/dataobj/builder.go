@@ -27,7 +27,7 @@ func NewBuilder() *Builder {
 //
 // Append returns an error if the section failed to flush.
 //
-// After succesfully calling Append, sec is reset and can be reused.
+// After successfully calling Append, sec is reset and can be reused.
 func (b *Builder) Append(sec SectionBuilder) error {
 	w := builderSectionWriter{typ: sec.Type(), enc: b.encoder}
 	if _, err := sec.Flush(w); err != nil {

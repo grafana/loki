@@ -1,7 +1,6 @@
 package dataobj
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -82,7 +81,7 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 }
 
 // Observe updates metrics with statistics about the given [Object].
-func (m *Metrics) Observe(ctx context.Context, obj *Object) error {
+func (m *Metrics) Observe(obj *Object) error {
 	m.sectionsCount.Observe(float64(len(obj.sections)))
 	m.fileMetadataSize.Observe(float64(proto.Size(obj.metadata)))
 

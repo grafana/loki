@@ -38,8 +38,8 @@ func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (i
 
 		// Validate bounds within the range of the section.
 		var (
-			start = int64(offset)
-			end   = int64(offset) + int64(length) - 1
+			start = offset
+			end   = offset + length - 1
 		)
 		if start > int64(layout.Data.Length) || end > int64(layout.Data.Length) {
 			return nil, fmt.Errorf("section data is invalid: start=%d end=%d length=%d", start, end, layout.Data.Length)

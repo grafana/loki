@@ -85,9 +85,9 @@ func buildObject(st *streams.Builder) ([]byte, error) {
 	var buf bytes.Buffer
 
 	builder := dataobj.NewBuilder()
-	builder.Append(st)
-
-	if _, err := builder.Flush(&buf); err != nil {
+	if err := builder.Append(st); err != nil {
+		return nil, err
+	} else if _, err := builder.Flush(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

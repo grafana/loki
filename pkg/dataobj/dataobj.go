@@ -129,7 +129,7 @@ func (o *Object) init(ctx context.Context) error {
 		}
 
 		readSections = append(readSections, &Section{
-			Type:   SectionType(typ),
+			Type:   typ,
 			Reader: o.dec.SectionReader(metadata, sec),
 		})
 	}
