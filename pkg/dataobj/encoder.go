@@ -155,6 +155,13 @@ func (enc *encoder) Metadata() proto.Message {
 	}
 }
 
+func (enc *encoder) Bytes() int {
+	if enc.data == nil {
+		return 0
+	}
+	return enc.data.Len()
+}
+
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset.
 func (enc *encoder) Flush(w streamio.Writer) (int64, error) {

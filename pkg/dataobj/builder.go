@@ -50,6 +50,12 @@ func (w builderSectionWriter) WriteSection(data, metadata []byte) (n int64, err 
 	return int64(len(data) + len(metadata)), nil
 }
 
+// Bytes returns the current number of bytes buffered in b for all appended
+// sections.
+func (b *Builder) Bytes() int {
+	return b.encoder.Bytes()
+}
+
 // Flush flushes all buffered data to the buffer provided. Calling Flush can
 // result in a no-op if there is no buffered data to flush.
 //
