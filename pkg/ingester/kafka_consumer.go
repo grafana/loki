@@ -45,7 +45,7 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 		}),
 		consumeWorkersCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_ingester_partition_consume_workers_count",
-			Help: "The number of workers that are consuming from Kafka",
+			Help: "The number of workers that are processing records from Kafka",
 		}),
 	}
 }
