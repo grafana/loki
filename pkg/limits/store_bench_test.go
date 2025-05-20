@@ -43,10 +43,10 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 
 	for _, bm := range benchmarks {
 		s := NewUsageStore(Config{
-			NumPartitions:  bm.numPartitions,
-			ActiveWindow:   time.Hour,
-			RateWindow:     5 * time.Minute,
-			BucketDuration: time.Minute,
+			NumPartitions: bm.numPartitions,
+			ActiveWindow:  time.Hour,
+			RateWindow:    5 * time.Minute,
+			BucketSize:    time.Minute,
 		})
 
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {

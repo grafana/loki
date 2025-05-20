@@ -16,9 +16,9 @@ import (
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	l := IngestLimits{
 		cfg: Config{
-			ActiveWindow:   time.Minute,
-			RateWindow:     time.Minute,
-			BucketDuration: 30 * time.Second,
+			ActiveWindow: time.Minute,
+			RateWindow:   time.Minute,
+			BucketSize:   30 * time.Second,
 		},
 		usage: &UsageStore{
 			stripes: []map[string]tenantUsage{

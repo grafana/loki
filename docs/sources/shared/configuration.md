@@ -914,10 +914,15 @@ ingest_limits:
   # CLI flag: -ingest-limits.rate-window
   [rate_window: <duration> | default = 5m]
 
-  # The granularity of time buckets used for sliding window rate calculation.
-  # Smaller buckets provide more precise rate tracking but require more memory.
-  # CLI flag: -ingest-limits.bucket-duration
-  [bucket_duration: <duration> | default = 1m]
+  # The size of the buckets used to calculate stream rates. Smaller buckets
+  # provide more precise rates but require more memory.
+  # CLI flag: -ingest-limits.bucket-size
+  [bucket_size: <duration> | default = 1m]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
 
   lifecycler:
     ring:
@@ -1055,11 +1060,6 @@ ingest_limits:
     # ID to register in the ring.
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
-
-  # The number of partitions for the Kafka topic used to read and write stream
-  # metadata. It is fixed, not a maximum.
-  # CLI flag: -ingest-limits.num-partitions
-  [num_partitions: <int> | default = 64]
 
 ingest_limits_frontend:
   client_config:

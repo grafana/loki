@@ -104,7 +104,7 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.cfg.ActiveWindow).UnixNano()
 		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		bucketStart = lastSeenAt.Truncate(s.cfg.BucketSize).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
 		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
 		stored       = make([]*proto.StreamMetadata, 0, len(streams))
