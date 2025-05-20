@@ -28,7 +28,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		assignedPartitions []int32
 		numPartitions      int
 		usage              *UsageStore
-		windowSize         time.Duration
+		ActiveWindow       time.Duration
 		rateWindow         time.Duration
 		bucketDuration     time.Duration
 		maxActiveStreams   int
@@ -61,7 +61,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 10,
@@ -98,7 +98,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:     time.Hour,
+			ActiveWindow:   time.Hour,
 			rateWindow:     5 * time.Minute,
 			bucketDuration: time.Minute,
 			// request data
@@ -134,7 +134,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 3,
@@ -171,7 +171,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 3,
@@ -214,7 +214,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 5,
@@ -244,7 +244,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 					make(map[string]tenantUsage),
 				},
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 3,
@@ -277,7 +277,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 					make(map[string]tenantUsage),
 				},
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
 			bucketDuration:   time.Minute,
 			maxActiveStreams: 3,
@@ -310,7 +310,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			s := &IngestLimits{
 				cfg: Config{
 					NumPartitions:  tt.numPartitions,
-					WindowSize:     tt.windowSize,
+					ActiveWindow:   tt.ActiveWindow,
 					RateWindow:     tt.rateWindow,
 					BucketDuration: tt.bucketDuration,
 					LifecyclerConfig: ring.LifecyclerConfig{
@@ -399,7 +399,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	s := &IngestLimits{
 		cfg: Config{
 			NumPartitions:  1,
-			WindowSize:     time.Hour,
+			ActiveWindow:   time.Hour,
 			RateWindow:     5 * time.Minute,
 			BucketDuration: time.Minute,
 			LifecyclerConfig: ring.LifecyclerConfig{
@@ -460,7 +460,7 @@ func TestNewIngestLimits(t *testing.T) {
 			Topic:        "test-topic",
 			WriteTimeout: 10 * time.Second,
 		},
-		WindowSize: time.Hour,
+		ActiveWindow: time.Hour,
 		LifecyclerConfig: ring.LifecyclerConfig{
 			RingConfig: ring.Config{
 				KVStore: kv.Config{

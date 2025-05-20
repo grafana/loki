@@ -14,7 +14,7 @@ func TestUsageStore_All(t *testing.T) {
 	// Create a store with 10 partitions.
 	s := NewUsageStore(Config{
 		NumPartitions: 10,
-		WindowSize:    time.Minute,
+		ActiveWindow:  time.Minute,
 	})
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -36,7 +36,7 @@ func TestUsageStore_ForTenant(t *testing.T) {
 	// Create a store with 10 partitions.
 	s := NewUsageStore(Config{
 		NumPartitions: 10,
-		WindowSize:    time.Minute,
+		ActiveWindow:  time.Minute,
 	})
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -169,7 +169,7 @@ func TestUsageStore_Store(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			s := NewUsageStore(Config{
 				NumPartitions: test.numPartitions,
-				WindowSize:    time.Minute,
+				ActiveWindow:  time.Minute,
 			})
 			clock := quartz.NewMock(t)
 			s.clock = clock
@@ -185,7 +185,7 @@ func TestUsageStore_Store(t *testing.T) {
 func TestUsageStore_Evict(t *testing.T) {
 	s := NewUsageStore(Config{
 		NumPartitions: 1,
-		WindowSize:    time.Hour,
+		ActiveWindow:  time.Hour,
 	})
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -219,7 +219,7 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
 	s := NewUsageStore(Config{
 		NumPartitions: 10,
-		WindowSize:    time.Minute,
+		ActiveWindow:  time.Minute,
 	})
 	clock := quartz.NewMock(t)
 	s.clock = clock

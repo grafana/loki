@@ -26,7 +26,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := time.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 
 	// Get the rate window cutoff for rate calculations
 	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
@@ -56,7 +56,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Calculate rate using only data from within the rate window
-	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()
+	calculatedRate := float64(totalSize) / s.cfg.ActiveWindow.Seconds()
 
 	if activeStreams > 0 {
 		response = httpTenantLimitsResponse{

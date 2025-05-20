@@ -102,7 +102,7 @@ func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
+		cutoff = lastSeenAt.Add(-s.cfg.ActiveWindow).UnixNano()
 		// Get the bucket for this timestamp using the configured interval duration
 		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
@@ -162,7 +162,7 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 
 // Evict evicts all streams that have not been seen within the window.
 func (s *UsageStore) Evict() map[string]int {
-	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {

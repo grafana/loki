@@ -167,7 +167,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
 		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
@@ -209,7 +209,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
-	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 	// active counts the number of active streams (within the window) per tenant.
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
@@ -311,7 +311,7 @@ func (s *IngestLimits) running(ctx context.Context) error {
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
 // It runs two evictions per window size.
 func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
-	ticker := time.NewTicker(s.cfg.WindowSize / 2)
+	ticker := time.NewTicker(s.cfg.ActiveWindow / 2)
 	defer ticker.Stop()
 	for {
 		select {

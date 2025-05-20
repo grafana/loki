@@ -903,9 +903,11 @@ ingest_limits:
   # CLI flag: -ingest-limits.enabled
   [enabled: <boolean> | default = false]
 
-  # The time window for which stream metadata is considered active.
-  # CLI flag: -ingest-limits.window-size
-  [window_size: <duration> | default = 1h]
+  # The duration for which which streams are considered active. Streams that
+  # have not been updated within this window are considered inactive and not
+  # counted towards limits.
+  # CLI flag: -ingest-limits.active-window
+  [active_window: <duration> | default = 1h]
 
   # The time window for rate calculation. This should match the window used in
   # Prometheus rate() queries for consistency.
