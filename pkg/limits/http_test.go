@@ -20,7 +20,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			RateWindow:   time.Minute,
 			BucketSize:   30 * time.Second,
 		},
-		usage: &UsageStore{
+		usage: &usageStore{
 			stripes: []map[string]tenantUsage{
 				{
 					"tenant": {

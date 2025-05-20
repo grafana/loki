@@ -13,16 +13,16 @@ import (
 // The number of stripe locks.
 const numStripes = 64
 
-// IterateFunc is a closure called for each stream.
-type IterateFunc func(tenant string, partition int32, stream Stream)
+// iterateFunc is a closure called for each stream.
+type iterateFunc func(tenant string, partition int32, stream Stream)
 
-// CondFunc is a function that is called for each stream passed to StoreCond,
+// condFunc is a function that is called for each stream passed to StoreCond,
 // and is often used to check if a stream can be stored (for example, with
 // the max series limit). It should return true if the stream can be stored.
-type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
+type condFunc func(acc float64, stream *proto.StreamMetadata) bool
 
-// UsageStore stores per-tenant stream usage data.
-type UsageStore struct {
+// usageStore stores per-tenant stream usage data.
+type usageStore struct {
 	activeWindow  time.Duration
 	rateWindow    time.Duration
 	bucketSize    time.Duration
@@ -60,9 +60,9 @@ type stripeLock struct {
 	_ [40]byte
 }
 
-// NewUsageStore returns a new UsageStore.
-func NewUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int) *UsageStore {
-	s := &UsageStore{
+// newUsageStore returns a new UsageStore.
+func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int) *usageStore {
+	s := &usageStore{
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
 		bucketSize:    bucketSize,
@@ -77,10 +77,10 @@ func NewUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s
 }
 
-// All iterates all streams, and calls the [IterateFunc] closure for each
-// iterated stream. As [All] acquires a read lock, the closure must not
+// all iterates all streams, and calls the [iterateFunc] closure for each
+// iterated stream. As [all] acquires a read lock, the closure must not
 // make blocking calls while iterating streams.
-func (s *UsageStore) All(fn IterateFunc) {
+func (s *usageStore) all(fn iterateFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
@@ -92,10 +92,10 @@ func (s *UsageStore) All(fn IterateFunc) {
 	})
 }
 
-// ForTenant iterates all streams for the tenant, and calls the [IterateFunc]
-// closure for each iterated stream. As [ForTenant] aquires a read lock, the
+// forTenant iterates all streams for the tenant, and calls the [iterateFunc]
+// closure for each iterated stream. As [forTenant] aquires a read lock, the
 // closure must not make blocking calls while iterating streams.
-func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
+func (s *usageStore) forTenant(tenant string, fn iterateFunc) {
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
@@ -105,7 +105,7 @@ func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 	})
 }
 
-func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
@@ -166,8 +166,8 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 	return stored, rejected
 }
 
-// Evict evicts all streams that have not been seen within the window.
-func (s *UsageStore) Evict() map[string]int {
+// evict evicts all streams that have not been seen within the window.
+func (s *usageStore) evict() map[string]int {
 	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
@@ -185,8 +185,8 @@ func (s *UsageStore) Evict() map[string]int {
 	return evicted
 }
 
-// EvictPartitions evicts all streams for the specified partitions.
-func (s *UsageStore) EvictPartitions(partitionsToEvict []int32) {
+// evictPartitions evicts all streams for the specified partitions.
+func (s *usageStore) evictPartitions(partitionsToEvict []int32) {
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, partitionToEvict := range partitionsToEvict {
@@ -199,7 +199,7 @@ func (s *UsageStore) EvictPartitions(partitionsToEvict []int32) {
 	})
 }
 
-func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
+func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
 	// Check if the stream already exists in the metadata
 	recorded, ok := s.stripes[i][tenant][partition][streamHash]
 
@@ -255,7 +255,7 @@ func (s *UsageStore) storeStream(i int, tenant string, partition int32, streamHa
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
-func (s *UsageStore) forEachRLock(fn func(i int)) {
+func (s *usageStore) forEachRLock(fn func(i int)) {
 	for i := range s.stripes {
 		s.locks[i].RLock()
 		fn(i)
@@ -264,7 +264,7 @@ func (s *UsageStore) forEachRLock(fn func(i int)) {
 }
 
 // forEachLock executes fn with an exclusive lock for each stripe.
-func (s *UsageStore) forEachLock(fn func(i int)) {
+func (s *usageStore) forEachLock(fn func(i int)) {
 	for i := range s.stripes {
 		s.locks[i].Lock()
 		fn(i)
@@ -273,7 +273,7 @@ func (s *UsageStore) forEachLock(fn func(i int)) {
 }
 
 // withRLock executes fn with a shared lock on the stripe.
-func (s *UsageStore) withRLock(tenant string, fn func(i int)) {
+func (s *usageStore) withRLock(tenant string, fn func(i int)) {
 	i := s.getStripe(tenant)
 	s.locks[i].RLock()
 	defer s.locks[i].RUnlock()
@@ -281,7 +281,7 @@ func (s *UsageStore) withRLock(tenant string, fn func(i int)) {
 }
 
 // withLock executes fn with an exclusive lock on the stripe.
-func (s *UsageStore) withLock(tenant string, fn func(i int)) {
+func (s *usageStore) withLock(tenant string, fn func(i int)) {
 	i := s.getStripe(tenant)
 	s.locks[i].Lock()
 	defer s.locks[i].Unlock()
@@ -289,14 +289,14 @@ func (s *UsageStore) withLock(tenant string, fn func(i int)) {
 }
 
 // getStripe returns the stripe index for the tenant.
-func (s *UsageStore) getStripe(tenant string) int {
+func (s *usageStore) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
 }
 
 // Used in tests.
-func (s *UsageStore) set(tenant string, stream Stream) {
+func (s *usageStore) set(tenant string, stream Stream) {
 	partition := int32(stream.Hash % uint64(s.numPartitions))
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
@@ -310,9 +310,10 @@ func (s *UsageStore) set(tenant string, stream Stream) {
 
 }
 
-// streamLimitExceeded returns a CondFunc that checks if the number of active streams
-// exceeds the given limit. If it does, the stream is added to the results map.
-func streamLimitExceeded(limit uint64) CondFunc {
+// streamLimitExceeded returns a condFunc that checks if the number of active
+// streams exceeds the given limit. If it does, the stream is added to the
+// results map.
+func streamLimitExceeded(limit uint64) condFunc {
 	return func(acc float64, _ *proto.StreamMetadata) bool {
 		return acc <= float64(limit)
 	}

@@ -27,7 +27,7 @@ type kafkaConsumer interface {
 type consumer struct {
 	client           kafkaConsumer
 	partitionManager *partitionManager
-	usage            *UsageStore
+	usage            *usageStore
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
 	readinessCheck partitionReadinessCheck
@@ -49,7 +49,7 @@ type consumer struct {
 func newConsumer(
 	client kafkaConsumer,
 	partitionManager *partitionManager,
-	usage *UsageStore,
+	usage *usageStore,
 	readinessCheck partitionReadinessCheck,
 	zone string,
 	logger log.Logger,
@@ -177,7 +177,7 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	c.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	c.usage.update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
 }
 

@@ -101,7 +101,7 @@ type Service struct {
 	limits Limits
 
 	// Track stream metadata
-	usage    *UsageStore
+	usage    *usageStore
 	consumer *consumer
 	producer *producer
 
@@ -124,7 +124,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	s := &Service{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
+		usage:            newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
 		partitionManager: newPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
@@ -220,7 +220,7 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
 	expired := make(map[string]int)
-	s.usage.All(func(tenant string, _ int32, stream Stream) {
+	s.usage.all(func(tenant string, _ int32, stream Stream) {
 		if stream.LastSeenAt < cutoff {
 			expired[tenant]++
 		} else {
@@ -324,7 +324,7 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.usage.Evict()
+			s.usage.evict()
 		}
 	}
 }
@@ -388,7 +388,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
+	accepted, rejected := s.usage.update(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {

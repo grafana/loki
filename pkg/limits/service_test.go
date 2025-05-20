@@ -27,7 +27,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 		// Setup data.
 		assignedPartitions []int32
 		numPartitions      int
-		usage              *UsageStore
+		usage              *usageStore
 		ActiveWindow       time.Duration
 		rateWindow         time.Duration
 		BucketSize         time.Duration
@@ -47,7 +47,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
@@ -82,7 +82,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
@@ -119,7 +119,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
@@ -156,7 +156,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
@@ -197,7 +197,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
@@ -236,7 +236,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0, 1},
 			numPartitions:      2,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 2,
 				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
@@ -269,7 +269,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			// setup data
 			assignedPartitions: []int32{0},
 			numPartitions:      2,
-			usage: &UsageStore{
+			usage: &usageStore{
 				numPartitions: 1,
 				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
@@ -378,7 +378,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	kafkaClient := mockKafka{}
 
 	// Setup test data with a mix of active and expired streams>
-	usage := &UsageStore{
+	usage := &usageStore{
 		numPartitions: 1,
 		stripes: []map[string]tenantUsage{
 			{

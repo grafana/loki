@@ -47,13 +47,13 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.setReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
-		u.All(func(_ string, _ int32, _ Stream) { n++ })
+		u.all(func(_ string, _ int32, _ Stream) { n++ })
 		require.Equal(t, 1, n)
 	})
 
@@ -91,13 +91,13 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.setReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
-		u.All(func(_ string, _ int32, _ Stream) { n++ })
+		u.all(func(_ string, _ int32, _ Stream) { n++ })
 		require.Equal(t, 0, n)
 	})
 }
@@ -163,7 +163,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	// has been consumed.
 	m.setReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 	c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
@@ -175,7 +175,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	u.All(func(_ string, _ int32, _ Stream) { n++ })
+	u.all(func(_ string, _ int32, _ Stream) { n++ })
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
 	require.NoError(t, c.pollFetches(ctx))
@@ -186,6 +186,6 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	u.All(func(_ string, _ int32, _ Stream) { n++ })
+	u.all(func(_ string, _ int32, _ Stream) { n++ })
 	require.Equal(t, 2, n)
 }
