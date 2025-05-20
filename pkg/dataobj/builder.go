@@ -50,22 +50,19 @@ func (w builderSectionWriter) WriteSection(data, metadata []byte) (n int64, err 
 	return int64(len(data) + len(metadata)), nil
 }
 
-// Flush flushes all buffered data to the buffer provided. Calling Flush can result
-// in a no-op if there is no buffered data to flush.
+// Flush flushes all buffered data to the buffer provided. Calling Flush can
+// result in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(output *bytes.Buffer) error {
-	err := b.buildObject(output)
+// [Builder.Reset] is called after a successful Flush to discard any pending
+// data and allow new data to be appended.
+func (b *Builder) Flush(output *bytes.Buffer) (int64, error) {
+	sz, err := b.encoder.Flush(output)
 	if err != nil {
-		return fmt.Errorf("building object: %w", err)
+		return sz, fmt.Errorf("building object: %w", err)
 	}
 
 	b.Reset()
-	return nil
-}
-
-func (b *Builder) buildObject(output *bytes.Buffer) error {
-	return b.encoder.Flush(output)
+	return sz, nil
 }
 
 // Reset discards pending data and resets the builder to an empty state.

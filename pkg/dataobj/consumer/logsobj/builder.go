@@ -330,18 +330,20 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 	b.builder.Append(b.streams)
 	b.builder.Append(b.logs)
 
-	initialBufferSize := output.Len()
-
-	if err := b.builder.Flush(output); err != nil {
+	sz, err := b.builder.Flush(output)
+	if err != nil {
 		b.metrics.flushFailures.Inc()
 		return FlushStats{}, fmt.Errorf("building object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(output.Len() - initialBufferSize))
+	b.metrics.builtSize.Observe(float64(sz))
 
 	var (
-		objReader = bytes.NewReader(output.Bytes()[initialBufferSize:])
-		objLength = int64(output.Len() - initialBufferSize)
+		// We don't know if output was empty before calling Flush, so we only start
+		// reading from where we know writing began.
+
+		objReader = bytes.NewReader(output.Bytes()[output.Len()-int(sz):])
+		objLength = sz
 	)
 	obj, err := dataobj.FromReaderAt(objReader, objLength)
 	if err != nil {

@@ -157,9 +157,11 @@ func (enc *encoder) Metadata() proto.Message {
 
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset.
-func (enc *encoder) Flush(w streamio.Writer) error {
+func (enc *encoder) Flush(w streamio.Writer) (int64, error) {
+	cw := countingWriter{w: w}
+
 	if enc.data == nil {
-		return fmt.Errorf("empty Encoder")
+		return cw.count, fmt.Errorf("empty Encoder")
 	}
 
 	metadataBuffer := bufpool.GetUnsized()
@@ -167,9 +169,9 @@ func (enc *encoder) Flush(w streamio.Writer) error {
 
 	// The file metadata should start with the version.
 	if err := streamio.WriteUvarint(metadataBuffer, fileFormatVersion); err != nil {
-		return err
+		return cw.count, err
 	} else if err := protocodec.Encode(metadataBuffer, enc.Metadata()); err != nil {
-		return err
+		return cw.count, err
 	}
 
 	// The overall structure is:
@@ -186,20 +188,20 @@ func (enc *encoder) Flush(w streamio.Writer) error {
 	// The file metadata size *must not* be varint since we need the last 8 bytes
 	// of the file to consistently retrieve the tailer.
 
-	if _, err := w.Write(magic); err != nil {
-		return fmt.Errorf("writing magic header: %w", err)
-	} else if _, err := w.Write(enc.data.Bytes()); err != nil {
-		return fmt.Errorf("writing data: %w", err)
-	} else if _, err := w.Write(metadataBuffer.Bytes()); err != nil {
-		return fmt.Errorf("writing metadata: %w", err)
-	} else if err := binary.Write(w, binary.LittleEndian, uint32(metadataBuffer.Len())); err != nil {
-		return fmt.Errorf("writing metadata size: %w", err)
-	} else if _, err := w.Write(magic); err != nil {
-		return fmt.Errorf("writing magic tailer: %w", err)
+	if _, err := cw.Write(magic); err != nil {
+		return cw.count, fmt.Errorf("writing magic header: %w", err)
+	} else if _, err := cw.Write(enc.data.Bytes()); err != nil {
+		return cw.count, fmt.Errorf("writing data: %w", err)
+	} else if _, err := cw.Write(metadataBuffer.Bytes()); err != nil {
+		return cw.count, fmt.Errorf("writing metadata: %w", err)
+	} else if err := binary.Write(&cw, binary.LittleEndian, uint32(metadataBuffer.Len())); err != nil {
+		return cw.count, fmt.Errorf("writing metadata size: %w", err)
+	} else if _, err := cw.Write(magic); err != nil {
+		return cw.count, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
 	enc.Reset()
-	return nil
+	return cw.count, nil
 }
 
 // Reset resets the Encoder to a fresh state.
@@ -215,4 +217,23 @@ func (enc *encoder) Reset() {
 
 	bufpool.PutUnsized(enc.data)
 	enc.data = nil
+}
+
+type countingWriter struct {
+	w     streamio.Writer
+	count int64
+}
+
+func (cw *countingWriter) Write(p []byte) (n int, err error) {
+	n, err = cw.w.Write(p)
+	cw.count += int64(n)
+	return n, err
+}
+
+func (cw *countingWriter) WriteByte(c byte) error {
+	if err := cw.w.WriteByte(c); err != nil {
+		return err
+	}
+	cw.count++
+	return nil
 }

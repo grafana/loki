@@ -89,7 +89,7 @@ func buildObject(lt *logs.Builder) ([]byte, error) {
 	builder := dataobj.NewBuilder()
 	builder.Append(lt)
 
-	if err := builder.Flush(&buf); err != nil {
+	if _, err := builder.Flush(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
