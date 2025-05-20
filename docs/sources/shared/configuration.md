@@ -764,7 +764,7 @@ kafka_config:
   reader_config:
     # The Kafka backend address.
     # CLI flag: -kafka.reader.address
-    [address: <string> | default = "localhost:9092"]
+    [address: <string> | default = ""]
 
     # The Kafka client ID.
     # CLI flag: -kafka.reader.client-id
@@ -773,7 +773,7 @@ kafka_config:
   writer_config:
     # The Kafka backend address.
     # CLI flag: -kafka.writer.address
-    [address: <string> | default = "localhost:9092"]
+    [address: <string> | default = ""]
 
     # The Kafka client ID.
     # CLI flag: -kafka.writer.client-id
