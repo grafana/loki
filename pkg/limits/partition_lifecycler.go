@@ -14,26 +14,26 @@ import (
 
 // PartitionLifecycler manages assignment and revocation of partitions.
 type PartitionLifecycler struct {
-	cfg              Config
 	partitionManager *PartitionManager
 	offsetManager    kafka_partition.OffsetManager
 	usage            *UsageStore
+	activeWindow     time.Duration
 	logger           log.Logger
 }
 
 // NewPartitionLifecycler returns a new PartitionLifecycler.
 func NewPartitionLifecycler(
-	cfg Config,
 	partitionManager *PartitionManager,
 	offsetManager kafka_partition.OffsetManager,
 	usage *UsageStore,
+	activeWindow time.Duration,
 	logger log.Logger,
 ) *PartitionLifecycler {
 	return &PartitionLifecycler{
-		cfg:              cfg,
 		partitionManager: partitionManager,
 		offsetManager:    offsetManager,
 		usage:            usage,
+		activeWindow:     activeWindow,
 		logger:           logger,
 	}
 }
@@ -90,7 +90,7 @@ func (l *PartitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	// Get the first offset produced within the window. This can be the same
 	// offset as the last produced offset if no records have been produced
 	// within that time.
-	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, time.Now().Add(-l.cfg.ActiveWindow))
+	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, time.Now().Add(-l.activeWindow))
 	if err != nil {
 		return fmt.Errorf("failed to get next offset: %w", err)
 	}
