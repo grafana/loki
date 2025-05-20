@@ -26,7 +26,7 @@ type Frontend struct {
 	services.Service
 	cfg                     Config
 	logger                  log.Logger
-	gatherer                ExceedsLimitsGatherer
+	gatherer                exceedsLimitsGatherer
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
@@ -55,7 +55,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	} else {
 		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
-	gatherer := NewRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
+	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
 
 	f := &Frontend{
 		cfg:                     cfg,
@@ -89,7 +89,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	resps, err := f.gatherer.ExceedsLimits(ctx, req)
+	resps, err := f.gatherer.exceedsLimits(ctx, req)
 	if err != nil {
 		return nil, err
 	}

@@ -21,8 +21,8 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-// RingGatherer uses a ring to find limits instances.
-type RingGatherer struct {
+// ringGatherer uses a ring to find limits instances.
+type ringGatherer struct {
 	logger                  log.Logger
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
@@ -30,15 +30,15 @@ type RingGatherer struct {
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 }
 
-// NewRingGatherer returns a new RingGatherer.
-func NewRingGatherer(
+// newRingGatherer returns a new ringGatherer.
+func newRingGatherer(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
-) *RingGatherer {
-	return &RingGatherer{
+) *ringGatherer {
+	return &ringGatherer{
 		logger:                  logger,
 		ring:                    ring,
 		pool:                    pool,
@@ -47,8 +47,8 @@ func NewRingGatherer(
 	}
 }
 
-// ExceedsLimits implements ExceedsLimitsGatherer.
-func (g *RingGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
+func (g *ringGatherer) exceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -112,7 +112,7 @@ type zonePartitionConsumersResult struct {
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
-func (g *RingGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
+func (g *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
@@ -165,7 +165,7 @@ type getAssignedPartitionsResponse struct {
 // should be called once for each zone, and instances should be filtered to
 // the respective zone. Alternatively, you can pass all instances for all zones
 // to find the most up to date consumer for each partition across all zones.
-func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
+func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responseCh := make(chan getAssignedPartitionsResponse, len(instances))
 	for _, instance := range instances {

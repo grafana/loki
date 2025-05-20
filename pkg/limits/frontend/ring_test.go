@@ -339,13 +339,13 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			}
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := NewRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			actual, err := g.ExceedsLimits(ctx, test.request)
+			actual, err := g.exceedsLimits(ctx, test.request)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.Nil(t, actual)
@@ -518,7 +518,7 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", clients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := NewRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -667,7 +667,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := NewRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -711,7 +711,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_IsCached(t *testing.T) {
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
 	cache := newTTLCache[string, *proto.GetAssignedPartitionsResponse](time.Minute)
-	g := NewRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+	g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
 
 	// Set a maximum upper bound on the test execution time.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
