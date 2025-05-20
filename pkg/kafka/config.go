@@ -30,6 +30,7 @@ var (
 	ErrMissingKafkaAddress                 = errors.New("the Kafka address has not been configured")
 	ErrAmbiguousKafkaAddress               = errors.New("the Kafka address has been configured in both kafka.address and kafka.reader_config.address or kafka.writer_config.address")
 	ErrAmbiguousKafkaClientID              = errors.New("the Kafka client ID has been configured in both kafka.client_id and kafka.reader_config.client_id or kafka.writer_config.client_id")
+	ErrMixingOldAndNewClientConfig         = errors.New("mixing old and new client config is not allowed")
 	ErrMissingKafkaTopic                   = errors.New("the Kafka topic has not been configured")
 	ErrInconsistentSASLUsernameAndPassword = errors.New("both sasl username and password must be set")
 	ErrInvalidProducerMaxRecordSizeBytes   = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, MaxProducerRecordDataBytesLimit)
@@ -124,6 +125,18 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ClientID != "" && cfg.WriterConfig.ClientID != "" {
 		return ErrAmbiguousKafkaClientID
+	}
+	if cfg.Address != "" && cfg.ReaderConfig.ClientID != "" {
+		return ErrMixingOldAndNewClientConfig
+	}
+	if cfg.Address != "" && cfg.WriterConfig.ClientID != "" {
+		return ErrMixingOldAndNewClientConfig
+	}
+	if cfg.ClientID != "" && cfg.ReaderConfig.Address != "" {
+		return ErrMixingOldAndNewClientConfig
+	}
+	if cfg.ClientID != "" && cfg.WriterConfig.Address != "" {
+		return ErrMixingOldAndNewClientConfig
 	}
 	if cfg.Topic == "" {
 		return ErrMissingKafkaTopic
