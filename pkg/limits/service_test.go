@@ -48,7 +48,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -83,7 +83,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -120,7 +120,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -157,7 +157,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -198,7 +198,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -237,8 +237,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0, 1},
 			numPartitions:      2,
 			usage: &UsageStore{
-				cfg:   Config{NumPartitions: 2},
-				locks: make([]stripeLock, 2),
+				numPartitions: 2,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
@@ -270,8 +270,8 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      2,
 			usage: &UsageStore{
-				cfg:   Config{NumPartitions: 1},
-				locks: make([]stripeLock, 2),
+				numPartitions: 1,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
@@ -379,7 +379,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 
 	// Setup test data with a mix of active and expired streams>
 	usage := &UsageStore{
-		cfg: Config{NumPartitions: 1},
+		numPartitions: 1,
 		stripes: []map[string]tenantUsage{
 			{
 				"tenant1": {

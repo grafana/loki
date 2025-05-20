@@ -3,7 +3,6 @@ package limits
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,10 +47,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		m.SetReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u := NewUsageStore(Config{
-			ActiveWindow:  time.Hour,
-			NumPartitions: 1,
-		})
+		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, p.pollFetches(ctx))
@@ -95,10 +91,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		m.SetReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u := NewUsageStore(Config{
-			ActiveWindow:  time.Hour,
-			NumPartitions: 1,
-		})
+		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, p.pollFetches(ctx))
@@ -170,10 +163,7 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	// has been consumed.
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u := NewUsageStore(Config{
-		ActiveWindow:  time.Hour,
-		NumPartitions: 1,
-	})
+	u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 	p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
