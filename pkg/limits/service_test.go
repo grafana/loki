@@ -334,7 +334,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				usage:            tt.usage,
 				partitionManager: NewPartitionManager(),
 				clock:            clock,
-				sender:           NewSender(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
+				producer:         NewProducer(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
 			}
 
 			// Assign the Partition IDs.
@@ -423,7 +423,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		metrics:          newMetrics(reg),
 		limits:           limits,
 		clock:            clock,
-		sender:           NewSender(&kafkaClient, "test", 1, "", log.NewNopLogger(), reg),
+		producer:         NewProducer(&kafkaClient, "test", 1, "", log.NewNopLogger(), reg),
 	}
 
 	// Assign the Partition IDs.

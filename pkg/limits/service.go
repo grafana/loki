@@ -102,8 +102,8 @@ type IngestLimits struct {
 
 	// Track stream metadata
 	usage    *UsageStore
-	sender   *Sender
-	playback *PlaybackManager
+	consumer *Consumer
+	producer *Producer
 
 	// Used for tests.
 	clock quartz.Clock
@@ -187,7 +187,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	s.playback = NewPlaybackManager(
+	s.consumer = NewConsumer(
 		s.clientReader,
 		s.partitionManager,
 		s.usage,
@@ -196,7 +196,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		logger,
 		reg,
 	)
-	s.sender = NewSender(
+	s.producer = NewProducer(
 		s.clientWriter,
 		kCfg.Topic,
 		s.cfg.NumPartitions,
@@ -301,7 +301,7 @@ func (s *IngestLimits) starting(ctx context.Context) (err error) {
 func (s *IngestLimits) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
-	go s.playback.Run(ctx)
+	go s.consumer.Run(ctx)
 
 	for {
 		select {
@@ -394,7 +394,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
-		err := s.sender.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
 		}

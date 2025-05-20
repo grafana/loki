@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestPlaybackManager_ProcessRecords(t *testing.T) {
+func TestConsumer_ProcessRecords(t *testing.T) {
 	t.Run("records for own zone are stored when replaying partitions", func(t *testing.T) {
 		// Create a record in the same zone.
 		sameZoneRecord := proto.StreamMetadataRecord{
@@ -48,9 +48,9 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		// Create a usage store, we will use this to check if the record
 		// was stored.
 		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+		c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
-		require.NoError(t, p.pollFetches(ctx))
+		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
 		u.All(func(_ string, _ int32, _ Stream) { n++ })
@@ -92,9 +92,9 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
 		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+		c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
-		require.NoError(t, p.pollFetches(ctx))
+		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
 		u.All(func(_ string, _ int32, _ Stream) { n++ })
@@ -102,7 +102,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 	})
 }
 
-func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
+func TestConsumer_ReadinessCheck(t *testing.T) {
 	// Create two records. It doesn't matter which zone.
 	sameZoneRecord := proto.StreamMetadataRecord{
 		Zone:   "zone1",
@@ -164,10 +164,10 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
 	u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-	p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+	c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
-	require.NoError(t, p.pollFetches(ctx))
+	require.NoError(t, c.pollFetches(ctx))
 	// The partition should still be replaying as we have not read up to
 	// the target offset.
 	state, ok := m.GetState(1)
@@ -178,7 +178,7 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	u.All(func(_ string, _ int32, _ Stream) { n++ })
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
-	require.NoError(t, p.pollFetches(ctx))
+	require.NoError(t, c.pollFetches(ctx))
 	// The partition should still be ready as we have read up to the target
 	// offset.
 	state, ok = m.GetState(1)
