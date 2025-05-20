@@ -54,7 +54,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		})
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
-		p.pollFetches(ctx)
+		require.NoError(t, p.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
 		u.All(func(_ string, _ int32, _ Stream) { n++ })
@@ -101,7 +101,7 @@ func TestPlaybackManager_ProcessRecords(t *testing.T) {
 		})
 		p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
-		p.pollFetches(ctx)
+		require.NoError(t, p.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
 		u.All(func(_ string, _ int32, _ Stream) { n++ })
@@ -177,7 +177,7 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	p := NewPlaybackManager(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
-	p.pollFetches(ctx)
+	require.NoError(t, p.pollFetches(ctx))
 	// The partition should still be replaying as we have not read up to
 	// the target offset.
 	state, ok := m.GetState(1)
@@ -188,7 +188,7 @@ func TestPlaybackmanager_ReadinessCheck(t *testing.T) {
 	u.All(func(_ string, _ int32, _ Stream) { n++ })
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
-	p.pollFetches(ctx)
+	require.NoError(t, p.pollFetches(ctx))
 	// The partition should still be ready as we have read up to the target
 	// offset.
 	state, ok = m.GetState(1)
