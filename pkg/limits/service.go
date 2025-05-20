@@ -161,7 +161,13 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
 	}
-	s.partitionLifecycler = NewPartitionLifecycler(cfg, s.partitionManager, offsetManager, s.usage, logger)
+	s.partitionLifecycler = NewPartitionLifecycler(
+		s.partitionManager,
+		offsetManager,
+		s.usage,
+		cfg.ActiveWindow,
+		logger,
+	)
 
 	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
