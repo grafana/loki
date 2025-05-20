@@ -37,3 +37,25 @@ func TestBothSASLParamsMustBeSet(t *testing.T) {
 	err = cfg.Validate()
 	require.NoError(t, err)
 }
+
+func TestAmbiguousKafkaAddress(t *testing.T) {
+	cfg := Config{
+		Address:      "localhost:9092",
+		ReaderConfig: ClientConfig{Address: "localhost:9092"},
+		WriterConfig: ClientConfig{Address: "localhost:9092"},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAmbiguousKafkaAddress)
+}
+
+func TestAmbiguousKafkaClientID(t *testing.T) {
+	cfg := Config{
+		ClientID:     "abcd",
+		ReaderConfig: ClientConfig{Address: "reader:9092", ClientID: "abcd"},
+		WriterConfig: ClientConfig{Address: "writer:9092", ClientID: "abcd"},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAmbiguousKafkaClientID)
+}

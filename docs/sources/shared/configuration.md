@@ -748,17 +748,9 @@ compactor_grpc_client:
 [memberlist: <memberlist>]
 
 kafka_config:
-  # The Kafka backend address.
-  # CLI flag: -kafka.address
-  [address: <string> | default = "localhost:9092"]
-
   # The Kafka topic name.
   # CLI flag: -kafka.topic
   [topic: <string> | default = ""]
-
-  # The Kafka client ID.
-  # CLI flag: -kafka.client-id
-  [client_id: <string> | default = ""]
 
   # The maximum time allowed to open a connection to a Kafka broker.
   # CLI flag: -kafka.dial-timeout
@@ -768,6 +760,24 @@ kafka_config:
   # to the Kafka backend.
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
+
+  reader_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.reader.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.reader.client-id
+    [client_id: <string> | default = ""]
+
+  writer_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.writer.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.writer.client-id
+    [client_id: <string> | default = ""]
 
   # The SASL username for authentication to Kafka using the PLAIN mechanism.
   # Both username and password must be set.
