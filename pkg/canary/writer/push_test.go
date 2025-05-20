@@ -140,11 +140,10 @@ func Test_LargeBatchedPush(t *testing.T) {
 	push, err := newPush(testCfg, 5)
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-
 	// monitor the logs which were sent
-	go logbatchMonitor(t, testCfg, &wg, logsSent, 25)
+	go logbatchMonitor(t, testCfg, logsSent, 25)
 
+	var wg sync.WaitGroup
 	for _, logs := range logBatches {
 		// routine to send logs through the pusher
 		wg.Add(1)
@@ -221,13 +220,8 @@ func Test_TerminateBatchedPush(t *testing.T) {
 // function which monitors the test config response channel, waiting for 'n'
 // log responses to be returned.  Moreover, this function monitors the log
 // lines received in the channel to ensure each log line is only sent once
-func logbatchMonitor(t *testing.T, testCfg testConfig, wg *sync.WaitGroup, logsSent map[string]int, expectedCount int) {
+func logbatchMonitor(t *testing.T, testCfg testConfig, logsSent map[string]int, expectedCount int) {
 	t.Helper()
-
-	wg.Add(1)
-	defer func() {
-		wg.Done()
-	}()
 
 	var resp response
 	logCount := 0
