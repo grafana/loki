@@ -13,15 +13,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// KafkaProducer allows mocking of certain [kgo.Client] methods in tests.
-type KafkaProducer interface {
+// kafkaProducer allows mocking of certain [kgo.Client] methods in tests.
+type kafkaProducer interface {
 	Produce(context.Context, *kgo.Record, func(*kgo.Record, error))
 }
 
-// Producer produces records on the metadata topic. It is how state is
+// producer produces records on the metadata topic. It is how state is
 // replicated across zones and recovered following a crash or restart.
-type Producer struct {
-	client KafkaProducer
+type producer struct {
+	client kafkaProducer
 	// TODO(grobinson): We should remove topic in future, as it should be
 	// set in the client.
 	topic         string
@@ -33,9 +33,9 @@ type Producer struct {
 	producedFailed prometheus.Counter
 }
 
-// NewProducer returns a new Sender.
-func NewProducer(client KafkaProducer, topic string, numPartitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Producer {
-	return &Producer{
+// newProducer returns a new Sender.
+func newProducer(client kafkaProducer, topic string, numPartitions int, zone string, logger log.Logger, reg prometheus.Registerer) *producer {
+	return &producer{
 		client:        client,
 		topic:         topic,
 		numPartitions: numPartitions,
@@ -56,10 +56,10 @@ func NewProducer(client KafkaProducer, topic string, numPartitions int, zone str
 	}
 }
 
-// Produce encodes the metadata in a [proto.StreamMetadataRecord] record
+// produce encodes the metadata in a [proto.StreamMetadataRecord] record
 // and pushes it to the metadata topic. It does not wait for the push to
 // complete.
-func (p *Producer) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
+func (p *producer) produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
 	v := proto.StreamMetadataRecord{
 		Zone:     p.zone,
 		Tenant:   tenant,
@@ -84,7 +84,7 @@ func (p *Producer) Produce(ctx context.Context, tenant string, metadata *proto.S
 	return nil
 }
 
-func (p *Producer) handleProduceErr(_ *kgo.Record, err error) {
+func (p *producer) handleProduceErr(_ *kgo.Record, err error) {
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to produce record", "err", err.Error())
 		p.producedFailed.Inc()

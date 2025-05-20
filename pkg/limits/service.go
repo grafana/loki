@@ -91,8 +91,8 @@ type Service struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	partitionManager    *PartitionManager
-	partitionLifecycler *PartitionLifecycler
+	partitionManager    *partitionManager
+	partitionLifecycler *partitionLifecycler
 
 	// metrics
 	metrics *metrics
@@ -102,8 +102,8 @@ type Service struct {
 
 	// Track stream metadata
 	usage    *UsageStore
-	consumer *Consumer
-	producer *Producer
+	consumer *consumer
+	producer *producer
 
 	// Used for tests.
 	clock quartz.Clock
@@ -125,7 +125,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		cfg:              cfg,
 		logger:           logger,
 		usage:            NewUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
-		partitionManager: NewPartitionManager(),
+		partitionManager: newPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		clock:            quartz.NewReal(),
@@ -161,7 +161,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
 	}
-	s.partitionLifecycler = NewPartitionLifecycler(
+	s.partitionLifecycler = newPartitionLifecycler(
 		s.partitionManager,
 		offsetManager,
 		s.usage,
@@ -187,16 +187,16 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	s.consumer = NewConsumer(
+	s.consumer = newConsumer(
 		s.clientReader,
 		s.partitionManager,
 		s.usage,
-		NewOffsetReadinessCheck(s.partitionManager),
+		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
 		reg,
 	)
-	s.producer = NewProducer(
+	s.producer = newProducer(
 		s.clientWriter,
 		kCfg.Topic,
 		s.cfg.NumPartitions,
@@ -245,9 +245,9 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 			"expired",
 		)
 	}
-	partitions := s.partitionManager.List()
+	partitions := s.partitionManager.list()
 	for partition := range partitions {
-		state, ok := s.partitionManager.GetState(partition)
+		state, ok := s.partitionManager.getState(partition)
 		if ok {
 			m <- prometheus.MustNewConstMetric(
 				partitionsDesc,
@@ -301,7 +301,7 @@ func (s *Service) starting(ctx context.Context) (err error) {
 func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
-	go s.consumer.Run(ctx)
+	go s.consumer.run(ctx)
 
 	for {
 		select {
@@ -357,7 +357,7 @@ func (s *Service) stopping(failureCase error) error {
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *Service) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
 	resp := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.partitionManager.ListByState(PartitionReady),
+		AssignedPartitions: s.partitionManager.listByState(partitionReady),
 	}
 	return &resp, nil
 }
@@ -377,7 +377,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partition); !assigned {
+		if assigned := s.partitionManager.has(partition); !assigned {
 			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
@@ -394,7 +394,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
-		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		err := s.producer.produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
 		}

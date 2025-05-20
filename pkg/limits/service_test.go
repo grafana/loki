@@ -332,13 +332,13 @@ func TestService_ExceedsLimits(t *testing.T) {
 				metrics:          newMetrics(reg),
 				limits:           limits,
 				usage:            tt.usage,
-				partitionManager: NewPartitionManager(),
+				partitionManager: newPartitionManager(),
 				clock:            clock,
-				producer:         NewProducer(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
+				producer:         newProducer(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
 			}
 
 			// Assign the Partition IDs.
-			s.partitionManager.Assign(context.Background(), tt.assignedPartitions)
+			s.partitionManager.assign(context.Background(), tt.assignedPartitions)
 
 			// Call ExceedsLimits.
 			req := &proto.ExceedsLimitsRequest{
@@ -419,15 +419,15 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		},
 		logger:           log.NewNopLogger(),
 		usage:            usage,
-		partitionManager: NewPartitionManager(),
+		partitionManager: newPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           limits,
 		clock:            clock,
-		producer:         NewProducer(&kafkaClient, "test", 1, "", log.NewNopLogger(), reg),
+		producer:         newProducer(&kafkaClient, "test", 1, "", log.NewNopLogger(), reg),
 	}
 
 	// Assign the Partition IDs.
-	s.partitionManager.Assign(context.Background(), []int32{0})
+	s.partitionManager.assign(context.Background(), []int32{0})
 
 	// Run concurrent requests
 	concurrency := 10
