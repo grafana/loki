@@ -20,9 +20,10 @@ import (
 )
 
 type consumerMetrics struct {
-	consumeLatency prometheus.Histogram
-	currentOffset  prometheus.Gauge
-	pushLatency    prometheus.Histogram
+	consumeLatency      prometheus.Histogram
+	currentOffset       prometheus.Gauge
+	pushLatency         prometheus.Histogram
+	consumeWorkersCount prometheus.Gauge
 }
 
 // newConsumerMetrics initializes and returns a new consumerMetrics instance
@@ -42,11 +43,17 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			Help:                        "The latency of a push request after consuming from Kafka",
 			NativeHistogramBucketFactor: 1.1,
 		}),
+		consumeWorkersCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_partition_consume_workers_count",
+			Help: "The number of workers that are consuming from Kafka",
+		}),
 	}
 }
 
 func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
+	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
+
 	return func(committer partition.Committer, logger log.Logger) (partition.Consumer, error) {
 		decoder, err := kafka.NewDecoder()
 		if err != nil {
