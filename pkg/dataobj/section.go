@@ -89,6 +89,10 @@ type SectionBuilder interface {
 	// Type returns the SectionType representing the section being built.
 	// Implementations are responsible for guaranteeing that two no
 	// SectionBuilders return the same SectionType for different encodings.
+	//
+	// The returned Type is encoded directly into data objects. Implementations
+	// that change SectionType values should be careful to continue supporting
+	// old values for backwards compatibility.
 	Type() SectionType
 
 	// Flush encodes and flushes the section to w. Encodings that rely on byte

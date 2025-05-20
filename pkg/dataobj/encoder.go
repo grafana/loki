@@ -21,11 +21,12 @@ const (
 	fileFormatVersion = 0x1
 )
 
-// (Temporarily) Hard-coded section types.
+// Legacy section types; these can be removed once support for the Kind field
+// is completely removed.
 var (
-	sectionTypeInvalid = SectionType{}
-	sectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
-	sectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
+	legacySectionTypeInvalid = SectionType{}
+	legacySectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
+	legacySectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
 )
 
 // TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
@@ -58,10 +59,11 @@ type encoder struct {
 
 	sections []*filemd.SectionInfo
 
-	typesReady    bool
-	dictionary    []string
-	rawTypes      []*filemd.SectionType
-	typeRefLookup map[SectionType]uint32
+	typesReady       bool
+	dictionary       []string
+	dictionaryLookup map[string]uint32
+	rawTypes         []*filemd.SectionType
+	typeRefLookup    map[SectionType]uint32
 
 	data *bytes.Buffer
 }
@@ -105,26 +107,39 @@ func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
 	enc.sections = append(enc.sections, info)
 }
 
-// getTypeRef returns the type reference for the given type.
-//
-// getTypeRef panics if typ is not SectionTypeLogs or SectionTypeStreams.
+// getTypeRef returns the type reference for the given type or creates a new
+// one.
 func (enc *encoder) getTypeRef(typ SectionType) uint32 {
-	// TODO(rfratto): support arbitrary SectionType values.
 	if !enc.typesReady {
-		enc.initTypeRefs()
+		enc.initLegacyTypeRefs()
 	}
 
 	ref, ok := enc.typeRefLookup[typ]
 	if !ok {
-		panic(fmt.Sprintf("unknown type reference for %s", typ))
+		// Create a new type reference.
+		enc.typeRefLookup[typ] = uint32(len(enc.rawTypes))
+		enc.rawTypes = append(enc.rawTypes, &filemd.SectionType{
+			NameRef: &filemd.SectionType_NameRef{
+				NamespaceRef: enc.getDictionaryKey(typ.Namespace),
+				KindRef:      enc.getDictionaryKey(typ.Kind),
+			},
+		})
+		return enc.typeRefLookup[typ]
 	}
 	return ref
 }
 
-func (enc *encoder) initTypeRefs() {
+func (enc *encoder) initLegacyTypeRefs() {
 	// Reserve the zero index in the dictionary for an invalid entry. This is
 	// only required for the type refs, but it's still easier to debug.
 	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
+
+	enc.dictionaryLookup = map[string]uint32{
+		"":                        0,
+		"github.com/grafana/loki": 1,
+		"streams":                 2,
+		"logs":                    3,
+	}
 
 	enc.rawTypes = []*filemd.SectionType{
 		{NameRef: nil}, // Invalid type.
@@ -133,11 +148,30 @@ func (enc *encoder) initTypeRefs() {
 	}
 
 	enc.typeRefLookup = map[SectionType]uint32{
-		sectionTypeStreams: 1,
-		sectionTypeLogs:    2,
+		legacySectionTypeInvalid: 0,
+		legacySectionTypeStreams: 1,
+		legacySectionTypeLogs:    2,
 	}
 
 	enc.typesReady = true
+}
+
+// getDictionaryKey returns the dictionary key for the given text or creates a
+// new entry.
+func (enc *encoder) getDictionaryKey(text string) uint32 {
+	if enc.dictionaryLookup == nil {
+		enc.dictionaryLookup = make(map[string]uint32)
+	}
+
+	key, ok := enc.dictionaryLookup[text]
+	if ok {
+		return key
+	}
+
+	key = uint32(len(enc.dictionary))
+	enc.dictionary = append(enc.dictionary, text)
+	enc.dictionaryLookup[text] = key
+	return key
 }
 
 // MetadataSize returns an estimate of the current size of the metadata for the

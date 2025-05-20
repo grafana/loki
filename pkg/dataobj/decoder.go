@@ -72,9 +72,9 @@ var (
 	errMissingSectionType = errors.New("missing section type")
 
 	legacyKindMapping = map[filemd.SectionKind]SectionType{ //nolint:staticcheck // Ignore deprecation warning
-		filemd.SECTION_KIND_UNSPECIFIED: sectionTypeInvalid,
-		filemd.SECTION_KIND_STREAMS:     sectionTypeStreams,
-		filemd.SECTION_KIND_LOGS:        sectionTypeLogs,
+		filemd.SECTION_KIND_UNSPECIFIED: legacySectionTypeInvalid,
+		filemd.SECTION_KIND_STREAMS:     legacySectionTypeStreams,
+		filemd.SECTION_KIND_LOGS:        legacySectionTypeLogs,
 	}
 )
 
@@ -91,18 +91,18 @@ func getSectionType(md *filemd.Metadata, section *filemd.SectionInfo) (SectionTy
 
 	switch {
 	case deprecatedKind != filemd.SECTION_KIND_UNSPECIFIED && section.TypeRef != 0:
-		return sectionTypeInvalid, errors.New("section specifies both legacy kind and new type reference")
+		return legacySectionTypeInvalid, errors.New("section specifies both legacy kind and new type reference")
 
 	case deprecatedKind != filemd.SECTION_KIND_UNSPECIFIED:
 		typ, ok := legacyKindMapping[deprecatedKind]
 		if !ok {
-			return sectionTypeInvalid, errInvalidSectionType
+			return legacySectionTypeInvalid, errInvalidSectionType
 		}
 		return typ, nil
 
 	case section.TypeRef != 0:
 		if section.TypeRef >= uint32(len(md.Types)) {
-			return sectionTypeInvalid, fmt.Errorf("%w: typeRef %d out of bounds [1, %d)", errMissingSectionType, section.TypeRef, len(md.Types))
+			return legacySectionTypeInvalid, fmt.Errorf("%w: typeRef %d out of bounds [1, %d)", errMissingSectionType, section.TypeRef, len(md.Types))
 		}
 
 		var (
@@ -114,9 +114,9 @@ func getSectionType(md *filemd.Metadata, section *filemd.SectionInfo) (SectionTy
 
 		// Validate the namespace and kind references.
 		if namespaceRef == 0 || namespaceRef >= uint32(len(md.Dictionary)) {
-			return sectionTypeInvalid, fmt.Errorf("%w: namespaceRef %d out of bounds [1, %d)", errMissingSectionType, namespaceRef, len(md.Dictionary))
+			return legacySectionTypeInvalid, fmt.Errorf("%w: namespaceRef %d out of bounds [1, %d)", errMissingSectionType, namespaceRef, len(md.Dictionary))
 		} else if kindRef == 0 || kindRef >= uint32(len(md.Dictionary)) {
-			return sectionTypeInvalid, fmt.Errorf("%w: kindRef %d out of bounds [1, %d)", errMissingSectionType, kindRef, len(md.Dictionary))
+			return legacySectionTypeInvalid, fmt.Errorf("%w: kindRef %d out of bounds [1, %d)", errMissingSectionType, kindRef, len(md.Dictionary))
 		}
 
 		return SectionType{
@@ -125,5 +125,5 @@ func getSectionType(md *filemd.Metadata, section *filemd.SectionInfo) (SectionTy
 		}, nil
 	}
 
-	return sectionTypeInvalid, errMissingSectionType
+	return legacySectionTypeInvalid, errMissingSectionType
 }
