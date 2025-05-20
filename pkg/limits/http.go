@@ -38,11 +38,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	s.usage.All(func(tenantID string, _ int32, stream Stream) {
-		if tenantID != tenant {
-			return
-		}
-
+	s.usage.ForTenant(tenant, func(_ string, _ int32, stream Stream) {
 		if stream.LastSeenAt >= cutoff {
 			activeStreams++
 
