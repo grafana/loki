@@ -16,9 +16,9 @@ import (
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	l := IngestLimits{
 		cfg: Config{
-			WindowSize:     time.Minute,
-			RateWindow:     time.Minute,
-			BucketDuration: 30 * time.Second,
+			ActiveWindow: time.Minute,
+			RateWindow:   time.Minute,
+			BucketSize:   30 * time.Second,
 		},
 		usage: &UsageStore{
 			stripes: []map[string]tenantUsage{
@@ -42,8 +42,10 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 		},
 		logger: log.NewNopLogger(),
 		partitionManager: &PartitionManager{
-			partitions: map[int32]int64{
-				0: time.Now().UnixNano(),
+			partitions: map[int32]partitionEntry{
+				0: {
+					assignedAt: time.Now().UnixNano(),
+				},
 			},
 		},
 	}

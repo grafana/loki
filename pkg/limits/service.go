@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/coder/quartz"
@@ -16,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -37,13 +39,13 @@ func MetadataTopic(topic string) string {
 
 var (
 	partitionsDesc = prometheus.NewDesc(
-		constants.Loki+"_ingest_limits_partitions",
-		"The current number of partitions.",
-		nil,
+		"loki_ingest_limits_partitions",
+		"The state of each partition.",
+		[]string{"partition"},
 		nil,
 	)
 	tenantStreamsDesc = prometheus.NewDesc(
-		constants.Loki+"_ingest_limits_streams",
+		"loki_ingest_limits_streams",
 		"The current number of streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		[]string{"tenant", "state"},
 		nil,
@@ -53,7 +55,6 @@ var (
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
 
-	kafkaConsumptionLag prometheus.Histogram
 	kafkaReadBytesTotal prometheus.Counter
 
 	tenantIngestedBytesTotal *prometheus.CounterVec
@@ -66,14 +67,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		kafkaConsumptionLag: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_ingest_limits_kafka_consumption_lag_seconds",
-			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
-		}),
 		kafkaReadBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_kafka_read_bytes_total",
@@ -91,13 +84,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type IngestLimits struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
-	reader *kgo.Client
-	writer *kgo.Client
-
+	cfg               Config
+	logger            log.Logger
+	clientReader      *kgo.Client
+	clientWriter      *kgo.Client
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
+
+	partitionManager    *PartitionManager
+	partitionLifecycler *PartitionLifecycler
 
 	// metrics
 	metrics *metrics
@@ -106,12 +101,9 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	usage *UsageStore
-	wal   WAL
-
-	// Track partition assignments
-	partitionManager    *PartitionManager
-	partitionLifecycler *PartitionLifecycler
+	usage    *UsageStore
+	consumer *Consumer
+	producer *Producer
 
 	// Used for tests.
 	clock quartz.Clock
@@ -132,14 +124,12 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	s := &IngestLimits{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewUsageStore(cfg),
+		usage:            NewUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
+		partitionManager: NewPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
-		partitionManager: NewPartitionManager(logger),
 		clock:            quartz.NewReal(),
 	}
-
-	s.partitionLifecycler = NewPartitionLifecycler(s.partitionManager, s.usage, logger)
 
 	// Initialize internal metadata metrics
 	if err := reg.Register(s); err != nil {
@@ -162,11 +152,28 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
-	s.reader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
+	offsetManager, err := partition.NewKafkaOffsetManager(
+		kCfg,
+		"ingest-limits",
+		logger,
+		prometheus.NewRegistry(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create offset manager: %w", err)
+	}
+	s.partitionLifecycler = NewPartitionLifecycler(
+		s.partitionManager,
+		offsetManager,
+		s.usage,
+		cfg.ActiveWindow,
+		logger,
+	)
+
+	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.WindowSize).UnixMilli())),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
 		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
@@ -175,11 +182,28 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	s.writer, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
+	s.clientWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-	s.wal = NewKafkaWAL(s.writer, kCfg.Topic, uint64(s.cfg.NumPartitions), logger)
+
+	s.consumer = NewConsumer(
+		s.clientReader,
+		s.partitionManager,
+		s.usage,
+		NewOffsetReadinessCheck(s.partitionManager),
+		cfg.LifecyclerConfig.Zone,
+		logger,
+		reg,
+	)
+	s.producer = NewProducer(
+		s.clientWriter,
+		kCfg.Topic,
+		s.cfg.NumPartitions,
+		cfg.LifecyclerConfig.Zone,
+		logger,
+		reg,
+	)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -191,7 +215,7 @@ func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
-	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 	// active counts the number of active streams (within the window) per tenant.
 	active := make(map[string]int)
 	// expired counts the number of expired streams (outside the window) per tenant.
@@ -221,11 +245,18 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 			"expired",
 		)
 	}
-	m <- prometheus.MustNewConstMetric(
-		partitionsDesc,
-		prometheus.GaugeValue,
-		float64(len(s.partitionManager.List())),
-	)
+	partitions := s.partitionManager.List()
+	for partition := range partitions {
+		state, ok := s.partitionManager.GetState(partition)
+		if ok {
+			m <- prometheus.MustNewConstMetric(
+				partitionsDesc,
+				prometheus.GaugeValue,
+				float64(state),
+				strconv.FormatInt(int64(partition), 10),
+			)
+		}
+	}
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
@@ -270,6 +301,7 @@ func (s *IngestLimits) starting(ctx context.Context) (err error) {
 func (s *IngestLimits) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
+	go s.consumer.Run(ctx)
 
 	for {
 		select {
@@ -285,7 +317,7 @@ func (s *IngestLimits) running(ctx context.Context) error {
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
 // It runs two evictions per window size.
 func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
-	ticker := time.NewTicker(s.cfg.WindowSize / 2)
+	ticker := time.NewTicker(s.cfg.ActiveWindow / 2)
 	defer ticker.Stop()
 	for {
 		select {
@@ -302,12 +334,12 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *IngestLimits) stopping(failureCase error) error {
-	if s.reader != nil {
-		s.reader.Close()
+	if s.clientReader != nil {
+		s.clientReader.Close()
 	}
 
-	if s.wal != nil {
-		s.wal.Close()
+	if s.clientWriter != nil {
+		s.clientWriter.Close()
 	}
 
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
@@ -325,7 +357,7 @@ func (s *IngestLimits) stopping(failureCase error) error {
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
 	resp := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.partitionManager.List(),
+		AssignedPartitions: s.partitionManager.ListByState(PartitionReady),
 	}
 	return &resp, nil
 }
@@ -362,9 +394,9 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
-		err := s.wal.Append(context.WithoutCancel(ctx), req.Tenant, stream)
+		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to append stream metadata to WAL", "error", err)
+			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
 		}
 	}
 

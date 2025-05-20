@@ -23,9 +23,12 @@ type CondFunc func(acc float64, stream *proto.StreamMetadata) bool
 
 // UsageStore stores per-tenant stream usage data.
 type UsageStore struct {
-	cfg     Config
-	stripes []map[string]tenantUsage
-	locks   []stripeLock
+	activeWindow  time.Duration
+	rateWindow    time.Duration
+	bucketSize    time.Duration
+	numPartitions int
+	stripes       []map[string]tenantUsage
+	locks         []stripeLock
 
 	// Used for tests.
 	clock quartz.Clock
@@ -58,12 +61,15 @@ type stripeLock struct {
 }
 
 // NewUsageStore returns a new UsageStore.
-func NewUsageStore(cfg Config) *UsageStore {
+func NewUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int) *UsageStore {
 	s := &UsageStore{
-		cfg:     cfg,
-		stripes: make([]map[string]tenantUsage, numStripes),
-		locks:   make([]stripeLock, numStripes),
-		clock:   quartz.NewReal(),
+		activeWindow:  activeWindow,
+		rateWindow:    rateWindow,
+		bucketSize:    bucketSize,
+		numPartitions: numPartitions,
+		stripes:       make([]map[string]tenantUsage, numStripes),
+		locks:         make([]stripeLock, numStripes),
+		clock:         quartz.NewReal(),
 	}
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
@@ -102,11 +108,11 @@ func (s *UsageStore) ForTenant(tenant string, fn IterateFunc) {
 func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond CondFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.cfg.WindowSize).UnixNano()
+		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
 		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.cfg.BucketDuration).UnixNano()
+		bucketStart = lastSeenAt.Truncate(s.bucketSize).UnixNano()
 		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.cfg.RateWindow).UnixNano()
+		bucketCutoff = lastSeenAt.Add(-s.rateWindow).UnixNano()
 		stored       = make([]*proto.StreamMetadata, 0, len(streams))
 		rejected     = make([]*proto.StreamMetadata, 0, len(streams))
 	)
@@ -118,7 +124,7 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 		activeStreams := make(map[int32]int)
 
 		for _, stream := range streams {
-			partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
+			partition := int32(stream.StreamHash % uint64(s.numPartitions))
 
 			if _, ok := s.stripes[i][tenant][partition]; !ok {
 				s.stripes[i][tenant][partition] = make(map[uint64]Stream)
@@ -162,7 +168,7 @@ func (s *UsageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 
 // Evict evicts all streams that have not been seen within the window.
 func (s *UsageStore) Evict() map[string]int {
-	cutoff := s.clock.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
@@ -291,7 +297,7 @@ func (s *UsageStore) getStripe(tenant string) int {
 
 // Used in tests.
 func (s *UsageStore) set(tenant string, stream Stream) {
-	partition := int32(stream.Hash % uint64(s.cfg.NumPartitions))
+	partition := int32(stream.Hash % uint64(s.numPartitions))
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)

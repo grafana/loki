@@ -28,9 +28,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		assignedPartitions []int32
 		numPartitions      int
 		usage              *UsageStore
-		windowSize         time.Duration
+		ActiveWindow       time.Duration
 		rateWindow         time.Duration
-		bucketDuration     time.Duration
+		BucketSize         time.Duration
 		maxActiveStreams   int
 
 		// Request data for ExceedsLimits.
@@ -40,7 +40,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		// Expectations.
 		expectedIngestedBytes float64
 		expectedResults       []*proto.ExceedsLimitsResult
-		expectedAppendsTotal  int
+		expectedNumRecords    int
 	}{
 		{
 			name: "tenant not found",
@@ -48,7 +48,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -61,9 +61,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 10,
 			// request data
 			tenantID: "tenant2",
@@ -75,7 +75,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 1010,
-			expectedAppendsTotal:  1,
+			expectedNumRecords:    1,
 		},
 		{
 			name: "all existing streams still active",
@@ -83,7 +83,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -98,9 +98,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:     time.Hour,
-			rateWindow:     5 * time.Minute,
-			bucketDuration: time.Minute,
+			ActiveWindow: time.Hour,
+			rateWindow:   5 * time.Minute,
+			BucketSize:   time.Minute,
 			// request data
 			tenantID:         "tenant1",
 			maxActiveStreams: 10,
@@ -112,7 +112,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 4040,
-			expectedAppendsTotal:  4,
+			expectedNumRecords:    4,
 		},
 		{
 			name: "keep existing active streams and drop new streams",
@@ -120,7 +120,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -134,9 +134,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -157,7 +157,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -171,9 +171,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -190,7 +190,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				{StreamHash: 0x2, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
-			expectedAppendsTotal: 3,
+			expectedNumRecords: 3,
 		},
 		{
 			name: "update active streams and re-activate expired streams",
@@ -198,7 +198,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      1,
 			usage: &UsageStore{
-				cfg: Config{NumPartitions: 1},
+				numPartitions: 1,
 				stripes: []map[string]tenantUsage{
 					{
 						"tenant1": {
@@ -214,9 +214,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				},
 				locks: make([]stripeLock, 1),
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 5,
 			// request data
 			tenantID: "tenant1",
@@ -229,7 +229,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			},
 			// expect data
 			expectedIngestedBytes: 5050,
-			expectedAppendsTotal:  5,
+			expectedNumRecords:    5,
 		},
 		{
 			name: "drop streams per partition limit",
@@ -237,16 +237,16 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0, 1},
 			numPartitions:      2,
 			usage: &UsageStore{
-				cfg:   Config{NumPartitions: 2},
-				locks: make([]stripeLock, 2),
+				numPartitions: 2,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
 				},
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -262,7 +262,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				{StreamHash: 0x3, Reason: uint32(ReasonExceedsMaxStreams)},
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
-			expectedAppendsTotal: 2,
+			expectedNumRecords: 2,
 		},
 		{
 			name: "skip streams assigned to partitions not owned by instance but enforce limit",
@@ -270,16 +270,16 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			assignedPartitions: []int32{0},
 			numPartitions:      2,
 			usage: &UsageStore{
-				cfg:   Config{NumPartitions: 1},
-				locks: make([]stripeLock, 2),
+				numPartitions: 1,
+				locks:         make([]stripeLock, 2),
 				stripes: []map[string]tenantUsage{
 					make(map[string]tenantUsage),
 					make(map[string]tenantUsage),
 				},
 			},
-			windowSize:       time.Hour,
+			ActiveWindow:     time.Hour,
 			rateWindow:       5 * time.Minute,
-			bucketDuration:   time.Minute,
+			BucketSize:       time.Minute,
 			maxActiveStreams: 3,
 			// request data
 			tenantID: "tenant1",
@@ -294,7 +294,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			expectedResults: []*proto.ExceedsLimitsResult{
 				{StreamHash: 0x4, Reason: uint32(ReasonExceedsMaxStreams)},
 			},
-			expectedAppendsTotal: 1,
+			expectedNumRecords: 1,
 		},
 	}
 
@@ -305,14 +305,14 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				MaxGlobalStreams: tt.maxActiveStreams,
 			}
 
-			wal := &mockWAL{t: t, ExpectedAppendsTotal: tt.expectedAppendsTotal}
+			kafkaClient := mockKafka{}
 
 			s := &IngestLimits{
 				cfg: Config{
-					NumPartitions:  tt.numPartitions,
-					WindowSize:     tt.windowSize,
-					RateWindow:     tt.rateWindow,
-					BucketDuration: tt.bucketDuration,
+					NumPartitions: tt.numPartitions,
+					ActiveWindow:  tt.ActiveWindow,
+					RateWindow:    tt.rateWindow,
+					BucketSize:    tt.BucketSize,
 					LifecyclerConfig: ring.LifecyclerConfig{
 						RingConfig: ring.Config{
 							KVStore: kv.Config{
@@ -332,9 +332,9 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				metrics:          newMetrics(reg),
 				limits:           limits,
 				usage:            tt.usage,
-				partitionManager: NewPartitionManager(log.NewNopLogger()),
+				partitionManager: NewPartitionManager(),
 				clock:            clock,
-				wal:              wal,
+				producer:         NewProducer(&kafkaClient, "test", tt.numPartitions, "", log.NewNopLogger(), reg),
 			}
 
 			// Assign the Partition IDs.
@@ -361,7 +361,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				}
 			}
 
-			wal.AssertAppendsTotal()
+			require.Equal(t, tt.expectedNumRecords, len(kafkaClient.produced))
 		})
 	}
 }
@@ -374,11 +374,12 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		MaxGlobalStreams: 5,
 	}
 
-	wal := &mockWAL{t: t, ExpectedAppendsTotal: 50}
+	reg := prometheus.NewRegistry()
+	kafkaClient := mockKafka{}
 
 	// Setup test data with a mix of active and expired streams>
 	usage := &UsageStore{
-		cfg: Config{NumPartitions: 1},
+		numPartitions: 1,
 		stripes: []map[string]tenantUsage{
 			{
 				"tenant1": {
@@ -397,10 +398,10 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 
 	s := &IngestLimits{
 		cfg: Config{
-			NumPartitions:  1,
-			WindowSize:     time.Hour,
-			RateWindow:     5 * time.Minute,
-			BucketDuration: time.Minute,
+			NumPartitions: 1,
+			ActiveWindow:  time.Hour,
+			RateWindow:    5 * time.Minute,
+			BucketSize:    time.Minute,
 			LifecyclerConfig: ring.LifecyclerConfig{
 				RingConfig: ring.Config{
 					KVStore: kv.Config{
@@ -418,11 +419,11 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		},
 		logger:           log.NewNopLogger(),
 		usage:            usage,
-		partitionManager: NewPartitionManager(log.NewNopLogger()),
-		metrics:          newMetrics(prometheus.NewRegistry()),
+		partitionManager: NewPartitionManager(),
+		metrics:          newMetrics(reg),
 		limits:           limits,
 		clock:            clock,
-		wal:              wal,
+		producer:         NewProducer(&kafkaClient, "test", 1, "", log.NewNopLogger(), reg),
 	}
 
 	// Assign the Partition IDs.
@@ -450,7 +451,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 
 	// Wait for all goroutines to complete
 	wg.Wait()
-	wal.AssertAppendsTotal()
+	require.Equal(t, 50, len(kafkaClient.produced))
 }
 
 func TestNewIngestLimits(t *testing.T) {
@@ -459,7 +460,7 @@ func TestNewIngestLimits(t *testing.T) {
 			Topic:        "test-topic",
 			WriteTimeout: 10 * time.Second,
 		},
-		WindowSize: time.Hour,
+		ActiveWindow: time.Hour,
 		LifecyclerConfig: ring.LifecyclerConfig{
 			RingConfig: ring.Config{
 				KVStore: kv.Config{
@@ -484,7 +485,8 @@ func TestNewIngestLimits(t *testing.T) {
 	s, err := NewIngestLimits(cfg, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.NotNil(t, s.reader)
+	require.NotNil(t, s.clientReader)
+	require.NotNil(t, s.clientWriter)
 
 	require.Equal(t, cfg, s.cfg)
 
