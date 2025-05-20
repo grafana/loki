@@ -13,15 +13,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// Producer allows mocking of certain [kgo.Client] methods in tests.
-type Producer interface {
+// KafkaProducer allows mocking of certain [kgo.Client] methods in tests.
+type KafkaProducer interface {
 	Produce(context.Context, *kgo.Record, func(*kgo.Record, error))
 }
 
-// Sender produces records on the metadata topic. It is how state is
+// Producer produces records on the metadata topic. It is how state is
 // replicated across zones and recovered following a crash or restart.
-type Sender struct {
-	producer Producer
+type Producer struct {
+	client KafkaProducer
 	// TODO(grobinson): We should remove topic in future, as it should be
 	// set in the client.
 	topic         string
@@ -33,10 +33,10 @@ type Sender struct {
 	producedFailed prometheus.Counter
 }
 
-// NewSender returns a new Sender.
-func NewSender(producer Producer, topic string, numPartitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Sender {
-	return &Sender{
-		producer:      producer,
+// NewProducer returns a new Sender.
+func NewProducer(client KafkaProducer, topic string, numPartitions int, zone string, logger log.Logger, reg prometheus.Registerer) *Producer {
+	return &Producer{
+		client:        client,
 		topic:         topic,
 		numPartitions: numPartitions,
 		zone:          zone,
@@ -59,9 +59,9 @@ func NewSender(producer Producer, topic string, numPartitions int, zone string, 
 // Produce encodes the metadata in a [proto.StreamMetadataRecord] record
 // and pushes it to the metadata topic. It does not wait for the push to
 // complete.
-func (s *Sender) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
+func (p *Producer) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
 	v := proto.StreamMetadataRecord{
-		Zone:     s.zone,
+		Zone:     p.zone,
 		Tenant:   tenant,
 		Metadata: metadata,
 	}
@@ -72,21 +72,21 @@ func (s *Sender) Produce(ctx context.Context, tenant string, metadata *proto.Str
 	// The stream metadata topic expects a fixed number of partitions,
 	// the size of which is determined ahead of time. Streams are
 	// sharded over partitions using a simple mod.
-	partition := int32(metadata.StreamHash % uint64(s.numPartitions))
+	partition := int32(metadata.StreamHash % uint64(p.numPartitions))
 	r := kgo.Record{
 		Key:       []byte(tenant),
 		Value:     b,
-		Topic:     s.topic,
+		Topic:     p.topic,
 		Partition: partition,
 	}
-	s.produced.Inc()
-	s.producer.Produce(context.WithoutCancel(ctx), &r, s.handleProduceErr)
+	p.produced.Inc()
+	p.client.Produce(context.WithoutCancel(ctx), &r, p.handleProduceErr)
 	return nil
 }
 
-func (s *Sender) handleProduceErr(_ *kgo.Record, err error) {
+func (p *Producer) handleProduceErr(_ *kgo.Record, err error) {
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to produce record", "err", err.Error())
-		s.producedFailed.Inc()
+		level.Error(p.logger).Log("msg", "failed to produce record", "err", err.Error())
+		p.producedFailed.Inc()
 	}
 }

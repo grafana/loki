@@ -17,16 +17,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// Consumer allows mocking of certain [kgo.Client] methods in tests.
-type Consumer interface {
+// KafkaConsumer allows mocking of certain [kgo.Client] methods in tests.
+type KafkaConsumer interface {
 	PollFetches(context.Context) kgo.Fetches
 }
 
-// PlaybackManager processes records from the metadata topic. It is
-// responsible for replaying newly assigned partitions and merging records
-// from other zones.
-type PlaybackManager struct {
-	consumer         Consumer
+// Consumer processes records from the metadata topic. It is responsible for
+// replaying newly assigned partitions and merging records from other zones.
+type Consumer struct {
+	client           KafkaConsumer
 	partitionManager *PartitionManager
 	usage            *UsageStore
 	// readinessCheck checks if a waiting or replaying partition can be
@@ -46,18 +45,18 @@ type PlaybackManager struct {
 	clock quartz.Clock
 }
 
-// NewPlaybackManager returns a new PlaybackManager.
-func NewPlaybackManager(
-	consumer Consumer,
+// NewConsumer returns a new Consumer.
+func NewConsumer(
+	client KafkaConsumer,
 	partitionManager *PartitionManager,
 	usage *UsageStore,
 	readinessCheck PartitionReadinessCheck,
 	zone string,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *PlaybackManager {
-	return &PlaybackManager{
-		consumer:         consumer,
+) *Consumer {
+	return &Consumer{
+		client:           client,
 		partitionManager: partitionManager,
 		usage:            usage,
 		readinessCheck:   readinessCheck,
@@ -95,7 +94,7 @@ func NewPlaybackManager(
 	}
 }
 
-func (m *PlaybackManager) Run(ctx context.Context) {
+func (c *Consumer) Run(ctx context.Context) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -106,79 +105,79 @@ func (m *PlaybackManager) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			if err := m.pollFetches(ctx); err != nil {
+			if err := c.pollFetches(ctx); err != nil {
 				if errors.Is(err, kgo.ErrClientClosed) {
 					return
 				}
-				level.Error(m.logger).Log("msg", "failed to poll fetches", "err", err.Error())
+				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err.Error())
 				b.Wait()
 			}
 		}
 	}
 }
 
-func (m *PlaybackManager) pollFetches(ctx context.Context) error {
-	fetches := m.consumer.PollFetches(ctx)
+func (c *Consumer) pollFetches(ctx context.Context) error {
+	fetches := c.client.PollFetches(ctx)
 	if err := fetches.Err(); err != nil {
 		return err
 	}
-	fetches.EachPartition(m.processFetchTopicPartition(ctx))
+	fetches.EachPartition(c.processFetchTopicPartition(ctx))
 	return nil
 }
 
-func (m *PlaybackManager) processFetchTopicPartition(ctx context.Context) func(kgo.FetchTopicPartition) {
+func (c *Consumer) processFetchTopicPartition(ctx context.Context) func(kgo.FetchTopicPartition) {
 	return func(p kgo.FetchTopicPartition) {
 		// When used with [kgo.EachPartition], this function is called once
 		// for each partition in a fetch, including partitions that have not
 		// produced records since the last fetch. If there are no records
 		// we can just return as there is nothing to do here.
 		if len(p.Records) == 0 {
-			m.lag.Observe(float64(0))
+			c.lag.Observe(float64(0))
 			return
 		}
-		logger := log.With(m.logger, "partition", p.Partition)
-		m.recordsFetched.Add(float64(len(p.Records)))
+		logger := log.With(c.logger, "partition", p.Partition)
+		c.recordsFetched.Add(float64(len(p.Records)))
 		// We need the state of the partition so we can discard any records
 		// that we produced (unless replaying) and mark a replaying partition
 		// as ready once it has finished replaying.
-		state, ok := m.partitionManager.GetState(p.Partition)
+		state, ok := c.partitionManager.GetState(p.Partition)
 		if !ok {
-			m.recordsDiscarded.Add(float64(len(p.Records)))
+			c.recordsDiscarded.Add(float64(len(p.Records)))
 			level.Warn(logger).Log("msg", "discarding records for partition as the partition is not assigned to this client")
 			return
 		}
 		for _, r := range p.Records {
-			if err := m.processRecord(ctx, state, r); err != nil {
+			if err := c.processRecord(ctx, state, r); err != nil {
 				level.Error(logger).Log("msg", "failed to process record", "err", err.Error())
 			}
 		}
 		// Get the last record (has the latest offset and timestamp).
 		lastRecord := p.Records[len(p.Records)-1]
-		m.lag.Observe(m.clock.Since(lastRecord.Timestamp).Seconds())
+		c.lag.Observe(c.clock.Since(lastRecord.Timestamp).Seconds())
 		if state == PartitionReplaying {
-			passed, err := m.readinessCheck(p.Partition, lastRecord)
+			passed, err := c.readinessCheck(p.Partition, lastRecord)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to run readiness check", "err", err.Error())
 			} else if passed {
 				level.Debug(logger).Log("msg", "passed readiness check, partition is ready")
-				m.partitionManager.SetReady(p.Partition)
+				c.partitionManager.SetReady(p.Partition)
 			}
 		}
 	}
 }
 
-func (m *PlaybackManager) processRecord(_ context.Context, state PartitionState, r *kgo.Record) error {
+func (c *Consumer) processRecord(_ context.Context, state PartitionState, r *kgo.Record) error {
 	s := proto.StreamMetadataRecord{}
 	if err := s.Unmarshal(r.Value); err != nil {
-		m.recordsInvalid.Inc()
+		c.recordsInvalid.Inc()
 		return fmt.Errorf("corrupted record: %w", err)
 	}
-	if state == PartitionReady && m.zone == s.Zone {
+	if state == PartitionReady && c.zone == s.Zone {
 		// Discard our own records so we don't count the same streams twice.
-		m.recordsDiscarded.Inc()
+		c.recordsDiscarded.Inc()
 		return nil
 	}
-	m.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	c.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
 }
 
