@@ -28,7 +28,7 @@ func NewPlanner(catalog Catalog) *Planner {
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
 func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
-	p.plan = &Plan{}
+	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
@@ -43,6 +43,10 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
+}
+
+func (p *Planner) reset() {
+	p.plan = &Plan{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -89,8 +93,20 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	shard, ok := lp.Shard.(*logical.ShardRef)
+	if !ok {
+		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
+	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
+		// Simplest way to limit the amount of data objects is sharding by modulo.
+		// p.catalog.ResolveDataObj() returns a sorted list of data objects, therefore the index i can be used as base for the modulo.
+		if i%int(shard.Of) != int(shard.Shard) {
+			// discard data object if it does not belong to the shard
+			continue
+		}
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
