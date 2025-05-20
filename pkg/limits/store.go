@@ -44,14 +44,14 @@ type Stream struct {
 	Hash        uint64
 	LastSeenAt  int64
 	TotalSize   uint64
-	RateBuckets []RateBucket
+	RateBuckets []rateBucket
 }
 
 // RateBucket represents the bytes received during a specific time interval
 // It is used to calculate the rate limit for a stream.
-type RateBucket struct {
-	Timestamp int64  // start of the interval
-	Size      uint64 // bytes received during this interval
+type rateBucket struct {
+	timestamp int64  // start of the interval
+	size      uint64 // bytes received during this interval
 }
 
 type stripeLock struct {
@@ -209,7 +209,7 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 			Hash:        streamHash,
 			LastSeenAt:  recordTime.UnixNano(),
 			TotalSize:   recTotalSize,
-			RateBuckets: []RateBucket{{Timestamp: bucketStart, Size: recTotalSize}},
+			RateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
 		}
 		return
 	}
@@ -219,20 +219,20 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 
 	// Update or add size for the current bucket
 	updated := false
-	sb := make([]RateBucket, 0, len(recorded.RateBuckets)+1)
+	sb := make([]rateBucket, 0, len(recorded.RateBuckets)+1)
 
 	// Only keep buckets within the rate window and update the current bucket
 	for _, bucket := range recorded.RateBuckets {
 		// Clean up buckets outside the rate window
-		if bucket.Timestamp < bucketCutOff {
+		if bucket.timestamp < bucketCutOff {
 			continue
 		}
 
-		if bucket.Timestamp == bucketStart {
+		if bucket.timestamp == bucketStart {
 			// Update existing bucket
-			sb = append(sb, RateBucket{
-				Timestamp: bucketStart,
-				Size:      bucket.Size + recTotalSize,
+			sb = append(sb, rateBucket{
+				timestamp: bucketStart,
+				size:      bucket.size + recTotalSize,
 			})
 			updated = true
 		} else {
@@ -243,9 +243,9 @@ func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHa
 
 	// Add new bucket if it wasn't updated
 	if !updated {
-		sb = append(sb, RateBucket{
-			Timestamp: bucketStart,
-			Size:      recTotalSize,
+		sb = append(sb, rateBucket{
+			timestamp: bucketStart,
+			size:      recTotalSize,
 		})
 	}
 
