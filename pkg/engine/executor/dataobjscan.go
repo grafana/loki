@@ -124,6 +124,7 @@ func (s *dataobjScan) init() error {
 // that emitted [arrow.Record]s can include stream labels in results.
 func (s *dataobjScan) initStreams() error {
 	var sr streams.RowReader
+	defer sr.Close()
 
 	streamsBuf := make([]streams.Stream, 512)
 
