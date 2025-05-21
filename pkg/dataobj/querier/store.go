@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -65,9 +64,9 @@ var (
 )
 
 type Config struct {
-	Enabled     bool                  `yaml:"enabled" doc:"description=Enable the dataobj querier."`
-	From        storageconfig.DayTime `yaml:"from" doc:"description=The date of the first day of when the dataobj querier should start querying from. In YYYY-MM-DD format, for example: 2018-04-15."`
-	ShardFactor int                   `yaml:"shard_factor" doc:"description=The number of shards to use for the dataobj querier."`
+	Enabled     bool           `yaml:"enabled" doc:"description=Enable the dataobj querier."`
+	From        config.DayTime `yaml:"from" doc:"description=The date of the first day of when the dataobj querier should start querying from. In YYYY-MM-DD format, for example: 2018-04-15."`
+	ShardFactor int            `yaml:"shard_factor" doc:"description=The number of shards to use for the dataobj querier."`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {

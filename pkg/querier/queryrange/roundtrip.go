@@ -21,7 +21,6 @@ import (
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -312,9 +311,9 @@ func NewDetectedLabelsTripperware(cfg Config, logger log.Logger, l Limits, schem
 	}), nil
 }
 
-func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(
-		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func NewDetectedLabelsCardinalityFilter(rt base.Handler) base.Handler {
+	return base.HandlerFunc(
+		func(ctx context.Context, req base.Request) (base.Response, error) {
 			res, err := rt.Do(ctx, req)
 			if err != nil {
 				return nil, err
@@ -607,7 +606,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -679,7 +678,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logg
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -922,7 +921,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -1051,7 +1050,7 @@ func NewInstantMetricTripperware(
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{

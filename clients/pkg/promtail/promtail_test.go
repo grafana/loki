@@ -35,7 +35,6 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
@@ -654,7 +653,7 @@ func Test_DryRun(t *testing.T) {
 	// aren't doing any CLI parsing ala RegisterFlags and thus don't get the defaults.
 	// Required because a hardcoded value became a configuration setting in this commit
 	// https://github.com/weaveworks/common/commit/c44eeb028a671c5931b047976f9a0171910571ce
-	serverCfg := server.Config{
+	serverCfg := pserver.Config{
 		Config: serverww.Config{
 			HTTPListenNetwork: serverww.DefaultNetwork,
 			GRPCListenNetwork: serverww.DefaultNetwork,
@@ -700,7 +699,7 @@ func Test_Reload(t *testing.T) {
 	defer os.Remove(f.Name())
 
 	cfg := config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -714,7 +713,7 @@ func Test_Reload(t *testing.T) {
 	expectCfgStr := cfg.String()
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -771,7 +770,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	defer os.Remove(f.Name())
 
 	cfg := config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -783,7 +782,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	}
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},

@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	indexshipper_storage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -63,7 +62,7 @@ func GetObjectClient(cfg Config) (client.ObjectClient, error) {
 func DownloadIndexFile(ctx context.Context, cfg Config, cloudIndexPath string, objClient client.ObjectClient, logger log.Logger) (string, error) {
 	splitPath := strings.Split(cloudIndexPath, "/")
 	localFileName := splitPath[len(splitPath)-1]
-	decompress := indexshipper_storage.IsCompressedFile(cloudIndexPath)
+	decompress := shipperutil.IsCompressedFile(cloudIndexPath)
 	if decompress {
 		// get rid of the last extension, which is .gz
 		localFileName = strings.TrimSuffix(localFileName, path.Ext(localFileName))

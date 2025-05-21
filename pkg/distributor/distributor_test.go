@@ -21,7 +21,6 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -50,7 +49,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	fe "github.com/grafana/loki/v3/pkg/util/flagext"
-	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 	"github.com/grafana/loki/v3/pkg/util/test"
@@ -767,7 +765,7 @@ func TestStreamShard(t *testing.T) {
 	baseStream.Labels = lbs.String()
 
 	totalEntries := generateEntries(100)
-	desiredRate := loki_flagext.ByteSize(300)
+	desiredRate := fe.ByteSize(300)
 
 	for _, tc := range []struct {
 		name       string
@@ -875,11 +873,11 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	baseStream.Labels = lbs.String()
 	baseStream.Entries = generateEntries(2)
 
-	streamRate := loki_flagext.ByteSize(400).Val()
+	streamRate := fe.ByteSize(400).Val()
 
 	distributorLimits := &validation.Limits{}
 	flagext.DefaultValues(distributorLimits)
-	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(100)
+	distributorLimits.ShardStreams.DesiredRate = fe.ByteSize(100)
 
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
@@ -1209,7 +1207,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 	distributorLimits := &validation.Limits{}
 	flagext.DefaultValues(distributorLimits)
-	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(desiredRate)
+	distributorLimits.ShardStreams.DesiredRate = fe.ByteSize(desiredRate)
 
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
@@ -1450,7 +1448,7 @@ func TestShardCountFor(t *testing.T) {
 		stream      *logproto.Stream
 		rate        int64
 		pushRate    float64
-		desiredRate loki_flagext.ByteSize
+		desiredRate fe.ByteSize
 
 		pushSize   int // used for sanity check.
 		wantShards int
@@ -1803,9 +1801,9 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 			// Configure policy blocks
 			if tc.blockUntil != nil {
-				limits.BlockIngestionPolicyUntil = make(map[string]dskit_flagext.Time)
+				limits.BlockIngestionPolicyUntil = make(map[string]flagext.Time)
 				for policy, until := range tc.blockUntil {
-					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
+					limits.BlockIngestionPolicyUntil[policy] = flagext.Time(until)
 				}
 			}
 
