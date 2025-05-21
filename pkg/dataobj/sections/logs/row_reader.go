@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -30,8 +32,7 @@ type RowReader struct {
 	matchIDs   map[int64]struct{}
 	predicates []RowPredicate
 
-	buf    []dataset.Row
-	record Record
+	buf []dataset.Row
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -108,24 +109,10 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := decodeRow(r.columnDesc, r.buf[i], &r.record)
+		err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
-
-		// Copy record data into pre-allocated output buffer
-		s[i].StreamID = r.record.StreamID
-		s[i].Timestamp = r.record.Timestamp
-		s[i].Metadata = slicegrow.GrowToCap(s[i].Metadata, len(r.record.Metadata))
-		s[i].Metadata = s[i].Metadata[:len(r.record.Metadata)]
-		for j := range r.record.Metadata {
-			// TODO(rfratto): the slice conversion is likely to undo some of the
-			// memory optimization work; we need to double check how we should reuse
-			// memory if there's no inner type to translate from.
-			s[i].Metadata[j].Name = r.symbols.Get(r.record.Metadata[j].Name)
-			s[i].Metadata[j].Value = []byte(r.symbols.Get(unsafeString(r.record.Metadata[j].Value)))
-		}
-		s[i].Line = slicegrow.Copy(s[i].Line, r.record.Line)
 	}
 
 	return n, nil
@@ -195,14 +182,14 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	return nil
 }
 
-func convertMetadata(md push.LabelsAdapter) []RecordMetadata {
-	l := make([]RecordMetadata, 0, len(md))
+func convertMetadata(md push.LabelsAdapter) labels.Labels {
+	l := make(labels.Labels, 0, len(md))
 	for _, label := range md {
-		l = append(l, RecordMetadata{Name: label.Name, Value: unsafeSlice(label.Value, 0)})
+		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
 	}
 	sort.Slice(l, func(i, j int) bool {
 		if l[i].Name == l[j].Name {
-			return cmp.Compare(unsafeString(l[i].Value), unsafeString(l[j].Value)) < 0
+			return cmp.Compare(l[i].Value, l[j].Value) < 0
 		}
 		return cmp.Compare(l[i].Name, l[j].Name) < 0
 	})

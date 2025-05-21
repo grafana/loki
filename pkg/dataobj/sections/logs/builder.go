@@ -8,6 +8,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -19,14 +20,8 @@ import (
 type Record struct {
 	StreamID  int64
 	Timestamp time.Time
-	Metadata  []RecordMetadata
+	Metadata  labels.Labels
 	Line      []byte
-}
-
-// A Labels-like type that holds byte buffers instead of strings.
-type RecordMetadata struct {
-	Name  string
-	Value []byte
 }
 
 // BuilderOptions configures the behavior of the logs section.

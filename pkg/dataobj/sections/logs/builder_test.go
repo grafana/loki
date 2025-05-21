@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -23,13 +24,13 @@ func Test(t *testing.T) {
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("bar")}},
+			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "bar"}},
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(5, 0),
-			Metadata:  []logs.RecordMetadata{{Name: "cluster", Value: []byte("test")}, {Name: "app", Value: []byte("foo")}},
+			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "foo"}},
 			Line:      []byte("foo bar"),
 		},
 	}
@@ -54,19 +55,19 @@ func Test(t *testing.T) {
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(5, 0),
-			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("foo")}, {Name: "cluster", Value: []byte("test")}},
+			Metadata:  []labels.Label{{Name: "app", Value: "foo"}, {Name: "cluster", Value: "test"}},
 			Line:      []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []logs.RecordMetadata{},
+			Metadata:  []labels.Label{},
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []logs.RecordMetadata{{Name: "app", Value: []byte("bar")}, {Name: "cluster", Value: []byte("test")}},
+			Metadata:  []labels.Label{{Name: "app", Value: "bar"}, {Name: "cluster", Value: "test"}},
 			Line:      []byte("goodbye world"),
 		},
 	}
