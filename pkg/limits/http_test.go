@@ -20,19 +20,19 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			RateWindow:   time.Minute,
 			BucketSize:   30 * time.Second,
 		},
-		usage: &UsageStore{
+		usage: &usageStore{
 			stripes: []map[string]tenantUsage{
 				{
 					"tenant": {
 						0: {
 							0x1: {
-								Hash:      0x1,
-								TotalSize: 100,
-								RateBuckets: []RateBucket{{
-									Timestamp: time.Now().UnixNano(),
-									Size:      1,
+								hash:      0x1,
+								totalSize: 100,
+								rateBuckets: []rateBucket{{
+									timestamp: time.Now().UnixNano(),
+									size:      1,
 								}},
-								LastSeenAt: time.Now().UnixNano(),
+								lastSeenAt: time.Now().UnixNano(),
 							},
 						},
 					},
@@ -41,7 +41,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			locks: make([]stripeLock, 1),
 		},
 		logger: log.NewNopLogger(),
-		partitionManager: &PartitionManager{
+		partitionManager: &partitionManager{
 			partitions: map[int32]partitionEntry{
 				0: {
 					assignedAt: time.Now().UnixNano(),

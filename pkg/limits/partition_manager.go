@@ -7,32 +7,31 @@ import (
 	"github.com/coder/quartz"
 )
 
-// PartitionState is the state of a partition in [PartitionManager].
-type PartitionState int
+type partitionState int
 
 const (
-	PartitionPending PartitionState = iota
-	PartitionReplaying
-	PartitionReady
+	partitionPending partitionState = iota
+	partitionReplaying
+	partitionReady
 )
 
 // String implements the [fmt.Stringer] interface.
-func (s PartitionState) String() string {
+func (s partitionState) String() string {
 	switch s {
-	case PartitionPending:
+	case partitionPending:
 		return "pending"
-	case PartitionReplaying:
+	case partitionReplaying:
 		return "replaying"
-	case PartitionReady:
+	case partitionReady:
 		return "ready"
 	default:
 		return "unknown"
 	}
 }
 
-// PartitionManager keeps track of the partitions assigned and for
+// partitionManager keeps track of the partitions assigned and for
 // each partition a timestamp of when it was assigned.
-type PartitionManager struct {
+type partitionManager struct {
 	partitions map[int32]partitionEntry
 	mtx        sync.Mutex
 
@@ -44,61 +43,61 @@ type PartitionManager struct {
 type partitionEntry struct {
 	assignedAt   int64
 	targetOffset int64
-	state        PartitionState
+	state        partitionState
 }
 
-// NewPartitionManager returns a new [PartitionManager].
-func NewPartitionManager() *PartitionManager {
-	return &PartitionManager{
+// newPartitionManager returns a new [PartitionManager].
+func newPartitionManager() *partitionManager {
+	return &partitionManager{
 		partitions: make(map[int32]partitionEntry),
 		clock:      quartz.NewReal(),
 	}
 }
 
-// Assign assigns the partitions.
-func (m *PartitionManager) Assign(_ context.Context, partitions []int32) {
+// assign assigns the partitions.
+func (m *partitionManager) assign(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
 		m.partitions[partition] = partitionEntry{
 			assignedAt: m.clock.Now().UnixNano(),
-			state:      PartitionPending,
+			state:      partitionPending,
 		}
 	}
 }
 
-// GetState returns the current state of the partition. It returns false
+// getState returns the current state of the partition. It returns false
 // if the partition does not exist.
-func (m *PartitionManager) GetState(partition int32) (PartitionState, bool) {
+func (m *partitionManager) getState(partition int32) (partitionState, bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
 	return entry.state, ok
 }
 
-// TargetOffsetReached returns true if the partition is replaying and the
+// targetOffsetReached returns true if the partition is replaying and the
 // target offset has been reached.
-func (m *PartitionManager) TargetOffsetReached(partition int32, offset int64) bool {
+func (m *partitionManager) targetOffsetReached(partition int32, offset int64) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
 	if ok {
-		return entry.state == PartitionReplaying && entry.targetOffset <= offset
+		return entry.state == partitionReplaying && entry.targetOffset <= offset
 	}
 	return false
 }
 
-// Has returns true if the partition is assigned, otherwise false.
-func (m *PartitionManager) Has(partition int32) bool {
+// has returns true if the partition is assigned, otherwise false.
+func (m *partitionManager) has(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	_, ok := m.partitions[partition]
 	return ok
 }
 
-// List returns a map of all assigned partitions and the timestamp of when
+// list returns a map of all assigned partitions and the timestamp of when
 // each partition was assigned.
-func (m *PartitionManager) List() map[int32]int64 {
+func (m *partitionManager) list() map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	result := make(map[int32]int64)
@@ -108,9 +107,9 @@ func (m *PartitionManager) List() map[int32]int64 {
 	return result
 }
 
-// ListByState returns all partitions with the specified state and their last
+// listByState returns all partitions with the specified state and their last
 // updated timestamps.
-func (m *PartitionManager) ListByState(state PartitionState) map[int32]int64 {
+func (m *partitionManager) listByState(state partitionState) map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	result := make(map[int32]int64)
@@ -122,37 +121,37 @@ func (m *PartitionManager) ListByState(state PartitionState) map[int32]int64 {
 	return result
 }
 
-// SetReplaying sets the partition as replaying and the offset that must
+// setReplaying sets the partition as replaying and the offset that must
 // be consumed for it to become ready. It returns false if the partition
 // does not exist.
-func (m *PartitionManager) SetReplaying(partition int32, offset int64) bool {
+func (m *partitionManager) setReplaying(partition int32, offset int64) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
 	if ok {
-		entry.state = PartitionReplaying
+		entry.state = partitionReplaying
 		entry.targetOffset = offset
 		m.partitions[partition] = entry
 	}
 	return ok
 }
 
-// SetReady sets the partition as ready. It returns false if the partition
+// setReady sets the partition as ready. It returns false if the partition
 // does not exist.
-func (m *PartitionManager) SetReady(partition int32) bool {
+func (m *partitionManager) setReady(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
 	if ok {
-		entry.state = PartitionReady
+		entry.state = partitionReady
 		entry.targetOffset = 0
 		m.partitions[partition] = entry
 	}
 	return ok
 }
 
-// Revoke deletes the partitions.
-func (m *PartitionManager) Revoke(_ context.Context, partitions []int32) {
+// revoke deletes the partitions.
+func (m *partitionManager) revoke(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {

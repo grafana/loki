@@ -42,7 +42,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
+		s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
 
@@ -58,7 +58,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.Update(tenant, metadata, updateTime, nil)
+				s.update(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -77,11 +77,11 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.Update(tenant, metadata, updateTime, nil)
+				s.update(tenant, metadata, updateTime, nil)
 			}
 		})
 
-		s = NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
+		s = newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
 
 		// Run parallel benchmark
 		b.Run(bm.name+"_create_parallel", func(b *testing.B) {
@@ -99,7 +99,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.Update(tenant, metadata, updateTime, nil)
+					s.update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
@@ -120,7 +120,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.Update(tenant, metadata, updateTime, nil)
+					s.update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})

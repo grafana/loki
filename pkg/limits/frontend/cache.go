@@ -7,17 +7,17 @@ import (
 	"github.com/coder/quartz"
 )
 
-type Cache[K comparable, V any] interface {
-	// Get returns the value for the key. It returns true if the key exists,
+type cache[K comparable, V any] interface {
+	// get returns the value for the key. It returns true if the key exists,
 	// otherwise false.
-	Get(K) (V, bool)
-	// Set stores the value for the key.
-	Set(K, V)
-	// Delete removes the key. If the key does not exist, the operation is a
+	get(K) (V, bool)
+	// set stores the value for the key.
+	set(K, V)
+	// delete removes the key. If the key does not exist, the operation is a
 	// no-op.
-	Delete(K)
-	// Reset removes all keys.
-	Reset()
+	delete(K)
+	// reset removes all keys.
+	reset()
 }
 
 // item contains the value and expiration time for a key.
@@ -30,8 +30,8 @@ func (i *item[V]) hasExpired(now time.Time) bool {
 	return i.expiresAt.Before(now) || i.expiresAt.Equal(now)
 }
 
-// TTLCache is a simple, thread-safe cache with a single per-cache TTL.
-type TTLCache[K comparable, V any] struct {
+// ttlcache is a simple, thread-safe cache with a single per-cache TTL.
+type ttlcache[K comparable, V any] struct {
 	items         map[K]item[V]
 	ttl           time.Duration
 	lastEvictedAt time.Time
@@ -41,16 +41,16 @@ type TTLCache[K comparable, V any] struct {
 	clock quartz.Clock
 }
 
-func NewTTLCache[K comparable, V any](ttl time.Duration) *TTLCache[K, V] {
-	return &TTLCache[K, V]{
+func newTTLCache[K comparable, V any](ttl time.Duration) *ttlcache[K, V] {
+	return &ttlcache[K, V]{
 		items: make(map[K]item[V]),
 		ttl:   ttl,
 		clock: quartz.NewReal(),
 	}
 }
 
-// Get implements Cache.Get.
-func (c *TTLCache[K, V]) Get(key K) (V, bool) {
+// Get implements the [cache] interface.
+func (c *ttlcache[K, V]) get(key K) (V, bool) {
 	var (
 		value  V
 		exists bool
@@ -65,8 +65,8 @@ func (c *TTLCache[K, V]) Get(key K) (V, bool) {
 	return value, exists
 }
 
-// Set implements Cache.Set.
-func (c *TTLCache[K, V]) Set(key K, value V) {
+// Set implements the [cache] interface.
+func (c *ttlcache[K, V]) set(key K, value V) {
 	now := c.clock.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -80,22 +80,22 @@ func (c *TTLCache[K, V]) Set(key K, value V) {
 	}
 }
 
-// Delete implements Cache.Delete.
-func (c *TTLCache[K, V]) Delete(key K) {
+// Delete implements the [cache] interface.
+func (c *ttlcache[K, V]) delete(key K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.items, key)
 }
 
-// Reset implements Cache.Reset.
-func (c *TTLCache[K, V]) Reset() {
+// Reset implements the [cache] interface.
+func (c *ttlcache[K, V]) reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items = make(map[K]item[V])
 }
 
 // evictExpired evicts expired items.
-func (c *TTLCache[K, V]) evictExpired(now time.Time) {
+func (c *ttlcache[K, V]) evictExpired(now time.Time) {
 	for key, item := range c.items {
 		if item.hasExpired(now) {
 			delete(c.items, key)
@@ -103,17 +103,17 @@ func (c *TTLCache[K, V]) evictExpired(now time.Time) {
 	}
 }
 
-// NopCache is a no-op cache. It does not store any keys. It is used in tests
+// nopcache is a no-op cache. It does not store any keys. It is used in tests
 // and as a stub for disabled caches.
-type NopCache[K comparable, V any] struct{}
+type nopcache[K comparable, V any] struct{}
 
-func NewNopCache[K comparable, V any]() *NopCache[K, V] {
-	return &NopCache[K, V]{}
+func newNopCache[K comparable, V any]() *nopcache[K, V] {
+	return &nopcache[K, V]{}
 }
-func (c *NopCache[K, V]) Get(_ K) (V, bool) {
+func (c *nopcache[K, V]) get(_ K) (V, bool) {
 	var value V
 	return value, false
 }
-func (c *NopCache[K, V]) Set(_ K, _ V) {}
-func (c *NopCache[K, V]) Delete(_ K)   {}
-func (c *NopCache[K, V]) Reset()       {}
+func (c *nopcache[K, V]) set(_ K, _ V) {}
+func (c *nopcache[K, V]) delete(_ K)   {}
+func (c *nopcache[K, V]) reset()       {}
