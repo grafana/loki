@@ -14,7 +14,7 @@ import (
 )
 
 func TestIngestLimits_ServeHTTP(t *testing.T) {
-	l := IngestLimits{
+	s := Service{
 		cfg: Config{
 			ActiveWindow: time.Minute,
 			RateWindow:   time.Minute,
@@ -52,7 +52,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 
 	// Set up a mux router for the test server otherwise mux.Vars() won't work.
 	r := mux.NewRouter()
-	r.Path("/{tenant}").Methods("GET").Handler(&l)
+	r.Path("/{tenant}").Methods("GET").Handler(&s)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 

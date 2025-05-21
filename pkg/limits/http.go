@@ -18,7 +18,7 @@ type httpTenantLimitsResponse struct {
 
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
-func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tenant := mux.Vars(r)["tenant"]
 	if tenant == "" {
 		http.Error(w, "invalid tenant", http.StatusBadRequest)

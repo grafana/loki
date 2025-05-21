@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestIngestLimits_ExceedsLimits(t *testing.T) {
+func TestService_ExceedsLimits(t *testing.T) {
 	clock := quartz.NewMock(t)
 	now := clock.Now()
 
@@ -307,7 +307,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 
 			kafkaClient := mockKafka{}
 
-			s := &IngestLimits{
+			s := &Service{
 				cfg: Config{
 					NumPartitions: tt.numPartitions,
 					ActiveWindow:  tt.ActiveWindow,
@@ -396,7 +396,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 		locks: make([]stripeLock, 1),
 	}
 
-	s := &IngestLimits{
+	s := &Service{
 		cfg: Config{
 			NumPartitions: 1,
 			ActiveWindow:  time.Hour,
@@ -454,7 +454,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	require.Equal(t, 50, len(kafkaClient.produced))
 }
 
-func TestNewIngestLimits(t *testing.T) {
+func TestNew(t *testing.T) {
 	cfg := Config{
 		KafkaConfig: kafka.Config{
 			Topic:        "test-topic",
@@ -482,7 +482,7 @@ func TestNewIngestLimits(t *testing.T) {
 		IngestionRate:    1000,
 	}
 
-	s, err := NewIngestLimits(cfg, limits, log.NewNopLogger(), prometheus.NewRegistry())
+	s, err := New(cfg, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	require.NotNil(t, s.clientReader)
