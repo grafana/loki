@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-04-28T20:20:35Z"
+    createdAt: "2025-05-21T09:43:30Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1038,12 +1038,23 @@ spec:
           DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 
 
-          Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-          some stream labels to disappear from the index, potentially making queries more expensive and less performant.
+          Enabling this setting removes the "recommended attributes" from the stream labels. This will make
+          queries that we using these attributes more expensive and less performant.
 
 
-          Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-          added to the configuration, even if this field is set to true.
+          The recommended attributes are:
+           - k8s.container.name
+           - k8s.cronjob.name
+           - k8s.daemonset.name
+           - k8s.deployment.name
+           - k8s.job.name
+           - k8s.node.name
+           - k8s.pod.name
+           - k8s.statefulset.name
+           - kubernetes.container_name
+           - kubernetes.host
+           - kubernetes.pod_name
+           - service.name
 
 
           This option is supposed to be combined with a custom attribute configuration listing the stream labels that
