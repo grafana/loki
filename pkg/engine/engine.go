@@ -142,7 +142,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 func collectResult(_ context.Context, pipeline executor.Pipeline, result *resultBuilder) error {
 	for {
 		if err := pipeline.Read(); err != nil {
-			if errors.Is(err, executor.EOF) {
+			if errors.Is(err, executor.ErrEOF) {
 				break
 			}
 			return err

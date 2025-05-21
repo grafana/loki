@@ -613,7 +613,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	b.buf = b.UnsortedLabels(b.buf)
 	// sort.Sort(b.buf)
 	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
-	hash := b.hasher.Hash(b.buf)
+	hash := b.Hash(b.buf)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -674,7 +674,7 @@ func labelsContain(labels labels.Labels, name string) bool {
 }
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf labels.Labels) LabelsResult {
-	hash := b.hasher.Hash(buf)
+	hash := b.Hash(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}

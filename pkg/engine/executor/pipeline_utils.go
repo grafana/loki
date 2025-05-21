@@ -22,7 +22,7 @@ func NewBufferedPipeline(records ...arrow.Record) *BufferedPipeline {
 	return &BufferedPipeline{
 		records: records,
 		current: -1, // Start before the first record
-		state:   failureState(EOF),
+		state:   failureState(ErrEOF),
 	}
 }
 
@@ -36,8 +36,8 @@ func (p *BufferedPipeline) Read() error {
 
 	p.current++
 	if p.current >= len(p.records) {
-		p.state = failureState(EOF)
-		return EOF
+		p.state = failureState(ErrEOF)
+		return ErrEOF
 	}
 
 	p.state = successState(p.records[p.current])

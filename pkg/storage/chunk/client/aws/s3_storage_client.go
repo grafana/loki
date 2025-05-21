@@ -292,7 +292,7 @@ func buckets(cfg S3Config) ([]string, error) {
 	// bucketnames
 	var bucketNames []string
 	if cfg.S3.URL != nil {
-		bucketNames = []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
+		bucketNames = []string{strings.TrimPrefix(cfg.S3.Path, "/")}
 	}
 
 	if cfg.BucketNames != "" {

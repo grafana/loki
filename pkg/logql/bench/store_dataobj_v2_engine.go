@@ -80,7 +80,7 @@ func (q *dataObjV2EngineQuerier) SelectLogs(ctx context.Context, params logql.Se
 	// Construct logql.Params from logql.SelectLogParams
 	// The logql.SelectLogParams.Query is the full LogQL query string.
 	logqlParams, err := logql.NewLiteralParams(
-		params.QueryRequest.Plan.String(), // Assuming this is the correct way to get the full query string
+		params.Plan.String(), // Assuming this is the correct way to get the full query string
 		params.Start,
 		params.End,
 		0,

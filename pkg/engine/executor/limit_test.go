@@ -18,7 +18,7 @@ func TestExecuteLimit(t *testing.T) {
 	t.Run("with no inputs", func(t *testing.T) {
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
 		err := pipeline.Read()
-		require.Equal(t, EOF, err)
+		require.Equal(t, ErrEOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestExecuteLimit(t *testing.T) {
 
 		// Next read should return EOF
 		err = pipeline.Read()
-		require.Equal(t, EOF, err)
+		require.Equal(t, ErrEOF, err)
 	})
 
 	// Test with desired rows split across 2 batches
@@ -153,7 +153,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 
 	// Next read should be EOF
 	err = limit.Read()
-	require.Equal(t, EOF, err)
+	require.Equal(t, ErrEOF, err)
 }
 
 func TestLimitPipeline_MultipleBatches(t *testing.T) {

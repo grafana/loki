@@ -437,13 +437,13 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 							// write flushed chunk to index
 							approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 							meta := index.ChunkMeta{
-								Checksum: chk.ChunkRef.Checksum,
-								MinTime:  int64(chk.ChunkRef.From),
-								MaxTime:  int64(chk.ChunkRef.Through),
+								Checksum: chk.Checksum,
+								MinTime:  int64(chk.From),
+								MaxTime:  int64(chk.Through),
 								KB:       uint32(approxKB),
 								Entries:  uint32(chk.Data.Entries()),
 							}
-							err = indexer.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, index.ChunkMetas{meta})
+							err = indexer.Append(chk.UserID, chk.Metric, chk.Fingerprint, index.ChunkMetas{meta})
 							if err != nil {
 								level.Error(logger).Log("msg", "failed to append chunk to index", "err", err)
 								return res, errors.Wrap(err, "appending chunk to index")

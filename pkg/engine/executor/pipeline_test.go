@@ -99,9 +99,9 @@ func TestCSVPipeline(t *testing.T) {
 
 		// Third read should return EOF
 		err = pipeline.Read()
-		require.Equal(t, EOF, err)
+		require.Equal(t, ErrEOF, err)
 
 		_, err = pipeline.Value()
-		require.Equal(t, EOF, err)
+		require.Equal(t, ErrEOF, err)
 	})
 }

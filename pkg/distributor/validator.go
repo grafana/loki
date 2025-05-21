@@ -236,7 +236,7 @@ func (v Validator) shouldBlockTenant(ctx validationContext, now time.Time) (bool
 // It returns true if ingestion should be blocked, along with the block until time and status code.
 func (v Validator) shouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
 	// Check if this policy is blocked in tenant configs
-	blockUntil := v.Limits.BlockIngestionPolicyUntil(ctx.userID, policy)
+	blockUntil := v.BlockIngestionPolicyUntil(ctx.userID, policy)
 	if blockUntil.IsZero() {
 		return false, time.Time{}, 0
 	}

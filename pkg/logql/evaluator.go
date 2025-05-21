@@ -176,7 +176,7 @@ func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
-	if q.Start() == q.End() && q.Step() == 0 {
+	if q.Start().Equal(q.End()) && q.Step() == 0 {
 		return InstantType
 	}
 	return RangeType
@@ -485,27 +485,28 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Params > inputVecLen {
 				resultSize = inputVecLen
 			}
-			if e.expr.Operation == syntax.OpTypeStdvar || e.expr.Operation == syntax.OpTypeStddev {
+			switch e.expr.Operation {
+			case syntax.OpTypeStdvar, syntax.OpTypeStddev:
 				result[groupingKey].value = 0.0
-			} else if e.expr.Operation == syntax.OpTypeTopK {
+			case syntax.OpTypeTopK:
 				result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeBottomK {
+			case syntax.OpTypeBottomK:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSortDesc {
+			case syntax.OpTypeSortDesc:
 				result[groupingKey].heap = make(vectorByValueHeap, 0)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSort {
+			case syntax.OpTypeSort:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,

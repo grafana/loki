@@ -287,12 +287,12 @@ func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
 		reloadFailTotal.Inc()
-		return fmt.Errorf("Error new Config: %w", err)
+		return fmt.Errorf("error new Config: %w", err)
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {
 		reloadFailTotal.Inc()
-		level.Error(p.logger).Log("msg", "Error reloading config", "err", err)
+		level.Error(p.logger).Log("msg", "error reloading config", "err", err)
 		return err
 	}
 	reloadSuccessTotal.Inc()

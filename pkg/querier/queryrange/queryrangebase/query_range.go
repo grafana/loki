@@ -18,7 +18,6 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
@@ -85,10 +84,10 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 // LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
 func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("query", q.GetQuery()),
-		otlog.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
-		otlog.Int64("step (ms)", q.GetStep()),
+		log.String("query", q.GetQuery()),
+		log.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
+		log.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
+		log.Int64("step (ms)", q.GetStep()),
 	)
 }
 
@@ -213,7 +212,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		log.Error(err)
 		return nil, err
 	}
-	sp.LogKV(otlog.Int("bytes", len(buf)))
+	sp.LogKV(log.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {
@@ -259,14 +258,14 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res 
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	sp.LogFields(otlog.Int("series", len(a.Data.Result)))
+	sp.LogFields(log.Int("series", len(a.Data.Result)))
 
 	b, err := json.Marshal(a)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)
 	}
 
-	sp.LogFields(otlog.Int("bytes", len(b)))
+	sp.LogFields(log.Int("bytes", len(b)))
 
 	resp := http.Response{
 		Header: http.Header{

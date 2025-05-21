@@ -2632,7 +2632,7 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 }
 
 func Benchmark_MergeResponses(b *testing.B) {
-	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	var responses = make([]queryrangebase.Response, 100)
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",

@@ -244,7 +244,7 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 		}
 
 		// ToDo(Sandeep) possible optimization: Keep the chunk fetcher reference handy after first call since it is expected to stay the same.
-		fetcher := a.Store.GetChunkFetcher(chk.Through)
+		fetcher := a.GetChunkFetcher(chk.Through)
 		if fetcher == nil {
 			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", a.scfg.ExternalKey(chk.ChunkRef))
 		}

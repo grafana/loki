@@ -234,7 +234,7 @@ func NewAndFilters(filters []Filterer) Filterer {
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if !(filter == nil || isTrueFilter(WrapFilterer(filter))) {
+		if filter != nil && !isTrueFilter(WrapFilterer(filter)) {
 			switch c := filter.(type) {
 			case *containsFilter:
 				// Start accumulating contains filters.

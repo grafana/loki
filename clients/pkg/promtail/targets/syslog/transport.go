@@ -132,7 +132,7 @@ func (c *idleTimeoutConn) Read(b []byte) (int, error) {
 }
 
 func (c *idleTimeoutConn) setDeadline() {
-	_ = c.Conn.SetDeadline(time.Now().Add(c.idleTimeout))
+	_ = c.SetDeadline(time.Now().Add(c.idleTimeout))
 }
 
 type ConnPipe struct {
@@ -287,7 +287,7 @@ func (t *TCPTransport) handleConnection(cn net.Conn) {
 
 // Close implements SyslogTransport
 func (t *TCPTransport) Close() error {
-	t.baseTransport.close()
+	t.close()
 	return t.listener.Close()
 }
 
@@ -333,7 +333,7 @@ func (t *UDPTransport) Run() error {
 
 // Close implements SyslogTransport
 func (t *UDPTransport) Close() error {
-	t.baseTransport.close()
+	t.close()
 	return t.udpConn.Close()
 }
 

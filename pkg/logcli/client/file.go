@@ -263,7 +263,7 @@ func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (i
 }
 
 func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
+	return nil, fmt.Errorf("metrics Query: %w", ErrNotSupported)
 }
 
 func newFileIterator(

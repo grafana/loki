@@ -347,7 +347,7 @@ func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io
 }
 
 func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
-	blobID = strings.Replace(blobID, ":", b.cfg.ChunkDelimiter, -1)
+	blobID = strings.ReplaceAll(blobID, ":", b.cfg.ChunkDelimiter)
 
 	// generate url for new chunk blob
 	u, err := url.Parse(b.fmtBlobURL(blobID))

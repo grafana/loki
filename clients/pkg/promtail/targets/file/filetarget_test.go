@@ -210,7 +210,7 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 
 	initialReader, _ := target.getReader(logFile)
 	initailTailer := initialReader.(*tailer)
-	_ = initailTailer.tail.Tomb.Killf("test: network file systems can be unreliable")
+	_ = initailTailer.tail.Killf("test: network file systems can be unreliable")
 
 	// Tailer will be replaced by a new one
 	requireEventually(t, func() bool {

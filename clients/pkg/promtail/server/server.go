@@ -89,7 +89,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	registerMetrics := cfg.RegisterInstrumentation && !cfg.ProfilingEnabled
 	cfg.RegisterInstrumentation = cfg.ProfilingEnabled
 
-	cfg.Config.Log = log
+	cfg.Log = log
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 		}))
 	}
 
-	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
+	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), http.StatusSeeOther))
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.StripPrefix(externalURL.Path, http.FileServer(ui.Assets)))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))

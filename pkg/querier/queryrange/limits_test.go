@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -448,7 +447,7 @@ type variantMockHandler struct {
 	response *LokiPromResponse
 }
 
-func (m variantMockHandler) Do(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+func (m variantMockHandler) Do(_ context.Context, _ base.Request) (base.Response, error) {
 	// For testing, we'll return the predefined responses
 	// This is just a mock - in a real case, the handler would return
 	// different responses based on the request
@@ -460,17 +459,17 @@ func (m variantMockHandler) Do(_ context.Context, _ queryrangebase.Request) (que
 }
 
 func createPromResponse(series [][]seriesLabels) *LokiPromResponse {
-	result := make([]queryrangebase.SampleStream, len(series))
+	result := make([]base.SampleStream, len(series))
 	for i, labels := range series {
-		result[i] = queryrangebase.SampleStream{
+		result[i] = base.SampleStream{
 			Labels:  labels,
 			Samples: []logproto.LegacySample{{Value: 1.0}},
 		}
 	}
 
 	return &LokiPromResponse{
-		Response: &queryrangebase.PrometheusResponse{
-			Data: queryrangebase.PrometheusData{
+		Response: &base.PrometheusResponse{
+			Data: base.PrometheusData{
 				ResultType: "matrix",
 				Result:     result,
 			},

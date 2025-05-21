@@ -347,18 +347,18 @@ func Test_FunctionParallelism(t *testing.T) {
 			  )`
 
 	mkQuery := func(tpl, fn string, testMatrix bool, fArgs []string) (result string) {
-		result = strings.Replace(tpl, "<fn>", fn, -1)
+		result = strings.ReplaceAll(tpl, "<fn>", fn)
 
 		if testMatrix {
 			// turn selectors into ranges
-			result = strings.Replace(result, "}<fArgs>", "}[1m]<fArgs>", -1)
+			result = strings.ReplaceAll(result, "}<fArgs>", "}[1m]<fArgs>")
 		}
 
 		if len(fArgs) > 0 {
 			args := "," + strings.Join(fArgs, ",")
-			result = strings.Replace(result, "<fArgs>", args, -1)
+			result = strings.ReplaceAll(result, "<fArgs>", args)
 		} else {
-			result = strings.Replace(result, "<fArgs>", "", -1)
+			result = strings.ReplaceAll(result, "<fArgs>", "")
 		}
 
 		return result

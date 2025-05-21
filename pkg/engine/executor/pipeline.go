@@ -36,8 +36,8 @@ type Pipeline interface {
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
 
-	EOF       = errors.New("pipeline exhausted") // nolint:revive
-	Exhausted = failureState(EOF)
+	ErrEOF    = errors.New("pipeline exhausted") // nolint:revive
+	Exhausted = failureState(ErrEOF)
 )
 
 type state struct {
@@ -91,7 +91,7 @@ func (p *GenericPipeline) Value() (arrow.Record, error) {
 // Read implements Pipeline.
 func (p *GenericPipeline) Read() error {
 	if p.read == nil {
-		return EOF
+		return ErrEOF
 	}
 	p.state = p.read(p.inputs)
 	return p.state.err
