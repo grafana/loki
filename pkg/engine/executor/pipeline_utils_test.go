@@ -58,25 +58,25 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 
 		// Check conditions on our batches:
 		switch {
-		case errors.Is(leftErr, EOF) && errors.Is(rightErr, EOF):
+		case errors.Is(leftErr, ErrEOF) && errors.Is(rightErr, ErrEOF):
 			// Both pipelines are finished; we can finish now.
 			return
 
-		case (errors.Is(leftErr, EOF) && rightErr == nil) || (errors.Is(rightErr, EOF) && leftErr == nil):
+		case (errors.Is(leftErr, ErrEOF) && rightErr == nil) || (errors.Is(rightErr, ErrEOF) && leftErr == nil):
 			// One pipeline finished before the other (and the other didn't fail), then
 			// there's an inequal number of rows.
 			require.Fail(t, "Pipelines have a different number of rows",
 				"left error: %v, right error: %v", leftErr, rightErr)
 
-		case leftErr != nil && rightErr != nil && !errors.Is(leftErr, EOF) && !errors.Is(rightErr, EOF):
+		case leftErr != nil && rightErr != nil && !errors.Is(leftErr, ErrEOF) && !errors.Is(rightErr, ErrEOF):
 			// Both pipelines failed with non-EOF errors.
 			require.Equal(t, leftErr, rightErr, "Pipelines failed with different errors")
 
-		case leftErr != nil && !errors.Is(leftErr, EOF):
+		case leftErr != nil && !errors.Is(leftErr, ErrEOF):
 			// Left pipeline failed with a non-EOF error.
 			require.Fail(t, "Left pipeline failed", "error: %v", leftErr)
 
-		case rightErr != nil && !errors.Is(rightErr, EOF):
+		case rightErr != nil && !errors.Is(rightErr, ErrEOF):
 			// Right pipeline failed with a non-EOF error.
 			require.Fail(t, "Right pipeline failed", "error: %v", rightErr)
 		}

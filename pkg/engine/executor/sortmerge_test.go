@@ -67,7 +67,7 @@ func TestSortMerge(t *testing.T) {
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
-			if err == EOF {
+			if err == ErrEOF {
 				break
 			}
 			if err != nil {
@@ -119,7 +119,7 @@ func TestSortMerge(t *testing.T) {
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
-			if err == EOF {
+			if err == ErrEOF {
 				break
 			}
 			if err != nil {

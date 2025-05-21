@@ -366,7 +366,7 @@ func (s *storageClientV1) query(ctx context.Context, query index.Query, callback
 		return true
 	})
 	if err != nil {
-		log.Error(err)
+		log.Error(err) //nolint:errcheck
 		return errors.WithStack(err)
 	}
 	return nil

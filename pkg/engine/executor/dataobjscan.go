@@ -217,7 +217,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	if err := g.Wait(); err != nil {
 		return nil, err
 	} else if !gotData.Load() {
-		return nil, EOF
+		return nil, ErrEOF
 	}
 
 	projections, err := s.effectiveProjections(&heap)

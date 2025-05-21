@@ -28,7 +28,7 @@ func TestExecutor_SortMerge(t *testing.T) {
 		c := &Context{}
 		pipeline := c.executeSortMerge(context.TODO(), &physical.SortMerge{}, nil)
 		err := pipeline.Read()
-		require.ErrorContains(t, err, EOF.Error())
+		require.ErrorContains(t, err, ErrEOF.Error())
 	})
 }
 
@@ -37,7 +37,7 @@ func TestExecutor_Limit(t *testing.T) {
 		c := &Context{}
 		pipeline := c.executeLimit(context.TODO(), &physical.Limit{}, nil)
 		err := pipeline.Read()
-		require.ErrorContains(t, err, EOF.Error())
+		require.ErrorContains(t, err, ErrEOF.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestExecutor_Filter(t *testing.T) {
 		c := &Context{}
 		pipeline := c.executeFilter(context.TODO(), &physical.Filter{}, nil)
 		err := pipeline.Read()
-		require.ErrorContains(t, err, EOF.Error())
+		require.ErrorContains(t, err, ErrEOF.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestExecutor_Projection(t *testing.T) {
 		c := &Context{}
 		pipeline := c.executeProjection(context.TODO(), &physical.Projection{}, nil)
 		err := pipeline.Read()
-		require.ErrorContains(t, err, EOF.Error())
+		require.ErrorContains(t, err, ErrEOF.Error())
 	})
 
 	t.Run("missing column expression results in error", func(t *testing.T) {
