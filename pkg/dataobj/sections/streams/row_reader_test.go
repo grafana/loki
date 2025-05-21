@@ -31,9 +31,9 @@ var streamsTestdata = []struct {
 
 func TestRowReader(t *testing.T) {
 	expect := []streams.Stream{
-		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, nil},
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, nil},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, nil},
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
 	}
 
 	dec := buildStreamsDecoder(t, 1) // Many pages
@@ -45,7 +45,7 @@ func TestRowReader(t *testing.T) {
 
 func TestRowReader_AddLabelMatcher(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, nil},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
 	}
 
 	dec := buildStreamsDecoder(t, 1) // Many pages
@@ -59,8 +59,8 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 
 func TestRowReader_AddLabelFilter(t *testing.T) {
 	expect := []streams.Stream{
-		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, nil},
-		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, nil},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
 	}
 
 	dec := buildStreamsDecoder(t, 1) // Many pages

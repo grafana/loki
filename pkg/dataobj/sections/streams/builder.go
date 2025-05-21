@@ -38,8 +38,6 @@ type Stream struct {
 
 	// Total number of log records in the stream.
 	Rows int
-
-	LbValueCaps []int // Capacities for each label value's byte array
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.

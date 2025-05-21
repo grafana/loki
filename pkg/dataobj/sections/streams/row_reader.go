@@ -22,8 +22,7 @@ type RowReader struct {
 
 	predicate RowPredicate
 
-	buf    []dataset.Row
-	stream Stream
+	buf []dataset.Row
 
 	reader     *dataset.Reader
 	columns    []dataset.Column
@@ -82,22 +81,9 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.columnDesc, r.buf[i], &r.stream); err != nil {
+		if err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
-
-		// Copy record data into pre-allocated output buffer
-		s[i].ID = r.stream.ID
-		s[i].MinTimestamp = r.stream.MinTimestamp
-		s[i].MaxTimestamp = r.stream.MaxTimestamp
-		s[i].UncompressedSize = r.stream.UncompressedSize
-		s[i].Labels = slicegrow.GrowToCap(s[i].Labels, len(r.stream.Labels))
-		s[i].Labels = s[i].Labels[:len(r.stream.Labels)]
-		for j := range r.stream.Labels {
-			s[i].Labels[j].Name = r.symbols.Get(r.stream.Labels[j].Name)
-			s[i].Labels[j].Value = r.symbols.Get(r.stream.Labels[j].Value)
-		}
-		s[i].Rows = r.stream.Rows
 	}
 
 	return n, nil
