@@ -108,7 +108,7 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 
 func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	for _, store := range c.stores {
-		store.Store.SetChunkFilterer(chunkFilter)
+		store.SetChunkFilterer(chunkFilter)
 	}
 }
 

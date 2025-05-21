@@ -51,7 +51,7 @@ func (f *PartFile) CreateTempFile() error {
 
 	fd, err := os.Create(tmpName)
 	if err != nil {
-		return fmt.Errorf("Failed to create part file: %s: %s", tmpName, err)
+		return fmt.Errorf("failed to create part file: %s: %s", tmpName, err)
 	}
 
 	f.fd = fd

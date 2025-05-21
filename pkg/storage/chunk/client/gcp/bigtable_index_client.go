@@ -259,7 +259,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index
 				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
 					query, ok := tq.queries[row.Key()]
 					if !ok {
-						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
+						processingErr = errors.WithStack(fmt.Errorf("got row for unknown chunk: %s", row.Key()))
 						return false
 					}
 

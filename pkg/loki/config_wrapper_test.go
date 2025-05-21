@@ -768,10 +768,10 @@ storage_config:
 
 			config, defaults := testContext(explicitStorageConfig, nil)
 
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
 
 			// should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
@@ -843,20 +843,20 @@ storage_config:
 			config, _ := testContext(namedStoresConfig, nil)
 
 			// should be set by common config
-			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
 
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Endpoint)
-			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Region)
-			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.AccessKeyID)
-			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].Endpoint)
+			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].Region)
+			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].AccessKeyID)
+			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].SecretAccessKey.String())
 
-			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Endpoint)
-			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Region)
-			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.AccessKeyID)
-			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].Endpoint)
+			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].Region)
+			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].AccessKeyID)
+			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].SecretAccessKey.String())
 		})
 
 		t.Run("named storage config (thanos) provided via config file is preserved", func(t *testing.T) {

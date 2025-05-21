@@ -469,7 +469,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		logQueryExecution(ctx, logger,
 			"type", "labels",
 			"label", op.Name,
-			"length", op.LabelRequest.End.Sub(*op.LabelRequest.Start),
+			"length", op.End.Sub(*op.Start),
 			"query", op.Query,
 		)
 		return r.labels.Do(ctx, req)
@@ -644,7 +644,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 					schema.Configs,
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-					metrics.MiddlewareMapperMetrics.shardMapper,
+					metrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
@@ -696,7 +696,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logg
 					schema.Configs,
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-					metrics.MiddlewareMapperMetrics.shardMapper,
+					metrics.shardMapper,
 					limits,
 					// Too many shards on limited queries results in slowing down this type of query
 					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
@@ -795,7 +795,7 @@ func NewSeriesTripperware(
 				log,
 				schema.Configs,
 				metrics.InstrumentMiddlewareMetrics,
-				metrics.MiddlewareMapperMetrics.shardMapper,
+				metrics.shardMapper,
 				limits,
 				merger,
 			),
@@ -961,7 +961,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 					schema.Configs,
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-					metrics.MiddlewareMapperMetrics.shardMapper,
+					metrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
@@ -1058,7 +1058,7 @@ func NewInstantMetricTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.MiddlewareMapperMetrics.rangeMapper),
+			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}
 
 		if cfg.CacheInstantMetricResults {
@@ -1076,7 +1076,7 @@ func NewInstantMetricTripperware(
 					schema.Configs,
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
-					metrics.MiddlewareMapperMetrics.shardMapper,
+					metrics.shardMapper,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,

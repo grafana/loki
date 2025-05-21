@@ -813,10 +813,8 @@ func TestChunkStats(t *testing.T) {
 	}
 	inserted := 0
 	// fill the chunk with known data size.
-	for {
-		if !c.SpaceFor(entry) {
-			break
-		}
+	for c.SpaceFor(entry) {
+
 		if _, err := c.Append(entry); err != nil {
 			t.Fatal(err)
 		}

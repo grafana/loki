@@ -670,7 +670,7 @@ func WeightedParallelism(
 		dur := through.Sub(from)
 
 		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
-			dur = configs[i+1].From.Time.Sub(from)
+			dur = configs[i+1].From.Sub(from)
 		}
 		if ty := configs[i].IndexType; ty == types.TSDBType {
 			tsdbDur += dur

@@ -312,7 +312,7 @@ func (c *Producer) updateMetricsLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			c.bufferedProduceBytes.Observe(float64(c.Client.BufferedProduceBytes()))
+			c.bufferedProduceBytes.Observe(float64(c.BufferedProduceBytes()))
 
 		case <-c.closed:
 			return
@@ -371,7 +371,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
 		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
 		// Produce() should never block for us in practice.
-		c.Client.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
 	}
 
 	// Wait for a response or until the context has done.

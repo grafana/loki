@@ -111,7 +111,7 @@ func (pq *PriorityQueue) Dequeue() Op {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
-	for len(pq.queue) == 0 && !(pq.closing || pq.closed) {
+	for len(pq.queue) == 0 && (!pq.closing && !pq.closed) {
 		pq.cond.Wait()
 	}
 

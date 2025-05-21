@@ -1452,9 +1452,10 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 		// storage_config.use_thanos_objstore is true so we're using
 		// ruler_storage. Is it one of the local backend spellings
 		// 'filesystem' or 'local'?
-		if t.Cfg.RulerStorage.Backend == local.Name {
+		switch t.Cfg.RulerStorage.Backend {
+		case local.Name:
 			localStoreDir = t.Cfg.RulerStorage.Local.Directory
-		} else if t.Cfg.RulerStorage.Backend == bucket.Filesystem {
+		case bucket.Filesystem:
 			localStoreDir = t.Cfg.RulerStorage.Filesystem.Directory
 		}
 	} else if t.Cfg.Ruler.StoreConfig.Type == "local" {
@@ -1755,7 +1756,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(t.Cfg.SchemaConfig.Configs)-1 {
-			periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: t.Cfg.SchemaConfig.Configs[i+1].From.Add(-time.Millisecond)}
 		}
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 

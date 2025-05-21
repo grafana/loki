@@ -212,9 +212,9 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 	collapsed := Entry{
 		Extracted: extracted,
 		Entry: api.Entry{
-			Labels: s.startLineEntry.Entry.Labels.Clone(),
+			Labels: s.startLineEntry.Labels.Clone(),
 			Entry: logproto.Entry{
-				Timestamp: s.startLineEntry.Entry.Entry.Timestamp,
+				Timestamp: s.startLineEntry.Timestamp,
 				Line:      s.buffer.String(),
 			},
 		},

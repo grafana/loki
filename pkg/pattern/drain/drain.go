@@ -436,9 +436,10 @@ func (d *Drain) getSeqDistance(clusterTokens, tokens []string, includeParams boo
 		if len(token1) > 0 && token1[0] == 0 && token1 != token2 {
 			return 0, -1
 		}
-		if token1 == d.config.ParamString {
+		switch token1 {
+		case d.config.ParamString:
 			paramCount++
-		} else if token1 == token2 {
+		case token2:
 			simTokens++
 		}
 	}

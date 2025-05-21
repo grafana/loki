@@ -41,13 +41,13 @@ server:
 	t.Run("parses defaults", func(t *testing.T) {
 		data := testContext(nil, "", nil)
 
-		assert.Equal(t, 80, data.Server.Port)
-		assert.Equal(t, 60*time.Second, data.Server.Timeout)
+		assert.Equal(t, 80, data.Port)
+		assert.Equal(t, 60*time.Second, data.Timeout)
 	})
 
 	t.Run("parses config from config.file", func(t *testing.T) {
 		data := testContext(nil, defaultYamlConfig, nil)
-		assert.Equal(t, 8080, data.Server.Port)
+		assert.Equal(t, 8080, data.Port)
 	})
 
 	t.Run("calls ApplyDynamicConfig on provided DynamicCloneable", func(t *testing.T) {
@@ -73,26 +73,26 @@ server:
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, nil)
 		assert.NotNil(t, data)
 		assert.NotNil(t, configFromFile)
-		assert.Equal(t, 8080, configFromFile.Server.Port)
+		assert.Equal(t, 8080, configFromFile.Port)
 	})
 
 	t.Run("config from file take precedence over config applied in ApplyDynamicConfig", func(t *testing.T) {
 		mockApplyDynamicConfig := func(dst Cloneable) error {
 			config, ok := dst.(*DynamicConfig)
 			require.True(t, ok)
-			config.Server.Port = 9090
+			config.Port = 9090
 			return nil
 		}
 
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, nil)
-		assert.Equal(t, 8080, data.Server.Port)
+		assert.Equal(t, 8080, data.Port)
 	})
 
 	t.Run("config from command line takes precedence over config applied in ApplyDynamicConfig and in file", func(t *testing.T) {
 		mockApplyDynamicConfig := func(dst Cloneable) error {
 			config, ok := dst.(*DynamicConfig)
 			require.True(t, ok)
-			config.Server.Port = 9090
+			config.Port = 9090
 			return nil
 		}
 
@@ -101,7 +101,7 @@ server:
 		}
 
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, args)
-		assert.Equal(t, 7070, data.Server.Port)
+		assert.Equal(t, 7070, data.Port)
 	})
 }
 
@@ -135,7 +135,7 @@ func (d *DynamicConfig) ApplyDynamicConfig() Source {
 }
 
 func (d *DynamicConfig) RegisterFlags(fs *flag.FlagSet) {
-	fs.IntVar(&d.Server.Port, "server.port", 80, "")
-	fs.DurationVar(&d.Server.Timeout, "server.timeout", 60*time.Second, "")
+	fs.IntVar(&d.Port, "server.port", 80, "")
+	fs.DurationVar(&d.Timeout, "server.timeout", 60*time.Second, "")
 	fs.StringVar(&d.ConfigFile, "config.file", "", "yaml file to load")
 }

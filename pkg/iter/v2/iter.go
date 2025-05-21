@@ -200,7 +200,7 @@ type FilterIter[T any] struct {
 
 func (i *FilterIter[T]) Next() bool {
 	hasNext := i.Iterator.Next()
-	for hasNext && !i.match(i.Iterator.At()) {
+	for hasNext && !i.match(i.At()) {
 		hasNext = i.Iterator.Next()
 	}
 	return hasNext

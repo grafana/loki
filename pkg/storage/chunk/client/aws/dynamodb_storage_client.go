@@ -513,17 +513,17 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 		for _, item := range items {
 			key, ok := item[hashKey]
 			if !ok || key == nil || key.S == nil {
-				return nil, fmt.Errorf("Got response from DynamoDB with no hash key: %+v", item)
+				return nil, fmt.Errorf("got response from DynamoDB with no hash key: %+v", item)
 			}
 
 			chunk, ok := chunksByKey[*key.S]
 			if !ok {
-				return nil, fmt.Errorf("Got response from DynamoDB with chunk I didn't ask for: %s", *key.S)
+				return nil, fmt.Errorf("got response from DynamoDB with chunk I didn't ask for: %s", *key.S)
 			}
 
 			buf, ok := item[valueKey]
 			if !ok || buf == nil || buf.B == nil {
-				return nil, fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
+				return nil, fmt.Errorf("got response from DynamoDB with no value: %+v", item)
 			}
 
 			if err := chunk.Decode(decodeContext, buf.B); err != nil {

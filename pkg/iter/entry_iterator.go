@@ -132,14 +132,14 @@ func (i *mergeEntryIterator) fillBuffer() {
 		})
 		if len(i.buffer) > 1 &&
 			(i.buffer[0].streamHash != next.StreamHash() ||
-				!i.buffer[0].Entry.Timestamp.Equal(entry.Timestamp)) {
+				!i.buffer[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 		previous := i.buffer[:len(i.buffer)-1]
 
 		var dupe bool
 		for _, t := range previous {
-			if t.Entry.Line == entry.Line {
+			if t.Line == entry.Line {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break
@@ -484,7 +484,7 @@ func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator
 func (i *timeRangedIterator) Next() bool {
 	ok := i.EntryIterator.Next()
 	if !ok {
-		i.EntryIterator.Close()
+		i.Close()
 		return ok
 	}
 	ts := i.EntryIterator.At().Timestamp
@@ -504,7 +504,7 @@ func (i *timeRangedIterator) Next() bool {
 		}
 	}
 	if !ok {
-		i.EntryIterator.Close()
+		i.Close()
 	}
 	return ok
 }

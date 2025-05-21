@@ -126,7 +126,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
 					chunk, ok := chunks[row.Key()]
 					if !ok {
-						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
+						processingErr = errors.WithStack(fmt.Errorf("got row for unknown chunk: %s", row.Key()))
 						return false
 					}
 
@@ -146,7 +146,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 				} else if err != nil {
 					errs <- errors.WithStack(err)
 				} else if receivedChunks < len(page) {
-					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), receivedChunks))
+					errs <- errors.WithStack(fmt.Errorf("asked for %d chunks for Bigtable, received %d", len(page), receivedChunks))
 				}
 			}(page)
 		}

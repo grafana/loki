@@ -103,11 +103,11 @@ func main() {
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
-	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &log.Level{}) {
+	if reflect.DeepEqual(&config.ServerConfig.LogLevel, &log.Level{}) {
 		fmt.Println("Invalid log level")
 		exit(1)
 	}
-	serverCfg := &config.Config.ServerConfig.Config
+	serverCfg := &config.ServerConfig.Config
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Use Stderr instead of files for the klog.
@@ -119,7 +119,7 @@ func main() {
 
 	// Set the global debug variable in the stages package which is used to conditionally log
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
-	if config.Config.ServerConfig.Config.LogLevel.String() == "debug" {
+	if config.ServerConfig.LogLevel.String() == "debug" {
 		stages.Debug = true
 	}
 

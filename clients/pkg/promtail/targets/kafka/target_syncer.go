@@ -358,7 +358,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 
 func validateConfig(cfg *scrapeconfig.Config) error {
 	if cfg.KafkaConfig == nil {
-		return errors.New("Kafka configuration is empty")
+		return errors.New("kafka configuration is empty")
 	}
 	if cfg.KafkaConfig.Version == "" {
 		cfg.KafkaConfig.Version = "2.1.1"

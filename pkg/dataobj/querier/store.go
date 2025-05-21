@@ -578,7 +578,7 @@ func fetchMetadatas(ctx context.Context, objects []object) ([]dataobj.Metadata, 
 	for i, obj := range objects {
 		g.Go(func() error {
 			var err error
-			metadatas[i], err = obj.Object.Metadata(ctx)
+			metadatas[i], err = obj.Metadata(ctx)
 			return err
 		})
 	}

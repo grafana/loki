@@ -519,14 +519,15 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		}
 
 	case types.ColumnTypeBuiltin.String():
-		if field.Name == types.ColumnNameBuiltinTimestamp {
+		switch field.Name {
+		case types.ColumnNameBuiltinTimestamp:
 			ts, _ := arrow.TimestampFromTime(record.Timestamp, arrow.Nanosecond)
 			builder.(*array.TimestampBuilder).Append(ts)
-		} else if field.Name == types.ColumnNameBuiltinMessage {
+		case types.ColumnNameBuiltinMessage:
 			// Use the inner BinaryBuilder to avoid converting record.Line to a
 			// string and back.
 			builder.(*array.StringBuilder).BinaryBuilder.Append(record.Line)
-		} else {
+		default:
 			panic(fmt.Sprintf("unsupported builtin column %s", field.Name))
 		}
 

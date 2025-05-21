@@ -306,7 +306,7 @@ func TestDifferentEscapingMethods(t *testing.T) {
 	t.Logf("go json.Unmarshal result: %#v", goResult)
 
 	// Test the strings.Replace approach
-	replaced := strings.Replace(string(escapedBytes), `\n`, "\n", -1)
+	replaced := strings.ReplaceAll(string(escapedBytes), `\n`, "\n")
 	t.Logf("strings.Replace result: %#v", replaced)
 
 	// Compare the results

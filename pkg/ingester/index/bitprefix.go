@@ -25,7 +25,7 @@ type BitPrefixInvertedIndex struct {
 
 func ValidateBitPrefixShardFactor(factor uint32) error {
 	if requiredBits := index.NewShard(0, factor).RequiredBits(); 1<<requiredBits != factor {
-		return fmt.Errorf("Incompatible inverted index shard factor on ingester: It must be a power of two, got %d", factor)
+		return fmt.Errorf("incompatible inverted index shard factor on ingester: It must be a power of two, got %d", factor)
 	}
 	return nil
 }

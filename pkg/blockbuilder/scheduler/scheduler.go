@@ -190,15 +190,15 @@ func (s *BlockScheduler) publishLagLoop(ctx context.Context) {
 func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
 	logger := log.With(
 		s.logger,
-		"job", job.Job.ID(),
-		"partition", job.Job.Partition(),
+		"job", job.ID(),
+		"partition", job.Partition(),
 		"num_offsets", job.Offsets().Max-job.Offsets().Min,
 	)
 
-	status, exists := s.queue.Exists(job.Job.ID())
+	status, exists := s.queue.Exists(job.ID())
 	if !exists {
 		// New job, enqueue it
-		_, _, err := s.queue.TransitionAny(job.Job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+		_, _, err := s.queue.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
 			return job, nil
 		})
 		if err != nil {
@@ -217,7 +217,7 @@ func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
 
 	case types.JobStatusPending:
 		// Update priority of pending job
-		if updated := s.queue.UpdatePriority(job.Job.ID(), job.Priority); !updated {
+		if updated := s.queue.UpdatePriority(job.ID(), job.Priority); !updated {
 			// Job is no longer pending, skip it for this iteration
 			level.Debug(logger).Log("msg", "job no longer pending, skipping priority update")
 			return nil
@@ -226,7 +226,7 @@ func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
 
 	case types.JobStatusFailed, types.JobStatusExpired:
 		// Re-enqueue failed or expired jobs
-		_, _, err := s.queue.TransitionAny(job.Job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+		_, _, err := s.queue.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
 			return job, nil
 		})
 		if err != nil {
@@ -291,10 +291,10 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 
 			// find first job for this partition
 			nextJob := sort.Search(len(jobs), func(i int) bool {
-				return jobs[i].Job.Partition() >= job.Partition()
+				return jobs[i].Partition() >= job.Partition()
 			})
 
-			if nextJob < len(jobs) && jobs[nextJob].Job.Partition() == job.Partition() {
+			if nextJob < len(jobs) && jobs[nextJob].Partition() == job.Partition() {
 				if err := s.handlePlannedJob(jobs[nextJob]); err != nil {
 					level.Error(logger).Log("msg", "failed to handle subsequent job", "err", err)
 				}

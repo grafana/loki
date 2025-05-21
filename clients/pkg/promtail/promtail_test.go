@@ -124,7 +124,7 @@ func TestPromtail(t *testing.T) {
 
 	svr := p.server.(*pserver.PromtailServer)
 
-	httpListenAddr := svr.Server.HTTPListenAddr()
+	httpListenAddr := svr.HTTPListenAddr()
 
 	expectedCounts := map[string]int{}
 
@@ -750,7 +750,7 @@ func Test_Reload(t *testing.T) {
 
 	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
-	result, err := reload(t, svr.Server.HTTPListenAddr())
+	result, err := reload(t, svr.HTTPListenAddr())
 	require.NoError(t, err)
 	expectedReloadResult := ""
 	require.Equal(t, expectedReloadResult, result)
@@ -815,7 +815,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
 
 	svr := promtailServer.server.(*pserver.PromtailServer)
-	httpListenAddr := svr.Server.HTTPListenAddr()
+	httpListenAddr := svr.HTTPListenAddr()
 	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
 	result, err := reload(t, httpListenAddr)

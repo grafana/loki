@@ -110,7 +110,7 @@ func (c *Config) Setup(l log.Logger) {
 	// yaml is doing so explicitly to make a key specific to a client.
 	if len(c.ClientConfig.ExternalLabels.LabelSet) > 0 {
 		for i := range c.ClientConfigs {
-			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
+			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
 }

@@ -87,7 +87,7 @@ func main() {
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(lokiCfg.SchemaConfig.Configs)-1 {
-			periodEndTime = config.DayTime{Time: lokiCfg.SchemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: lokiCfg.SchemaConfig.Configs[i+1].From.Add(-time.Millisecond)}
 		}
 
 		tableRange := cfg.GetIndexTableNumberRange(periodEndTime)

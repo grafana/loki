@@ -53,7 +53,7 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		reg:               reg,
 		bufPool: &sync.Pool{
 			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 0, cfg.BuilderConfig.TargetObjectSize))
+				return bytes.NewBuffer(make([]byte, 0, cfg.TargetObjectSize))
 			},
 		},
 	}

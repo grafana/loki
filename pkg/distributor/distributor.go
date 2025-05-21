@@ -493,7 +493,7 @@ func (p *pushTracker) doneWithResult(err error) {
 }
 
 func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string, start time.Time) {
-	latency := d.validator.Limits.SimulatedPushLatency(tenantID)
+	latency := d.validator.SimulatedPushLatency(tenantID)
 	if latency > 0 {
 		// All requests must wait at least the simulated latency. However,
 		// we want to avoid adding additional latency on top of slow requests
@@ -546,7 +546,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
-	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
 		if shardStreamsCfg.Enabled {
 			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
@@ -688,7 +688,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					// Traditional logic for Loki is that 2 lines with the same timestamp and
 					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp == prevTs || entry.Timestamp == stream.Entries[n-1].Timestamp) {
+					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp.Equal(prevTs) || entry.Timestamp.Equal(stream.Entries[n-1].Timestamp)) {
 						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
 					} else {
 						prevTs = entry.Timestamp
@@ -856,8 +856,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
 func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, policy string) (bool, []string) {
-	perPolicyEnforcedLabels := d.validator.Limits.PolicyEnforcedLabels(tenantID, policy)
-	tenantEnforcedLabels := d.validator.Limits.EnforcedLabels(tenantID)
+	perPolicyEnforcedLabels := d.validator.PolicyEnforcedLabels(tenantID, policy)
+	tenantEnforcedLabels := d.validator.EnforcedLabels(tenantID)
 
 	requiredLbs := append(tenantEnforcedLabels, perPolicyEnforcedLabels...)
 	if len(requiredLbs) == 0 {
@@ -1006,7 +1006,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 //
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) []KeyedStream {
-	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 

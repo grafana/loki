@@ -78,7 +78,7 @@ func NewTenantConfigs(configProvider TenantConfigProvider) (*TenantConfigs, erro
 
 func (o *TenantConfigs) getOverridesForUser(userID string) *Config {
 	if o.TenantConfigProvider != nil {
-		l := o.TenantConfigProvider.TenantConfig(userID)
+		l := o.TenantConfig(userID)
 		if l != nil {
 			return l
 		}

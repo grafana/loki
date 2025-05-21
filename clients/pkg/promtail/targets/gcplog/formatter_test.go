@@ -167,7 +167,7 @@ func TestFormat(t *testing.T) {
 			assert.Equal(t, c.expected.Labels, got.Labels)
 			assert.Equal(t, c.expected.Line, got.Line)
 			if c.useIncomingTimestamp {
-				assert.Equal(t, c.expected.Entry.Timestamp, got.Timestamp)
+				assert.Equal(t, c.expected.Timestamp, got.Timestamp)
 			} else {
 				if got.Timestamp.Sub(c.expected.Timestamp).Seconds() > 1 {
 					assert.Fail(t, "timestamp shouldn't differ much when rewriting log entry timestamp.")

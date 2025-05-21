@@ -115,7 +115,7 @@ func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dyn
 			} else {
 				return &dynamoDBMockRequest{
 					result: &dynamodb.BatchWriteItemOutput{},
-					err:    fmt.Errorf("Duplicate entry"),
+					err:    fmt.Errorf("duplicate entry"),
 				}
 			}
 			items[i] = writeRequest.PutRequest.Item
@@ -178,7 +178,7 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 			if i >= len(items) || !bytes.Equal(items[i][rangeKey].B, rangeValue) {
 				return &dynamoDBMockRequest{
 					result: &dynamodb.BatchGetItemOutput{},
-					err:    fmt.Errorf("Couldn't find item"),
+					err:    fmt.Errorf("couldn't find item"),
 				}
 			}
 
@@ -419,7 +419,7 @@ func (m *mockS3) GetObjectWithContext(_ aws.Context, req *s3.GetObjectInput, _ .
 
 	buf, ok := m.objects[*req.Key]
 	if !ok {
-		return nil, fmt.Errorf("Not found")
+		return nil, fmt.Errorf("not found")
 	}
 
 	return &s3.GetObjectOutput{

@@ -166,7 +166,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		return nil, err
 	}
 
-	params.QueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
+	params.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
@@ -228,7 +228,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
-	params.SampleQueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
+	params.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
@@ -295,12 +295,8 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
-	limitQueryInterval := false
+	limitQueryInterval := q.cfg.IngesterQueryStoreMaxLookback != 0
 	// ingesterMLB having -1 means query ingester for whole duration.
-	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
-		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
-		limitQueryInterval = true
-	}
 
 	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
 

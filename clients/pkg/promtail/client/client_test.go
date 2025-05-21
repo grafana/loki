@@ -156,7 +156,7 @@ func TestClient_Handle(t *testing.T) {
 						logEntries[0].Entry,
 						logEntries[1].Entry,
 						{
-							Timestamp: logEntries[6].Entry.Timestamp,
+							Timestamp: logEntries[6].Timestamp,
 							Line:      logEntries[6].Line[:10],
 						},
 					}}}},
@@ -563,7 +563,7 @@ func TestClient_Handle(t *testing.T) {
 			fmt.Printf("Received reqs: %#v\n", receivedReqs)
 			fmt.Printf("Expected reqs: %#v\n", testData.expectedReqs)
 
-			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
+			expectedMetrics := strings.ReplaceAll(testData.expectedMetrics, "__HOST__", serverURL.Host)
 			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total", "promtail_mutated_entries_total", "promtail_mutated_bytes_total")
 			assert.NoError(t, err)
 		})
@@ -708,7 +708,7 @@ func TestClient_StopNow(t *testing.T) {
 			// the exact order which is not guaranteed in case of multi-tenant
 			require.ElementsMatch(t, c.expectedReqs, receivedReqs)
 
-			expectedMetrics := strings.Replace(c.expectedMetrics, "__HOST__", serverURL.Host, -1)
+			expectedMetrics := strings.ReplaceAll(c.expectedMetrics, "__HOST__", serverURL.Host)
 			err = testutil.GatherAndCompare(reg, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
 			assert.NoError(t, err)
 		})
