@@ -110,8 +110,8 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	level.Info(logger).Log(
 		"msg", "execute query with new engine",
-		"logical_plan", base64.RawStdEncoding.EncodeToString([]byte(logicalPlan.String())),
-		"physical_plan", base64.RawStdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+		"logical_plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"physical_plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
 	)
 
 	t = time.Now() // start stopwatch for execution
