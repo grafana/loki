@@ -22,5 +22,4 @@ jobs:
       ct_configfile: production/helm/ct.yaml
       helm_tag_prefix: helm
     secrets:   
-      github_app_id: ${{ secrets.APP_ID }}
-      github_app_pem: ${{ secrets.APP_PRIVATE_KEY }}
+      vault_repo_secret_name: loki-gh-app
