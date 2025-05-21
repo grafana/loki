@@ -290,7 +290,7 @@ github.com/NYTimes/gziphandler
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
-# github.com/alecthomas/chroma/v2 v2.17.2
+# github.com/alecthomas/chroma/v2 v2.18.0
 ## explicit; go 1.22
 github.com/alecthomas/chroma/v2
 github.com/alecthomas/chroma/v2/formatters
@@ -519,7 +519,7 @@ github.com/axiomhq/hyperloglog
 # github.com/aymanbagabas/go-osc52/v2 v2.0.1
 ## explicit; go 1.16
 github.com/aymanbagabas/go-osc52/v2
-# github.com/baidubce/bce-sdk-go v0.9.226
+# github.com/baidubce/bce-sdk-go v0.9.227
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1368,18 +1368,21 @@ github.com/minio/crc64nvme
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.91
+# github.com/minio/minio-go/v7 v7.0.92
 ## explicit; go 1.23.0
 github.com/minio/minio-go/v7
+github.com/minio/minio-go/v7/internal/json
 github.com/minio/minio-go/v7/pkg/cors
 github.com/minio/minio-go/v7/pkg/credentials
 github.com/minio/minio-go/v7/pkg/encrypt
+github.com/minio/minio-go/v7/pkg/kvcache
 github.com/minio/minio-go/v7/pkg/lifecycle
 github.com/minio/minio-go/v7/pkg/notification
 github.com/minio/minio-go/v7/pkg/replication
 github.com/minio/minio-go/v7/pkg/s3utils
 github.com/minio/minio-go/v7/pkg/set
 github.com/minio/minio-go/v7/pkg/signer
+github.com/minio/minio-go/v7/pkg/singleflight
 github.com/minio/minio-go/v7/pkg/sse
 github.com/minio/minio-go/v7/pkg/tags
 # github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -1531,6 +1534,9 @@ github.com/parquet-go/parquet-go/internal/bytealg
 github.com/parquet-go/parquet-go/internal/debug
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
+# github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c
+## explicit; go 1.20
+github.com/philhofer/fwd
 # github.com/pierrec/lz4/v4 v4.1.22
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
@@ -1788,6 +1794,9 @@ github.com/thanos-io/objstore/providers/oss
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
+# github.com/tinylib/msgp v1.3.0
+## explicit; go 1.20
+github.com/tinylib/msgp/msgp
 # github.com/tjhop/slog-gokit v0.1.4
 ## explicit; go 1.21
 github.com/tjhop/slog-gokit
@@ -2509,7 +2518,7 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 k8s.io/api/storagemigration/v1alpha1
-# k8s.io/apimachinery v0.33.0
+# k8s.io/apimachinery v0.33.1
 ## explicit; go 1.24.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -2804,7 +2813,6 @@ zombiezen.com/go/sqlite
 zombiezen.com/go/sqlite/sqlitex
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
-# github.com/hashicorp/consul => github.com/hashicorp/consul v1.21.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc

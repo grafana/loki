@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/baidubce/bce-sdk-go v0.9.226
+	github.com/baidubce/bce-sdk-go v0.9.227
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -69,7 +69,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/leodido/go-syslog/v4 v4.2.0
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.91
+	github.com/minio/minio-go/v7 v7.0.92
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.2
@@ -158,7 +158,7 @@ require (
 	golang.org/x/text v0.25.0
 	google.golang.org/protobuf v1.36.6
 	gotest.tools v2.2.0+incompatible
-	k8s.io/apimachinery v0.33.0
+	k8s.io/apimachinery v0.33.1
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	zombiezen.com/go/sqlite v1.4.0
 )
@@ -217,6 +217,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.116.0 // indirect
+	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
@@ -225,6 +226,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
+	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.13 // indirect
 	github.com/tklauser/numcpus v0.7.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
@@ -274,7 +276,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.17.2
+	github.com/alecthomas/chroma/v2 v2.18.0
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -432,8 +434,6 @@ require (
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
-
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.21.0
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

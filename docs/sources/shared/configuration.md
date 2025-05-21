@@ -748,17 +748,9 @@ compactor_grpc_client:
 [memberlist: <memberlist>]
 
 kafka_config:
-  # The Kafka backend address.
-  # CLI flag: -kafka.address
-  [address: <string> | default = "localhost:9092"]
-
   # The Kafka topic name.
   # CLI flag: -kafka.topic
   [topic: <string> | default = ""]
-
-  # The Kafka client ID.
-  # CLI flag: -kafka.client-id
-  [client_id: <string> | default = ""]
 
   # The maximum time allowed to open a connection to a Kafka broker.
   # CLI flag: -kafka.dial-timeout
@@ -768,6 +760,24 @@ kafka_config:
   # to the Kafka backend.
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
+
+  reader_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.reader.address
+    [address: <string> | default = ""]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.reader.client-id
+    [client_id: <string> | default = ""]
+
+  writer_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.writer.address
+    [address: <string> | default = ""]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.writer.client-id
+    [client_id: <string> | default = ""]
 
   # The SASL username for authentication to Kafka using the PLAIN mechanism.
   # Both username and password must be set.
@@ -893,19 +903,26 @@ ingest_limits:
   # CLI flag: -ingest-limits.enabled
   [enabled: <boolean> | default = false]
 
-  # The time window for which stream metadata is considered active.
-  # CLI flag: -ingest-limits.window-size
-  [window_size: <duration> | default = 1h]
+  # The duration for which which streams are considered active. Streams that
+  # have not been updated within this window are considered inactive and not
+  # counted towards limits.
+  # CLI flag: -ingest-limits.active-window
+  [active_window: <duration> | default = 1h]
 
   # The time window for rate calculation. This should match the window used in
   # Prometheus rate() queries for consistency.
   # CLI flag: -ingest-limits.rate-window
   [rate_window: <duration> | default = 5m]
 
-  # The granularity of time buckets used for sliding window rate calculation.
-  # Smaller buckets provide more precise rate tracking but require more memory.
-  # CLI flag: -ingest-limits.bucket-duration
-  [bucket_duration: <duration> | default = 1m]
+  # The size of the buckets used to calculate stream rates. Smaller buckets
+  # provide more precise rates but require more memory.
+  # CLI flag: -ingest-limits.bucket-size
+  [bucket_size: <duration> | default = 1m]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
 
   lifecycler:
     ring:
@@ -1043,11 +1060,6 @@ ingest_limits:
     # ID to register in the ring.
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
-
-  # The number of partitions for the Kafka topic used to read and write stream
-  # metadata. It is fixed, not a maximum.
-  # CLI flag: -ingest-limits.num-partitions
-  [num_partitions: <int> | default = 64]
 
 ingest_limits_frontend:
   client_config:

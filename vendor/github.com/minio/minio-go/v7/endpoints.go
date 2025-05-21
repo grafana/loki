@@ -22,6 +22,66 @@ type awsS3Endpoint struct {
 	dualstackEndpoint string
 }
 
+type awsS3ExpressEndpoint struct {
+	regionalEndpoint string
+	zonalEndpoints   []string
+}
+
+var awsS3ExpressEndpointMap = map[string]awsS3ExpressEndpoint{
+	"us-east-1": {
+		"s3express-control.us-east-1.amazonaws.com",
+		[]string{
+			"s3express-use1-az4.us-east-1.amazonaws.com",
+			"s3express-use1-az5.us-east-1.amazonaws.com",
+			"3express-use1-az6.us-east-1.amazonaws.com",
+		},
+	},
+	"us-east-2": {
+		"s3express-control.us-east-2.amazonaws.com",
+		[]string{
+			"s3express-use2-az1.us-east-2.amazonaws.com",
+			"s3express-use2-az2.us-east-2.amazonaws.com",
+		},
+	},
+	"us-west-2": {
+		"s3express-control.us-west-2.amazonaws.com",
+		[]string{
+			"s3express-usw2-az1.us-west-2.amazonaws.com",
+			"s3express-usw2-az3.us-west-2.amazonaws.com",
+			"s3express-usw2-az4.us-west-2.amazonaws.com",
+		},
+	},
+	"ap-south-1": {
+		"s3express-control.ap-south-1.amazonaws.com",
+		[]string{
+			"s3express-aps1-az1.ap-south-1.amazonaws.com",
+			"s3express-aps1-az3.ap-south-1.amazonaws.com",
+		},
+	},
+	"ap-northeast-1": {
+		"s3express-control.ap-northeast-1.amazonaws.com",
+		[]string{
+			"s3express-apne1-az1.ap-northeast-1.amazonaws.com",
+			"s3express-apne1-az4.ap-northeast-1.amazonaws.com",
+		},
+	},
+	"eu-west-1": {
+		"s3express-control.eu-west-1.amazonaws.com",
+		[]string{
+			"s3express-euw1-az1.eu-west-1.amazonaws.com",
+			"s3express-euw1-az3.eu-west-1.amazonaws.com",
+		},
+	},
+	"eu-north-1": {
+		"s3express-control.eu-north-1.amazonaws.com",
+		[]string{
+			"s3express-eun1-az1.eu-north-1.amazonaws.com",
+			"s3express-eun1-az2.eu-north-1.amazonaws.com",
+			"s3express-eun1-az3.eu-north-1.amazonaws.com",
+		},
+	},
+}
+
 // awsS3EndpointMap Amazon S3 endpoint map.
 var awsS3EndpointMap = map[string]awsS3Endpoint{
 	"us-east-1": {
@@ -180,6 +240,19 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 		"s3.mx-central-1.amazonaws.com",
 		"s3.dualstack.mx-central-1.amazonaws.com",
 	},
+}
+
+// getS3ExpressEndpoint get Amazon S3 Express endpoing based on the region
+// optionally if zonal is set returns first zonal endpoint.
+func getS3ExpressEndpoint(region string, zonal bool) (endpoint string) {
+	s3ExpEndpoint, ok := awsS3ExpressEndpointMap[region]
+	if !ok {
+		return ""
+	}
+	if zonal {
+		return s3ExpEndpoint.zonalEndpoints[0]
+	}
+	return s3ExpEndpoint.regionalEndpoint
 }
 
 // getS3Endpoint get Amazon S3 endpoint based on the bucket location.

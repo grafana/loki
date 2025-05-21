@@ -12,10 +12,7 @@ import (
 
 func TestUsageStore_All(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{
-		NumPartitions: 10,
-		WindowSize:    time.Minute,
-	})
+	s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
@@ -34,10 +31,7 @@ func TestUsageStore_All(t *testing.T) {
 
 func TestUsageStore_ForTenant(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{
-		NumPartitions: 10,
-		WindowSize:    time.Minute,
-	})
+	s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
@@ -167,10 +161,7 @@ func TestUsageStore_Store(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := NewUsageStore(Config{
-				NumPartitions: test.numPartitions,
-				WindowSize:    time.Minute,
-			})
+			s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions)
 			clock := quartz.NewMock(t)
 			s.clock = clock
 			s.Update("tenant", test.seed, clock.Now(), nil)
@@ -183,10 +174,7 @@ func TestUsageStore_Store(t *testing.T) {
 }
 
 func TestUsageStore_Evict(t *testing.T) {
-	s := NewUsageStore(Config{
-		NumPartitions: 1,
-		WindowSize:    time.Hour,
-	})
+	s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	s1 := Stream{Hash: 0x1, LastSeenAt: clock.Now().UnixNano()}
@@ -217,10 +205,7 @@ func TestUsageStore_Evict(t *testing.T) {
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := NewUsageStore(Config{
-		NumPartitions: 10,
-		WindowSize:    time.Minute,
-	})
+	s := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
