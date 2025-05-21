@@ -7,7 +7,10 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -20,7 +23,7 @@ import (
 var (
 	recordsPool = sync.Pool{
 		New: func() interface{} {
-			records := make([]dataobj.Record, 1024)
+			records := make([]logs.Record, 1024)
 			return &records
 		},
 	}
@@ -49,11 +52,11 @@ type entryWithLabels struct {
 // The topk heap is used to maintain the top k entries based on the direction.
 // The final result is returned as a slice of entries.
 func newEntryIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
-	reader *dataobj.LogsReader,
+	streams map[int64]streams.Stream,
+	reader *logs.RowReader,
 	req logql.SelectLogParams,
 ) (iter.EntryIterator, error) {
-	bufPtr := recordsPool.Get().(*[]dataobj.Record)
+	bufPtr := recordsPool.Get().(*[]logs.Record)
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
@@ -100,7 +103,7 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, metadataToLabels(record.Metadata))
 			if !ok {
 				continue
 			}
@@ -120,6 +123,20 @@ func newEntryIterator(ctx context.Context,
 	}
 
 	return heapIterator(&top), nil
+}
+
+func metadataToLabels(md []logs.RecordMetadata) labels.Labels {
+	// TODO(rfratto): The conversion here undoes some of the memory optimization
+	// work performed a few weeks ago; we need to revisit how to avoid the
+	// conversion here while still reusing memory where we can.
+	res := make(labels.Labels, len(md))
+	for i, m := range md {
+		res[i] = labels.Label{
+			Name:  m.Name,
+			Value: string(m.Value),
+		}
+	}
+	return res
 }
 
 func lessFn(direction logproto.Direction) func(a, b entryWithLabels) bool {
@@ -198,11 +215,11 @@ func (s *sliceIterator) Close() error {
 }
 
 func newSampleIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
+	streamsMap map[int64]streams.Stream,
 	extractors []syntax.SampleExtractor,
-	reader *dataobj.LogsReader,
+	reader *logs.RowReader,
 ) (iter.SampleIterator, error) {
-	bufPtr := recordsPool.Get().(*[]dataobj.Record)
+	bufPtr := recordsPool.Get().(*[]logs.Record)
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
@@ -232,7 +249,7 @@ func newSampleIterator(ctx context.Context,
 
 		// Process records in the current batch
 		for _, record := range buf[:n] {
-			stream, ok := streams[record.StreamID]
+			stream, ok := streamsMap[record.StreamID]
 			if !ok {
 				continue
 			}
@@ -254,7 +271,7 @@ func newSampleIterator(ctx context.Context,
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
 				statistics.AddDecompressedLines(1)
-				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, metadataToLabels(record.Metadata)...)
 				if !ok {
 					continue
 				}

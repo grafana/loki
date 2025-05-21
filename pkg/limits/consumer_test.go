@@ -42,18 +42,18 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		}
 		ctx := context.Background()
 		// Need to assign the partition and set it to ready.
-		m := NewPartitionManager()
-		m.Assign(ctx, []int32{1})
-		m.SetReplaying(1, 1000)
+		m := newPartitionManager()
+		m.assign(ctx, []int32{1})
+		m.setReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-		c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
-		u.All(func(_ string, _ int32, _ Stream) { n++ })
+		u.all(func(_ string, _ int32, _ streamUsage) { n++ })
 		require.Equal(t, 1, n)
 	})
 
@@ -86,18 +86,18 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		}
 		ctx := context.Background()
 		// Need to assign the partition and set it to ready.
-		m := NewPartitionManager()
-		m.Assign(ctx, []int32{1})
-		m.SetReady(1)
+		m := newPartitionManager()
+		m.assign(ctx, []int32{1})
+		m.setReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-		c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
-		u.All(func(_ string, _ int32, _ Stream) { n++ })
+		u.all(func(_ string, _ int32, _ streamUsage) { n++ })
 		require.Equal(t, 0, n)
 	})
 }
@@ -157,35 +157,35 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	}
 	ctx := context.Background()
 	// Need to assign the partition and set it to replaying.
-	m := NewPartitionManager()
-	m.Assign(ctx, []int32{1})
+	m := newPartitionManager()
+	m.assign(ctx, []int32{1})
 	// The partition should be marked ready when the second record
 	// has been consumed.
-	m.SetReplaying(1, 2)
+	m.setReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u := NewUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
-	c := NewConsumer(&k, m, u, NewOffsetReadinessCheck(m), "zone1",
+	u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	require.NoError(t, c.pollFetches(ctx))
 	// The partition should still be replaying as we have not read up to
 	// the target offset.
-	state, ok := m.GetState(1)
+	state, ok := m.getState(1)
 	require.True(t, ok)
-	require.Equal(t, PartitionReplaying, state)
+	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	u.All(func(_ string, _ int32, _ Stream) { n++ })
+	u.all(func(_ string, _ int32, _ streamUsage) { n++ })
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
 	require.NoError(t, c.pollFetches(ctx))
 	// The partition should still be ready as we have read up to the target
 	// offset.
-	state, ok = m.GetState(1)
+	state, ok = m.getState(1)
 	require.True(t, ok)
-	require.Equal(t, PartitionReady, state)
+	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	u.All(func(_ string, _ int32, _ Stream) { n++ })
+	u.all(func(_ string, _ int32, _ streamUsage) { n++ })
 	require.Equal(t, 2, n)
 }

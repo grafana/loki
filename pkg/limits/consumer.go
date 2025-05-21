@@ -17,20 +17,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// KafkaConsumer allows mocking of certain [kgo.Client] methods in tests.
-type KafkaConsumer interface {
+// kafkaConsumer allows mocking of certain [kgo.Client] methods in tests.
+type kafkaConsumer interface {
 	PollFetches(context.Context) kgo.Fetches
 }
 
-// Consumer processes records from the metadata topic. It is responsible for
+// consumer processes records from the metadata topic. It is responsible for
 // replaying newly assigned partitions and merging records from other zones.
-type Consumer struct {
-	client           KafkaConsumer
-	partitionManager *PartitionManager
-	usage            *UsageStore
+type consumer struct {
+	client           kafkaConsumer
+	partitionManager *partitionManager
+	usage            *usageStore
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
-	readinessCheck PartitionReadinessCheck
+	readinessCheck partitionReadinessCheck
 	// zone is used to discard our own records.
 	zone   string
 	logger log.Logger
@@ -45,17 +45,17 @@ type Consumer struct {
 	clock quartz.Clock
 }
 
-// NewConsumer returns a new Consumer.
-func NewConsumer(
-	client KafkaConsumer,
-	partitionManager *PartitionManager,
-	usage *UsageStore,
-	readinessCheck PartitionReadinessCheck,
+// newConsumer returns a new Consumer.
+func newConsumer(
+	client kafkaConsumer,
+	partitionManager *partitionManager,
+	usage *usageStore,
+	readinessCheck partitionReadinessCheck,
 	zone string,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *Consumer {
-	return &Consumer{
+) *consumer {
+	return &consumer{
 		client:           client,
 		partitionManager: partitionManager,
 		usage:            usage,
@@ -94,7 +94,7 @@ func NewConsumer(
 	}
 }
 
-func (c *Consumer) Run(ctx context.Context) {
+func (c *consumer) run(ctx context.Context) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -116,7 +116,7 @@ func (c *Consumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) pollFetches(ctx context.Context) error {
+func (c *consumer) pollFetches(ctx context.Context) error {
 	fetches := c.client.PollFetches(ctx)
 	if err := fetches.Err(); err != nil {
 		return err
@@ -125,7 +125,7 @@ func (c *Consumer) pollFetches(ctx context.Context) error {
 	return nil
 }
 
-func (c *Consumer) processFetchTopicPartition(ctx context.Context) func(kgo.FetchTopicPartition) {
+func (c *consumer) processFetchTopicPartition(ctx context.Context) func(kgo.FetchTopicPartition) {
 	return func(p kgo.FetchTopicPartition) {
 		// When used with [kgo.EachPartition], this function is called once
 		// for each partition in a fetch, including partitions that have not
@@ -140,7 +140,7 @@ func (c *Consumer) processFetchTopicPartition(ctx context.Context) func(kgo.Fetc
 		// We need the state of the partition so we can discard any records
 		// that we produced (unless replaying) and mark a replaying partition
 		// as ready once it has finished replaying.
-		state, ok := c.partitionManager.GetState(p.Partition)
+		state, ok := c.partitionManager.getState(p.Partition)
 		if !ok {
 			c.recordsDiscarded.Add(float64(len(p.Records)))
 			level.Warn(logger).Log("msg", "discarding records for partition as the partition is not assigned to this client")
@@ -154,39 +154,39 @@ func (c *Consumer) processFetchTopicPartition(ctx context.Context) func(kgo.Fetc
 		// Get the last record (has the latest offset and timestamp).
 		lastRecord := p.Records[len(p.Records)-1]
 		c.lag.Observe(c.clock.Since(lastRecord.Timestamp).Seconds())
-		if state == PartitionReplaying {
+		if state == partitionReplaying {
 			passed, err := c.readinessCheck(p.Partition, lastRecord)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to run readiness check", "err", err.Error())
 			} else if passed {
 				level.Debug(logger).Log("msg", "passed readiness check, partition is ready")
-				c.partitionManager.SetReady(p.Partition)
+				c.partitionManager.setReady(p.Partition)
 			}
 		}
 	}
 }
 
-func (c *Consumer) processRecord(_ context.Context, state PartitionState, r *kgo.Record) error {
+func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo.Record) error {
 	s := proto.StreamMetadataRecord{}
 	if err := s.Unmarshal(r.Value); err != nil {
 		c.recordsInvalid.Inc()
 		return fmt.Errorf("corrupted record: %w", err)
 	}
-	if state == PartitionReady && c.zone == s.Zone {
+	if state == partitionReady && c.zone == s.Zone {
 		// Discard our own records so we don't count the same streams twice.
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	c.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	c.usage.update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
 }
 
-type PartitionReadinessCheck func(partition int32, r *kgo.Record) (bool, error)
+type partitionReadinessCheck func(partition int32, r *kgo.Record) (bool, error)
 
-// NewOffsetReadinessCheck marks a partition as ready if the target offset
+// newOffsetReadinessCheck marks a partition as ready if the target offset
 // has been reached.
-func NewOffsetReadinessCheck(partitionManager *PartitionManager) PartitionReadinessCheck {
+func newOffsetReadinessCheck(partitionManager *partitionManager) partitionReadinessCheck {
 	return func(partition int32, r *kgo.Record) (bool, error) {
-		return partitionManager.TargetOffsetReached(partition, r.Offset), nil
+		return partitionManager.targetOffsetReached(partition, r.Offset), nil
 	}
 }
