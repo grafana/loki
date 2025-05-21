@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"time"
 
@@ -107,7 +108,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
 	durPhysicalPlanning := time.Since(t)
 
-	level.Info(logger).Log("msg", "execute query with new engine")
+	level.Info(logger).Log(
+		"msg", "execute query with new engine",
+		"logical_plan", base64.RawStdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"physical_plan", base64.RawStdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+	)
 
 	t = time.Now() // start stopwatch for execution
 	cfg := executor.Config{
