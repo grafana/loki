@@ -170,7 +170,7 @@ Setting `disableRecommendedAttributes: true` reduces the set of default stream l
 - `kubernetes.pod_name`
 - `service.name`
 
-Since these attributes are no longer stream labels by default, query performance will be negatively affected if your queries relied on them. It is recommended to combine this setting with a [custom attribute mapping](#custom-attribute-mapping) to selectively reintroduce any of these (or other) attributes as stream labels if they are used in queries.
+Since these attributes are no longer stream labels by default, queries that previously relied on them **as stream labels** will need to be updated, and their performance might be negatively affected. It is recommended to combine this setting with a [custom attribute mapping](#custom-attribute-mapping) to selectively reintroduce any of these attributes (or other) as stream labels if they are important for your querying strategy.
 
 ## References
 

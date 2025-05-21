@@ -3117,21 +3117,23 @@ bool
 <td>
 <em>(Optional)</em>
 <p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This will make
-queries that we using these attributes more expensive and less performant.</p>
-<p>The recommended attributes are:
-- k8s.container.name
-- k8s.cronjob.name
-- k8s.daemonset.name
-- k8s.deployment.name
-- k8s.job.name
-- k8s.node.name
-- k8s.pod.name
-- k8s.statefulset.name
-- kubernetes.container_name
-- kubernetes.host
-- kubernetes.pod_name
-- service.name</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
 <p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 should continue to exist.</p>
 </td>

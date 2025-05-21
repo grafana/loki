@@ -310,8 +310,8 @@ type OpenshiftTenantSpec struct {
 type OpenshiftOTLPConfig struct {
 	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 	//
-	// Enabling this setting removes the "recommended attributes" from the stream labels. This will make
-	// queries that we using these attributes more expensive and less performant.
+	// Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+	// to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
 	//
 	// The recommended attributes are:
 	//
