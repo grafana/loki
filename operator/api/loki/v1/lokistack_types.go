@@ -314,6 +314,7 @@ type OpenshiftOTLPConfig struct {
 	// queries that we using these attributes more expensive and less performant.
 	//
 	// The recommended attributes are:
+	//
 	//  - k8s.container.name
 	//  - k8s.cronjob.name
 	//  - k8s.daemonset.name
