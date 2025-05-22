@@ -6,6 +6,10 @@
   "labels": [
     "dependencies"
   ],
+  "ignorePaths": [
+    ".github/**",
+    "vendor/**"
+  ],
   "prHourlyLimit": 4,
   "baseBranches": [
     "main",

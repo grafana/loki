@@ -45,6 +45,10 @@ type Config struct {
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 	KafkaConfig      kafka.Config          `yaml:"-"`
+
+	// Deprecated.
+	WindowSize     time.Duration `yaml:"window_size" doc:"hidden|deprecated"`
+	BucketDuration time.Duration `yaml:"bucket_duration" doc:"hidden|deprecated"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
