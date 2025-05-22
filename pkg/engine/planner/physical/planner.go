@@ -91,27 +91,22 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
-	if err != nil {
-		return nil, err
-	}
-
-	shard, ok := lp.Shard.(*logical.ShardRef)
+	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard))
+	if err != nil {
+		return nil, err
+	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
-		// Simplest way to limit the amount of data objects is sharding by modulo.
-		// p.catalog.ResolveDataObj() returns a sorted list of data objects, therefore the index i can be used as base for the modulo.
-		if i%int(shard.Of) != int(shard.Shard) {
-			// discard data object if it does not belong to the shard
-			continue
-		}
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Sections:  sections[i],
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
