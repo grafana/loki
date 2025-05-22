@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
@@ -150,6 +151,19 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 	return nil
 }
 
+// A small set of query expressions require sharding and should not be bypassed.
+func exprRequiresSharding(expr syntax.Expr) bool {
+	switch expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		switch expr.(*syntax.VectorAggregationExpr).Operation {
+		case syntax.OpTypeApproxTopK:
+			// ApproxTopK must be applied via the shardmapper as the querier does not support it.
+			return true
+		}
+	}
+	return false
+}
+
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, ast.logger)
 	spLogger := spanlogger.FromContextWithFallback(
@@ -167,8 +181,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
+		if exprRequiresSharding(params.GetExpression()) {
+			level.Error(logger).Log("err", err.Error(), "msg", "ignoring AST mapper config error because sharding is required")
+		} else {
+			level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+			return ast.next.Do(ctx, r)
+		}
 	}
 
 	tenants, err := tenant.TenantIDs(ctx)
@@ -197,7 +215,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.limits,
 	)
 	if !ok {
-		return ast.next.Do(ctx, r)
+		if exprRequiresSharding(params.GetExpression()) {
+			level.Error(logger).Log("msg", "defaulting shard resolver to ConstantShards(2) because sharding is required")
+			resolver = logql.ConstantShards(2)
+		} else {
+			return ast.next.Do(ctx, r)
+		}
 	}
 
 	var strategy logql.ShardingStrategy
@@ -307,7 +330,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrangebase.PrometheusData{
-					ResultType: loghttp.ResultTypeVector,
+					ResultType: "CountMinSketchVector",
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
 				Headers:  res.Headers,

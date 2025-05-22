@@ -322,7 +322,7 @@ type CountMinSketchVectorStepEvaluator struct {
 	buffer []byte
 }
 
-var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewCountMinSketchVectorStepEvaluator(nil)
 
 func NewCountMinSketchVectorStepEvaluator(vec *CountMinSketchVector) *CountMinSketchVectorStepEvaluator {
 	return &CountMinSketchVectorStepEvaluator{
