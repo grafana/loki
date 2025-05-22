@@ -240,6 +240,8 @@ jobs:
   publishDockerPlugins:
     needs:
     - "createRelease"
+    permissions:
+      id-token: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
