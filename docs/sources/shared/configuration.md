@@ -4140,12 +4140,11 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
-# Enable metric aggregation. When enabled, pushed streams will be sampled for
-# bytes and count, and these metric will be written back into Loki as a special
-# __aggregated_metric__ stream, which can be queried for faster histogram
-# queries.
-# CLI flag: -limits.metric-aggregation-enabled
-[metric_aggregation_enabled: <boolean> | default = false]
+# Enable metric and pattern aggregation. When enabled, pushed streams will be
+# sampled for bytes, line count, and patterns. These metrics will be written
+# back into Loki as a special __aggregated_metric__ stream.
+# CLI flag: -limits.aggregation-enabled
+[aggregation_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

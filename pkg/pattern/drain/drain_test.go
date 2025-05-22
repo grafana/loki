@@ -488,7 +488,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 
 func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) {
 	t.Parallel()
-  mockWriter := &mockEntryWriter{}
+	mockWriter := &mockEntryWriter{}
 	tests := []struct {
 		name       string
 		drain      *Drain
@@ -632,7 +632,7 @@ var info = constants.LogLevelInfo
 
 func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 	t.Parallel()
-  mockWriter := &mockEntryWriter{}
+	mockWriter := &mockEntryWriter{}
 	tests := []struct {
 		name       string
 		drain      *Drain

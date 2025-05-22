@@ -18,7 +18,7 @@ import (
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-  mockWriter := &mockEntryWriter{}
+	mockWriter := &mockEntryWriter{}
 	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), log.NewNopLogger(), drain.FormatUnknown, "123", drain.DefaultConfig(), &fakeLimits{}, mockWriter)
 	require.NoError(t, err)
 
@@ -47,7 +47,7 @@ func TestAddStream(t *testing.T) {
 
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-  mockWriter := &mockEntryWriter{}
+	mockWriter := &mockEntryWriter{}
 	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), log.NewNopLogger(), drain.FormatUnknown, "123", drain.DefaultConfig(), &fakeLimits{}, mockWriter)
 	require.NoError(t, err)
 

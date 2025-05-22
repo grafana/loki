@@ -252,12 +252,12 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		"num_entries", len(entries),
 	)
 
-	level.Debug(p.logger). Log(
-    "msg", "built aggregation payload",
-    "num_service", len(entriesByStream),
-    "num_streams", len(streams),
-    "num_entries", len(entries),
-  )
+	level.Debug(p.logger).Log(
+		"msg", "built aggregation payload",
+		"num_service", len(entriesByStream),
+		"num_streams", len(streams),
+		"num_entries", len(entries),
+	)
 
 	return payload, nil
 }

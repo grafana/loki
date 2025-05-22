@@ -88,7 +88,7 @@ func (s *stream) Push(
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
 
-    //TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
+		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
 		if pattern, ok := s.patterns[lvl]; ok {
 			pattern.Train(lvl, entry.Line, entry.Timestamp.UnixNano(), s.labels)
 		} else {

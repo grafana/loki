@@ -16,7 +16,7 @@ func NewSlice(pattern, lvl string, s []logproto.PatternSample) *PatternIter {
 	return &PatternIter{
 		CloseIterator: iter.WithClose(iter.NewSliceIter(s), nil),
 		pattern:       pattern,
-    level:         lvl,
+		level:         lvl,
 	}
 }
 
