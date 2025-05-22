@@ -68,6 +68,7 @@ func Test_dataobjScan(t *testing.T) {
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:      obj,
 			StreamIDs:   []int64{1, 2}, // All streams
+			Sections:    []int{0},      // All sections (there is only a single one)
 			Projections: nil,           // All columns
 			Direction:   physical.Forward,
 			Limit:       0, // No limit
@@ -98,6 +99,7 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2}, // All streams
+			Sections:  []int{0},      // All sections (there is only a single one)
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeLabel}},
@@ -129,6 +131,7 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2}, // All streams
+			Sections:  []int{0},      // All sections (there is only a single one)
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
 			},
@@ -193,6 +196,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:      obj,
 			StreamIDs:   []int64{1, 2, 3}, // All streams
+			Sections:    []int{0},         // All sections (there is only a single one)
 			Projections: nil,              // All columns
 			Direction:   physical.Forward,
 			Limit:       0, // No limit
@@ -226,6 +230,7 @@ prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2, 3}, // All streams
+			Sections:  []int{0},         // All sections (there is only a single one)
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "pod", Type: types.ColumnTypeAmbiguous}},
 			},
@@ -253,6 +258,7 @@ NULL,NULL`
 		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2, 3}, // All streams
+			Sections:  []int{0},         // All sections (there is only a single one)
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "namespace", Type: types.ColumnTypeAmbiguous}},
 			},
