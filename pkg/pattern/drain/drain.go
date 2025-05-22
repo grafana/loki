@@ -32,8 +32,12 @@ import (
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -140,7 +144,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, writer aggregation.EntryWriter, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -151,6 +155,7 @@ func New(tenantID string, config *Config, limits Limits, format string, metrics 
 		rootNode: createNode(),
 		metrics:  metrics,
 		format:   format,
+		writer:   writer,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -198,17 +203,14 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
+	writer          aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts int64) *LogCluster {
-	return d.train(tokens, stringer, ts)
-}
-
-func (d *Drain) Train(content string, ts int64) *LogCluster {
+func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
@@ -221,10 +223,10 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 		return nil
 	}
 
-	return d.train(d.tokens, d.state, ts)
+	return d.train(lvl, d.tokens, d.state, ts, lbls)
 }
 
-func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
+func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, lbls labels.Labels) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
@@ -257,7 +259,17 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 			Stringer:   d.tokenizer.Join,
 			Chunks:     Chunks{},
 		}
-		matchCluster.append(model.TimeFromUnixNano(ts))
+		modeTs := model.TimeFromUnixNano(ts)
+		previousSample := matchCluster.append(modeTs)
+		if previousSample != nil {
+			d.writePattern(
+				previousSample.Timestamp,
+				lbls,
+				matchCluster.String(),
+				previousSample.Value,
+				lvl,
+			)
+		}
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -265,36 +277,76 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.append(model.TimeFromUnixNano(ts))
+		previousSample := matchCluster.append(model.TimeFromUnixNano(ts))
+		if previousSample != nil {
+			d.writePattern(
+				previousSample.Timestamp,
+				lbls,
+				matchCluster.String(),
+				previousSample.Value,
+				lvl,
+			)
+		}
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
 }
 
-func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
-	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
-	// Match no existing log cluster
-	if matchCluster == nil {
-		d.clustersCounter++
-		clusterID := d.clustersCounter
-		tokens, state = d.tokenizer.Clone(tokens, state)
-		matchCluster = &LogCluster{
-			Tokens:     tokens,
-			TokenState: state,
-			id:         clusterID,
-		}
-		d.idToCluster.Set(clusterID, matchCluster)
-		d.addSeqToPrefixTree(d.rootNode, matchCluster)
-	} else {
-		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		// Touch cluster to update its state in the cache.
-		d.idToCluster.Get(matchCluster.id)
+func (d *Drain) writePattern(
+	ts model.Time,
+	streamLbls labels.Labels,
+	pattern string,
+	count int64,
+	lvl string,
+) {
+	service := streamLbls.Get(push.LabelServiceName)
+	if service == "" {
+		service = push.ServiceUnknown
 	}
-	matchCluster.merge(samples)
-	return matchCluster
+
+	newLbls := labels.Labels{
+		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
+	}
+
+	newStructuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: lvl},
+		{Name: "is_pattern", Value: "true"},
+	}
+
+	if d.writer != nil {
+		d.writer.WriteEntry(
+			ts.Time(),
+			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
+			newLbls,
+			newStructuredMetadata,
+		)
+	}
 }
+
+// func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
+// 	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
+// 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
+// 	// Match no existing log cluster
+// 	if matchCluster == nil {
+// 		d.clustersCounter++
+// 		clusterID := d.clustersCounter
+// 		tokens, state = d.tokenizer.Clone(tokens, state)
+// 		matchCluster = &LogCluster{
+// 			Tokens:     tokens,
+// 			TokenState: state,
+// 			id:         clusterID,
+// 		}
+// 		d.idToCluster.Set(clusterID, matchCluster)
+// 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
+// 	} else {
+// 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
+// 		// Touch cluster to update its state in the cache.
+// 		d.idToCluster.Get(matchCluster.id)
+// 	}
+// 	matchCluster.merge(samples)
+// 	return matchCluster
+// }
 
 func deduplicatePlaceholders(line string, placeholder string) string {
 	first := strings.Index(line, "<_><_>")

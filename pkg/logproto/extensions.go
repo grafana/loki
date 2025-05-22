@@ -162,6 +162,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		Status string `json:"status"`
 		Data   []struct {
 			Pattern string    `json:"pattern"`
+			Level   string    `json:"level"`
 			Samples [][]int64 `json:"samples"`
 		} `json:"data"`
 	}
@@ -174,7 +175,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		for _, s := range d.Samples {
 			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
 		}
-		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
+		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Level: d.Level, Samples: samples})
 	}
 	return nil
 }

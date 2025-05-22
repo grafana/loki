@@ -4,7 +4,11 @@ import (
 	"bufio"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,15 +39,28 @@ func BenchmarkDrain_TrainExtractsPatterns(b *testing.B) {
 				line := scanner.Text()
 				lines = append(lines, line)
 			}
-			drain := New("", DefaultConfig(), &fakeLimits{}, DetectLogFormat(lines[0]), nil)
+			mockWriter := &mockEntryWriter{}
+			drain := New("", DefaultConfig(), &fakeLimits{}, DetectLogFormat(lines[0]), mockWriter, nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				for _, line := range lines {
-					drain.Train(line, 0)
+					drain.Train(info, line, 0, labels.EmptyLabels())
 				}
 			}
 		})
 	}
+}
+
+type mockEntryWriter struct {
+	mock.Mock
+}
+
+func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter) {
+	_ = m.Called(ts, entry, lbls, structuredMetadata)
+}
+
+func (m *mockEntryWriter) Stop() {
+	_ = m.Called()
 }

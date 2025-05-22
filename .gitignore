@@ -77,3 +77,5 @@ production/helm/loki/src/helm-test/helm-test
 cpu.prof
 mem.prof
 *.pprof
+
+**/.claude/settings.local.json

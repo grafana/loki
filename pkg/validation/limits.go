@@ -246,7 +246,7 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
-	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
+	AggregationEnabled                          bool                         `yaml:"aggregation_enabled"                       json:"aggregation_enabled"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -464,10 +464,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDelete, "limits.pattern-ingester-tokenizable-json-fields-delete", "List of JSON fields that should be deleted from the (default U append) list of tokenizable fields in the pattern ingester.")
 
 	f.BoolVar(
-		&l.MetricAggregationEnabled,
-		"limits.metric-aggregation-enabled",
+		&l.AggregationEnabled,
+		"limits.aggregation-enabled",
 		false,
-		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and count, and these metric will be written back into Loki as a special __aggregated_metric__ stream, which can be queried for faster histogram queries.",
+		"Enable metric and pattern aggregation. When enabled, pushed streams will be sampled for bytes, line count, and patterns. These metrics will be written back into Loki as a special __aggregated_metric__ stream.",
 	)
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
@@ -1211,7 +1211,7 @@ func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []
 }
 
 func (o *Overrides) MetricAggregationEnabled(userID string) bool {
-	return o.getOverridesForUser(userID).MetricAggregationEnabled
+	return o.getOverridesForUser(userID).AggregationEnabled
 }
 
 func (o *Overrides) EnableMultiVariantQueries(userID string) bool {

@@ -9,12 +9,14 @@ type Iterator interface {
 	iter.CloseIterator[logproto.PatternSample]
 
 	Pattern() string
+	Level() string
 }
 
-func NewSlice(pattern string, s []logproto.PatternSample) *PatternIter {
+func NewSlice(pattern, lvl string, s []logproto.PatternSample) *PatternIter {
 	return &PatternIter{
 		CloseIterator: iter.WithClose(iter.NewSliceIter(s), nil),
 		pattern:       pattern,
+    level:         lvl,
 	}
 }
 
@@ -28,23 +30,30 @@ func NewEmpty(pattern string) *PatternIter {
 type PatternIter struct {
 	iter.CloseIterator[logproto.PatternSample]
 	pattern string
+	level   string
 }
 
 func (s *PatternIter) Pattern() string {
 	return s.pattern
 }
 
+func (s *PatternIter) Level() string {
+	return s.level
+}
+
 type nonOverlappingIterator struct {
 	iterators []Iterator
 	curr      Iterator
 	pattern   string
+	level     string
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(pattern string, iterators []Iterator) Iterator {
+func NewNonOverlappingIterator(pattern, lvl string, iterators []Iterator) Iterator {
 	return &nonOverlappingIterator{
 		iterators: iterators,
 		pattern:   pattern,
+		level:     lvl,
 	}
 }
 
@@ -71,6 +80,10 @@ func (i *nonOverlappingIterator) At() logproto.PatternSample {
 
 func (i *nonOverlappingIterator) Pattern() string {
 	return i.pattern
+}
+
+func (i *nonOverlappingIterator) Level() string {
+	return i.level
 }
 
 func (i *nonOverlappingIterator) Err() error {
