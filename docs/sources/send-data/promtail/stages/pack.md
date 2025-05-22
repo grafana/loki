@@ -9,6 +9,8 @@ weight:
 
 # pack
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `pack` stage is a transform stage which lets you embed extracted values and labels into the log line by packing the log line and labels inside a JSON object.
 
 For example, if you wanted to remove the labels `container` and `pod` but still wanted to keep their values you could use this stage to create the following output:
@@ -63,7 +65,7 @@ This would create a log line
 }
 ```
 
-**Loki 2.2 also includes a new [`unpack` parser]({{< relref "../../../query/log_queries#unpack" >}}) to work with the pack stage.**
+**Loki 2.2 also includes a new [`unpack` parser](../../../../query/log_queries/#unpack) to work with the pack stage.**
 
 For example:
 

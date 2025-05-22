@@ -203,9 +203,9 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 
 			// Check using built-in PKI
 			c := tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig
-			require.Equal(t, c.CA.ConfigMap.LocalObjectReference.Name, signingCABundleName(opt.Name))
-			require.Equal(t, c.Cert.Secret.LocalObjectReference.Name, tst.Service.Name)
-			require.Equal(t, c.KeySecret.LocalObjectReference.Name, tst.Service.Name)
+			require.Equal(t, c.CA.ConfigMap.Name, signingCABundleName(opt.Name))
+			require.Equal(t, c.Cert.Secret.Name, tst.Service.Name)
+			require.Equal(t, c.KeySecret.Name, tst.Service.Name)
 		})
 	}
 }

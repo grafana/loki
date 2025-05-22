@@ -1,0 +1,78 @@
+type: deltatocumulative
+
+status:
+  class: processor
+  stability:
+    alpha: [metrics]
+  distributions: [contrib, k8s]
+  warnings: [Statefulness]
+  codeowners:
+    active: [sh0rez, RichieSams]
+
+telemetry:
+  metrics:
+    # streams
+    deltatocumulative.streams.tracked:
+      description: number of streams tracked
+      unit: "{dps}"
+      sum:
+        value_type: int
+        monotonic: false
+      enabled: true
+    deltatocumulative.streams.tracked.linear:
+      description: number of streams tracked
+      unit: "{dps}"
+      sum:
+        value_type: int
+        monotonic: false
+        async: true
+      enabled: true
+    deltatocumulative.streams.limit:
+      description: upper limit of tracked streams
+      unit: "{stream}"
+      gauge:
+        value_type: int
+      enabled: true
+    deltatocumulative.streams.evicted:
+      description: number of streams evicted
+      unit: "{stream}"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true
+    deltatocumulative.streams.max_stale:
+      description: duration after which streams inactive streams are dropped
+      unit: "s"
+      gauge:
+        value_type: int
+      enabled: true
+    # datapoints
+    deltatocumulative.datapoints.processed:
+      description: number of datapoints processed
+      unit: "{datapoint}"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true
+    deltatocumulative.datapoints.dropped:
+      description: number of datapoints dropped due to given 'reason'
+      unit: "{datapoint}"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true
+
+    deltatocumulative.datapoints.linear:
+      description: total number of datapoints processed. may have 'error' attribute, if processing failed
+      unit: "{datapoint}"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true
+    deltatocumulative.gaps.length:
+      description: total duration where data was expected but not received
+      unit: "s"
+      sum:
+        value_type: int
+        monotonic: true
+      enabled: true

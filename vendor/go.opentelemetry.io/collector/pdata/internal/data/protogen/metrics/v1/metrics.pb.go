@@ -243,7 +243,8 @@ type ResourceMetrics struct {
 	// A list of metrics that originate from a resource.
 	ScopeMetrics []*ScopeMetrics `protobuf:"bytes,2,rep,name=scope_metrics,json=scopeMetrics,proto3" json:"scope_metrics,omitempty"`
 	// The Schema URL, if known. This is the identifier of the Schema that the resource data
-	// is recorded in. To learn more about Schema URL see
+	// is recorded in. Notably, the last part of the URL path is the version number of the
+	// schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
 	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to the data in the "resource" field. It does not apply
 	// to the data in the "scope_metrics" field which have their own schema_url field.
@@ -320,7 +321,8 @@ type ScopeMetrics struct {
 	// A list of metrics that originate from an instrumentation library.
 	Metrics []*Metric `protobuf:"bytes,2,rep,name=metrics,proto3" json:"metrics,omitempty"`
 	// The Schema URL, if known. This is the identifier of the Schema that the metric data
-	// is recorded in. To learn more about Schema URL see
+	// is recorded in. Notably, the last part of the URL path is the version number of the
+	// schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
 	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to all metrics in the "metrics" field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
@@ -1106,7 +1108,7 @@ type HistogramDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
 	//
 	// Types that are valid to be assigned to Sum_:
 	//	*HistogramDataPoint_Sum
@@ -1351,7 +1353,7 @@ type ExponentialHistogramDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
 	//
 	// Types that are valid to be assigned to Sum_:
 	//	*ExponentialHistogramDataPoint_Sum
@@ -1694,7 +1696,7 @@ type SummaryDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#summary
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#summary
 	Sum float64 `protobuf:"fixed64,5,opt,name=sum,proto3" json:"sum,omitempty"`
 	// (Optional) list of values at different quantiles of the distribution calculated
 	// from the current snapshot. The quantiles must be strictly increasing.

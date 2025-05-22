@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -34,6 +35,19 @@ func TestNewReaderClient(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid config with reader config",
+			config: kafka.Config{
+				Topic:        "abcd",
+				SASLUsername: "user",
+				SASLPassword: flagext.SecretWithValue("password"),
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "wrong password",
 			config: kafka.Config{
 				Address:      addr,
@@ -56,7 +70,7 @@ func TestNewReaderClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewReaderClient(tt.config, nil, nil)
+			client, err := NewReaderClient("test-client", tt.config, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			err = client.Ping(context.Background())

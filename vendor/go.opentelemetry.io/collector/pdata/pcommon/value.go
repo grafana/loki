@@ -148,7 +148,7 @@ func (v Value) FromRaw(iv any) error {
 	case int64:
 		v.SetInt(tv)
 	case uint:
-		// nolint:gosec
+		//nolint:gosec
 		v.SetInt(int64(tv))
 	case uint8:
 		v.SetInt(int64(tv))
@@ -157,7 +157,7 @@ func (v Value) FromRaw(iv any) error {
 	case uint32:
 		v.SetInt(int64(tv))
 	case uint64:
-		// nolint:gosec
+		//nolint:gosec
 		v.SetInt(int64(tv))
 	case float32:
 		v.SetDouble(float64(tv))
@@ -450,6 +450,33 @@ func (v Value) AsRaw() any {
 		return v.Slice().AsRaw()
 	}
 	return fmt.Sprintf("<Unknown OpenTelemetry value type %q>", v.Type())
+}
+
+func (v Value) Equal(c Value) bool {
+	if v.Type() != c.Type() {
+		return false
+	}
+
+	switch v.Type() {
+	case ValueTypeEmpty:
+		return true
+	case ValueTypeStr:
+		return v.Str() == c.Str()
+	case ValueTypeBool:
+		return v.Bool() == c.Bool()
+	case ValueTypeDouble:
+		return v.Double() == c.Double()
+	case ValueTypeInt:
+		return v.Int() == c.Int()
+	case ValueTypeBytes:
+		return v.Bytes().Equal(c.Bytes())
+	case ValueTypeMap:
+		return v.Map().Equal(c.Map())
+	case ValueTypeSlice:
+		return v.Slice().Equal(c.Slice())
+	}
+
+	return false
 }
 
 func newKeyValueString(k string, v string) otlpcommon.KeyValue {

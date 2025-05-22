@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -295,8 +296,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool                         `yaml:"use_thanos_objstore" doc:"hidden"`
-	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store" doc:"hidden"`
+	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
+	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -544,6 +545,10 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
+			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		case types.StorageTypeNoop:
+			c, _ := noop.NewNoopObjectClient()
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 

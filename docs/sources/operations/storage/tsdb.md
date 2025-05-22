@@ -6,7 +6,7 @@ weight: 100
 ---
 # Single Store TSDB (tsdb)
 
-Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Loki maintainer Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) index which preceded it.
+Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Loki maintainer Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper](../boltdb-shipper/) index which preceded it.
 
 ## Example Configuration
 
@@ -75,7 +75,7 @@ We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `
 
 Previously we would statically shard queries based on the index row shards configured [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config).
 TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
-We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../get-started/components#query-frontend" >}}) for planning the query.
+We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend](../../../get-started/components/#query-frontend) for planning the query.
 Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
 This means with TSDB we will be running more, smaller queries.
 

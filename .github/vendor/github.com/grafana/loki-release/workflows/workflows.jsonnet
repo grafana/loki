@@ -2,7 +2,7 @@ local lokiRelease = import 'main.jsonnet';
 local build = lokiRelease.build;
 
 
-local buildImage = 'grafana/loki-build-image:0.34.3';
+local buildImage = 'golang:1.24';
 local dockerPluginDir = 'clients/cmd/docker-driver';
 
 {
@@ -10,13 +10,13 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
     lokiRelease.releasePRWorkflow(
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
-        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
+        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage),
       },
       buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       imagePrefix='trevorwhitney075',
-      releaseLibRef='release-1.14.x',
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
@@ -28,14 +28,14 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
     lokiRelease.releasePRWorkflow(
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
-        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
+        'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage),
       },
       buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       dryRun=true,
       imagePrefix='trevorwhitney075',
-      releaseLibRef='release-1.14.x',
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       skipValidation=false,
       versioningStrategy='always-bump-patch',
@@ -54,7 +54,7 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       getDockerCredsFromVault=false,
       imagePrefix='trevorwhitney075',
       pluginBuildDir=dockerPluginDir,
-      releaseLibRef='release-1.14.x',
+      releaseLibRef='main',
       releaseRepo='grafana/loki-release',
       useGitHubAppToken=true,
     ) + {

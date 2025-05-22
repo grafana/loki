@@ -64,6 +64,11 @@ type Bucket interface {
 	// Upload should be idempotent.
 	Upload(ctx context.Context, name string, r io.Reader) error
 
+	// GetAndReplace an existing object with a new object
+	// If the previous object is created or updated before the new object is uploaded, then the call will fail with an error.
+	// The existing reader will be nil in the case it did not previously exist.
+	GetAndReplace(ctx context.Context, name string, f func(existing io.Reader) (io.Reader, error)) error
+
 	// Delete removes the object with the given name.
 	// If object does not exist in the moment of deletion, Delete should throw error.
 	Delete(ctx context.Context, name string) error
@@ -729,6 +734,10 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		b.metrics.opsFetchedBytes,
 		b.metrics.opsTransferredBytes,
 	), nil
+}
+
+func (b *metricBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	return b.bkt.GetAndReplace(ctx, name, f)
 }
 
 func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {

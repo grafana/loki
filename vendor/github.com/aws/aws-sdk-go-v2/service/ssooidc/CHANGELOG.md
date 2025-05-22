@@ -1,3 +1,46 @@
+# v1.28.14 (2025-02-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.13 (2025-01-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.12 (2025-01-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.11 (2025-01-24)
+
+* **Documentation**: Fixed typos in the descriptions.
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.22.2.
+
+# v1.28.10 (2025-01-17)
+
+* **Bug Fix**: Fix bug where credentials weren't refreshed during retry loop.
+
+# v1.28.9 (2025-01-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.8 (2025-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.7 (2024-12-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.6 (2024-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.5 (2024-11-18)
+
+* **Dependency Update**: Update to smithy-go v1.22.1.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.28.4 (2024-11-06)
 
 * **Dependency Update**: Updated to the latest SDK module versions

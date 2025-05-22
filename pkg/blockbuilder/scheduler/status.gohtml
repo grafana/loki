@@ -22,6 +22,7 @@
     </thead>
     <tbody>
     {{ range $i, $job := .PendingJobs }}
+        <tr>
         <td>{{ .ID }}</td>
         <td>{{ .Priority }}</td>
         <td>{{ .Partition }}</td>
@@ -47,11 +48,41 @@
     </thead>
     <tbody>
     {{ range $i, $job := .InProgressJobs }}
+        <tr>
         <td>{{ .ID }}</td>
         <td>{{ .Priority }}</td>
         <td>{{ .Partition }}</td>
         <td>{{ .Offsets.Min }}</td>
         <td>{{ .Offsets.Max }}</td>
+        <td>{{ .StartTime | durationSince }} ago ({{ .StartTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
+        <td>{{ .UpdateTime | durationSince }} ago ({{ .UpdateTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
+        </tr>
+    {{ end }}
+    </tbody>
+</table>
+<h2>Completed Jobs</h2>
+<table width="100%" border="1">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Priority</th>
+        <th>Partition</th>
+        <th>Start Offset</th>
+        <th>End Offset</th>
+        <th>Status</th>
+        <th>Start Timestamp</th>
+        <th>Completion Timestamp</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{ range $i, $job := .CompletedJobs }}
+        <tr>
+        <td>{{ .ID }}</td>
+        <td>{{ .Priority }}</td>
+        <td>{{ .Partition }}</td>
+        <td>{{ .Offsets.Min }}</td>
+        <td>{{ .Offsets.Max }}</td>
+        <td>{{ .Status }}</td>
         <td>{{ .StartTime | durationSince }} ago ({{ .StartTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         <td>{{ .UpdateTime | durationSince }} ago ({{ .UpdateTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         </tr>
@@ -70,6 +101,7 @@
     </thead>
     <tbody>
     {{ range .PartitionInfo }}
+        <tr>
         <td>{{ .Partition }}</td>
         <td>{{ .Lag }}</td>
         <td>{{ .EndOffset }}</td>

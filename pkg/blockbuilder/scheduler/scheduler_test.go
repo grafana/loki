@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
@@ -27,8 +26,11 @@ type mockOffsetManager struct {
 
 func (m *mockOffsetManager) Topic() string         { return m.topic }
 func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
-func (m *mockOffsetManager) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ int64) (map[int32]partition.Lag, error) {
 	return nil, nil
+}
+func (m *mockOffsetManager) NextOffset(_ context.Context, _ int32, _ time.Time) (int64, error) {
+	return 0, nil
 }
 func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
 	return 0, nil
@@ -41,12 +43,14 @@ func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 }
 
 func newTestEnv(builderID string) (*testEnv, error) {
-	queue := NewJobQueue(testQueueCfg, log.NewNopLogger(), nil)
 	mockOffsetMgr := &mockOffsetManager{
 		topic:         "test-topic",
 		consumerGroup: "test-group",
 	}
-	scheduler, err := NewScheduler(Config{Strategy: RecordCountStrategy}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
+	scheduler, err := NewScheduler(Config{
+		Strategy:       RecordCountStrategy,
+		JobQueueConfig: JobQueueConfig{},
+	}, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +59,11 @@ func newTestEnv(builderID string) (*testEnv, error) {
 	builder := NewWorker(builderID, transport)
 
 	return &testEnv{
-		queue:     queue,
+		queue:     scheduler.queue,
 		scheduler: scheduler,
 		transport: transport,
 		builder:   builder,
-	}, err
+	}, nil
 }
 
 func TestScheduleAndProcessJob(t *testing.T) {
@@ -72,7 +76,7 @@ func TestScheduleAndProcessJob(t *testing.T) {
 
 	// Create and enqueue a test job
 	job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-	err = env.queue.Enqueue(job, 100)
+	err = env.scheduler.handlePlannedJob(NewJobWithMetadata(job, 100))
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
@@ -137,11 +141,11 @@ func TestMultipleBuilders(t *testing.T) {
 	job2 := types.NewJob(2, types.Offsets{Min: 300, Max: 400})
 
 	// Enqueue jobs
-	err = env1.queue.Enqueue(job1, 100)
+	err = env1.scheduler.handlePlannedJob(NewJobWithMetadata(job1, 100))
 	if err != nil {
 		t.Fatalf("failed to enqueue job1: %v", err)
 	}
-	err = env1.queue.Enqueue(job2, 100)
+	err = env1.scheduler.handlePlannedJob(NewJobWithMetadata(job2, 100))
 	if err != nil {
 		t.Fatalf("failed to enqueue job2: %v", err)
 	}

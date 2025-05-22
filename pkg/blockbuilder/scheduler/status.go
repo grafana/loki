@@ -8,22 +8,21 @@ import (
 	"slices"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/dustin/go-humanize"
 )
 
 //go:embed status.gohtml
 var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"durationSince": func(t time.Time) string { return time.Since(t).Truncate(time.Second).String() },
+	"offsetsLen":    func(minVal, maxVal int64) int64 { return maxVal - minVal },
+	"humanize":      humanize.Comma,
 }).Parse(defaultPageContent))
 
 type jobQueue interface {
 	ListPendingJobs() []JobWithMetadata
 	ListInProgressJobs() []JobWithMetadata
-}
-
-type offsetReader interface {
-	GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error)
+	ListCompletedJobs() []JobWithMetadata
 }
 
 type partitionInfo struct {
@@ -34,17 +33,17 @@ type partitionInfo struct {
 }
 
 type statusPageHandler struct {
-	jobQueue       jobQueue
-	offsetReader   offsetReader
-	lookbackPeriod time.Duration
+	jobQueue             jobQueue
+	offsetReader         OffsetReader
+	fallbackOffsetMillis int64
 }
 
-func newStatusPageHandler(jobQueue jobQueue, offsetReader offsetReader, lookbackPeriod time.Duration) *statusPageHandler {
-	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, lookbackPeriod: lookbackPeriod}
+func newStatusPageHandler(jobQueue jobQueue, offsetReader OffsetReader, fallbackOffsetMillis int64) *statusPageHandler {
+	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, fallbackOffsetMillis: fallbackOffsetMillis}
 }
 
 func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	offsets, err := h.offsetReader.GroupLag(context.Background(), h.lookbackPeriod)
+	offsets, err := h.offsetReader.GroupLag(context.Background(), h.fallbackOffsetMillis)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -63,24 +62,29 @@ func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	data := struct {
 		PendingJobs    []JobWithMetadata
 		InProgressJobs []JobWithMetadata
+		CompletedJobs  []JobWithMetadata
 		Now            time.Time
 		PartitionInfo  []partitionInfo
 	}{
 		Now:            time.Now(),
 		PendingJobs:    pendingJobs,
 		InProgressJobs: inProgressJobs,
+		CompletedJobs:  h.jobQueue.ListCompletedJobs(),
 	}
 
-	for _, partitionOffset := range offsets {
-		// only include partitions having lag
-		if partitionOffset.Lag > 0 {
-			data.PartitionInfo = append(data.PartitionInfo, partitionInfo{
-				Partition:       partitionOffset.Partition,
-				Lag:             partitionOffset.Lag,
-				EndOffset:       partitionOffset.End.Offset,
-				CommittedOffset: partitionOffset.Commit.At,
-			})
+	for partition, l := range offsets {
+		// only include partitions having lag that are in retention
+		lag := l.Lag()
+		if lag <= 0 {
+			continue
 		}
+
+		data.PartitionInfo = append(data.PartitionInfo, partitionInfo{
+			Partition:       partition,
+			Lag:             lag,
+			EndOffset:       l.NextAvailableOffset(),
+			CommittedOffset: l.LastCommittedOffset(),
+		})
 	}
 	slices.SortFunc(data.PartitionInfo, func(a, b partitionInfo) int {
 		return int(a.Partition - b.Partition)

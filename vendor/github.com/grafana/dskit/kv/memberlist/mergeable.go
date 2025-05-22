@@ -33,7 +33,7 @@ type Mergeable interface {
 	// LocalCAS flag is used when doing Merge as part of local CAS operation on KV store. It can be used to detect
 	// missing entries, and generate tombstones. (This breaks commutativity and associativity [!] so it can *only* be
 	// used when doing CAS operation)
-	Merge(other Mergeable, localCAS bool) (change Mergeable, error error)
+	Merge(other Mergeable, localCAS bool) (change Mergeable, err error)
 
 	// MergeContent describes the content of this mergeable value. Used by memberlist client to decide if
 	// one change-value can invalidate some other value, that was received previously.

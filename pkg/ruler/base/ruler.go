@@ -407,9 +407,9 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 	}
 
 	marshaledExpression, _ := json.Marshal(exprStruct)
-	escapedExpression := url.QueryEscape(string(marshaledExpression))
-	str := `/explore?left={"queries":[%s]}`
-	return fmt.Sprintf(str, escapedExpression)
+	params := url.Values{}
+	params.Set("left", fmt.Sprintf(`{"queries":[%s]}`, marshaledExpression))
+	return `/explore?` + params.Encode()
 }
 
 // SendAlerts implements a rules.NotifyFunc for a Notifier.

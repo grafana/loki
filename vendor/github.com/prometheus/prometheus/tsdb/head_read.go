@@ -21,8 +21,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/go-kit/log/level"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -105,24 +103,15 @@ func (h *headIndexReader) LabelNames(ctx context.Context, matchers ...*labels.Ma
 
 // Postings returns the postings list iterator for the label pairs.
 func (h *headIndexReader) Postings(ctx context.Context, name string, values ...string) (index.Postings, error) {
-	switch len(values) {
-	case 0:
-		return index.EmptyPostings(), nil
-	case 1:
-		return h.head.postings.Get(name, values[0]), nil
-	default:
-		res := make([]index.Postings, 0, len(values))
-		for _, value := range values {
-			if p := h.head.postings.Get(name, value); !index.IsEmptyPostingsType(p) {
-				res = append(res, p)
-			}
-		}
-		return index.Merge(ctx, res...), nil
-	}
+	return h.head.postings.Postings(ctx, name, values...), nil
 }
 
 func (h *headIndexReader) PostingsForLabelMatching(ctx context.Context, name string, match func(string) bool) index.Postings {
 	return h.head.postings.PostingsForLabelMatching(ctx, name, match)
+}
+
+func (h *headIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
+	return h.head.postings.PostingsForAllLabelValues(ctx, name)
 }
 
 func (h *headIndexReader) SortedPostings(p index.Postings) index.Postings {
@@ -132,7 +121,7 @@ func (h *headIndexReader) SortedPostings(p index.Postings) index.Postings {
 	for p.Next() {
 		s := h.head.series.getByID(chunks.HeadSeriesRef(p.At()))
 		if s == nil {
-			level.Debug(h.head.logger).Log("msg", "Looked up series not found")
+			h.head.logger.Debug("Looked up series not found")
 		} else {
 			series = append(series, s)
 		}
@@ -165,7 +154,7 @@ func (h *headIndexReader) ShardedPostings(p index.Postings, shardIndex, shardCou
 	for p.Next() {
 		s := h.head.series.getByID(chunks.HeadSeriesRef(p.At()))
 		if s == nil {
-			level.Debug(h.head.logger).Log("msg", "Looked up series not found")
+			h.head.logger.Debug("Looked up series not found")
 			continue
 		}
 

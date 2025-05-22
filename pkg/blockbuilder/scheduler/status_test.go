@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kadm"
-
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type mockQueueLister struct {
 	pendingJobs    []JobWithMetadata
 	inProgressJobs []JobWithMetadata
+	completedJobs  []JobWithMetadata
 }
 
 func (m *mockQueueLister) ListPendingJobs() []JobWithMetadata {
@@ -23,6 +23,10 @@ func (m *mockQueueLister) ListPendingJobs() []JobWithMetadata {
 
 func (m *mockQueueLister) ListInProgressJobs() []JobWithMetadata {
 	return m.inProgressJobs
+}
+
+func (m *mockQueueLister) ListCompletedJobs() []JobWithMetadata {
+	return m.completedJobs
 }
 
 func TestStatusPageHandler_ServeHTTP(t *testing.T) {
@@ -42,29 +46,29 @@ func TestStatusPageHandler_ServeHTTP(t *testing.T) {
 	}
 
 	mockReader := &mockOffsetReader{
-		groupLag: map[int32]kadm.GroupMemberLag{
-			0: {
-				Lag:       10,
-				Partition: 3,
-				End:       kadm.ListedOffset{Offset: 100},
-				Commit:    kadm.Offset{At: 90},
-			},
-			1: {
-				Lag:       0,
-				Partition: 1,
-				End:       kadm.ListedOffset{Offset: 100},
-				Commit:    kadm.Offset{At: 100},
-			},
-			2: {
-				Lag:       233,
-				Partition: 2,
-				End:       kadm.ListedOffset{Offset: 333},
-				Commit:    kadm.Offset{At: 100},
-			},
+		groupLag: map[int32]partition.Lag{
+			0: partition.NewLag(
+				90,  // startOffset (committed offset)
+				100, // endOffset
+				90,  // committedOffset
+				10,  // rawLag (matches original Lag field)
+			),
+			1: partition.NewLag(
+				100, // startOffset (committed offset)
+				100, // endOffset
+				100, // committedOffset
+				0,   // rawLag (matches original Lag field)
+			),
+			2: partition.NewLag(
+				100, // startOffset (committed offset)
+				333, // endOffset
+				100, // committedOffset
+				233, // rawLag (matches original Lag field)
+			),
 		},
 	}
 
-	handler := newStatusPageHandler(mockLister, mockReader, time.Hour)
+	handler := newStatusPageHandler(mockLister, mockReader, 0)
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

@@ -29,8 +29,103 @@
   "endpoints": [
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.africa-south1.rep.googleapis.com/",
+      "location": "africa-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-east1.rep.googleapis.com/",
+      "location": "asia-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-east2.rep.googleapis.com/",
+      "location": "asia-east2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast1.rep.googleapis.com/",
+      "location": "asia-northeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast2.rep.googleapis.com/",
+      "location": "asia-northeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-south1.rep.googleapis.com/",
+      "location": "asia-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-south2.rep.googleapis.com/",
+      "location": "asia-south2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-southeast1.rep.googleapis.com/",
+      "location": "asia-southeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-southeast2.rep.googleapis.com/",
+      "location": "asia-southeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.australia-southeast1.rep.googleapis.com/",
+      "location": "australia-southeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.australia-southeast2.rep.googleapis.com/",
+      "location": "australia-southeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.eu.rep.googleapis.com/",
+      "location": "eu"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-central2.rep.googleapis.com/",
+      "location": "europe-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-north1.rep.googleapis.com/",
+      "location": "europe-north1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-southwest1.rep.googleapis.com/",
+      "location": "europe-southwest1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west1.rep.googleapis.com/",
+      "location": "europe-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west2.rep.googleapis.com/",
+      "location": "europe-west2"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.europe-west3.rep.googleapis.com/",
       "location": "europe-west3"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west4.rep.googleapis.com/",
+      "location": "europe-west4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west6.rep.googleapis.com/",
+      "location": "europe-west6"
     },
     {
       "description": "Regional Endpoint",
@@ -44,8 +139,28 @@
     },
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west10.rep.googleapis.com/",
+      "location": "europe-west10"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west12.rep.googleapis.com/",
+      "location": "europe-west12"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.me-central2.rep.googleapis.com/",
       "location": "me-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-west1.rep.googleapis.com/",
+      "location": "me-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us.rep.googleapis.com/",
+      "location": "us"
     },
     {
       "description": "Regional Endpoint",
@@ -93,7 +208,7 @@
       "location": "us-west4"
     }
   ],
-  "etag": "\"3133343838373034343130353038353234313337\"",
+  "etag": "\"363938303832303939373531303639383731\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1678,7 +1793,7 @@
               "type": "string"
             },
             "recursive": {
-              "description": "If true, any parent folder which doesn’t exist will be created automatically.",
+              "description": "If true, any parent folder which doesn't exist will be created automatically.",
               "location": "query",
               "type": "boolean"
             }
@@ -4364,7 +4479,7 @@
       }
     }
   },
-  "revision": "20241206",
+  "revision": "20250312",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -6075,7 +6190,7 @@
                     "storage.managedFolders.setIamPolicy"
                   ]
                 },
-                "description": "A collection of identifiers for members who may assume the provided role. Recognized identifiers are as follows:  \n- allUsers — A special identifier that represents anyone on the internet; with or without a Google account.  \n- allAuthenticatedUsers — A special identifier that represents anyone who is authenticated with a Google account or a service account.  \n- user:emailid — An email address that represents a specific account. For example, user:alice@gmail.com or user:joe@example.com.  \n- serviceAccount:emailid — An email address that represents a service account. For example,  serviceAccount:my-other-app@appspot.gserviceaccount.com .  \n- group:emailid — An email address that represents a Google group. For example, group:admins@example.com.  \n- domain:domain — A Google Apps domain name that represents all the users of that domain. For example, domain:google.com or domain:example.com.  \n- projectOwner:projectid — Owners of the given project. For example, projectOwner:my-example-project  \n- projectEditor:projectid — Editors of the given project. For example, projectEditor:my-example-project  \n- projectViewer:projectid — Viewers of the given project. For example, projectViewer:my-example-project",
+                "description": "A collection of identifiers for members who may assume the provided role. Recognized identifiers are as follows:  \n- allUsers - A special identifier that represents anyone on the internet; with or without a Google account.  \n- allAuthenticatedUsers - A special identifier that represents anyone who is authenticated with a Google account or a service account.  \n- user:emailid - An email address that represents a specific account. For example, user:alice@gmail.com or user:joe@example.com.  \n- serviceAccount:emailid - An email address that represents a service account. For example,  serviceAccount:my-other-app@appspot.gserviceaccount.com .  \n- group:emailid - An email address that represents a Google group. For example, group:admins@example.com.  \n- domain:domain - A Google Apps domain name that represents all the users of that domain. For example, domain:google.com or domain:example.com.  \n- projectOwner:projectid - Owners of the given project. For example, projectOwner:my-example-project  \n- projectEditor:projectid - Editors of the given project. For example, projectEditor:my-example-project  \n- projectViewer:projectid - Viewers of the given project. For example, projectViewer:my-example-project",
                 "items": {
                   "type": "string"
                 },
@@ -6089,7 +6204,7 @@
                     "storage.managedFolders.setIamPolicy"
                   ]
                 },
-                "description": "The role to which members belong. Two types of roles are supported: new IAM roles, which grant permissions that do not map directly to those provided by ACLs, and legacy IAM roles, which do map directly to ACL permissions. All roles are of the format roles/storage.specificRole.\nThe new IAM roles are:  \n- roles/storage.admin — Full control of Google Cloud Storage resources.  \n- roles/storage.objectViewer — Read-Only access to Google Cloud Storage objects.  \n- roles/storage.objectCreator — Access to create objects in Google Cloud Storage.  \n- roles/storage.objectAdmin — Full control of Google Cloud Storage objects.   The legacy IAM roles are:  \n- roles/storage.legacyObjectReader — Read-only access to objects without listing. Equivalent to an ACL entry on an object with the READER role.  \n- roles/storage.legacyObjectOwner — Read/write access to existing objects without listing. Equivalent to an ACL entry on an object with the OWNER role.  \n- roles/storage.legacyBucketReader — Read access to buckets with object listing. Equivalent to an ACL entry on a bucket with the READER role.  \n- roles/storage.legacyBucketWriter — Read access to buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the WRITER role.  \n- roles/storage.legacyBucketOwner — Read and write access to existing buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the OWNER role.",
+                "description": "The role to which members belong. Two types of roles are supported: new IAM roles, which grant permissions that do not map directly to those provided by ACLs, and legacy IAM roles, which do map directly to ACL permissions. All roles are of the format roles/storage.specificRole.\nThe new IAM roles are:  \n- roles/storage.admin - Full control of Google Cloud Storage resources.  \n- roles/storage.objectViewer - Read-Only access to Google Cloud Storage objects.  \n- roles/storage.objectCreator - Access to create objects in Google Cloud Storage.  \n- roles/storage.objectAdmin - Full control of Google Cloud Storage objects.   The legacy IAM roles are:  \n- roles/storage.legacyObjectReader - Read-only access to objects without listing. Equivalent to an ACL entry on an object with the READER role.  \n- roles/storage.legacyObjectOwner - Read/write access to existing objects without listing. Equivalent to an ACL entry on an object with the OWNER role.  \n- roles/storage.legacyBucketReader - Read access to buckets with object listing. Equivalent to an ACL entry on a bucket with the READER role.  \n- roles/storage.legacyBucketWriter - Read access to buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the WRITER role.  \n- roles/storage.legacyBucketOwner - Read and write access to existing buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the OWNER role.",
                 "type": "string"
               }
             },
@@ -6207,7 +6322,7 @@
           "type": "string"
         },
         "permissions": {
-          "description": "The permissions held by the caller. Permissions are always of the format storage.resource.capability, where resource is one of buckets, objects, or managedFolders. The supported permissions are as follows:  \n- storage.buckets.delete — Delete bucket.  \n- storage.buckets.get — Read bucket metadata.  \n- storage.buckets.getIamPolicy — Read bucket IAM policy.  \n- storage.buckets.create — Create bucket.  \n- storage.buckets.list — List buckets.  \n- storage.buckets.setIamPolicy — Update bucket IAM policy.  \n- storage.buckets.update — Update bucket metadata.  \n- storage.objects.delete — Delete object.  \n- storage.objects.get — Read object data and metadata.  \n- storage.objects.getIamPolicy — Read object IAM policy.  \n- storage.objects.create — Create object.  \n- storage.objects.list — List objects.  \n- storage.objects.setIamPolicy — Update object IAM policy.  \n- storage.objects.update — Update object metadata. \n- storage.managedFolders.delete — Delete managed folder.  \n- storage.managedFolders.get — Read managed folder metadata.  \n- storage.managedFolders.getIamPolicy — Read managed folder IAM policy.  \n- storage.managedFolders.create — Create managed folder.  \n- storage.managedFolders.list — List managed folders.  \n- storage.managedFolders.setIamPolicy — Update managed folder IAM policy.",
+          "description": "The permissions held by the caller. Permissions are always of the format storage.resource.capability, where resource is one of buckets, objects, or managedFolders. The supported permissions are as follows:  \n- storage.buckets.delete - Delete bucket.  \n- storage.buckets.get - Read bucket metadata.  \n- storage.buckets.getIamPolicy - Read bucket IAM policy.  \n- storage.buckets.create - Create bucket.  \n- storage.buckets.list - List buckets.  \n- storage.buckets.setIamPolicy - Update bucket IAM policy.  \n- storage.buckets.update - Update bucket metadata.  \n- storage.objects.delete - Delete object.  \n- storage.objects.get - Read object data and metadata.  \n- storage.objects.getIamPolicy - Read object IAM policy.  \n- storage.objects.create - Create object.  \n- storage.objects.list - List objects.  \n- storage.objects.setIamPolicy - Update object IAM policy.  \n- storage.objects.update - Update object metadata. \n- storage.managedFolders.delete - Delete managed folder.  \n- storage.managedFolders.get - Read managed folder metadata.  \n- storage.managedFolders.getIamPolicy - Read managed folder IAM policy.  \n- storage.managedFolders.create - Create managed folder.  \n- storage.managedFolders.list - List managed folders.  \n- storage.managedFolders.setIamPolicy - Update managed folder IAM policy.",
           "items": {
             "type": "string"
           },

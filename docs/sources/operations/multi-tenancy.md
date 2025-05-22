@@ -1,10 +1,10 @@
 ---
-title: Multi-tenancy
-menuTitle:  
-description: Describes how Loki implements multi-tenancy to isolate tenant data and queries.
+title: Manage tenant isolation
+menuTitle: Multi-tenancy
+description: Describes how Grafana Loki implements multi-tenancy to isolate tenant data and queries.
 weight: 
 ---
-# Multi-tenancy
+# Manage tenant isolation
 
 Grafana Loki is a multi-tenant system; requests and data for tenant A are isolated from
 tenant B. Requests to the Loki API should include an HTTP header

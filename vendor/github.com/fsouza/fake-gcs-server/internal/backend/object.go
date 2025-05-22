@@ -18,9 +18,11 @@ type ObjectAttrs struct {
 	BucketName         string `json:"-"`
 	Name               string `json:"-"`
 	Size               int64  `json:"-"`
+	StorageClass       string
 	ContentType        string
 	ContentEncoding    string
 	ContentDisposition string
+	ContentLanguage    string
 	CacheControl       string
 	Crc32c             string
 	Md5Hash            string

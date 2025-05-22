@@ -108,6 +108,8 @@ type storageClient interface {
 	ListNotifications(ctx context.Context, bucket string, opts ...storageOption) (map[string]*Notification, error)
 	CreateNotification(ctx context.Context, bucket string, n *Notification, opts ...storageOption) (*Notification, error)
 	DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) error
+
+	NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error)
 }
 
 // settings contains transport-agnostic configuration for API calls made via
@@ -255,12 +257,22 @@ type openWriterParams struct {
 	// conds - see `Writer.o.conds`.
 	// Optional.
 	conds *Conditions
+	// appendGen -- object generation to write to.
+	// Optional; required for taking over appendable objects only
+	appendGen int64
 	// encryptionKey - see `Writer.o.encryptionKey`
 	// Optional.
 	encryptionKey []byte
 	// sendCRC32C - see `Writer.SendCRC32C`.
 	// Optional.
 	sendCRC32C bool
+	// append - Write with appendable object semantics.
+	// Optional.
+	append bool
+	// finalizeOnClose - Finalize the object when the storage.Writer is closed
+	// successfully.
+	// Optional.
+	finalizeOnClose bool
 
 	// Writer callbacks
 
@@ -276,6 +288,24 @@ type openWriterParams struct {
 	// setObj callback for reporting the resulting object - see `Writer.obj`.
 	// Required.
 	setObj func(*ObjectAttrs)
+	// setSize callback for updated the persisted size in Writer.obj.
+	setSize func(int64)
+	// setFlush callback for providing a Flush function implementation - see `Writer.Flush`.
+	// Required.
+	setFlush func(func() (int64, error))
+	// setPipeWriter callback for reseting `Writer.pw` if needed.
+	setPipeWriter func(*io.PipeWriter)
+	// setTakeoverOffset callback for returning offset to start writing from to Writer.
+	setTakeoverOffset func(int64)
+}
+
+type newMultiRangeDownloaderParams struct {
+	bucket        string
+	conds         *Conditions
+	encryptionKey []byte
+	gen           int64
+	object        string
+	handle        *ReadHandle
 }
 
 type newRangeReaderParams struct {
@@ -287,6 +317,7 @@ type newRangeReaderParams struct {
 	object         string
 	offset         int64
 	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
+	handle         *ReadHandle
 }
 
 type getObjectParams struct {

@@ -20,12 +20,12 @@ func EntryTotalSize(entry *push.Entry) int {
 	return len(entry.Line) + StructuredMetadataSize(entry.StructuredMetadata)
 }
 
-var excludedStructuredMetadataLabels = []string{constants.LevelLabel}
+var ExcludedStructuredMetadataLabels = []string{constants.LevelLabel}
 
 func StructuredMetadataSize(metas push.LabelsAdapter) int {
 	size := 0
 	for _, meta := range metas {
-		if slices.Contains(excludedStructuredMetadataLabels, meta.Name) {
+		if slices.Contains(ExcludedStructuredMetadataLabels, meta.Name) {
 			continue
 		}
 		size += len(meta.Name) + len(meta.Value)

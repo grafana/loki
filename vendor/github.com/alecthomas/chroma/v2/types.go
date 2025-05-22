@@ -41,6 +41,8 @@ const (
 	Other
 	// No highlighting.
 	None
+	// Don't emit this token to the output.
+	Ignore
 	// Used as an EOF marker / nil token
 	EOFType TokenType = 0
 )
@@ -60,15 +62,11 @@ const (
 const (
 	Name TokenType = 2000 + iota
 	NameAttribute
-	NameBuiltin
-	NameBuiltinPseudo
 	NameClass
 	NameConstant
 	NameDecorator
 	NameEntity
 	NameException
-	NameFunction
-	NameFunctionMagic
 	NameKeyword
 	NameLabel
 	NameNamespace
@@ -77,12 +75,28 @@ const (
 	NamePseudo
 	NameProperty
 	NameTag
-	NameVariable
+)
+
+// Builtin names.
+const (
+	NameBuiltin TokenType = 2100 + iota
+	NameBuiltinPseudo
+)
+
+// Variable names.
+const (
+	NameVariable TokenType = 2200 + iota
 	NameVariableAnonymous
 	NameVariableClass
 	NameVariableGlobal
 	NameVariableInstance
 	NameVariableMagic
+)
+
+// Function names.
+const (
+	NameFunction TokenType = 2300 + iota
+	NameFunctionMagic
 )
 
 // Literals.
@@ -122,6 +136,7 @@ const (
 	LiteralNumberInteger
 	LiteralNumberIntegerLong
 	LiteralNumberOct
+	LiteralNumberByte
 )
 
 // Operators.

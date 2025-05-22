@@ -160,52 +160,6 @@ func TestLogSeriesQuery(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 }
 
-func Test_testToKeyValues(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		exp  []interface{}
-	}{
-		{
-			name: "canonical-form",
-			in:   "Source=logvolhist",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-			},
-		},
-		{
-			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
-			exp: []interface{}{
-				"source",
-				"logvolhist",
-				"feature",
-				"beta",
-				"user",
-				"Jinx@grafana.com",
-			},
-		},
-		{
-			name: "empty",
-			in:   "",
-			exp:  []interface{}{},
-		},
-		{
-			name: "non-canonical form",
-			in:   "abc",
-			exp:  []interface{}{},
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := tagsToKeyValues(c.in)
-			assert.Equal(t, c.exp, got)
-		})
-	}
-}
-
 func TestQueryHashing(t *testing.T) {
 	h1 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
 	h2 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)

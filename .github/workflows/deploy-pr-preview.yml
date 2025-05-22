@@ -11,14 +11,25 @@ on:
 
 jobs:
   deploy-pr-preview:
-    if: github.repository == 'grafana/loki'
+    if: "!github.event.pull_request.head.repo.fork"
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     with:
-      sha: ${{ github.event.pull_request.head.sha }}
       branch: ${{ github.head_ref }}
       event_number: ${{ github.event.number }}
-      title: ${{ github.event.pull_request.title }}
       repo: loki
-      website_directory: content/docs/loki/latest
-      relative_prefix: /docs/loki/latest/
-      index_file: true
+      sha: ${{ github.event.pull_request.head.sha }}
+      sources: |
+        [
+          {
+            "index_file": "content/docs/loki/_index.md",
+            "relative_prefix": "/docs/loki/latest/",
+            "repo": "loki",
+            "source_directory": "docs/sources",
+            "website_directory": "content/docs/loki/latest"
+          }
+        ]
+      title: ${{ github.event.pull_request.title }}

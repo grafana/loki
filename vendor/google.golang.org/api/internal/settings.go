@@ -63,6 +63,7 @@ type DialSettings struct {
 	AllowNonDefaultServiceAccount bool
 	DefaultUniverseDomain         string
 	UniverseDomain                string
+	AllowHardBoundTokens          []string
 	Logger                        *slog.Logger
 	// Google API system parameters. For more information please read:
 	// https://cloud.google.com/apis/docs/system-parameters

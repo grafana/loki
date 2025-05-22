@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 )
 
 const (
@@ -18,16 +18,25 @@ type Sketch struct {
 	p          uint8
 	m          uint32
 	alpha      float64
-	tmpSet     *set
+	tmpSet     set
 	sparseList *compressedList
 	regs       []uint8
 }
 
-func New() *Sketch           { return New14() }                     // New returns a HyperLogLog Sketch with 2^14 registers (precision 14)
-func New14() *Sketch         { return newSketchNoError(14, true) }  // New14 returns a HyperLogLog Sketch with 2^14 registers (precision 14)
-func New16() *Sketch         { return newSketchNoError(16, true) }  // New16 returns a HyperLogLog Sketch with 2^16 registers (precision 16)
-func NewNoSparse() *Sketch   { return newSketchNoError(14, false) } // NewNoSparse returns a HyperLogLog Sketch with 2^14 registers (precision 14) that will not use a sparse representation
-func New16NoSparse() *Sketch { return newSketchNoError(16, false) } // New16NoSparse returns a HyperLogLog Sketch with 2^16 registers (precision 16) that will not use a sparse representation
+// New returns a HyperLogLog Sketch with 2^14 registers (precision 14)
+func New() *Sketch { return New14() }
+
+// New14 returns a HyperLogLog Sketch with 2^14 registers (precision 14)
+func New14() *Sketch { return newSketchNoError(14, true) }
+
+// New16 returns a HyperLogLog Sketch with 2^16 registers (precision 16)
+func New16() *Sketch { return newSketchNoError(16, true) }
+
+// NewNoSparse returns a HyperLogLog Sketch with 2^14 registers (precision 14) that will not use a sparse representation
+func NewNoSparse() *Sketch { return newSketchNoError(14, false) }
+
+// New16NoSparse returns a HyperLogLog Sketch with 2^16 registers (precision 16) that will not use a sparse representation
+func New16NoSparse() *Sketch { return newSketchNoError(16, false) }
 
 func newSketchNoError(precision uint8, sparse bool) *Sketch {
 	sk, _ := NewSketch(precision, sparse)
@@ -45,7 +54,7 @@ func NewSketch(precision uint8, sparse bool) (*Sketch, error) {
 		alpha: alpha(float64(m)),
 	}
 	if sparse {
-		s.tmpSet = newSet(0)
+		s.tmpSet = makeSet(0)
 		s.sparseList = newCompressedList(0)
 	} else {
 		s.regs = make([]uint8, m)
@@ -131,7 +140,7 @@ func (sk *Sketch) toNormal() {
 		sk.insert(i, r)
 	}
 
-	sk.tmpSet = nil
+	sk.tmpSet = nilSet
 	sk.sparseList = nil
 }
 
@@ -167,11 +176,11 @@ func (sk *Sketch) mergeSparse() {
 		return
 	}
 
-	keys := make(uint64Slice, 0, sk.tmpSet.Len())
+	keys := make([]uint32, 0, sk.tmpSet.Len())
 	sk.tmpSet.ForEach(func(k uint32) {
 		keys = append(keys, k)
 	})
-	sort.Sort(keys)
+	slices.Sort(keys)
 
 	newList := newCompressedList(4*sk.tmpSet.Len() + sk.sparseList.Len())
 	for iter, i := sk.sparseList.Iter(), 0; iter.HasNext() || i < len(keys); {
@@ -186,25 +195,36 @@ func (sk *Sketch) mergeSparse() {
 			continue
 		}
 
-		x1, x2 := iter.Peek(), keys[i]
+		x1, adv := iter.Peek()
+		x2 := keys[i]
 		if x1 == x2 {
-			newList.Append(iter.Next())
+			newList.Append(x1)
+			iter.Advance(x1, adv)
 			i++
 		} else if x1 > x2 {
 			newList.Append(x2)
 			i++
 		} else {
-			newList.Append(iter.Next())
+			newList.Append(x1)
+			iter.Advance(x1, adv)
 		}
 	}
 
 	sk.sparseList = newList
-	sk.tmpSet = newSet(0)
+	sk.tmpSet = makeSet(0)
 }
 
 // MarshalBinary implements the encoding.BinaryMarshaler interface.
+//
+// When the result will be appended to another buffer, consider using
+// AppendBinary to avoid additional allocations and copying.
 func (sk *Sketch) MarshalBinary() (data []byte, err error) {
-	data = make([]byte, 0, 8+len(sk.regs))
+	return sk.AppendBinary(nil)
+}
+
+// AppendBinary implements the encoding.BinaryAppender interface.
+func (sk *Sketch) AppendBinary(data []byte) ([]byte, error) {
+	data = slices.Grow(data, 8+len(sk.regs))
 	// Marshal a version marker.
 	data = append(data, version)
 	// Marshal p.
@@ -217,18 +237,13 @@ func (sk *Sketch) MarshalBinary() (data []byte, err error) {
 		data = append(data, byte(1))
 
 		// Add the tmp_set
-		tsdata, err := sk.tmpSet.MarshalBinary()
+		data, err := sk.tmpSet.AppendBinary(data)
 		if err != nil {
 			return nil, err
 		}
-		data = append(data, tsdata...)
 
 		// Add the sparse Sketch
-		sdata, err := sk.sparseList.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-		return append(data, sdata...), nil
+		return sk.sparseList.AppendBinary(data)
 	}
 
 	// It's using the dense Sketch.
@@ -236,12 +251,12 @@ func (sk *Sketch) MarshalBinary() (data []byte, err error) {
 
 	// Add the dense sketch Sketch.
 	sz := len(sk.regs)
-	data = append(data, []byte{
-		byte(sz >> 24),
-		byte(sz >> 16),
-		byte(sz >> 8),
+	data = append(data,
+		byte(sz>>24),
+		byte(sz>>16),
+		byte(sz>>8),
 		byte(sz),
-	}...)
+	)
 
 	// Marshal each element in the list.
 	for _, v := range sk.regs {
@@ -290,7 +305,7 @@ func (sk *Sketch) UnmarshalBinary(data []byte) error {
 
 		// Unmarshal the tmp_set.
 		tssz := binary.BigEndian.Uint32(data[4:8])
-		sk.tmpSet = newSet(int(tssz))
+		sk.tmpSet = makeSet(int(tssz))
 
 		// We need to unmarshal tssz values in total, and each value requires us
 		// to read 4 bytes.
@@ -306,7 +321,7 @@ func (sk *Sketch) UnmarshalBinary(data []byte) error {
 
 	// Using the dense Sketch.
 	sk.sparseList = nil
-	sk.tmpSet = nil
+	sk.tmpSet = nilSet
 
 	if v == 1 {
 		return sk.unmarshalBinaryV1(data[8:], b)

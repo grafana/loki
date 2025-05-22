@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -265,6 +266,8 @@ type Ingester struct {
 
 	limiter *Limiter
 
+	tenantsRetention *retention.TenantsRetention
+
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
@@ -384,7 +387,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, registerer),
+			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
 		)
@@ -426,6 +429,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
 	i.limiter = NewLimiter(limits, metrics, streamCountLimiter, streamRateLimiter)
+
+	i.tenantsRetention = retention.NewTenantsRetention(i.limiter.limits)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
@@ -1038,7 +1043,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker, i.tenantsRetention)
 		if err != nil {
 			return nil, err
 		}
@@ -1351,7 +1356,48 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-	return instance.Series(ctx, req)
+
+	resp, err := instance.Series(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		var storeSeries []logproto.SeriesIdentifier
+		var parsed syntax.Expr
+
+		groups := []string{""}
+		if len(req.Groups) != 0 {
+			groups = req.Groups
+		}
+
+		for _, group := range groups {
+			if group != "" {
+				parsed, err = syntax.ParseExpr(group)
+				if err != nil {
+					return nil, err
+				}
+			}
+			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector:  group,
+					Limit:     1,
+					Start:     start,
+					End:       end,
+					Direction: logproto.FORWARD,
+					Shards:    req.Shards,
+					Plan: &plan.QueryPlan{
+						AST: parsed,
+					},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			resp.Series = append(resp.Series, storeSeries...)
+		}
+	}
+	return resp, nil
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {

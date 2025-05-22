@@ -40,7 +40,6 @@ func markdownRules() Rules {
 			{"`[^`]+`", LiteralStringBacktick, nil},
 			{`[@#][\w/:]+`, NameEntity, nil},
 			{`(!?\[)([^]]+)(\])(\()([^)]+)(\))`, ByGroups(Text, NameTag, Text, Text, NameAttribute, Text), nil},
-			{`[^\\\s]+`, Other, nil},
 			{`.|\n`, Other, nil},
 		},
 	}

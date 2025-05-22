@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -36,7 +37,7 @@ func VirtualMemory() (*VirtualMemoryStat, error) {
 	return VirtualMemoryWithContext(context.Background())
 }
 
-func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
+func VirtualMemoryWithContext(_ context.Context) (*VirtualMemoryStat, error) {
 	var memInfo memoryStatusEx
 	memInfo.cbSize = uint32(unsafe.Sizeof(memInfo))
 	mem, _, _ := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memInfo)))
@@ -76,7 +77,7 @@ func SwapMemory() (*SwapMemoryStat, error) {
 	return SwapMemoryWithContext(context.Background())
 }
 
-func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
+func SwapMemoryWithContext(_ context.Context) (*SwapMemoryStat, error) {
 	// Use the performance counter to get the swap usage percentage
 	counter, err := common.NewWin32PerformanceCounter("swap_percentage", `\Paging File(_Total)\% Usage`)
 	if err != nil {
@@ -150,7 +151,7 @@ func SwapDevices() ([]*SwapDevice, error) {
 	return SwapDevicesWithContext(context.Background())
 }
 
-func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
+func SwapDevicesWithContext(_ context.Context) ([]*SwapDevice, error) {
 	pageSizeOnce.Do(func() {
 		var sysInfo systemInfo
 		procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&sysInfo)))

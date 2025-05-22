@@ -26,12 +26,12 @@ These endpoints are exposed by the `distributor`, `write`, and `all` components:
 - [`POST /loki/api/v1/push`](#ingest-logs)
 - [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
 
-A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
+A [list of clients](../../send-data/) can be found in the clients documentation.
 
 ### Query endpoints
 
 {{< admonition type="note" >}}
-Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL]({{< relref "../query" >}}) section of the documentation.
+Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL](../../query/) section of the documentation.
 {{< /admonition >}}
 
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
@@ -149,8 +149,7 @@ being returned.
 
 The API accepts several formats for timestamps:
 
-- An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds.
-- More than ten digits are interpreted as a Unix timestamp in nanoseconds.
+- All epoch values will be interpreted as a Unix timestamp in nanoseconds.
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
@@ -239,7 +238,7 @@ Alternatively, if the `Content-Type` header is set to `application/json`, a JSON
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
-You can optionally attach [structured metadata]({{< relref "../get-started/labels/structured-metadata" >}}) to each log line by adding a JSON object to the end of the log line array.
+You can optionally attach [structured metadata](../../get-started/labels/structured-metadata/) to each log line by adding a JSON object to the end of the log line array.
 The JSON object must be a valid JSON object with string keys and string values. The JSON object should not contain any nested object.
 The JSON object must be set immediately after the log line. Here is an example of a log entry with some structured metadata attached:
 
@@ -291,7 +290,7 @@ This type of query is often referred to as an instant query. Instant queries are
 and will return a 400 (Bad Request) in case a log type query is provided.
 The endpoint accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) query to perform. Requests that do not use valid LogQL syntax will return errors.
+- `query`: The [LogQL](../../query/) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
@@ -417,7 +416,7 @@ gave this response:
 ```
 
 If your cluster has
-[Grafana Loki Multi-Tenancy]({{< relref "../operations/multi-tenancy" >}}) enabled,
+[Grafana Loki Multi-Tenancy](../../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
 
@@ -466,7 +465,7 @@ GET /loki/api/v1/query_range
 This type of query is often referred to as a range query. Range queries are used for both log and metric type LogQL queries.
 It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) query to perform.
+- `query`: The [LogQL](../../query/) query to perform.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to now. Loki returns results with timestamp lower than this value.
@@ -851,7 +850,7 @@ The `/loki/api/v1/index/stats` endpoint can be used to query the index for the n
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env!="dev"}`)
+- `query`: The [LogQL](../../query/) matchers to check (that is, `{job="foo", env!="dev"}`)
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
 
@@ -898,7 +897,7 @@ The other way to change aggregations is with the `aggregateBy` parameter. The de
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
+- `query`: The [LogQL](../../query/) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
 - `limit`: How many metric series to return. The parameter is optional, the default is `100`.
@@ -946,7 +945,7 @@ ts=<_> caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duratio
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
+- `query`: The [LogQL](../../query/) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
 - `step=<duration string or float number of seconds>`: Step between samples for occurrences of this pattern. This parameter is optional.
@@ -1005,7 +1004,7 @@ gave this response:
 ```
 
 The result is a list of patterns detected in the logs, with the number of samples for each pattern at each timestamp.
-The pattern format is the same as the [LogQL]({{< relref "../query" >}}) pattern filter and parser and can be used in queries for filtering matching logs.
+The pattern format is the same as the [LogQL](../../query/) pattern filter and parser and can be used in queries for filtering matching logs.
 Each sample is a tuple of timestamp (second) and count.
 
 ## Stream logs
@@ -1017,7 +1016,7 @@ GET /loki/api/v1/tail
 `/loki/api/v1/tail` is a WebSocket endpoint that streams log messages based on a query to the client.
 It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) query to perform.
+- `query`: The [LogQL](../../query/) query to perform.
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return. It defaults to `100`.
@@ -1087,7 +1086,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki]({{< relref "../operations/meta-monitoring" >}})
+[Observing Loki](../../operations/meta-monitoring/)
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -1383,7 +1382,7 @@ PUT /loki/api/v1/delete
 ```
 
 Create a new delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
+The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
@@ -1423,7 +1422,7 @@ GET /loki/api/v1/delete
 ```
 
 List the existing delete requests for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
+The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
 
 Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
@@ -1460,7 +1459,7 @@ DELETE /loki/api/v1/delete
 ```
 
 Remove a delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
+The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 

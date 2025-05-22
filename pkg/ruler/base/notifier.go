@@ -21,6 +21,7 @@ import (
 
 	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // TODO: Instead of using the same metrics for all notifiers,
@@ -53,9 +54,9 @@ type rulerNotifier struct {
 func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
-		notifier:  notifier.NewManager(o, l),
+		notifier:  notifier.NewManager(o, util_log.SlogFromGoKit(l)),
 		sdCancel:  sdCancel,
-		sdManager: discovery.NewManager(sdCtx, l, util.NoopRegistry{}, sdMetrics),
+		sdManager: discovery.NewManager(sdCtx, util_log.SlogFromGoKit(l), util.NoopRegistry{}, sdMetrics),
 		logger:    l,
 	}
 }

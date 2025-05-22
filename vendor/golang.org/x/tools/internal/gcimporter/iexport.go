@@ -246,6 +246,26 @@ import (
 
 // IExportShallow encodes "shallow" export data for the specified package.
 //
+// For types, we use "shallow" export data. Historically, the Go
+// compiler always produced a summary of the types for a given package
+// that included types from other packages that it indirectly
+// referenced: "deep" export data. This had the advantage that the
+// compiler (and analogous tools such as gopls) need only load one
+// file per direct import.  However, it meant that the files tended to
+// get larger based on the level of the package in the import
+// graph. For example, higher-level packages in the kubernetes module
+// have over 1MB of "deep" export data, even when they have almost no
+// content of their own, merely because they mention a major type that
+// references many others. In pathological cases the export data was
+// 300x larger than the source for a package due to this quadratic
+// growth.
+//
+// "Shallow" export data means that the serialized types describe only
+// a single package. If those types mention types from other packages,
+// the type checker may need to request additional packages beyond
+// just the direct imports. Type information for the entire transitive
+// closure of imports is provided (lazily) by the DAG.
+//
 // No promises are made about the encoding other than that it can be decoded by
 // the same version of IIExportShallow. If you plan to save export data in the
 // file system, be sure to include a cryptographic digest of the executable in
@@ -268,8 +288,8 @@ func IExportShallow(fset *token.FileSet, pkg *types.Package, reportf ReportFunc)
 }
 
 // IImportShallow decodes "shallow" types.Package data encoded by
-// IExportShallow in the same executable. This function cannot import data from
-// cmd/compile or gcexportdata.Write.
+// [IExportShallow] in the same executable. This function cannot import data
+// from cmd/compile or gcexportdata.Write.
 //
 // The importer calls getPackages to obtain package symbols for all
 // packages mentioned in the export data, including the one being
@@ -290,7 +310,7 @@ func IImportShallow(fset *token.FileSet, getPackages GetPackagesFunc, data []byt
 }
 
 // ReportFunc is the type of a function used to report formatted bugs.
-type ReportFunc = func(string, ...interface{})
+type ReportFunc = func(string, ...any)
 
 // Current bundled export format version. Increase with each format change.
 // 0: initial implementation
@@ -577,7 +597,7 @@ type filePositions struct {
 	needed []uint64 // unordered list of needed file offsets
 }
 
-func (p *iexporter) trace(format string, args ...interface{}) {
+func (p *iexporter) trace(format string, args ...any) {
 	if !trace {
 		// Call sites should also be guarded, but having this check here allows
 		// easily enabling/disabling debug trace statements.
@@ -1563,6 +1583,6 @@ func (e internalError) Error() string { return "gcimporter: " + string(e) }
 // "internalErrorf" as the former is used for bugs, whose cause is
 // internal inconsistency, whereas the latter is used for ordinary
 // situations like bad input, whose cause is external.
-func internalErrorf(format string, args ...interface{}) error {
+func internalErrorf(format string, args ...any) error {
 	return internalError(fmt.Sprintf(format, args...))
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.14.1](https://github.com/googleapis/gax-go/compare/v2.14.0...v2.14.1) (2024-12-19)
+
+
+### Bug Fixes
+
+* update golang.org/x/net to v0.33.0 ([#391](https://github.com/googleapis/gax-go/issues/391)) ([547a5b4](https://github.com/googleapis/gax-go/commit/547a5b43aa6f376f71242da9f18e65fbdfb342f6))
+
+
+### Documentation
+
+* fix godoc to refer to the proper envvar ([#387](https://github.com/googleapis/gax-go/issues/387)) ([dc6baf7](https://github.com/googleapis/gax-go/commit/dc6baf75c1a737233739630b5af6c9759f08abcd))
+
 ## [2.14.0](https://github.com/googleapis/gax-go/compare/v2.13.0...v2.14.0) (2024-11-13)
 
 

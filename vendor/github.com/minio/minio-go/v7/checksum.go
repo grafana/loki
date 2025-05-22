@@ -25,12 +25,50 @@ import (
 	"errors"
 	"hash"
 	"hash/crc32"
-	"hash/crc64"
 	"io"
 	"math/bits"
 	"net/http"
 	"sort"
+
+	"github.com/minio/crc64nvme"
 )
+
+// ChecksumMode contains information about the checksum mode on the object
+type ChecksumMode uint32
+
+const (
+	// ChecksumFullObjectMode Full object checksum `csumCombine(csum1, csum2...)...), csumN...)`
+	ChecksumFullObjectMode ChecksumMode = 1 << iota
+
+	// ChecksumCompositeMode Composite checksum `csum([csum1 + csum2 ... + csumN])`
+	ChecksumCompositeMode
+
+	// Keep after all valid checksums
+	checksumLastMode
+
+	// checksumModeMask is a mask for valid checksum mode types.
+	checksumModeMask = checksumLastMode - 1
+)
+
+// Is returns if c is all of t.
+func (c ChecksumMode) Is(t ChecksumMode) bool {
+	return c&t == t
+}
+
+// Key returns the header key.
+func (c ChecksumMode) Key() string {
+	return amzChecksumMode
+}
+
+func (c ChecksumMode) String() string {
+	switch c & checksumModeMask {
+	case ChecksumFullObjectMode:
+		return "FULL_OBJECT"
+	case ChecksumCompositeMode:
+		return "COMPOSITE"
+	}
+	return ""
+}
 
 // ChecksumType contains information about the checksum type.
 type ChecksumType uint32
@@ -73,6 +111,7 @@ const (
 	amzChecksumSHA1      = "x-amz-checksum-sha1"
 	amzChecksumSHA256    = "x-amz-checksum-sha256"
 	amzChecksumCRC64NVME = "x-amz-checksum-crc64nvme"
+	amzChecksumMode      = "x-amz-checksum-type"
 )
 
 // Base returns the base type, without modifiers.
@@ -145,15 +184,12 @@ func (c ChecksumType) RawByteLen() int {
 	case ChecksumSHA256:
 		return sha256.Size
 	case ChecksumCRC64NVME:
-		return crc64.Size
+		return crc64nvme.Size
 	}
 	return 0
 }
 
 const crc64NVMEPolynomial = 0xad93d23594c93659
-
-// crc64 uses reversed polynomials.
-var crc64Table = crc64.MakeTable(bits.Reverse64(crc64NVMEPolynomial))
 
 // Hasher returns a hasher corresponding to the checksum type.
 // Returns nil if no checksum.
@@ -168,7 +204,7 @@ func (c ChecksumType) Hasher() hash.Hash {
 	case ChecksumSHA256:
 		return sha256.New()
 	case ChecksumCRC64NVME:
-		return crc64.New(crc64Table)
+		return crc64nvme.New()
 	}
 	return nil
 }
@@ -398,7 +434,7 @@ func addAutoChecksumHeaders(opts *PutObjectOptions) {
 	}
 	opts.UserMetadata["X-Amz-Checksum-Algorithm"] = opts.AutoChecksum.String()
 	if opts.AutoChecksum.FullObjectRequested() {
-		opts.UserMetadata["X-Amz-Checksum-Type"] = "FULL_OBJECT"
+		opts.UserMetadata[amzChecksumMode] = ChecksumFullObjectMode.String()
 	}
 }
 
@@ -415,7 +451,10 @@ func applyAutoChecksum(opts *PutObjectOptions, allParts []ObjectPart) {
 	} else if opts.AutoChecksum.CanMergeCRC() {
 		crc, err := opts.AutoChecksum.FullObjectChecksum(allParts)
 		if err == nil {
-			opts.UserMetadata = map[string]string{opts.AutoChecksum.KeyCapitalized(): crc.Encoded(), "X-Amz-Checksum-Type": "FULL_OBJECT"}
+			opts.UserMetadata = map[string]string{
+				opts.AutoChecksum.KeyCapitalized(): crc.Encoded(),
+				amzChecksumMode:                    ChecksumFullObjectMode.String(),
+			}
 		}
 	}
 }

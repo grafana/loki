@@ -141,7 +141,7 @@ func ParseColour(colour string) Colour {
 	if err != nil {
 		return 0
 	}
-	return Colour(n + 1)
+	return Colour(n + 1) //nolint:gosec
 }
 
 // MustParseColour is like ParseColour except it panics if the colour is invalid.
@@ -162,13 +162,13 @@ func (c Colour) String() string   { return fmt.Sprintf("#%06x", int(c-1)) }
 func (c Colour) GoString() string { return fmt.Sprintf("Colour(0x%06x)", int(c-1)) }
 
 // Red component of colour.
-func (c Colour) Red() uint8 { return uint8(((c - 1) >> 16) & 0xff) }
+func (c Colour) Red() uint8 { return uint8(((c - 1) >> 16) & 0xff) } //nolint:gosec
 
 // Green component of colour.
-func (c Colour) Green() uint8 { return uint8(((c - 1) >> 8) & 0xff) }
+func (c Colour) Green() uint8 { return uint8(((c - 1) >> 8) & 0xff) } //nolint:gosec
 
 // Blue component of colour.
-func (c Colour) Blue() uint8 { return uint8((c - 1) & 0xff) }
+func (c Colour) Blue() uint8 { return uint8((c - 1) & 0xff) } //nolint:gosec
 
 // Colours is an orderable set of colours.
 type Colours []Colour

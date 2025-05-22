@@ -68,7 +68,7 @@ type key struct {
 	libraryname string
 }
 
-func keyOf(metrics metricdata.Metrics, library instrumentation.Library) key {
+func keyOf(metrics metricdata.Metrics, library instrumentation.Scope) key {
 	return key{
 		name:        metrics.Name,
 		libraryname: library.Name,
@@ -426,7 +426,7 @@ func recordToMdpbKindType(a metricdata.Aggregation) (googlemetricpb.MetricDescri
 }
 
 // recordToMpb converts data from records to Metric proto type for Cloud Monitoring.
-func (me *metricExporter) recordToMpb(metrics metricdata.Metrics, attributes attribute.Set, library instrumentation.Library, extraLabels *attribute.Set) *googlemetricpb.Metric {
+func (me *metricExporter) recordToMpb(metrics metricdata.Metrics, attributes attribute.Set, library instrumentation.Scope, extraLabels *attribute.Set) *googlemetricpb.Metric {
 	me.mdLock.RLock()
 	defer me.mdLock.RUnlock()
 	k := keyOf(metrics, library)

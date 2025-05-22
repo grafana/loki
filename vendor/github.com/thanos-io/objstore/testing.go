@@ -287,6 +287,10 @@ func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 	return d.bkt.Get(ctx, name)
 }
 
+func (b *delayingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: delayingBucket.GetAndReplace")
+}
+
 func (d *delayingBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	time.Sleep(d.delay)
 	return d.bkt.Attributes(ctx, name)

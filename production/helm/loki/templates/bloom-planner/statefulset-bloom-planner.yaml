@@ -38,12 +38,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.bloomPlannerSelectorLabels" . | nindent 8 }}
+        {{- include "loki.bloomPlannerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.bloomPlanner.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.bloomPlanner.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -88,11 +85,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomPlanner.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.bloomPlanner.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomPlanner.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomPlanner.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}

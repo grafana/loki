@@ -320,7 +320,7 @@ func (u *uploader) Put(ctx context.Context, db tsdbWithID) error {
 		return err
 	}
 
-	return client.PutObject(ctx, db.id.Path(), buf)
+	return client.PutObject(ctx, buildFileName(db.id.Path()), buf)
 }
 
 func buildFileName(indexName string) string {

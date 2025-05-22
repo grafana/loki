@@ -11,6 +11,7 @@ linters:
     - errcheck
     - errname
     - errorlint
+    - gci
     - gocheckcompilerdirectives
     - gocritic
     - goprintffuncname
@@ -31,13 +32,13 @@ linters:
     - revive
     - sqlclosecheck
     - staticcheck
-    - tenv
     - testifylint
     - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
+    - usetesting
 
 linters-settings:
   depguard:
@@ -79,12 +80,18 @@ linters-settings:
       - "(*hash/maphash.Hash).WriteString"
       - "(*github.com/influxdata/telegraf/plugins/outputs/postgresql/sqltemplate.Template).UnmarshalText"
 
+  gci:
+    sections:
+      - standard
+      - default
+      - localmodule
+ 
   gocritic:
     # Disable all checks.
     # Default: false
     disable-all: true
     # Which checks should be enabled in addition to default checks; can't be combined with 'disabled-checks'.
-    # By default, list of stable checks is used (https://go-critic.github.io/overview#checks-overview).
+    # By default, list of stable checks is used (https://go-critic.com/overview#checks-overview).
     # To see which checks are enabled run `GL_DEBUG=gocritic golangci-lint run --enable=gocritic`.
     enabled-checks:
       # diagnostic
@@ -143,7 +150,7 @@ linters-settings:
 
     # Settings passed to gocritic.
     # The settings key is the name of a supported gocritic checker.
-    # The list of supported checkers can be find in https://go-critic.github.io/overview.
+    # The list of supported checkers can be find in https://go-critic.com/overview.
     settings:
       hugeParam:
         # Size in bytes that makes the warning trigger.
@@ -159,38 +166,38 @@ linters-settings:
     # Available rules: https://github.com/securego/gosec#available-rules
     # Default: [] - means include all rules
     includes:
-      - G101
-      - G102
-      - G103
-      - G106
-      - G107
-      - G108
-      - G109
-      - G110
-      - G111
-      - G112
-      - G114
-      - G201
-      - G202
-      - G203
-      - G301
-      - G302
-      - G303
-      - G305
-      - G306
-      - G401
-      - G403
-      - G404
-      - G405
-      - G406
-      - G501
-      - G502
-      - G503
-      - G505
-      - G506
-      - G507
-      - G601
-      - G602
+      - G101 # Look for hard coded credentials
+      - G102 # Bind to all interfaces
+      - G103 # Audit the use of unsafe block
+      - G106 # Audit the use of ssh.InsecureIgnoreHostKey
+      - G107 # Url provided to HTTP request as taint input
+      - G108 # Profiling endpoint automatically exposed on /debug/pprof
+      - G109 # Potential Integer overflow made by strconv.Atoi result conversion to int16/32
+      - G110 # Potential DoS vulnerability via decompression bomb
+      - G111 # Potential directory traversal
+      - G112 # Potential slowloris attack
+      - G114 # Use of net/http serve function that has no support for setting timeouts
+      - G201 # SQL query construction using format string
+      - G202 # SQL query construction using string concatenation
+      - G203 # Use of unescaped data in HTML templates
+      - G301 # Poor file permissions used when creating a directory
+      - G302 # Poor file permissions used with chmod
+      - G303 # Creating tempfile using a predictable path
+      - G305 # File traversal when extracting zip/tar archive
+      - G306 # Poor file permissions used when writing to a new file
+      - G401 # Detect the usage of MD5 or SHA1
+      - G403 # Ensure minimum RSA key length of 2048 bits
+      - G404 # Insecure random number source (rand)
+      - G405 # Detect the usage of DES or RC4
+      - G406 # Detect the usage of MD4 or RIPEMD160
+      - G501 # Import blocklist: crypto/md5
+      - G502 # Import blocklist: crypto/des
+      - G503 # Import blocklist: crypto/rc4
+      - G505 # Import blocklist: crypto/sha1
+      - G506 # Import blocklist: golang.org/x/crypto/md4
+      - G507 # Import blocklist: golang.org/x/crypto/ripemd160
+      - G601 # Implicit memory aliasing of items from a range statement
+      - G602 # Slice access out of bounds
       # G104, G105, G113, G204, G304, G307, G402, G504 were not enabled intentionally
       # TODO: review G115 when reporting false positives is fixed (https://github.com/securego/gosec/issues/1212)
     # To specify the configuration of rules.
@@ -318,14 +325,10 @@ linters-settings:
       - name: unnecessary-stmt
       - name: unreachable-code
       - name: unused-parameter
+      - name: unused-receiver
       - name: var-declaration
       - name: var-naming
       - name: waitgroup-by-value
-  tenv:
-    # The option `all` will run against whole test files (`_test.go`) regardless of method/function signatures.
-    # Otherwise, only methods that take `*testing.T`, `*testing.B`, and `testing.TB` as arguments are checked.
-    # Default: false
-    all: true
   testifylint:
     # Disable all checkers (https://github.com/Antonboom/testifylint#checkers).
     # Default: false
@@ -335,7 +338,9 @@ linters-settings:
       - blank-import
       - bool-compare
       - compares
+      - contains
       - empty
+      - encoded-compare
       - error-is-as
       - error-nil
       - expected-actual
@@ -345,6 +350,7 @@ linters-settings:
       - len
       - negative-positive
       - nil-compare
+      - regexp
       - require-error
       - suite-broken-parallel
       - suite-dont-use-pkg
@@ -352,6 +358,10 @@ linters-settings:
       - suite-subtest-run
       - suite-thelper
       - useless-assert
+  usetesting:
+    # Enable/disable `os.TempDir()` detections.
+    # Default: false
+    os-temp-dir: true
 
 issues:
   # List of regexps of issue texts to exclude.
@@ -429,6 +439,10 @@ issues:
   # Default: 3
   max-same-issues: 0
 
+  # Make issues output unique by line.
+  # Default: true
+  uniq-by-line: false
+
 # output configuration options
 output:
   # The formats used to render issues.
@@ -461,10 +475,6 @@ output:
     - format: tab
       path: stdout
 
-  # Make issues output unique by line.
-  # Default: true
-  uniq-by-line: false
-
   # Sort results by the order defined in `sort-order`.
   # Default: false
   sort-results: true
@@ -473,7 +483,9 @@ output:
   # Default: false
   show-stats: true
 
+# Options for analysis running.
 run:
   # Timeout for analysis, e.g. 30s, 5m.
+  # If the value is lower or equal to 0, the timeout is disabled.
   # Default: 1m
   timeout: 10m

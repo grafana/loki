@@ -1,6 +1,48 @@
 # Changes
 
 
+## [1.5.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.2...iam/v1.5.0) (2025-03-31)
+
+
+### Features
+
+* **iam:** New client(s) ([#11933](https://github.com/googleapis/google-cloud-go/issues/11933)) ([d5cb2e5](https://github.com/googleapis/google-cloud-go/commit/d5cb2e58334c6963cc46885f565fe3b19c52cb63))
+
+## [1.4.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.1...iam/v1.4.2) (2025-03-13)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
+## [1.4.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.0...iam/v1.4.1) (2025-03-06)
+
+
+### Bug Fixes
+
+* **iam:** Fix out-of-sync version.go ([28f0030](https://github.com/googleapis/google-cloud-go/commit/28f00304ebb13abfd0da2f45b9b79de093cca1ec))
+
+## [1.4.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.1...iam/v1.4.0) (2025-02-12)
+
+
+### Features
+
+* **iam/admin:** Regenerate client ([#11570](https://github.com/googleapis/google-cloud-go/issues/11570)) ([eab87d7](https://github.com/googleapis/google-cloud-go/commit/eab87d73bea884c636ec88f03b9aa90102a2833f)), refs [#8219](https://github.com/googleapis/google-cloud-go/issues/8219)
+
+## [1.3.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.0...iam/v1.3.1) (2025-01-02)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
+## [1.3.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.2...iam/v1.3.0) (2024-12-04)
+
+
+### Features
+
+* **iam:** Add ResourcePolicyMember to google/iam/v1 ([8dedb87](https://github.com/googleapis/google-cloud-go/commit/8dedb878c070cc1e92d62bb9b32358425e3ceffb))
+
 ## [1.2.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.1...iam/v1.2.2) (2024-10-23)
 
 

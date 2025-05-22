@@ -52,7 +52,11 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written
 			}
 
 			// Block reference without entries, because it's a root block
-			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.Block.Name + ">]\n")
+			if e.Inline {
+				w.out.WriteString(pad(indent) + "[<" + e.Block.Name + ">]\n")
+			} else {
+				w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.Block.Name + ">]\n")
+			}
 		} else {
 			// Description
 			w.writeComment(e.BlockDesc, indent, 0)

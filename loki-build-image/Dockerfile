@@ -4,7 +4,7 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-bullseye
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
@@ -17,7 +17,7 @@ RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "h
     curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
-FROM alpine:3.21.0 AS lychee
+FROM alpine:3.21.3 AS lychee
 ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
@@ -26,18 +26,18 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
-FROM alpine:3.21.0 AS golangci
+FROM alpine:3.21.3 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.60.3
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
 
-FROM alpine:3.21.0 AS buf
+FROM alpine:3.21.3 AS buf
 ARG TARGETOS
 RUN apk add --no-cache curl && \
     curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
-FROM alpine:3.21.0 AS docker
+FROM alpine:3.21.3 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM ${GOLANG_BASE_IMAGE} AS drone
@@ -51,8 +51,8 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 # github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM ${GOLANG_BASE_IMAGE} AS faillint
-RUN GO111MODULE=on go install github.com/fatih/faillint@v1.12.0
-RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
+RUN GO111MODULE=on go install github.com/fatih/faillint@v1.15.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.30.0
 
 FROM ${GOLANG_BASE_IMAGE} AS delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest

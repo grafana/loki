@@ -97,7 +97,7 @@ func (mfm MetricFamilyMap) SumGauges(name string) float64 {
 }
 
 func (mfm MetricFamilyMap) MaxGauges(name string) float64 {
-	return max(mfm[name], gaugeValue)
+	return maxMetric(mfm[name], gaugeValue)
 }
 
 func (mfm MetricFamilyMap) SumHistograms(name string) HistogramData {
@@ -416,9 +416,9 @@ func sum(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	return result
 }
 
-// max returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
+// maxMetric returns the max value from all metrics from same metric family (= series with the same metric name, but different labels)
 // Supplied function extracts value.
-func max(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
+func maxMetric(mf *dto.MetricFamily, fn func(*dto.Metric) float64) float64 {
 	result := math.NaN()
 
 	for _, m := range mf.GetMetric() {
@@ -727,7 +727,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser(labelTransformFn MetricLabel
 
 // FromLabelPairsToLabels converts dto.LabelPair into labels.Labels.
 func FromLabelPairsToLabels(pairs []*dto.LabelPair) labels.Labels {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for _, pair := range pairs {
 		builder.Set(pair.GetName(), pair.GetValue())
 	}
@@ -774,7 +774,7 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 	errs := tsdb_errors.NewMulti()
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
-	lbls := labels.NewBuilder(nil)
+	lbls := labels.NewBuilder(labels.EmptyLabels())
 
 nextMetric:
 	for m := range ch {
@@ -785,7 +785,7 @@ nextMetric:
 			continue
 		}
 
-		lbls.Reset(nil)
+		lbls.Reset(labels.EmptyLabels())
 		for _, lp := range dtoMetric.Label {
 			n := lp.GetName()
 			v := lp.GetValue()

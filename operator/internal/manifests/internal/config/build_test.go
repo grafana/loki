@@ -64,6 +64,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -116,6 +117,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -126,6 +128,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -324,6 +327,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -376,6 +380,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -386,6 +391,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -752,6 +758,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -804,6 +811,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -814,6 +822,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1112,6 +1121,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1164,6 +1174,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1174,6 +1185,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1473,6 +1485,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1525,6 +1538,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1535,6 +1549,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -1868,6 +1883,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1925,6 +1941,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1935,6 +1952,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2205,6 +2223,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2257,6 +2276,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2267,6 +2287,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2639,6 +2660,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2698,6 +2720,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2708,6 +2731,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -2972,6 +2996,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3024,6 +3049,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3034,6 +3060,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3471,6 +3498,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3523,6 +3551,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3534,6 +3563,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3734,6 +3764,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3786,6 +3817,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3797,6 +3829,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -3998,6 +4031,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4050,6 +4084,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4060,6 +4095,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4263,6 +4299,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4315,6 +4352,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4325,6 +4363,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4564,6 +4603,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4616,6 +4656,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4626,6 +4667,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -4863,6 +4905,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4922,6 +4965,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5363,6 +5407,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5422,6 +5467,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5541,6 +5587,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5600,6 +5647,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -5712,6 +5760,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5764,6 +5813,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
@@ -5774,6 +5824,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -6104,6 +6155,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -6156,6 +6208,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
+    time_sharding_enabled: true
   allow_structured_metadata: true
   otlp_config:
     resource_attributes:
@@ -6164,16 +6217,16 @@ limits_config:
         attributes:
         - res.foo.bar
         - res.bar.baz
-      - action: structured_metadata
+      - action: drop
         attributes:
         - res.service.env
     scope_attributes:
-    - action: structured_metadata
+    - action: drop
       attributes:
       - scope.foo.bar
       - scope.bar.baz
     log_attributes:
-    - action: structured_metadata
+    - action: drop
       attributes:
       - log.foo.bar
       - log.bar.baz
@@ -6186,6 +6239,7 @@ memberlist:
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+  rejoin_interval: 90s
 querier:
   engine:
     max_look_back_period: 30s
@@ -6313,16 +6367,16 @@ overrides:
           attributes:
           - res.foo.bar
           - res.bar.baz
-        - action: structured_metadata
+        - action: drop
           attributes:
           - res.service.env
       scope_attributes:
-      - action: structured_metadata
+      - action: drop
         attributes:
         - scope.foo.bar
         - scope.bar.baz
       log_attributes:
-      - action: structured_metadata
+      - action: drop
         attributes:
         - log.foo.bar
         - log.bar.baz
@@ -6499,7 +6553,7 @@ overrides:
 						},
 					},
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"res.service.env",
 						},
@@ -6507,7 +6561,7 @@ overrides:
 				},
 				ScopeAttributes: []OTLPAttribute{
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"scope.foo.bar",
 							"scope.bar.baz",
@@ -6516,7 +6570,7 @@ overrides:
 				},
 				LogAttributes: []OTLPAttribute{
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"log.foo.bar",
 							"log.bar.baz",
@@ -6535,7 +6589,7 @@ overrides:
 							},
 						},
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"res.service.env",
 							},
@@ -6543,7 +6597,7 @@ overrides:
 					},
 					ScopeAttributes: []OTLPAttribute{
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"scope.foo.bar",
 								"scope.bar.baz",
@@ -6552,7 +6606,7 @@ overrides:
 					},
 					LogAttributes: []OTLPAttribute{
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"log.foo.bar",
 								"log.bar.baz",

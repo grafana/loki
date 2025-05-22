@@ -559,7 +559,7 @@ func TestRuler_PrometheusAlerts(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
 	r := newTestRuler(t, cfg)
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
@@ -593,7 +593,7 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
 	r := newTestRuler(t, cfg)
-	defer r.StopAsync()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 

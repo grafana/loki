@@ -93,6 +93,11 @@ func (t *PushTarget) run() error {
 		return err
 	}
 
+	// Default to 100MB if not set to align with the default value in the distributor.
+	if t.config.MaxSendMsgSize == 0 {
+		t.config.MaxSendMsgSize = 100 << 20
+	}
+
 	t.server = srv
 	t.server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(http.HandlerFunc(t.handleLoki))
 	t.server.HTTP.Path("/promtail/api/v1/raw").Methods("POST").Handler(http.HandlerFunc(t.handlePlaintext))
@@ -111,7 +116,7 @@ func (t *PushTarget) run() error {
 func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := tenant.TenantID(r.Context())
-	req, err := push.ParseRequest(logger, userID, r, nil, push.EmptyLimits{}, push.ParseLokiRequest, nil, false)
+	req, err := push.ParseRequest(logger, userID, t.config.MaxSendMsgSize, r, push.EmptyLimits{}, push.ParseLokiRequest, nil, nil, false)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

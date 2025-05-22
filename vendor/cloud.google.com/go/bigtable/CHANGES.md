@@ -1,5 +1,93 @@
 # Changes
 
+## [1.37.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.36.0...bigtable/v1.37.0) (2025-04-15)
+
+
+### Features
+
+* **bigtable:** Allow configuring multicluster routing and isolation ([#11980](https://github.com/googleapis/google-cloud-go/issues/11980)) ([19e2837](https://github.com/googleapis/google-cloud-go/commit/19e2837cd314b6909fd632ca3594eff7b606bb19))
+
+
+### Bug Fixes
+
+* **bigtable:** Correct the retry condition of QueryExpiredViolation ([#11984](https://github.com/googleapis/google-cloud-go/issues/11984)) ([44d8b86](https://github.com/googleapis/google-cloud-go/commit/44d8b86587f82721af99709ed89b7e9e5792e2ff))
+* **bigtable:** Update google.golang.org/api to 0.229.0 ([3319672](https://github.com/googleapis/google-cloud-go/commit/3319672f3dba84a7150772ccb5433e02dab7e201))
+* **bigtable:** Use the same Backoff for idempotent and internal errors ([#11985](https://github.com/googleapis/google-cloud-go/issues/11985)) ([8d1d015](https://github.com/googleapis/google-cloud-go/commit/8d1d0152cf8b96f5cc99a032f558114bb5cbe9f2))
+
+## [1.36.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.35.0...bigtable/v1.36.0) (2025-03-31)
+
+
+### Features
+
+* **bigtable/admin:** Add MaterializedViews and LogicalViews APIs ([b323f88](https://github.com/googleapis/google-cloud-go/commit/b323f888e349168b4e30a9edb4630dfb6060ed4d))
+* **bigtable/admin:** Add MaterializedViews and LogicalViews APIs ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable/admin:** Publish row_key_schema fields in table proto and relevant admin APIs to setup a table with a row_key_schema ([3f23a91](https://github.com/googleapis/google-cloud-go/commit/3f23a9176f29a0a69b9d57b16f44b72eb3096d0c))
+* **bigtable:** Add Bind function to bind query params ([#11862](https://github.com/googleapis/google-cloud-go/issues/11862)) ([24c5ae0](https://github.com/googleapis/google-cloud-go/commit/24c5ae0ab119b2b7ba54ba0ea9c5432cdc5ec28f))
+* **bigtable:** Add datatypes for GoogleSQL ([#11816](https://github.com/googleapis/google-cloud-go/issues/11816)) ([5a9eb10](https://github.com/googleapis/google-cloud-go/commit/5a9eb101b691e79a2dae68be6a7dcae152d42868))
+* **bigtable:** Add Execute method to execute GoogleSQL queries ([#11883](https://github.com/googleapis/google-cloud-go/issues/11883)) ([0e53dcd](https://github.com/googleapis/google-cloud-go/commit/0e53dcd0005e7cecba4c7f6ef97645dbc7ce8d16))
+* **bigtable:** Add MaterializedViewName to ReadRows and SampleRowKeys ([b323f88](https://github.com/googleapis/google-cloud-go/commit/b323f888e349168b4e30a9edb4630dfb6060ed4d))
+* **bigtable:** Add methods to read ResultRow ([#11924](https://github.com/googleapis/google-cloud-go/issues/11924)) ([8b8ca9e](https://github.com/googleapis/google-cloud-go/commit/8b8ca9eefcfdbfb3f7cd4b991cd98808cfc03293))
+* **bigtable:** Add PrepareQuery api and update ExecuteQuery to support it ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable:** Add PrepareStatement to run GoogleSQL queries ([#11829](https://github.com/googleapis/google-cloud-go/issues/11829)) ([ea00b17](https://github.com/googleapis/google-cloud-go/commit/ea00b177060351e695fdc657bd711c136c25212b))
+* **bigtable:** Add support for data APIs for Materialized Views ([#11796](https://github.com/googleapis/google-cloud-go/issues/11796)) ([f5ae93b](https://github.com/googleapis/google-cloud-go/commit/f5ae93b9869d1d9de0d62dfcb8dd4ebb48056b57))
+* **bigtable:** Add support for logical views ([#11792](https://github.com/googleapis/google-cloud-go/issues/11792)) ([630d751](https://github.com/googleapis/google-cloud-go/commit/630d751397a84d06d54add63464d5ad5993768ef))
+* **bigtable:** Add support for materialized views for admin client ([#11793](https://github.com/googleapis/google-cloud-go/issues/11793)) ([640be05](https://github.com/googleapis/google-cloud-go/commit/640be05c744a8bd8f1a3e4ee0673409d707aa098))
+* **bigtable:** Adding node scaling factor ([b680164](https://github.com/googleapis/google-cloud-go/commit/b6801649768f9c94f97c5eaa913d2e1f43e07641))
+* **bigtable:** Disable MV and LV tests ([#11827](https://github.com/googleapis/google-cloud-go/issues/11827)) ([42dca03](https://github.com/googleapis/google-cloud-go/commit/42dca0388c2a2b90206b81f2b7e9deec9deeabbc))
+* **bigtable:** Row key schema support in admin client ([#11777](https://github.com/googleapis/google-cloud-go/issues/11777)) ([4158bac](https://github.com/googleapis/google-cloud-go/commit/4158bac23b8b234e02ab9dcb488ac1523612a3a8))
+
+
+### Bug Fixes
+
+* **bigtable:** Allow GC updates on emulated aggregate column family ([#11499](https://github.com/googleapis/google-cloud-go/issues/11499)) ([0682bfa](https://github.com/googleapis/google-cloud-go/commit/0682bfa5563ec81e2cf3fa9138142ebe482fb6fd))
+* **bigtable:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
+
+### Documentation
+
+* **bigtable/admin:** Fixed formatting of resource path strings ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **bigtable:** Update ExecuteQuery API docs to reflect changes ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+
+## [1.35.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.34.0...bigtable/v1.35.0) (2025-01-22)
+
+
+### Features
+
+* **bigtable:** Hot backups ([#11215](https://github.com/googleapis/google-cloud-go/issues/11215)) ([238ac1c](https://github.com/googleapis/google-cloud-go/commit/238ac1c37978b7ccdd72af453416308c511dd493))
+
+
+### Bug Fixes
+
+* **bigtable:** Allow nil condition in conditional mutation ([#11457](https://github.com/googleapis/google-cloud-go/issues/11457)) ([d83bc05](https://github.com/googleapis/google-cloud-go/commit/d83bc05219223027cfaa3fba127c2f03eb554c53))
+* **bigtable:** Do not retry conditional mutate ([#11437](https://github.com/googleapis/google-cloud-go/issues/11437)) ([ce8c9b1](https://github.com/googleapis/google-cloud-go/commit/ce8c9b1e5523646175b9650265928386143259fd))
+* **bigtable:** Mutate groups even after first error ([#11434](https://github.com/googleapis/google-cloud-go/issues/11434)) ([6ffe32b](https://github.com/googleapis/google-cloud-go/commit/6ffe32b76e7228d99e12eeba60a5e719f2d3e5e3))
+* **bigtable:** Retry correct mutations ([#11388](https://github.com/googleapis/google-cloud-go/issues/11388)) ([ca2c4e3](https://github.com/googleapis/google-cloud-go/commit/ca2c4e334f07e7f8f0e276db922122d47262dabf))
+* **bigtable:** Track number of readrows to set rowsLimit in subsequent requests ([#10213](https://github.com/googleapis/google-cloud-go/issues/10213)) ([abb615e](https://github.com/googleapis/google-cloud-go/commit/abb615e240e612540b24b03d95835058045275fc))
+
+## [1.34.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.33.0...bigtable/v1.34.0) (2025-01-02)
+
+
+### Features
+
+* **bigtable/admin:** Add support for Cloud Bigtable Node Scaling Factor for CBT Clusters ([7250d71](https://github.com/googleapis/google-cloud-go/commit/7250d714a638dcd5df3fbe0e91c5f1250c3f80f9))
+* **bigtable:** Add feature flags proto for Direct Access ([2c83297](https://github.com/googleapis/google-cloud-go/commit/2c83297a569117b0252b5b2edaecb09e4924d979))
+* **bigtable:** Async refresh dry run in parallel with sync refresh ([#11066](https://github.com/googleapis/google-cloud-go/issues/11066)) ([169e309](https://github.com/googleapis/google-cloud-go/commit/169e3096150599899788169368f96ce4470e5599))
+
+
+### Bug Fixes
+
+* **bigtable:** Correct the 'method' label value ([#11350](https://github.com/googleapis/google-cloud-go/issues/11350)) ([6aa27dc](https://github.com/googleapis/google-cloud-go/commit/6aa27dc79046df09e34e93044dbfe47cb3e9aa54))
+* **bigtable:** Resolve discrepancy between server and client qps ([#11224](https://github.com/googleapis/google-cloud-go/issues/11224)) ([c500179](https://github.com/googleapis/google-cloud-go/commit/c500179e771ac45ca3c2f5f7939444c8f65eafd3))
+* **bigtable:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+* **bigtable:** Update google.golang.org/api to v0.203.0 ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+* **bigtable:** WARNING: On approximately Dec 1, 2024, an update to Protobuf will change service registration function signatures to use an interface instead of a concrete type in generated .pb.go files. This change is expected to affect very few if any users of this client library. For more information, see https://togithub.com/googleapis/google-cloud-go/issues/11020. ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+
+
+### Documentation
+
+* **bigtable:** Add todos ([#11280](https://github.com/googleapis/google-cloud-go/issues/11280)) ([d4f2449](https://github.com/googleapis/google-cloud-go/commit/d4f2449c5c2192b49de2bb42c7027beffb7517a2))
+* **bigtable:** Adding shut down log ([#11293](https://github.com/googleapis/google-cloud-go/issues/11293)) ([6cf33a8](https://github.com/googleapis/google-cloud-go/commit/6cf33a8d5605f37c1666de2c4e49554ec8fcc1a1))
+
 ## [1.33.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.32.0...bigtable/v1.33.0) (2024-09-23)
 
 

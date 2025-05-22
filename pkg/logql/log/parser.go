@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/grafana/jsonparser"
 
@@ -51,18 +52,22 @@ var (
 )
 
 type JSONParser struct {
-	prefixBuffer []byte // buffer used to build json keys
-	lbs          *LabelsBuilder
+	prefixBuffer    [][]byte // buffer used to build json keys
+	lbs             *LabelsBuilder
+	captureJSONPath bool
 
-	keys        internedStringSet
-	parserHints ParserHint
+	keys                  internedStringSet
+	parserHints           ParserHint
+	sanitizedPrefixBuffer []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
-func NewJSONParser() *JSONParser {
+func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
-		prefixBuffer: make([]byte, 0, 1024),
-		keys:         internedStringSet{},
+		prefixBuffer:          [][]byte{},
+		keys:                  internedStringSet{},
+		captureJSONPath:       captureJSONPath,
+		sanitizedPrefixBuffer: make([]byte, 0, 64),
 	}
 }
 
@@ -121,18 +126,18 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 
 // nextKeyPrefix load the next prefix in the buffer and tells if it should be processed based on hints.
 func (j *JSONParser) nextKeyPrefix(key []byte) bool {
-	// first add the spacer if needed.
-	if len(j.prefixBuffer) != 0 {
-		j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	}
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	return j.lbs.ParserLabelHints().ShouldExtractPrefix(unsafeGetString(j.prefixBuffer))
+	j.prefixBuffer = append(j.prefixBuffer, key)
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	return j.lbs.ParserLabelHints().ShouldExtractPrefix(
+		string(sanitized),
+	)
 }
 
 func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType) error {
 	// the first time we use the field as label key.
 	if len(j.prefixBuffer) == 0 {
-		key, ok := j.keys.Get(key, func() (string, bool) {
+		sanitizedKey, ok := j.keys.Get(key, func() (string, bool) {
 			field := sanitizeLabelKey(string(key), true)
 			if j.lbs.BaseHas(field) {
 				field = field + duplicateSuffix
@@ -142,11 +147,15 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			}
 			return field, true
 		})
-		if !ok {
+		if !ok || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
 			return nil
 		}
-		j.lbs.Set(ParsedLabel, key, readValue(value, dataType))
-		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
+		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
+		if j.captureJSONPath {
+			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
+		}
+
+		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
 			return errLabelDoesNotMatch
 		}
 		return nil
@@ -156,30 +165,66 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// snapshot the current prefix position
 	prefixLen := len(j.prefixBuffer)
-	j.prefixBuffer = append(j.prefixBuffer, byte(jsonSpacer))
-	j.prefixBuffer = appendSanitized(j.prefixBuffer, key)
-	keyString, ok := j.keys.Get(j.prefixBuffer, func() (string, bool) {
-		if j.lbs.BaseHas(string(j.prefixBuffer)) {
-			j.prefixBuffer = append(j.prefixBuffer, duplicateSuffix...)
+	j.prefixBuffer = append(j.prefixBuffer, key)
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
+		if j.lbs.BaseHas(string(sanitized)) {
+			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
 		}
-		if !j.parserHints.ShouldExtract(string(j.prefixBuffer)) {
+
+		keyPrefix := j.buildSanitizedPrefixFromBuffer()
+		if !j.parserHints.ShouldExtract(string(keyPrefix)) {
 			return "", false
 		}
 
-		return string(j.prefixBuffer), true
+		return string(keyPrefix), true
 	})
+
+	if j.captureJSONPath {
+		jsonPath := j.buildJSONPathFromPrefixBuffer()
+		j.lbs.SetJSONPath(keyString, jsonPath)
+	}
 
 	// reset the prefix position
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
-	if !ok {
+	if !ok || j.lbs.ParserLabelHints().Extracted(keyString) {
 		return nil
 	}
 
 	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
+
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
 	return nil
+}
+
+func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
+	j.sanitizedPrefixBuffer = j.sanitizedPrefixBuffer[:0]
+
+	for i, part := range j.prefixBuffer {
+		if len(bytes.TrimSpace(part)) == 0 {
+			continue
+		}
+
+		if i > 0 && len(j.sanitizedPrefixBuffer) > 0 {
+			j.sanitizedPrefixBuffer = append(j.sanitizedPrefixBuffer, byte(jsonSpacer))
+		}
+		j.sanitizedPrefixBuffer = appendSanitized(j.sanitizedPrefixBuffer, part)
+	}
+
+	return j.sanitizedPrefixBuffer
+}
+
+func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
+	jsonPath := make([]string, 0, len(j.prefixBuffer))
+	for _, part := range j.prefixBuffer {
+		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		jsonPath = append(jsonPath, partStr)
+	}
+
+	return jsonPath
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -276,7 +321,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 				return sanitize, true
 			})
-			if !ok {
+			if !ok || parserHints.Extracted(key) {
 				continue
 			}
 
@@ -342,7 +387,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 			return sanitized, true
 		})
-		if !ok {
+		if !ok || parserHints.Extracted(key) {
 			continue
 		}
 
@@ -414,7 +459,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			name = name + duplicateSuffix
 		}
 
-		if !parserHints.ShouldExtract(name) {
+		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
 			continue
 		}
 
@@ -481,6 +526,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 	}
 
+	// alwaysExtract checks whether a key should be extracted regardless of other
+	// conditions.
+	alwaysExtract := func(key string) bool {
+		// Any key in the expression list should always be extracted.
+		_, ok := keys[key]
+		return ok
+	}
+
 	l.dec.Reset(line)
 	var current []byte
 	for !l.dec.EOL() {
@@ -501,14 +554,12 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			_, alwaysExtract := keys[sanitized]
-			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			if !alwaysExtract(sanitized) && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
-
-		if !ok {
+		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
 			continue
 		}
 
@@ -527,7 +578,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) {
 				key = key + duplicateSuffix
-				if !lbs.ParserLabelHints().ShouldExtract(key) {
+				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
 				}
@@ -571,7 +622,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 		}
 
 		ids = append(ids, exp.Identifier)
-		paths = append(paths, pathsToString(path))
+		paths = append(paths, JSONPathToStrings(path))
 	}
 
 	return &JSONExpressionParser{
@@ -581,17 +632,17 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}, nil
 }
 
-func pathsToString(paths []interface{}) []string {
-	stingPaths := make([]string, 0, len(paths))
+func JSONPathToStrings(paths []interface{}) []string {
+	stringPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
 		switch v := p.(type) {
 		case int:
-			stingPaths = append(stingPaths, fmt.Sprintf("[%d]", v))
+			stringPaths = append(stringPaths, fmt.Sprintf("[%d]", v))
 		case string:
-			stingPaths = append(stingPaths, v)
+			stringPaths = append(stringPaths, v)
 		}
 	}
-	return stingPaths
+	return stringPaths
 }
 
 func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
@@ -739,7 +790,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				}
 				return field, true
 			})
-			if !ok {
+			if !ok || lbs.ParserLabelHints().Extracted(key) {
 				return nil
 			}
 

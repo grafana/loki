@@ -53,8 +53,10 @@ import (
 	raw "google.golang.org/api/storage/v1"
 	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/stats/opentelemetry"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -65,15 +67,17 @@ import (
 var signedURLMethods = map[string]bool{"DELETE": true, "GET": true, "HEAD": true, "POST": true, "PUT": true}
 
 var (
-	// ErrBucketNotExist indicates that the bucket does not exist.
+	// ErrBucketNotExist indicates that the bucket does not exist. It should be
+	// checked for using [errors.Is] instead of direct equality.
 	ErrBucketNotExist = errors.New("storage: bucket doesn't exist")
-	// ErrObjectNotExist indicates that the object does not exist.
+	// ErrObjectNotExist indicates that the object does not exist. It should be
+	// checked for using [errors.Is] instead of direct equality.
 	ErrObjectNotExist = errors.New("storage: object doesn't exist")
 	// errMethodNotSupported indicates that the method called is not currently supported by the client.
 	// TODO: Export this error when launching the transport-agnostic client.
 	errMethodNotSupported = errors.New("storage: method is not currently supported")
-	// errMethodNotValid indicates that given HTTP method is not valid.
-	errMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
+	// errSignedURLMethodNotValid indicates that given HTTP method is not valid.
+	errSignedURLMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
 )
 
 var userAgent = fmt.Sprintf("gcloud-golang-storage/%s", internal.Version)
@@ -689,7 +693,7 @@ func validateOptions(opts *SignedURLOptions, now time.Time) error {
 	}
 	opts.Method = strings.ToUpper(opts.Method)
 	if _, ok := signedURLMethods[opts.Method]; !ok {
-		return errMethodNotValid
+		return errSignedURLMethodNotValid
 	}
 	if opts.Expires.IsZero() {
 		return errors.New("storage: missing required expires option")
@@ -937,6 +941,9 @@ func signedURLV2(bucket, name string, opts *SignedURLOptions) (string, error) {
 	return u.String(), nil
 }
 
+// ReadHandle associated with the object. This is periodically refreshed.
+type ReadHandle []byte
+
 // ObjectHandle provides operations on an object in a Google Cloud Storage bucket.
 // Use BucketHandle.Object to get a handle.
 type ObjectHandle struct {
@@ -952,6 +959,23 @@ type ObjectHandle struct {
 	retry             *retryConfig
 	overrideRetention *bool
 	softDeleted       bool
+	readHandle        ReadHandle
+}
+
+// ReadHandle returns a new ObjectHandle that uses the ReadHandle to open the objects.
+//
+// Objects that have already been opened can be opened an additional time,
+// using a read handle returned in the response, at lower latency.
+// This produces the exact same object and generation and does not check if
+// the generation is still the newest one.
+// Note that this will be a noop unless it's set on a gRPC client on buckets with
+// bi-directional read API access.
+// Also note that you can get a ReadHandle only via calling reader.ReadHandle() on a
+// previous read of the same object.
+func (o *ObjectHandle) ReadHandle(r ReadHandle) *ObjectHandle {
+	o2 := *o
+	o2.readHandle = r
+	return &o2
 }
 
 // ACL provides access to the object's access control list.
@@ -999,8 +1023,8 @@ func (o *ObjectHandle) Key(encryptionKey []byte) *ObjectHandle {
 // Attrs returns meta information about the object.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Attrs")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Object.Attrs")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -1013,8 +1037,8 @@ func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error
 // ObjectAttrsToUpdate docs for details on treatment of zero values.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Update(ctx context.Context, uattrs ObjectAttrsToUpdate) (oa *ObjectAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Update")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Object.Update")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -1217,6 +1241,83 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 	}
 }
 
+// NewWriterFromAppendableObject opens a new Writer to an object which has been
+// partially flushed to GCS, but not finalized. It returns the Writer as well
+// as the current end offset of the object. All bytes written will be appended
+// continuing from the offset.
+//
+// Generation must be set on the ObjectHandle or an error will be returned.
+//
+// Writer fields such as ChunkSize or ChunkRetryDuration can be set only
+// by setting the equivalent field in [AppendableWriterOpts]. Attributes set
+// on the returned Writer will not be honored since the stream to GCS has
+// already been opened. Some fields such as ObjectAttrs and checksums cannot
+// be set on a takeover for append.
+//
+// It is the caller's responsibility to call Close when writing is complete to
+// close the stream.
+// Calling Close or Flush is necessary to sync any data in the pipe to GCS.
+//
+// The returned Writer is not safe to use across multiple go routines. In
+// addition, if you attempt to append to the same object from multiple
+// Writers at the same time, an error will be returned on Flush or Close.
+//
+// NewWriterFromAppendableObject is supported only for gRPC clients and only for
+// objects which were created append semantics and not finalized.
+// This feature is in preview and is not yet available for general use.
+func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Writer")
+	if o.gen == 0 {
+		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
+	}
+	w := &Writer{
+		ctx:         ctx,
+		o:           o,
+		donec:       make(chan struct{}),
+		ObjectAttrs: ObjectAttrs{Name: o.object},
+		Append:      true,
+	}
+	opts.apply(w)
+	if w.ChunkSize == 0 {
+		w.ChunkSize = googleapi.DefaultUploadChunkSize
+	}
+	err := w.openWriter()
+	if err != nil {
+		return nil, 0, err
+	}
+	return w, w.takeoverOffset, nil
+}
+
+// AppendableWriterOpts provides options to set on a Writer initialized
+// by [NewWriterFromAppendableObject]. Writer options must be set via this
+// struct rather than being modified on the returned Writer. All Writer
+// fields not present in this struct cannot be set when taking over an
+// appendable object.
+//
+// AppendableWriterOpts is supported only for gRPC clients and only for
+// objects which were created append semantics and not finalized.
+// This feature is in preview and is not yet available for general use.
+type AppendableWriterOpts struct {
+	// ChunkSize: See Writer.ChunkSize.
+	ChunkSize int
+	// ChunkRetryDeadline: See Writer.ChunkRetryDeadline.
+	ChunkRetryDeadline time.Duration
+	// ProgressFunc: See Writer.ProgressFunc.
+	ProgressFunc func(int64)
+	// FinalizeOnClose: See Writer.FinalizeOnClose.
+	FinalizeOnClose bool
+}
+
+func (opts *AppendableWriterOpts) apply(w *Writer) {
+	if opts == nil {
+		return
+	}
+	w.ChunkRetryDeadline = opts.ChunkRetryDeadline
+	w.ProgressFunc = opts.ProgressFunc
+	w.ChunkSize = opts.ChunkSize
+	w.FinalizeOnClose = opts.FinalizeOnClose
+}
+
 func (o *ObjectHandle) validate() error {
 	if o.bucket == "" {
 		return errors.New("storage: bucket name is empty")
@@ -1308,6 +1409,7 @@ func (o *ObjectAttrs) toProtoObject(b string) *storagepb.Object {
 		Acl:                 toProtoObjectACL(o.ACL),
 		Metadata:            o.Metadata,
 		CreateTime:          toProtoTimestamp(o.Created),
+		FinalizeTime:        toProtoTimestamp(o.Finalized),
 		CustomTime:          toProtoTimestamp(o.CustomTime),
 		DeleteTime:          toProtoTimestamp(o.Deleted),
 		RetentionExpireTime: toProtoTimestamp(o.RetentionExpirationTime),
@@ -1469,6 +1571,10 @@ type ObjectAttrs struct {
 
 	// Created is the time the object was created. This field is read-only.
 	Created time.Time
+
+	// Finalized is the time the object contents were finalized. This may differ
+	// from Created for appendable objects. This field is read-only.
+	Finalized time.Time
 
 	// Deleted is the time the object was deleted.
 	// If not deleted, it is the zero value. This field is read-only.
@@ -1634,6 +1740,7 @@ func newObject(o *raw.Object) *ObjectAttrs {
 		CustomerKeySHA256:       sha256,
 		KMSKeyName:              o.KmsKeyName,
 		Created:                 convertTime(o.TimeCreated),
+		Finalized:               convertTime(o.TimeFinalized),
 		Deleted:                 convertTime(o.TimeDeleted),
 		Updated:                 convertTime(o.Updated),
 		Etag:                    o.Etag,
@@ -1673,6 +1780,7 @@ func newObjectFromProto(o *storagepb.Object) *ObjectAttrs {
 		CustomerKeySHA256: base64.StdEncoding.EncodeToString(o.GetCustomerEncryption().GetKeySha256Bytes()),
 		KMSKeyName:        o.GetKmsKey(),
 		Created:           convertProtoTime(o.GetCreateTime()),
+		Finalized:         convertProtoTime(o.GetFinalizeTime()),
 		Deleted:           convertProtoTime(o.GetDeleteTime()),
 		Updated:           convertProtoTime(o.GetUpdateTime()),
 		CustomTime:        convertProtoTime(o.GetCustomTime()),
@@ -1820,6 +1928,7 @@ var attrToFieldMap = map[string]string{
 	"CustomerKeySHA256":       "customerEncryption",
 	"KMSKeyName":              "kmsKeyName",
 	"Created":                 "timeCreated",
+	"Finalized":               "timeFinalized",
 	"Deleted":                 "timeDeleted",
 	"Updated":                 "updated",
 	"Etag":                    "etag",
@@ -1848,6 +1957,7 @@ var attrToProtoFieldMap = map[string]string{
 	"Deleted":                 "delete_time",
 	"ContentType":             "content_type",
 	"Created":                 "create_time",
+	"Finalized":               "finalize_time",
 	"CRC32C":                  "checksums.crc32c",
 	"MD5":                     "checksums.md5_hash",
 	"Updated":                 "update_time",
@@ -2304,7 +2414,7 @@ type withBackoff struct {
 }
 
 func (wb *withBackoff) apply(config *retryConfig) {
-	config.backoff = gaxBackoffFromStruct(&wb.backoff)
+	config.backoff = &wb.backoff
 }
 
 // WithMaxAttempts configures the maximum number of times an API call can be made
@@ -2395,83 +2505,38 @@ func (wef *withErrorFunc) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
-type backoff interface {
-	Pause() time.Duration
-
-	SetInitial(time.Duration)
-	SetMax(time.Duration)
-	SetMultiplier(float64)
-
-	GetInitial() time.Duration
-	GetMax() time.Duration
-	GetMultiplier() float64
-}
-
-func gaxBackoffFromStruct(bo *gax.Backoff) *gaxBackoff {
-	if bo == nil {
-		return nil
-	}
-	b := &gaxBackoff{}
-	b.Backoff = *bo
-	return b
-}
-
-// gaxBackoff is a gax.Backoff that implements the backoff interface
-type gaxBackoff struct {
-	gax.Backoff
-}
-
-func (b *gaxBackoff) SetInitial(i time.Duration) {
-	b.Initial = i
-}
-
-func (b *gaxBackoff) SetMax(m time.Duration) {
-	b.Max = m
-}
-
-func (b *gaxBackoff) SetMultiplier(m float64) {
-	b.Multiplier = m
-}
-
-func (b *gaxBackoff) GetInitial() time.Duration {
-	return b.Initial
-}
-
-func (b *gaxBackoff) GetMax() time.Duration {
-	return b.Max
-}
-
-func (b *gaxBackoff) GetMultiplier() float64 {
-	return b.Multiplier
-}
-
 type retryConfig struct {
-	backoff     backoff
+	backoff     *gax.Backoff
 	policy      RetryPolicy
 	shouldRetry func(err error) bool
 	maxAttempts *int
+	// maxRetryDuration, if set, specifies a deadline after which the request
+	// will no longer be retried. A value of 0 allows infinite retries.
+	// maxRetryDuration is currently only set by Writer.ChunkRetryDeadline.
+	maxRetryDuration time.Duration
 }
 
 func (r *retryConfig) clone() *retryConfig {
 	if r == nil {
 		return nil
 	}
-	newConfig := &retryConfig{
-		backoff:     nil,
-		policy:      r.policy,
-		shouldRetry: r.shouldRetry,
-		maxAttempts: r.maxAttempts,
-	}
 
+	var bo *gax.Backoff
 	if r.backoff != nil {
-		bo := &gaxBackoff{}
-		bo.Initial = r.backoff.GetInitial()
-		bo.Max = r.backoff.GetMax()
-		bo.Multiplier = r.backoff.GetMultiplier()
-		newConfig.backoff = bo
+		bo = &gax.Backoff{
+			Initial:    r.backoff.Initial,
+			Max:        r.backoff.Max,
+			Multiplier: r.backoff.Multiplier,
+		}
 	}
 
-	return newConfig
+	return &retryConfig{
+		backoff:          bo,
+		policy:           r.policy,
+		shouldRetry:      r.shouldRetry,
+		maxAttempts:      r.maxAttempts,
+		maxRetryDuration: r.maxRetryDuration,
+	}
 }
 
 // composeSourceObj wraps a *raw.ComposeRequestSourceObjects, but adds the methods
@@ -2643,4 +2708,26 @@ func applyCondsProto(method string, gen int64, conds *Conditions, msg proto.Mess
 		}
 	}
 	return nil
+}
+
+// formatObjectErr checks if the provided error is NotFound and if so, wraps
+// it in an ErrObjectNotExist error. If not, formatObjectErr has no effect.
+func formatObjectErr(err error) error {
+	var e *googleapi.Error
+	if s, ok := status.FromError(err); (ok && s.Code() == codes.NotFound) ||
+		(errors.As(err, &e) && e.Code == http.StatusNotFound) {
+		return fmt.Errorf("%w: %w", ErrObjectNotExist, err)
+	}
+	return err
+}
+
+// formatBucketError checks if the provided error is NotFound and if so, wraps
+// it in an ErrBucketNotExist error. If not, formatBucketError has no effect.
+func formatBucketError(err error) error {
+	var e *googleapi.Error
+	if s, ok := status.FromError(err); (ok && s.Code() == codes.NotFound) ||
+		(errors.As(err, &e) && e.Code == http.StatusNotFound) {
+		return fmt.Errorf("%w: %w", ErrBucketNotExist, err)
+	}
+	return err
 }

@@ -10,11 +10,15 @@ import (
 
 // JSON formatter outputs the raw token structures as JSON.
 var JSON = Register("json", chroma.FormatterFunc(func(w io.Writer, s *chroma.Style, it chroma.Iterator) error {
-	fmt.Fprintln(w, "[")
+	if _, err := fmt.Fprintln(w, "["); err != nil {
+		return err
+	}
 	i := 0
 	for t := it(); t != chroma.EOF; t = it() {
 		if i > 0 {
-			fmt.Fprintln(w, ",")
+			if _, err := fmt.Fprintln(w, ","); err != nil {
+				return err
+			}
 		}
 		i++
 		bytes, err := json.Marshal(t)
@@ -25,7 +29,11 @@ var JSON = Register("json", chroma.FormatterFunc(func(w io.Writer, s *chroma.Sty
 			return err
 		}
 	}
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "]")
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "]"); err != nil {
+		return err
+	}
 	return nil
 }))

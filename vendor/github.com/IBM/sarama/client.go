@@ -113,6 +113,9 @@ type Client interface {
 	// LeastLoadedBroker retrieves broker that has the least responses pending
 	LeastLoadedBroker() *Broker
 
+	// check if partition is readable
+	PartitionNotReadable(topic string, partition int32) bool
+
 	// Close shuts down all broker connections managed by this client. It is required
 	// to call this function before a client object passes out of scope, as it will
 	// otherwise leak memory. You must close any Producers or Consumers using a client
@@ -1282,4 +1285,15 @@ type nopCloserClient struct {
 // client's Close() method.
 func (ncc *nopCloserClient) Close() error {
 	return nil
+}
+
+func (client *client) PartitionNotReadable(topic string, partition int32) bool {
+	client.lock.RLock()
+	defer client.lock.RUnlock()
+
+	pm := client.metadata[topic][partition]
+	if pm == nil {
+		return true
+	}
+	return pm.Leader == -1
 }

@@ -3,14 +3,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.17.2
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.7.1
+    app.kubernetes.io/instance: loki-operator-v0.8.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.7.1
+    app.kubernetes.io/version: 0.8.0
   name: lokistacks.loki.grafana.com
 spec:
   conversion:
@@ -171,34 +171,9 @@ spec:
                           Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
                           enforce the use of some required attributes.
                         properties:
-                          streamLabels:
-                            description: StreamLabels configures which resource attributes
-                              are converted to Loki stream labels.
-                            properties:
-                              resourceAttributes:
-                                description: ResourceAttributes lists the names of
-                                  the resource attributes that should be converted
-                                  into Loki stream labels.
-                                items:
-                                  properties:
-                                    name:
-                                      description: Name contains either a verbatim
-                                        name of an attribute or a regular expression
-                                        matching many attributes.
-                                      type: string
-                                    regex:
-                                      description: If Regex is true, then Name is
-                                        treated as a regular expression instead of
-                                        as a verbatim attribute name.
-                                      type: boolean
-                                  required:
-                                  - name
-                                  type: object
-                                type: array
-                            type: object
-                          structuredMetadata:
-                            description: StructuredMetadata configures which attributes
-                              are saved in structured metadata.
+                          drop:
+                            description: Drop configures which attributes are dropped
+                              from the log entry.
                             properties:
                               logAttributes:
                                 description: LogAttributes lists the names of log
@@ -261,6 +236,31 @@ spec:
                                   type: object
                                 type: array
                             type: object
+                          streamLabels:
+                            description: StreamLabels configures which resource attributes
+                              are converted to Loki stream labels.
+                            properties:
+                              resourceAttributes:
+                                description: ResourceAttributes lists the names of
+                                  the resource attributes that should be converted
+                                  into Loki stream labels.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                            type: object
                         type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
@@ -279,7 +279,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -414,34 +414,9 @@ spec:
 
                             The per-tenant configuration for OTLP attributes will be merged with the global configuration.
                           properties:
-                            streamLabels:
-                              description: StreamLabels configures which resource
-                                attributes are converted to Loki stream labels.
-                              properties:
-                                resourceAttributes:
-                                  description: ResourceAttributes lists the names
-                                    of the resource attributes that should be converted
-                                    into Loki stream labels.
-                                  items:
-                                    properties:
-                                      name:
-                                        description: Name contains either a verbatim
-                                          name of an attribute or a regular expression
-                                          matching many attributes.
-                                        type: string
-                                      regex:
-                                        description: If Regex is true, then Name is
-                                          treated as a regular expression instead
-                                          of as a verbatim attribute name.
-                                        type: boolean
-                                    required:
-                                    - name
-                                    type: object
-                                  type: array
-                              type: object
-                            structuredMetadata:
-                              description: StructuredMetadata configures which attributes
-                                are saved in structured metadata.
+                            drop:
+                              description: Drop configures which attributes are dropped
+                                from the log entry.
                               properties:
                                 logAttributes:
                                   description: LogAttributes lists the names of log
@@ -487,6 +462,31 @@ spec:
                                   description: ScopeAttributes lists the names of
                                     scope attributes that should be included in structured
                                     metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                              type: object
+                            streamLabels:
+                              description: StreamLabels configures which resource
+                                attributes are converted to Loki stream labels.
+                              properties:
+                                resourceAttributes:
+                                  description: ResourceAttributes lists the names
+                                    of the resource attributes that should be converted
+                                    into Loki stream labels.
                                   items:
                                     properties:
                                       name:
@@ -559,7 +559,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer
@@ -3656,6 +3656,14 @@ spec:
                           type: object
                         type: array
                     type: object
+                  useRequestsAsLimits:
+                    description: |-
+                      When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+                      requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+                      spikes, whether on the ingestion or query side.
+
+                      Note: This is currently a tech-preview feature.
+                    type: boolean
                 type: object
               tenants:
                 description: Tenants defines the per-tenant authentication and authorization
@@ -3872,18 +3880,16 @@ spec:
                         properties:
                           disableRecommendedAttributes:
                             description: |-
-                              DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
-                              metadata.
+                              DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 
                               Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-                              meta information to not be available as stream labels or structured metadata, potentially making queries more
-                              expensive and less performant.
+                              some stream labels to disappear from the index, potentially making queries more expensive and less performant.
 
                               Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
                               added to the configuration, even if this field is set to true.
 
-                              This option is supposed to be combined with a custom label configuration customizing the labels for the specific
-                              usecase.
+                              This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+                              should continue to exist.
                             type: boolean
                         type: object
                     type: object
@@ -4166,7 +4172,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -4241,7 +4247,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer

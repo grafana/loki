@@ -54,7 +54,7 @@ func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring
 
 // ExtractIngesterPartitionID returns the partition ID owner the the given ingester.
 func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
-	if strings.Contains(ingesterID, "local") {
+	if strings.Contains(ingesterID, "local") || strings.HasSuffix(ingesterID, ".lan") {
 		return 0, nil
 	}
 

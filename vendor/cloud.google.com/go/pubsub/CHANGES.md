@@ -1,5 +1,61 @@
 # Changes
 
+## [1.49.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.48.1...pubsub/v1.49.0) (2025-04-07)
+
+
+### Features
+
+* **pubsub:** Support message transforms ([#11957](https://github.com/googleapis/google-cloud-go/issues/11957)) ([84bf25b](https://github.com/googleapis/google-cloud-go/commit/84bf25ba1c0e01b2f19167d4d3c914c56f87b924))
+
+## [1.48.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.48.0...pubsub/v1.48.1) (2025-04-01)
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Message ordering issue ([#11603](https://github.com/googleapis/google-cloud-go/issues/11603)) ([1d6ffc0](https://github.com/googleapis/google-cloud-go/commit/1d6ffc02cd211368eabbc8e4f02392952c603703))
+* **pubsub:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
+
+### Documentation
+
+* **pubsub:** Update documentation for JavaScriptUDF to indicate that the `message_id` metadata field is optional instead of required ([f437f08](https://github.com/googleapis/google-cloud-go/commit/f437f0871a88abbeb918ce7364d0299a513cc311))
+
+## [1.48.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.47.0...pubsub/v1.48.0) (2025-03-12)
+
+
+### Features
+
+* **pubsub/pstest:** Support listening on custom address ([#11606](https://github.com/googleapis/google-cloud-go/issues/11606)) ([63865a2](https://github.com/googleapis/google-cloud-go/commit/63865a202b95fe0ab283b032b15b198f10188861))
+* **pubsub:** Add support for message transforms to Topic and Subscription ([59fe58a](https://github.com/googleapis/google-cloud-go/commit/59fe58aba61abf69bfb7549c0a03b21bdb4b8b2f))
+* **pubsub:** Deprecate `enabled` field for message transforms and add `disabled` field ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+
+
+### Documentation
+
+* **pubsub:** A comment for field `code` in message `.google.pubsub.v1.JavaScriptUDF` is changed ([#11553](https://github.com/googleapis/google-cloud-go/issues/11553)) ([678944b](https://github.com/googleapis/google-cloud-go/commit/678944b30e389781687209caf3e3b9d35739a6f0))
+* **pubsub:** Deprecate `enabled` field for message transforms and add `disabled` field ([dd0d1d7](https://github.com/googleapis/google-cloud-go/commit/dd0d1d7b41884c9fc9b5fe808139cccd29e1e486))
+* **pubsub:** Fix link for AnalyticsHubSubscriptionInfo ([59fe58a](https://github.com/googleapis/google-cloud-go/commit/59fe58aba61abf69bfb7549c0a03b21bdb4b8b2f))
+
+## [1.47.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.46.0...pubsub/v1.47.0) (2025-01-31)
+
+
+### Features
+
+* **pubsub:** Support new forms of topic ingestion ([#11537](https://github.com/googleapis/google-cloud-go/issues/11537)) ([46d6ed4](https://github.com/googleapis/google-cloud-go/commit/46d6ed475e6ae6b96f3e11e17496fd75fd8ea7c4))
+
+## [1.46.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.3...pubsub/v1.46.0) (2025-01-24)
+
+
+### Features
+
+* **pubsub:** Add Kafka-based sources to IngestionDataSourceSettings proto and IngestionFailureEvent proto ([e4e1a49](https://github.com/googleapis/google-cloud-go/commit/e4e1a498f21b0792e0a7662f82f9e062e5aa0fe9))
+
+
+### Bug Fixes
+
+* **pubsub:** Fix defer call in for loop ([#11175](https://github.com/googleapis/google-cloud-go/issues/11175)) ([7aec711](https://github.com/googleapis/google-cloud-go/commit/7aec711200d8e79686370f5d40915e21df7651a4))
+* **pubsub:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
 ## [1.45.3](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.2...pubsub/v1.45.3) (2024-12-04)
 
 

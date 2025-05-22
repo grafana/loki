@@ -21,7 +21,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	grpccodes "google.golang.org/grpc/codes"
 	estats "google.golang.org/grpc/experimental/stats"
 	istats "google.golang.org/grpc/internal/stats"
 	"google.golang.org/grpc/metadata"
@@ -85,8 +88,12 @@ func (h *clientStatsHandler) unaryInterceptor(ctx context.Context, method string
 	}
 
 	startTime := time.Now()
+	var span trace.Span
+	if h.options.isTracingEnabled() {
+		ctx, span = h.createCallTraceSpan(ctx, method)
+	}
 	err := invoker(ctx, method, req, reply, cc, opts...)
-	h.perCallMetrics(ctx, err, startTime, ci)
+	h.perCallTracesAndMetrics(ctx, err, startTime, ci, span)
 	return err
 }
 
@@ -119,22 +126,37 @@ func (h *clientStatsHandler) streamInterceptor(ctx context.Context, desc *grpc.S
 	}
 
 	startTime := time.Now()
-
+	var span trace.Span
+	if h.options.isTracingEnabled() {
+		ctx, span = h.createCallTraceSpan(ctx, method)
+	}
 	callback := func(err error) {
-		h.perCallMetrics(ctx, err, startTime, ci)
+		h.perCallTracesAndMetrics(ctx, err, startTime, ci, span)
 	}
 	opts = append([]grpc.CallOption{grpc.OnFinish(callback)}, opts...)
 	return streamer(ctx, desc, cc, method, opts...)
 }
 
-func (h *clientStatsHandler) perCallMetrics(ctx context.Context, err error, startTime time.Time, ci *callInfo) {
-	callLatency := float64(time.Since(startTime)) / float64(time.Second) // calculate ASAP
-	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
-		otelattribute.String("grpc.method", ci.method),
-		otelattribute.String("grpc.target", ci.target),
-		otelattribute.String("grpc.status", canonicalString(status.Code(err))),
-	))
-	h.clientMetrics.callDuration.Record(ctx, callLatency, attrs)
+// perCallTracesAndMetrics records per call trace spans and metrics.
+func (h *clientStatsHandler) perCallTracesAndMetrics(ctx context.Context, err error, startTime time.Time, ci *callInfo, ts trace.Span) {
+	if h.options.isTracingEnabled() {
+		s := status.Convert(err)
+		if s.Code() == grpccodes.OK {
+			ts.SetStatus(otelcodes.Ok, s.Message())
+		} else {
+			ts.SetStatus(otelcodes.Error, s.Message())
+		}
+		ts.End()
+	}
+	if h.options.isMetricsEnabled() {
+		callLatency := float64(time.Since(startTime)) / float64(time.Second)
+		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
+			otelattribute.String("grpc.method", ci.method),
+			otelattribute.String("grpc.target", ci.target),
+			otelattribute.String("grpc.status", canonicalString(status.Code(err))),
+		))
+		h.clientMetrics.callDuration.Record(ctx, callLatency, attrs)
+	}
 }
 
 // TagConn exists to satisfy stats.Handler.
@@ -163,15 +185,17 @@ func (h *clientStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo)
 		}
 		ctx = istats.SetLabels(ctx, labels)
 	}
-	ai := &attemptInfo{ // populates information about RPC start.
+	ai := &attemptInfo{
 		startTime: time.Now(),
 		xdsLabels: labels.TelemetryLabels,
-		method:    info.FullMethodName,
+		method:    removeLeadingSlash(info.FullMethodName),
 	}
-	ri := &rpcInfo{
+	if h.options.isTracingEnabled() {
+		ctx, ai = h.traceTagRPC(ctx, ai)
+	}
+	return setRPCInfo(ctx, &rpcInfo{
 		ai: ai,
-	}
-	return setRPCInfo(ctx, ri)
+	})
 }
 
 func (h *clientStatsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
@@ -180,7 +204,12 @@ func (h *clientStatsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		logger.Error("ctx passed into client side stats handler metrics event handling has no client attempt data present")
 		return
 	}
-	h.processRPCEvent(ctx, rs, ri.ai)
+	if h.options.isMetricsEnabled() {
+		h.processRPCEvent(ctx, rs, ri.ai)
+	}
+	if h.options.isTracingEnabled() {
+		populateSpan(rs, ri.ai)
+	}
 }
 
 func (h *clientStatsHandler) processRPCEvent(ctx context.Context, s stats.RPCStats, ai *attemptInfo) {
@@ -260,18 +289,19 @@ func (h *clientStatsHandler) processRPCEnd(ctx context.Context, ai *attemptInfo,
 }
 
 const (
-	// ClientAttemptStarted is the number of client call attempts started.
-	ClientAttemptStarted estats.Metric = "grpc.client.attempt.started"
-	// ClientAttemptDuration is the end-to-end time taken to complete a client
-	// call attempt.
-	ClientAttemptDuration estats.Metric = "grpc.client.attempt.duration"
-	// ClientAttemptSentCompressedTotalMessageSize is the compressed message
-	// bytes sent per client call attempt.
-	ClientAttemptSentCompressedTotalMessageSize estats.Metric = "grpc.client.attempt.sent_total_compressed_message_size"
-	// ClientAttemptRcvdCompressedTotalMessageSize is the compressed message
-	// bytes received per call attempt.
-	ClientAttemptRcvdCompressedTotalMessageSize estats.Metric = "grpc.client.attempt.rcvd_total_compressed_message_size"
-	// ClientCallDuration is the time taken by gRPC to complete an RPC from
-	// application's perspective.
-	ClientCallDuration estats.Metric = "grpc.client.call.duration"
+	// ClientAttemptStartedMetricName is the number of client call attempts
+	// started.
+	ClientAttemptStartedMetricName string = "grpc.client.attempt.started"
+	// ClientAttemptDurationMetricName is the end-to-end time taken to complete
+	// a client call attempt.
+	ClientAttemptDurationMetricName string = "grpc.client.attempt.duration"
+	// ClientAttemptSentCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes sent per client call attempt.
+	ClientAttemptSentCompressedTotalMessageSizeMetricName string = "grpc.client.attempt.sent_total_compressed_message_size"
+	// ClientAttemptRcvdCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes received per call attempt.
+	ClientAttemptRcvdCompressedTotalMessageSizeMetricName string = "grpc.client.attempt.rcvd_total_compressed_message_size"
+	// ClientCallDurationMetricName is the time taken by gRPC to complete an RPC
+	// from application's perspective.
+	ClientCallDurationMetricName string = "grpc.client.call.duration"
 )

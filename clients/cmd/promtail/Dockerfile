@@ -1,10 +1,12 @@
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
+
 FROM golang:${GO_VERSION}-bookworm as build
+ARG IMAGE_TAG
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN apt-get update && apt-get install -qy libsystemd-dev
-RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail
+RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true IMAGE_TAG=${IMAGE_TAG} promtail
 
 # Promtail requires debian or ubuntu as the base image to support systemd journal reading
 FROM public.ecr.aws/ubuntu/ubuntu:noble

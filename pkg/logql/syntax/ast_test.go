@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var labelBar, _ = ParseLabels("{app=\"bar\"}")
@@ -288,7 +290,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"))
+			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"), labels.EmptyLabels())
 
 			require.True(t, matches)
 		})
@@ -586,6 +588,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"counter=1", false}, {"counter=0", false}, {"counter=-1", true}, {"counter=-2", true}},
 		},
+		{
+			`{app="foo"} |~ "\\|"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\\", false}, {"|", true}},
+		},
+		{
+			`{app="foo"} |~ "(?i)\\|"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\\", false}, {"|", true}},
+		},
 	} {
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
@@ -599,7 +615,7 @@ func Test_FilterMatcher(t *testing.T) {
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, matches := sp.Process(0, []byte(lc.l))
+					_, _, matches := sp.Process(0, []byte(lc.l), labels.EmptyLabels())
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
@@ -622,7 +638,7 @@ func TestOrLineFilterTypes(t *testing.T) {
 			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
 			right := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
-			_ = newOrLineFilter(left, right)
+			_ = newOrLineFilterExpr(left, right)
 			require.Equal(t, tt.ty, right.Ty)
 			require.Equal(t, tt.ty, left.Ty)
 		})
@@ -632,7 +648,7 @@ func TestOrLineFilterTypes(t *testing.T) {
 			f2 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 			f3 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
-			_ = newOrLineFilter(f1, newOrLineFilter(f2, f3))
+			_ = newOrLineFilterExpr(f1, newOrLineFilterExpr(f2, f3))
 			require.Equal(t, tt.ty, f1.Ty)
 			require.Equal(t, tt.ty, f2.Ty)
 			require.Equal(t, tt.ty, f3.Ty)
@@ -847,7 +863,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 			sp := p.ForStream(labelBar)
 			for i := 0; i < b.N; i++ {
 				for _, line := range lines {
-					sp.Process(0, line)
+					sp.Process(0, line, labels.EmptyLabels())
 				}
 			}
 		})
@@ -863,7 +879,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 		wantErr   bool
 		wantPanic bool
 	}{
-		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
+		{"json", OpParserTypeJSON, "", log.NewJSONParser(false), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
@@ -873,7 +889,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var e *LabelParserExpr
+			var e *LineParserExpr
 			if tt.wantPanic {
 				require.Panics(t, func() { e = newLabelParserExpr(tt.op, tt.param) })
 				return
@@ -909,7 +925,7 @@ func Test_parserExpr_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := LabelParserExpr{
+			l := LineParserExpr{
 				Op:    tt.op,
 				Param: tt.param,
 			}
@@ -1054,7 +1070,7 @@ func BenchmarkReorderedPipeline(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_, _, result = sp.Process(0, logfmtLine)
+		_, _, result = sp.Process(0, logfmtLine, labels.EmptyLabels())
 	}
 }
 
@@ -1142,4 +1158,127 @@ func TestCombineFilters(t *testing.T) {
 			t.Fatalf("left num isn't a correct number")
 		}
 	}
+}
+
+func Test_VariantsExpr_String(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		expr string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
+		},
+		{
+			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
+		},
+		{
+			`variants(sum by (app) (count_over_time({baz="qux", foo!="bar"}[5m])),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			expr2, err := ParseExpr(expr.String())
+			require.Nil(t, err)
+
+			AssertExpressions(t, expr, expr2)
+		})
+	}
+}
+
+func Test_VariantsExpr_Pretty(t *testing.T) {
+	tests := []struct {
+		expr   string
+		pretty string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`, `
+variants(
+  count_over_time({foo="bar"}[5m])
+) of (
+  {foo="bar"} [5m]
+)`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
+			`variants(
+  count_over_time({baz="qux", foo=~"bar"}[5m]),
+  bytes_over_time({baz="qux", foo=~"bar"}[5m])
+) of (
+  {baz="qux", foo=~"bar"} | logfmt | this="that" [5m]
+)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			require.Equal(t, strings.TrimSpace(tt.pretty), strings.TrimSpace(expr.Pretty(0)))
+		})
+	}
+}
+
+func Test_MultiVariantExpr_Extractors(t *testing.T) {
+	emptyExpr := &MultiVariantExpr{
+		variants: []SampleExpr{},
+		logRange: &LogRangeExpr{},
+	}
+	validAgg := &RangeAggregationExpr{
+		Operation: OpRangeTypeCount,
+		Left: &LogRangeExpr{
+			Interval: time.Second,
+			Left: &MatchersExpr{
+				Mts: []*labels.Matcher{
+					mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+				},
+			},
+		},
+	}
+	errorAgg := &RangeAggregationExpr{
+		err: logqlmodel.NewParseError("test error", 0, 0),
+	}
+	t.Run("should return empty slice for no variants", func(t *testing.T) {
+		extractors, err := emptyExpr.Extractors()
+		require.NoError(t, err)
+		require.Empty(t, extractors)
+	})
+
+	t.Run("should return extractors for all variants", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{validAgg, validAgg}, // Two identical variants for simplicity
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.NoError(t, err)
+		require.Len(t, extractors, 2)
+	})
+
+	t.Run("should propagate extractor errors", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{errorAgg},
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.Error(t, err)
+		require.Nil(t, extractors)
+	})
+
+	t.Run("should handle mixed valid and invalid variants", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{validAgg, errorAgg},
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.Error(t, err)
+		require.Nil(t, extractors)
+	})
 }

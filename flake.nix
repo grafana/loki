@@ -2,7 +2,7 @@
   description = "Grafana Loki";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -32,37 +32,6 @@
                   ${statix}/bin/statix check ${self}
                 '')
               }/bin/lint.sh";
-          };
-
-          test = {
-            type = "app";
-            program =
-              let
-                loki = packages.loki.overrideAttrs (old: {
-                  buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
-                  doCheck = true;
-                  checkFlags = [
-                    "-covermode=atomic"
-                    "-coverprofile=coverage.txt"
-                    "-p=4"
-                  ];
-                  subPackages = [
-                    "./..." # for tests
-                    "cmd/loki"
-                    "cmd/logcli"
-                    "cmd/loki-canary"
-                    "clients/cmd/promtail"
-                  ];
-                });
-              in
-              "${
-                (pkgs.writeShellScriptBin "test.sh" ''
-                  ${loki}/bin/loki --version
-                  ${loki}/bin/logcli --version
-                  ${loki}/bin/loki-canary --version
-                  ${loki}/bin/promtail --version
-                '')
-              }/bin/test.sh";
           };
         };
 

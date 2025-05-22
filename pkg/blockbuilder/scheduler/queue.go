@@ -21,26 +21,6 @@ const (
 	defaultCompletedJobsCapacity = 100
 )
 
-// JobWithMetadata wraps a job with additional metadata for tracking its lifecycle
-type JobWithMetadata struct {
-	*types.Job
-
-	Priority   int
-	Status     types.JobStatus
-	StartTime  time.Time
-	UpdateTime time.Time
-}
-
-// NewJobWithMetadata creates a new JobWithMetadata instance
-func NewJobWithMetadata(job *types.Job, priority int) *JobWithMetadata {
-	return &JobWithMetadata{
-		Job:        job,
-		Priority:   priority,
-		Status:     types.JobStatusPending,
-		UpdateTime: time.Now(),
-	}
-}
-
 type jobQueueMetrics struct {
 	pending    prometheus.Gauge
 	inProgress prometheus.Gauge
@@ -64,6 +44,26 @@ func newJobQueueMetrics(r prometheus.Registerer) *jobQueueMetrics {
 	}
 }
 
+// JobWithMetadata wraps a job with additional metadata for tracking its lifecycle
+type JobWithMetadata struct {
+	*types.Job
+
+	Priority   int
+	Status     types.JobStatus
+	StartTime  time.Time
+	UpdateTime time.Time
+}
+
+// NewJobWithMetadata creates a new JobWithMetadata instance
+func NewJobWithMetadata(job *types.Job, priority int) *JobWithMetadata {
+	return &JobWithMetadata{
+		Job:        job,
+		Priority:   priority,
+		Status:     types.JobStatusPending,
+		UpdateTime: time.Now(),
+	}
+}
+
 type JobQueueConfig struct {
 	LeaseExpiryCheckInterval time.Duration `yaml:"lease_expiry_check_interval"`
 	LeaseDuration            time.Duration `yaml:"lease_duration"`
@@ -74,7 +74,7 @@ func (cfg *JobQueueConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LeaseDuration, "jobqueue.lease-duration", 10*time.Minute, "Duration after which a job lease is considered expired if the scheduler receives no updates from builders about the job. Expired jobs are re-enqueued")
 }
 
-// JobQueue manages the queue of pending jobs and tracks their state.
+// JobQueue is a thread-safe implementation of a job queue with state tracking
 type JobQueue struct {
 	cfg JobQueueConfig
 
@@ -88,25 +88,21 @@ type JobQueue struct {
 	metrics *jobQueueMetrics
 }
 
-// NewJobQueue creates a new job queue instance
+// NewJobQueue creates a new JobQueue instance
 func NewJobQueue(cfg JobQueueConfig, logger log.Logger, reg prometheus.Registerer) *JobQueue {
-	return &JobQueue{
-		cfg:    cfg,
-		logger: logger,
 
-		pending: NewPriorityQueue(
-			func(a, b *JobWithMetadata) bool {
-				return a.Priority > b.Priority // Higher priority first
-			},
-			func(j *JobWithMetadata) string { return j.ID() },
-		),
+	return &JobQueue{
+		cfg:        cfg,
+		pending:    NewPriorityQueue(priorityComparator, jobIDExtractor),
 		inProgress: make(map[string]*JobWithMetadata),
 		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),
+		logger:     logger,
 		metrics:    newJobQueueMetrics(reg),
 	}
 }
 
+// RunLeaseExpiryChecker periodically checks for expired job leases and requeues them
 func (q *JobQueue) RunLeaseExpiryChecker(ctx context.Context) {
 	ticker := time.NewTicker(q.cfg.LeaseExpiryCheckInterval)
 	defer ticker.Stop()
@@ -124,226 +120,211 @@ func (q *JobQueue) RunLeaseExpiryChecker(ctx context.Context) {
 	}
 }
 
+// requeueExpiredJobs checks for jobs that have exceeded their lease duration and requeues them
 func (q *JobQueue) requeueExpiredJobs() error {
+	// First collect expired jobs while holding the lock
 	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	var multiErr error
+	var expiredJobs []*JobWithMetadata
 	for id, job := range q.inProgress {
 		if time.Since(job.UpdateTime) > q.cfg.LeaseDuration {
-			level.Warn(q.logger).Log("msg", "job lease expired. requeuing", "job", id, "update_time", job.UpdateTime, "now", time.Now())
+			level.Warn(q.logger).Log("msg", "job lease expired, will requeue", "job", id, "update_time", job.UpdateTime, "now", time.Now())
+			expiredJobs = append(expiredJobs, job)
+		}
+	}
+	q.mu.Unlock()
 
-			// complete the job with expired status and re-enqueue
-			delete(q.inProgress, id)
-			q.metrics.inProgress.Dec()
+	// Then requeue them without holding the lock
+	var multiErr error
+	for _, job := range expiredJobs {
+		// First try to transition from in-progress to expired
+		ok, err := q.TransitionState(job.ID(), types.JobStatusInProgress, types.JobStatusExpired)
+		if err != nil {
+			level.Error(q.logger).Log("msg", "failed to mark job as expired", "job", job.ID(), "err", err)
+			multiErr = errors.Join(multiErr, fmt.Errorf("failed to mark job %s as expired: %w", job.ID(), err))
+			continue
+		}
+		if !ok {
+			// Job is no longer in progress, someone else must have handled it
+			level.Debug(q.logger).Log("msg", "job no longer in progress, skipping expiry", "job", job.ID())
+			continue
+		}
 
-			job.Status = types.JobStatusExpired
-			q.addToCompletedBuffer(job)
-
-			if err := q.enqueueLockLess(job.Job, job.Priority); err != nil {
-				level.Error(q.logger).Log("msg", "failed to requeue expired job", "job", id, "err", err)
-				multiErr = errors.Join(multiErr, err)
-			}
+		// Then re-enqueue it
+		_, _, err = q.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return NewJobWithMetadata(job.Job, job.Priority), nil
+		})
+		if err != nil {
+			level.Error(q.logger).Log("msg", "failed to requeue expired job", "job", job.ID(), "err", err)
+			multiErr = errors.Join(multiErr, fmt.Errorf("failed to requeue expired job %s: %w", job.ID(), err))
 		}
 	}
 
 	return multiErr
 }
 
-// Exists checks if a job exists in any state and returns its status
-func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	x, ok := q.existsLockLess(job.ID())
-	if !ok {
-		return types.JobStatusUnknown, false
-	}
-	return x.Status, ok
+// priorityComparator compares two jobs by priority (higher priority first)
+func priorityComparator(a, b *JobWithMetadata) bool {
+	return a.Priority > b.Priority
 }
 
-func (q *JobQueue) existsLockLess(id string) (*JobWithMetadata, bool) {
-	status, ok := q.statusMap[id]
-	if !ok {
-		return nil, false
-	}
-
-	switch status {
-	case types.JobStatusPending:
-		return q.pending.Lookup(id)
-	case types.JobStatusInProgress:
-		res, ok := q.inProgress[id]
-		return res, ok
-	case types.JobStatusComplete:
-		return q.completed.Lookup(func(jwm *JobWithMetadata) bool {
-			return jwm.ID() == id
-		})
-	default:
-		return nil, false
-	}
+// jobIDExtractor extracts the job ID from a JobWithMetadata
+func jobIDExtractor(j *JobWithMetadata) string {
+	return j.ID()
 }
 
-// Enqueue adds a job to the pending queue with the given priority
-func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
+// TransitionState attempts to transition a job from one specific state to another
+func (q *JobQueue) TransitionState(jobID string, from, to types.JobStatus) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	return q.enqueueLockLess(job, priority)
-}
-
-func (q *JobQueue) enqueueLockLess(job *types.Job, priority int) error {
-	// Check if job already exists
-	if status, exists := q.statusMap[job.ID()]; exists && status != types.JobStatusExpired {
-		return fmt.Errorf("job %s already exists with status %v", job.ID(), status)
+	currentStatus, exists := q.statusMap[jobID]
+	if !exists {
+		return false, fmt.Errorf("job %s not found", jobID)
 	}
 
-	jobMeta := NewJobWithMetadata(job, priority)
-	q.pending.Push(jobMeta)
-	q.statusMap[job.ID()] = types.JobStatusPending
-	q.metrics.pending.Inc()
-	return nil
+	if currentStatus != from {
+		return false, fmt.Errorf("job %s is in state %s, not %s", jobID, currentStatus, from)
+	}
+
+	return q.transitionLockLess(jobID, to)
 }
 
-// Dequeue removes and returns the highest priority job from the pending queue
+// TransitionAny transitions a job from any state to the specified state
+func (q *JobQueue) TransitionAny(jobID string, to types.JobStatus, createFn func() (*JobWithMetadata, error)) (prevStatus types.JobStatus, found bool, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	currentStatus, exists := q.statusMap[jobID]
+
+	// If the job isn't found or has already finished, create a new job
+	if finished := currentStatus.IsFinished(); !exists || finished {
+
+		// exception:
+		// we're just moving one finished type to another; no need to re-enqueue
+		if finished && to.IsFinished() {
+			q.statusMap[jobID] = to
+			if j, found := q.completed.Lookup(
+				func(jwm *JobWithMetadata) bool {
+					return jwm.ID() == jobID
+				},
+			); found {
+				j.Status = to
+				j.UpdateTime = time.Now()
+			}
+			return currentStatus, true, nil
+		}
+
+		if createFn == nil {
+			return types.JobStatusUnknown, false, fmt.Errorf("job %s not found and no creation function provided", jobID)
+		}
+
+		if finished {
+			level.Debug(q.logger).Log("msg", "creating a copy of already-completed job", "id", jobID, "from", currentStatus, "to", to)
+		}
+
+		job, err := createFn()
+		if err != nil {
+			return types.JobStatusUnknown, false, fmt.Errorf("failed to create job %s: %w", jobID, err)
+		}
+
+		// temporarily mark as pending so we can transition it to the target state
+		q.statusMap[jobID] = types.JobStatusPending
+		q.pending.Push(job)
+		q.metrics.pending.Inc()
+		level.Debug(q.logger).Log("msg", "created new job", "id", jobID, "status", types.JobStatusPending)
+
+		if _, err := q.transitionLockLess(jobID, to); err != nil {
+			return types.JobStatusUnknown, false, err
+		}
+		return types.JobStatusUnknown, false, nil
+	}
+
+	_, err = q.transitionLockLess(jobID, to)
+	return currentStatus, true, err
+}
+
+// transitionLockLess performs the actual state transition (must be called with lock held)
+func (q *JobQueue) transitionLockLess(jobID string, to types.JobStatus) (bool, error) {
+	from := q.statusMap[jobID]
+	if from == to {
+		return false, nil
+	}
+
+	var job *JobWithMetadata
+
+	// Remove from current state
+	switch from {
+	case types.JobStatusPending:
+		if j, exists := q.pending.Remove(jobID); exists {
+			job = j
+			q.metrics.pending.Dec()
+		}
+	case types.JobStatusInProgress:
+		if j, exists := q.inProgress[jobID]; exists {
+			job = j
+			delete(q.inProgress, jobID)
+			q.metrics.inProgress.Dec()
+		}
+	}
+
+	if job == nil {
+		return false, fmt.Errorf("job %s not found in its supposed state %s", jobID, from)
+	}
+
+	// Add to new state
+	job.Status = to
+	job.UpdateTime = time.Now()
+	q.statusMap[jobID] = to
+
+	switch to {
+	case types.JobStatusPending:
+		q.pending.Push(job)
+		q.metrics.pending.Inc()
+	case types.JobStatusInProgress:
+		q.inProgress[jobID] = job
+		q.metrics.inProgress.Inc()
+		job.StartTime = job.UpdateTime
+	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
+		q.completed.Push(job)
+		q.metrics.completed.WithLabelValues(to.String()).Inc()
+		delete(q.statusMap, jobID) // remove from status map so we don't grow indefinitely
+	default:
+		return false, fmt.Errorf("invalid target state: %s", to)
+	}
+
+	level.Debug(q.logger).Log("msg", "transitioned job state", "id", jobID, "from", from, "to", to)
+	return true, nil
+}
+
+// Exists checks if a job exists and returns its current status
+func (q *JobQueue) Exists(jobID string) (types.JobStatus, bool) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	status, exists := q.statusMap[jobID]
+	return status, exists
+}
+
+// Dequeue removes and returns the highest priority pending job
 func (q *JobQueue) Dequeue() (*types.Job, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	jobMeta, ok := q.pending.Pop()
+	job, ok := q.pending.Peek()
 	if !ok {
 		return nil, false
 	}
-	q.metrics.pending.Dec()
 
-	// Update metadata for in-progress state
-	jobMeta.Status = types.JobStatusInProgress
-	jobMeta.StartTime = time.Now()
-	jobMeta.UpdateTime = jobMeta.StartTime
+	_, err := q.transitionLockLess(job.ID(), types.JobStatusInProgress)
+	if err != nil {
+		level.Error(q.logger).Log("msg", "failed to transition dequeued job to in progress", "id", job.ID(), "err", err)
+		return nil, false
+	}
 
-	q.inProgress[jobMeta.ID()] = jobMeta
-	q.statusMap[jobMeta.ID()] = types.JobStatusInProgress
-	q.metrics.inProgress.Inc()
-
-	return jobMeta.Job, true
+	return job.Job, true
 }
 
-// GetInProgressJob retrieves a job that is currently being processed
-func (q *JobQueue) GetInProgressJob(id string) (*types.Job, time.Time, bool) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	if jobMeta, ok := q.inProgress[id]; ok {
-		return jobMeta.Job, jobMeta.StartTime, true
-	}
-	return nil, time.Time{}, false
-}
-
-// RemoveInProgress removes a job from the in-progress map
-func (q *JobQueue) RemoveInProgress(id string) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	delete(q.inProgress, id)
-	q.metrics.inProgress.Dec()
-}
-
-// MarkComplete moves a job from in-progress to completed with the given status
-func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	jobMeta, ok := q.existsLockLess(id)
-	if !ok {
-		level.Error(q.logger).Log("msg", "failed to mark job as complete", "job", id, "status", status)
-		return
-	}
-
-	switch jobMeta.Status {
-	case types.JobStatusInProgress:
-		// update & remove from in progress
-		delete(q.inProgress, id)
-		q.metrics.inProgress.Dec()
-	case types.JobStatusPending:
-		_, ok := q.pending.Remove(id)
-		if !ok {
-			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
-		}
-		q.metrics.pending.Dec()
-	case types.JobStatusComplete:
-		level.Info(q.logger).Log("msg", "job is already complete, ignoring", "job", id)
-		return
-	default:
-		level.Error(q.logger).Log("msg", "unknown job status, cannot mark as complete", "job", id, "status", status)
-		return
-	}
-
-	jobMeta.Status = status
-	jobMeta.UpdateTime = time.Now()
-
-	q.addToCompletedBuffer(jobMeta)
-}
-
-// add it to the completed buffer, removing any evicted job from the statusMap
-func (q *JobQueue) addToCompletedBuffer(jobMeta *JobWithMetadata) {
-	removal, evicted := q.completed.Push(jobMeta)
-	if evicted {
-		delete(q.statusMap, removal.ID())
-	}
-
-	q.statusMap[jobMeta.ID()] = jobMeta.Status
-	q.metrics.completed.WithLabelValues(jobMeta.Status.String()).Inc()
-}
-
-// SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
-func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	// Helper function to create a new job
-	registerInProgress := func() {
-		// Job does not exist; add it as in-progress
-		now := time.Now()
-		jobMeta := NewJobWithMetadata(job, DefaultPriority)
-		jobMeta.StartTime = now
-		jobMeta.UpdateTime = now
-		jobMeta.Status = types.JobStatusInProgress
-		q.inProgress[jobID] = jobMeta
-		q.statusMap[jobID] = types.JobStatusInProgress
-		q.metrics.inProgress.Inc()
-	}
-
-	jobMeta, ok := q.existsLockLess(jobID)
-
-	if !ok {
-		registerInProgress()
-		return
-	}
-
-	switch jobMeta.Status {
-	case types.JobStatusPending:
-		// Job already pending, move to in-progress
-		_, ok := q.pending.Remove(jobID)
-		if !ok {
-			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
-		}
-		jobMeta.Status = types.JobStatusInProgress
-		q.metrics.pending.Dec()
-		q.metrics.inProgress.Inc()
-	case types.JobStatusInProgress:
-	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
-		// Job already completed, re-enqueue a new one
-		registerInProgress()
-		return
-	default:
-		registerInProgress()
-		return
-	}
-
-	jobMeta.UpdateTime = time.Now()
-	q.inProgress[jobID] = jobMeta
-	q.statusMap[jobID] = types.JobStatusInProgress
-}
-
+// ListPendingJobs returns a list of all pending jobs
 func (q *JobQueue) ListPendingJobs() []JobWithMetadata {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -351,9 +332,9 @@ func (q *JobQueue) ListPendingJobs() []JobWithMetadata {
 	// return copies of the jobs since they can change after the lock is released
 	jobs := make([]JobWithMetadata, 0, q.pending.Len())
 	for _, j := range q.pending.List() {
+		cpy := *j.Job
 		jobs = append(jobs, JobWithMetadata{
-			// Job is immutable, no need to make a copy
-			Job:        j.Job,
+			Job:        &cpy, // force copy
 			Priority:   j.Priority,
 			Status:     j.Status,
 			StartTime:  j.StartTime,
@@ -364,6 +345,7 @@ func (q *JobQueue) ListPendingJobs() []JobWithMetadata {
 	return jobs
 }
 
+// ListInProgressJobs returns a list of all in-progress jobs
 func (q *JobQueue) ListInProgressJobs() []JobWithMetadata {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -371,9 +353,9 @@ func (q *JobQueue) ListInProgressJobs() []JobWithMetadata {
 	// return copies of the jobs since they can change after the lock is released
 	jobs := make([]JobWithMetadata, 0, len(q.inProgress))
 	for _, j := range q.inProgress {
+		cpy := *j.Job
 		jobs = append(jobs, JobWithMetadata{
-			// Job is immutable, no need to make a copy
-			Job:        j.Job,
+			Job:        &cpy, // force copy
 			Priority:   j.Priority,
 			Status:     j.Status,
 			StartTime:  j.StartTime,
@@ -381,4 +363,56 @@ func (q *JobQueue) ListInProgressJobs() []JobWithMetadata {
 		})
 	}
 	return jobs
+}
+
+// ListCompletedJobs returns a list of completed jobs
+func (q *JobQueue) ListCompletedJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	jobs := make([]JobWithMetadata, 0, q.completed.Len())
+	q.completed.Range(func(job *JobWithMetadata) bool {
+		cpy := *job.Job
+		jobs = append(jobs, JobWithMetadata{
+			Job:        &cpy, // force copy
+			Priority:   job.Priority,
+			Status:     job.Status,
+			StartTime:  job.StartTime,
+			UpdateTime: job.UpdateTime,
+		})
+		return true
+	})
+	return jobs
+}
+
+// UpdatePriority updates the priority of a pending job. If the job is not pending,
+// returns false to indicate the update was not performed.
+func (q *JobQueue) UpdatePriority(id string, priority int) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Check if job is still pending
+	if job, ok := q.pending.Lookup(id); ok {
+		// nit: we're technically already updating the prio via reference,
+		// but that's fine -- we may refactor this eventually to have 3 generic types: (key, value, priority) where value implements a `Priority() T` method.
+		job.Priority = priority
+		return q.pending.UpdatePriority(id, job)
+	}
+
+	// Job is no longer pending (might be in progress, completed, etc)
+	return false
+}
+
+// Ping updates the last-updated timestamp of a job and returns whether it was found.
+// This is useful for keeping jobs alive and preventing lease expiry.
+func (q *JobQueue) Ping(id string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if job, ok := q.inProgress[id]; ok {
+		job.UpdateTime = time.Now()
+		return true
+	}
+
+	return false
 }

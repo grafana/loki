@@ -1955,6 +1955,10 @@ func (s *consumerSession) mapLoadsToBrokers(loads listOrEpochLoads) map[*broker]
 						// If we are fetching from a follower, we can list
 						// offsets against the follower itself. The replica
 						// being non-negative signals that.
+						//
+						// Note this is not actually true (i.e. KIP-392 lies),
+						// but we keep this logic in case we can revert
+						// to using non-leaders someday.
 						brokerID = offset.replica
 					}
 					if tryBroker := findBroker(brokers, brokerID); tryBroker != nil {

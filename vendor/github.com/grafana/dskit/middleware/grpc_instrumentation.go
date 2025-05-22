@@ -32,9 +32,14 @@ func observe(ctx context.Context, hist *prometheus.HistogramVec, method string, 
 	labelValues = labelValues[:len(labelValues)-1]
 
 	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(labelValues...), duration.Seconds())
-	if tenantID, ok := instrumentLabel.perTenantInstrumentation.shouldInstrument(ctx); ok {
-		labelValues = append(labelValues, tenantID)
-		instrument.ObserveWithExemplar(ctx, instrumentLabel.perTenantDuration.WithLabelValues(labelValues...), duration.Seconds())
+	if cfg, ok := instrumentLabel.perTenantInstrumentation.shouldInstrument(ctx); ok {
+		labelValues = append(labelValues, cfg.TenantID)
+		if cfg.DurationHistogram {
+			instrument.ObserveWithExemplar(ctx, instrumentLabel.perTenantDuration.WithLabelValues(labelValues...), duration.Seconds())
+		}
+		if cfg.TotalCounter {
+			instrumentLabel.perTenantTotal.WithLabelValues(labelValues...).Inc()
+		}
 	}
 }
 
@@ -195,10 +200,11 @@ var (
 	}
 )
 
-func WithPerTenantInstrumentation(m *prometheus.HistogramVec, f PerTenantCallback) InstrumentationOption {
+func WithPerTenantInstrumentation(total *prometheus.CounterVec, histogram *prometheus.HistogramVec, f PerTenantCallback) InstrumentationOption {
 	return func(instrumentationLabel *instrumentationLabel) {
 		instrumentationLabel.perTenantInstrumentation = f
-		instrumentationLabel.perTenantDuration = m
+		instrumentationLabel.perTenantDuration = histogram
+		instrumentationLabel.perTenantTotal = total
 	}
 }
 
@@ -217,6 +223,7 @@ type instrumentationLabel struct {
 	maskHTTPStatus           bool
 	perTenantInstrumentation PerTenantCallback
 	perTenantDuration        *prometheus.HistogramVec
+	perTenantTotal           *prometheus.CounterVec
 }
 
 // getInstrumentationLabel converts an error into an error code string by applying the configurations

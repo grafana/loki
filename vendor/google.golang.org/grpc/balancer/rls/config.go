@@ -143,7 +143,10 @@ type lbConfigJSON struct {
 //	- childPolicyConfigTargetFieldName:
 //	  - must be set and non-empty
 func (rlsBB) ParseConfig(c json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
-	logger.Infof("Received JSON service config: %v", pretty.ToJSON(c))
+	if logger.V(2) {
+		logger.Infof("Received JSON service config: %v", pretty.ToJSON(c))
+	}
+
 	cfgJSON := &lbConfigJSON{}
 	if err := json.Unmarshal(c, cfgJSON); err != nil {
 		return nil, fmt.Errorf("rls: json unmarshal failed for service config %+v: %v", string(c), err)

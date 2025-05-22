@@ -216,7 +216,18 @@ type LoadOptions struct {
 	// Whether S3 Express auth is disabled.
 	S3DisableExpressAuth *bool
 
+	// Whether account id should be built into endpoint resolution
 	AccountIDEndpointMode aws.AccountIDEndpointMode
+
+	// Specify if request checksum should be calculated
+	RequestChecksumCalculation aws.RequestChecksumCalculation
+
+	// Specifies if response checksum should be validated
+	ResponseChecksumValidation aws.ResponseChecksumValidation
+
+	// Service endpoint override. This value is not necessarily final and is
+	// passed to the service's EndpointResolverV2 for further delegation.
+	BaseEndpoint string
 }
 
 func (o LoadOptions) getDefaultsMode(ctx context.Context) (aws.DefaultsMode, bool, error) {
@@ -284,6 +295,27 @@ func (o LoadOptions) getAccountIDEndpointMode(ctx context.Context) (aws.AccountI
 	return o.AccountIDEndpointMode, len(o.AccountIDEndpointMode) > 0, nil
 }
 
+func (o LoadOptions) getRequestChecksumCalculation(ctx context.Context) (aws.RequestChecksumCalculation, bool, error) {
+	return o.RequestChecksumCalculation, o.RequestChecksumCalculation > 0, nil
+}
+
+func (o LoadOptions) getResponseChecksumValidation(ctx context.Context) (aws.ResponseChecksumValidation, bool, error) {
+	return o.ResponseChecksumValidation, o.ResponseChecksumValidation > 0, nil
+}
+
+func (o LoadOptions) getBaseEndpoint(context.Context) (string, bool, error) {
+	return o.BaseEndpoint, o.BaseEndpoint != "", nil
+}
+
+// GetServiceBaseEndpoint satisfies (internal/configsources).ServiceBaseEndpointProvider.
+//
+// The sdkID value is unused because LoadOptions only supports setting a GLOBAL
+// endpoint override. In-code, per-service endpoint overrides are performed via
+// functional options in service client space.
+func (o LoadOptions) GetServiceBaseEndpoint(context.Context, string) (string, bool, error) {
+	return o.BaseEndpoint, o.BaseEndpoint != "", nil
+}
+
 // WithRegion is a helper function to construct functional options
 // that sets Region on config's LoadOptions. Setting the region to
 // an empty string, will result in the region value being ignored.
@@ -336,6 +368,26 @@ func WithAccountIDEndpointMode(m aws.AccountIDEndpointMode) LoadOptionsFunc {
 		if m != "" {
 			o.AccountIDEndpointMode = m
 		}
+		return nil
+	}
+}
+
+// WithRequestChecksumCalculation is a helper function to construct functional options
+// that sets RequestChecksumCalculation on config's LoadOptions
+func WithRequestChecksumCalculation(c aws.RequestChecksumCalculation) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		if c > 0 {
+			o.RequestChecksumCalculation = c
+		}
+		return nil
+	}
+}
+
+// WithResponseChecksumValidation is a helper function to construct functional options
+// that sets ResponseChecksumValidation on config's LoadOptions
+func WithResponseChecksumValidation(v aws.ResponseChecksumValidation) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.ResponseChecksumValidation = v
 		return nil
 	}
 }
@@ -1136,6 +1188,22 @@ func (o LoadOptions) GetS3DisableExpressAuth() (value, ok bool) {
 func WithS3DisableExpressAuth(v bool) LoadOptionsFunc {
 	return func(o *LoadOptions) error {
 		o.S3DisableExpressAuth = &v
+		return nil
+	}
+}
+
+// WithBaseEndpoint is a helper function to construct functional options that
+// sets BaseEndpoint on config's LoadOptions. Empty values have no effect, and
+// subsequent calls to this API override previous ones.
+//
+// This is an in-code setting, therefore, any value set using this hook takes
+// precedence over and will override ALL environment and shared config
+// directives that set endpoint URLs. Functional options on service clients
+// have higher specificity, and functional options that modify the value of
+// BaseEndpoint on a client will take precedence over this setting.
+func WithBaseEndpoint(v string) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.BaseEndpoint = v
 		return nil
 	}
 }

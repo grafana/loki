@@ -1570,7 +1570,11 @@ func (b *Broker) createSaslAuthenticateRequest(msg []byte) *SaslAuthenticateRequ
 func buildClientFirstMessage(token *AccessToken) ([]byte, error) {
 	var ext string
 
-	if token.Extensions != nil && len(token.Extensions) > 0 {
+	if token == nil {
+		return []byte{}, fmt.Errorf("failed to build client first message: token is nil")
+	}
+
+	if len(token.Extensions) > 0 {
 		if _, ok := token.Extensions[SASLExtKeyAuth]; ok {
 			return []byte{}, fmt.Errorf("the extension `%s` is invalid", SASLExtKeyAuth)
 		}

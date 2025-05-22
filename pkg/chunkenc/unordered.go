@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
-	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -47,7 +47,7 @@ type HeadBlock interface {
 		ctx context.Context,
 		mint,
 		maxt int64,
-		extractor log.StreamSampleExtractor,
+		extractor ...log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
@@ -115,7 +115,7 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) (bool, error) {
 	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
 		// structuredMetadata must be ignored for the previous head block formats
-		structuredMetadata = nil
+		structuredMetadata = labels.EmptyLabels()
 	}
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
@@ -155,7 +155,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 
 	hb.size += len(line)
-	hb.size += len(structuredMetadata) * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
+	hb.size += structuredMetadata.Len() * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
 	hb.lines++
 
 	return false, nil
@@ -163,9 +163,9 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 
 func metaLabelsLen(metaLabels labels.Labels) int {
 	length := 0
-	for _, label := range metaLabels {
+	metaLabels.Range(func(label labels.Label) {
 		length += len(label.Name) + len(label.Value)
-	}
+	})
 	return length
 }
 
@@ -252,15 +252,16 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
-	var structuredMetadata labels.Labels
+	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata...)
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
 			}
@@ -298,59 +299,70 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	}
 
 	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
-		if structuredMetadata != nil {
-			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
-		}
+		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
 		return nil
 	})
 }
 
-// nolint:unused
 func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
 	maxt int64,
-	extractor log.StreamSampleExtractor,
+	extractor ...log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
-	var structuredMetadata labels.Labels
+	setQueryReferencedStructuredMetadata := false
+	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
+	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
-			value, parsedLabels, ok := extractor.ProcessString(ts, line, structuredMetadata...)
-			if !ok {
-				return nil
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+
+			for _, extractor := range extractor {
+				samples, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				if !ok || len(samples) == 0 {
+					return nil
+				}
+				var (
+					found bool
+					s     *logproto.Series
+				)
+
+				for _, sample := range samples {
+					value := sample.Value
+					lbls := sample.Labels
+
+					lblStr := lbls.String()
+					s, found = series[lblStr]
+					if !found {
+						baseHash := extractor.BaseLabels().Hash()
+						s = &logproto.Series{
+							Labels:     lblStr,
+							Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+							StreamHash: baseHash,
+						}
+						series[lblStr] = s
+					}
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: ts,
+						Value:     value,
+						Hash:      util.UniqueSampleHash(lblStr, unsafeGetBytes(line)),
+					})
+				}
+				if extractor.ReferencedStructuredMetadata() {
+					setQueryReferencedStructuredMetadata = true
+				}
 			}
 			statsCtx.AddPostFilterLines(1)
-			var (
-				found bool
-				s     *logproto.Series
-			)
-			lbs := parsedLabels.String()
-			s, found = series[lbs]
-			if !found {
-				s = &logproto.Series{
-					Labels:     lbs,
-					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-					StreamHash: baseHash,
-				}
-				series[lbs] = s
-			}
-			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: ts,
-				Value:     value,
-				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
-			})
 			return nil
 		},
 	)
 
-	if extractor.ReferencedStructuredMetadata() {
+	if setQueryReferencedStructuredMetadata {
 		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
 	}
 
@@ -365,9 +377,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
-		if structuredMetadata != nil {
-			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
-		}
+		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
 		return nil
 	})
 }

@@ -35,6 +35,40 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+#### Distributor Max Receive Limits for uncompressed bytes
+
+The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+
+Supported clients should check the configuration options for max send message size if applicable.
+
+## 3.4.0
+
+### Loki 3.4.0
+
+#### New Object Storage Clients
+
+Loki release 3.4.0 introduces new object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore), this is an opt-in feature.
+In a future release, this will become the default way of configuring storage and the existing storage clients will be deprecated.
+
+The new storage configuration deviates from the existing format. Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
+
+The documentation now also includes a [migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) and [configuration examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) for using Thanos-based storage clients.
+
+## 3.3.0
+
+### Loki 3.3.0
+
+#### Experimental Bloom Filters
+
+With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
+Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
+metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
+inside the `bloom` path in the object store.
+
+## 3.2.0
+
+### Loki 3.2.0
+
 ### HTTP API
 
 The API endpoint for instant queries `/api/v1/query` now returns a HTTP status 400 (Bad Request) when the provided `query`
@@ -75,16 +109,6 @@ Their YAML counterparts in the `limits_config` block are kept identical.
 
 All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
 
-## 3.3.0
-
-### Loki 3.3.0
-
-#### Experimental Bloom Filters
-
-With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
-Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
-metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
-inside the `bloom` path in the object store.
 
 ## 3.0.0
 

@@ -1,10 +1,11 @@
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 FROM golang:${GO_VERSION} as build
+ARG IMAGE_TAG
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN go env GOARCH > /goarch
-RUN make clean && make GOARCH=$(cat /goarch) BUILD_IN_CONTAINER=true GOEXPERIMENT=boringcrypto loki-canary-boringcrypto
+RUN make clean && make GOARCH=$(cat /goarch) BUILD_IN_CONTAINER=true GOEXPERIMENT=boringcrypto IMAGE_TAG=${IMAGE_TAG} loki-canary-boringcrypto
 
 FROM gcr.io/distroless/base-nossl:debug
 COPY --from=build /src/loki/cmd/loki-canary-boringcrypto/loki-canary-boringcrypto /usr/bin/loki-canary

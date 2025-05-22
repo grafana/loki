@@ -11,15 +11,17 @@ on:
         required: true
     secrets:
       APP_ID:
-        type: string
         required: true
       APP_PRIVATE_KEY:
-        type: string
         required: true
 
 jobs:
   create-operator-pull-request:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
       - id: "get_github_app_token"
         name: Get GitHub App Token
@@ -49,12 +51,14 @@ jobs:
       - name: Sync fork
         env:
           GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          INPUTS_ORG: ${{ inputs.org }}
+          INPUTS_REPO: ${{ inputs.repo }}
         run: |
           # synchronizing the fork is fast, and avoids the need to fetch the full upstream repo
           # (fetching the upstream repo with "--depth 1" would lead to "shallow update not allowed"
           #  error when pushing back to the origin repo)
-          gh repo sync grafanabot/${{ inputs.repo }} \
-              --source ${{ inputs.org }}/${{ inputs.repo }} \
+          gh repo sync grafanabot/$INPUTS_REPO \
+              --source ${INPUTS_ORG}/$INPUTS_REPO \
               --force
 
       - name: Checkout operatorhub repo
@@ -62,6 +66,7 @@ jobs:
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.get_github_app_token.outputs.token }}
+          persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
         uses: actions/checkout@v4
@@ -69,7 +74,7 @@ jobs:
           repository: grafana/loki
           token: ${{ steps.get_github_app_token.outputs.token }}
           path: tmp/
-
+          persist-credentials: false
       - name: Update version
         env:
           VERSION: ${{ env.version }}
@@ -82,7 +87,7 @@ jobs:
 
       - name: Add OpenShift Supported versions to redhat catalog
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
-        uses: fjogeleit/yaml-update-action@main
+        uses: fjogeleit/yaml-update-action@04ff6ec06568fd21197db746472e36cc425de850 # v0.16.1
         with:
           valueFile: "operators/loki-operator/${{ env.version }}/metadata/annotations.yaml"
           propertyPath: "annotations['com.redhat.openshift.versions']"
@@ -98,6 +103,8 @@ jobs:
         env:
           VERSION: ${{ env.version }}
           GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          INPUTS_ORG: ${{ inputs.org }}
+          INPUTS_REPO: ${{ inputs.repo }}
         run: |
           message="Update the loki-operator to $VERSION"
           body="Release loki-operator \`$VERSION\`.
@@ -116,5 +123,5 @@ jobs:
           git push -f --set-upstream origin $branch
           gh pr create --title "$message" \
                        --body "$body" \
-                       --repo ${{ inputs.org }}/${{ inputs.repo }} \
+                       --repo ${INPUTS_ORG}/${INPUTS_REPO}\
                        --base main

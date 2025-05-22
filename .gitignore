@@ -28,6 +28,8 @@ cmd/querytee/querytee
 dlv
 rootfs/
 dist
+!pkg/dataobj/explorer/dist
+!pkg/ui/frontend/dist
 *coverage.txt
 *test_results.txt
 .DS_Store
@@ -35,13 +37,12 @@ dist
 .idea
 pkg/loki/wal
 tools/lambda-promtail/main
+tools/dev/kafka/data/
+pkg/ui/frontend/node_modules/*
+pkg/ui/frontend/.vite/*
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login
-
-# Workspaces
-*.work
-*.work.sum
 
 # emacs
 .#*
@@ -66,3 +67,9 @@ production/helm/loki/src/helm-test/helm-test
 
 # Go telemetry
 .config
+
+# Profiling files
+*.prof
+cpu.prof
+mem.prof
+*.pprof

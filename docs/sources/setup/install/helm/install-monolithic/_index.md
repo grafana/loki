@@ -271,6 +271,8 @@ loki:
 minio:
   enabled: false
 
+deploymentMode: SingleBinary
+
 singleBinary:
   replicas: 3
   persistence:
@@ -352,6 +354,8 @@ loki:
 # Disable minio storage
 minio:
   enabled: false
+
+deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 3

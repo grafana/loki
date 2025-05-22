@@ -89,4 +89,4 @@ then
 fi
 
 # Run tests
-go test -v -timeout 15m ./ ./dataflux -run="^Test(RetryConformance|.*Emulated)$" -short 2>&1 | tee -a sponge_log.log
+go test -v -timeout 15m ./ ./dataflux -run="^Test(RetryConformance|.*Emulated)$" -short -race 2>&1 | tee -a sponge_log.log

@@ -33,7 +33,7 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 		schema = rowGroups[0].Schema()
 
 		for _, rowGroup := range rowGroups[1:] {
-			if !nodesAreEqual(schema, rowGroup.Schema()) {
+			if !EqualNodes(schema, rowGroup.Schema()) {
 				return nil, ErrRowGroupSchemaMismatch
 			}
 		}
@@ -43,7 +43,7 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 	copy(mergedRowGroups, rowGroups)
 
 	for i, rowGroup := range mergedRowGroups {
-		if rowGroupSchema := rowGroup.Schema(); !nodesAreEqual(schema, rowGroupSchema) {
+		if rowGroupSchema := rowGroup.Schema(); !EqualNodes(schema, rowGroupSchema) {
 			conv, err := Convert(schema, rowGroupSchema)
 			if err != nil {
 				return nil, fmt.Errorf("cannot merge row groups: %w", err)

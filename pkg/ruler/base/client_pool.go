@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -79,7 +80,8 @@ func newRulerPoolClient(clientCfg grpcclient.Config, reg prometheus.Registerer, 
 }
 
 func dialRulerClient(clientCfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*rulerExtendedClient, error) {
-	opts, err := clientCfg.DialOption(grpcclient.Instrument(requestDuration))
+	unaryInterceptors, streamInterceptors := grpcclient.Instrument(requestDuration)
+	opts, err := clientCfg.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

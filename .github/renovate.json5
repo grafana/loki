@@ -8,18 +8,16 @@
   ],
   "prHourlyLimit": 4,
   "baseBranches": [
-    "main"
+    "main",
+    "release-3.5.x", // Update when a new release is out, 2 minors, 1 major.
+    "release-3.4.x", // Also ensure to update the 'packageRules' section to match
+    "release-2.9.x"
   ],
   "packageRules": [
     {
-      "matchBaseBranches": [
-        "release-2.9.x",
-        "release-2.8.x"
-      ],
-      "enabled": false,
-      "matchPackageNames": [
-        "*"
-      ]
+      // Disable updates for all branches - we only want security updates
+      "matchBaseBranches": ["release-3.5.x", "release-3.4.x", "release-2.9.x"],
+      "enabled": false
     },
     {
       // Disable Go version updates
@@ -32,6 +30,26 @@
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["golang", "grafana/loki-build-image"],
       "enabled": false
+    },
+    {
+      // Disable updates driven by Kustomize, used by the operator
+      "matchManagers": ["kustomize"],
+      "enabled": false
+    },
+    {
+      // Disable certain npm updates for compatibility reasons
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["tailwindcss"],
+      "enabled": false
+    },
+    {
+      // Auto-merge the rest of the npm updates
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["!tailwindcss"],
+      "matchBaseBranches": ["main"],
+      "enabled": true,
+      "autoApprove": true,
+      "automerge": true
     },
     {
       // Don't automatically merge GitHub Actions updates
@@ -60,12 +78,20 @@
       "automerge": false
     },
     {
-      // Enable all other updates
+      // Enable all other updates, and auto-merge minor and patch updates
       "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
       "groupName": "{{packageName}}",
       "enabled": true,
-      "matchUpdateTypes": ["major", "minor", "patch"],
-      // After we have tested the above configuration, we can enable the following
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "autoApprove": true
+    },
+    {
+      // Enable all other updates, don't auto-merge major updates
+      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
+      "groupName": "{{packageName}}",
+      "enabled": true,
+      "matchUpdateTypes": ["major"],
       "automerge": false,
       "autoApprove": false
     }
@@ -77,11 +103,13 @@
     "enabled": true,
     "addLabels": [
       "area/security"
-    ]
+    ],
+    "automerge": false, 
+    "autoApprove": false
   },
   "osvVulnerabilityAlerts": true,
-  "prConcurrentLimit": 10,
-  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 15,
+  "rebaseWhen": "auto",
   "branchPrefix": "deps-update/",
   "postUpdateOptions": [
     "gomodTidy"

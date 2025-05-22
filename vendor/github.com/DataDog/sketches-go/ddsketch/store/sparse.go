@@ -150,6 +150,16 @@ func (s *SparseStore) ToProto() *sketchpb.Store {
 	return &sketchpb.Store{BinCounts: binCounts}
 }
 
+func (s *SparseStore) EncodeProto(builder *sketchpb.StoreBuilder) {
+
+	for index, count := range s.counts {
+		builder.AddBinCounts(func(w *sketchpb.Store_BinCountsEntryBuilder) {
+			w.SetKey(int32(index))
+			w.SetValue(count)
+		})
+	}
+}
+
 func (s *SparseStore) Reweight(w float64) error {
 	if w <= 0 {
 		return errors.New("can't reweight by a negative factor")

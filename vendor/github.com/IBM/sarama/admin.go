@@ -3,6 +3,7 @@ package sarama
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -144,6 +145,10 @@ type ClusterAdmin interface {
 	// locally cached value if it's available.
 	Controller() (*Broker, error)
 
+	// Coordinator returns the coordinating broker for a consumer group. It will
+	// return a locally cached value if it's available.
+	Coordinator(group string) (*Broker, error)
+
 	// Remove members from the consumer group by given member identities.
 	// This operation is supported by brokers with version 2.3 or higher
 	// This is for static membership feature. KIP-345
@@ -195,14 +200,25 @@ func (ca *clusterAdmin) Controller() (*Broker, error) {
 	return ca.client.Controller()
 }
 
+func (ca *clusterAdmin) Coordinator(group string) (*Broker, error) {
+	return ca.client.Coordinator(group)
+}
+
 func (ca *clusterAdmin) refreshController() (*Broker, error) {
 	return ca.client.RefreshController()
 }
 
-// isErrNotController returns `true` if the given error type unwraps to an
-// `ErrNotController` response from Kafka
-func isErrNotController(err error) bool {
-	return errors.Is(err, ErrNotController)
+// isRetriableControllerError returns `true` if the given error type unwraps to
+// an `ErrNotController` or `EOF` response from Kafka
+func isRetriableControllerError(err error) bool {
+	return errors.Is(err, ErrNotController) || errors.Is(err, io.EOF)
+}
+
+// isRetriableGroupCoordinatorError returns `true` if the given error type
+// unwraps to an `ErrNotCoordinatorForConsumer`,
+// `ErrConsumerCoordinatorNotAvailable` or `EOF` response from Kafka
+func isRetriableGroupCoordinatorError(err error) bool {
+	return errors.Is(err, ErrNotCoordinatorForConsumer) || errors.Is(err, ErrConsumerCoordinatorNotAvailable) || errors.Is(err, io.EOF)
 }
 
 // retryOnError will repeatedly call the given (error-returning) func in the
@@ -252,7 +268,7 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 		request.Version = 1
 	}
 
-	return ca.retryOnError(isErrNotController, func() error {
+	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -269,7 +285,7 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 		}
 
 		if !errors.Is(topicErr.Err, ErrNoError) {
-			if errors.Is(topicErr.Err, ErrNotController) {
+			if isRetriableControllerError(topicErr.Err) {
 				_, _ = ca.refreshController()
 			}
 			return topicErr
@@ -281,14 +297,14 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 
 func (ca *clusterAdmin) DescribeTopics(topics []string) (metadata []*TopicMetadata, err error) {
 	var response *MetadataResponse
-	err = ca.retryOnError(isErrNotController, func() error {
+	err = ca.retryOnError(isRetriableControllerError, func() error {
 		controller, err := ca.Controller()
 		if err != nil {
 			return err
 		}
 		request := NewMetadataRequest(ca.conf.Version, topics)
 		response, err = controller.GetMetadata(request)
-		if isErrNotController(err) {
+		if isRetriableControllerError(err) {
 			_, _ = ca.refreshController()
 		}
 		return err
@@ -301,7 +317,7 @@ func (ca *clusterAdmin) DescribeTopics(topics []string) (metadata []*TopicMetada
 
 func (ca *clusterAdmin) DescribeCluster() (brokers []*Broker, controllerID int32, err error) {
 	var response *MetadataResponse
-	err = ca.retryOnError(isErrNotController, func() error {
+	err = ca.retryOnError(isRetriableControllerError, func() error {
 		controller, err := ca.Controller()
 		if err != nil {
 			return err
@@ -309,7 +325,7 @@ func (ca *clusterAdmin) DescribeCluster() (brokers []*Broker, controllerID int32
 
 		request := NewMetadataRequest(ca.conf.Version, nil)
 		response, err = controller.GetMetadata(request)
-		if isErrNotController(err) {
+		if isRetriableControllerError(err) {
 			_, _ = ca.refreshController()
 		}
 		return err
@@ -441,7 +457,7 @@ func (ca *clusterAdmin) DeleteTopic(topic string) error {
 		request.Version = 1
 	}
 
-	return ca.retryOnError(isErrNotController, func() error {
+	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -485,7 +501,7 @@ func (ca *clusterAdmin) CreatePartitions(topic string, count int32, assignment [
 		request.Version = 1
 	}
 
-	return ca.retryOnError(isErrNotController, func() error {
+	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -526,7 +542,7 @@ func (ca *clusterAdmin) AlterPartitionReassignments(topic string, assignment [][
 		request.AddBlock(topic, int32(i), assignment[i])
 	}
 
-	return ca.retryOnError(isErrNotController, func() error {
+	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -573,7 +589,7 @@ func (ca *clusterAdmin) ListPartitionReassignments(topic string, partitions []in
 	request.AddBlock(topic, partitions)
 
 	var rsp *ListPartitionReassignmentsResponse
-	err = ca.retryOnError(isErrNotController, func() error {
+	err = ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -581,7 +597,7 @@ func (ca *clusterAdmin) ListPartitionReassignments(topic string, partitions []in
 		_ = b.Open(ca.client.Config())
 
 		rsp, err = b.ListPartitionReassignments(request)
-		if isErrNotController(err) {
+		if isRetriableControllerError(err) {
 			_, _ = ca.refreshController()
 		}
 		return err
@@ -924,7 +940,7 @@ func (ca *clusterAdmin) ElectLeaders(electionType ElectionType, partitions map[s
 	}
 
 	var res *ElectLeadersResponse
-	err := ca.retryOnError(isErrNotController, func() error {
+	if err := ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -932,12 +948,17 @@ func (ca *clusterAdmin) ElectLeaders(electionType ElectionType, partitions map[s
 		_ = b.Open(ca.client.Config())
 
 		res, err = b.ElectLeaders(request)
-		if isErrNotController(err) {
-			_, _ = ca.refreshController()
+		if err != nil {
+			return err
 		}
-		return err
-	})
-	if err != nil {
+		if !errors.Is(res.ErrorCode, ErrNoError) {
+			if isRetriableControllerError(res.ErrorCode) {
+				_, _ = ca.refreshController()
+			}
+			return res.ErrorCode
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return res.ReplicaElectionResults, nil
@@ -947,11 +968,11 @@ func (ca *clusterAdmin) DescribeConsumerGroups(groups []string) (result []*Group
 	groupsPerBroker := make(map[*Broker][]string)
 
 	for _, group := range groups {
-		controller, err := ca.client.Coordinator(group)
+		coordinator, err := ca.client.Coordinator(group)
 		if err != nil {
 			return nil, err
 		}
-		groupsPerBroker[controller] = append(groupsPerBroker[controller], group)
+		groupsPerBroker[coordinator] = append(groupsPerBroker[coordinator], group)
 	}
 
 	for broker, brokerGroups := range groupsPerBroker {
@@ -1043,22 +1064,36 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 }
 
 func (ca *clusterAdmin) ListConsumerGroupOffsets(group string, topicPartitions map[string][]int32) (*OffsetFetchResponse, error) {
-	coordinator, err := ca.client.Coordinator(group)
-	if err != nil {
-		return nil, err
-	}
-
+	var response *OffsetFetchResponse
 	request := NewOffsetFetchRequest(ca.conf.Version, group, topicPartitions)
+	err := ca.retryOnError(isRetriableGroupCoordinatorError, func() (err error) {
+		defer func() {
+			if err != nil && isRetriableGroupCoordinatorError(err) {
+				_ = ca.client.RefreshCoordinator(group)
+			}
+		}()
 
-	return coordinator.FetchOffset(request)
+		coordinator, err := ca.client.Coordinator(group)
+		if err != nil {
+			return err
+		}
+
+		response, err = coordinator.FetchOffset(request)
+		if err != nil {
+			return err
+		}
+		if !errors.Is(response.Err, ErrNoError) {
+			return response.Err
+		}
+
+		return nil
+	})
+
+	return response, err
 }
 
 func (ca *clusterAdmin) DeleteConsumerGroupOffset(group string, topic string, partition int32) error {
-	coordinator, err := ca.client.Coordinator(group)
-	if err != nil {
-		return err
-	}
-
+	var response *DeleteOffsetsResponse
 	request := &DeleteOffsetsRequest{
 		Group: group,
 		partitions: map[string][]int32{
@@ -1066,27 +1101,35 @@ func (ca *clusterAdmin) DeleteConsumerGroupOffset(group string, topic string, pa
 		},
 	}
 
-	resp, err := coordinator.DeleteOffsets(request)
-	if err != nil {
-		return err
-	}
+	return ca.retryOnError(isRetriableGroupCoordinatorError, func() (err error) {
+		defer func() {
+			if err != nil && isRetriableGroupCoordinatorError(err) {
+				_ = ca.client.RefreshCoordinator(group)
+			}
+		}()
 
-	if !errors.Is(resp.ErrorCode, ErrNoError) {
-		return resp.ErrorCode
-	}
+		coordinator, err := ca.client.Coordinator(group)
+		if err != nil {
+			return err
+		}
 
-	if !errors.Is(resp.Errors[topic][partition], ErrNoError) {
-		return resp.Errors[topic][partition]
-	}
-	return nil
+		response, err = coordinator.DeleteOffsets(request)
+		if err != nil {
+			return err
+		}
+		if !errors.Is(response.ErrorCode, ErrNoError) {
+			return response.ErrorCode
+		}
+		if !errors.Is(response.Errors[topic][partition], ErrNoError) {
+			return response.Errors[topic][partition]
+		}
+
+		return nil
+	})
 }
 
 func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
-	coordinator, err := ca.client.Coordinator(group)
-	if err != nil {
-		return err
-	}
-
+	var response *DeleteGroupsResponse
 	request := &DeleteGroupsRequest{
 		Groups: []string{group},
 	}
@@ -1094,21 +1137,34 @@ func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
 		request.Version = 1
 	}
 
-	resp, err := coordinator.DeleteGroups(request)
-	if err != nil {
-		return err
-	}
+	return ca.retryOnError(isRetriableGroupCoordinatorError, func() (err error) {
+		defer func() {
+			if err != nil && isRetriableGroupCoordinatorError(err) {
+				_ = ca.client.RefreshCoordinator(group)
+			}
+		}()
 
-	groupErr, ok := resp.GroupErrorCodes[group]
-	if !ok {
-		return ErrIncompleteResponse
-	}
+		coordinator, err := ca.client.Coordinator(group)
+		if err != nil {
+			return err
+		}
 
-	if !errors.Is(groupErr, ErrNoError) {
-		return groupErr
-	}
+		response, err = coordinator.DeleteGroups(request)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		groupErr, ok := response.GroupErrorCodes[group]
+		if !ok {
+			return ErrIncompleteResponse
+		}
+
+		if !errors.Is(groupErr, ErrNoError) {
+			return groupErr
+		}
+
+		return nil
+	})
 }
 
 func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32][]DescribeLogDirsResponseDirMetadata, err error) {
@@ -1206,7 +1262,7 @@ func (ca *clusterAdmin) AlterUserScramCredentials(u []AlterUserScramCredentialsU
 	}
 
 	var rsp *AlterUserScramCredentialsResponse
-	err := ca.retryOnError(isErrNotController, func() error {
+	err := ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
 		if err != nil {
 			return err
@@ -1284,18 +1340,14 @@ func (ca *clusterAdmin) AlterClientQuotas(entity []QuotaEntityComponent, op Clie
 	return nil
 }
 
-func (ca *clusterAdmin) RemoveMemberFromConsumerGroup(groupId string, groupInstanceIds []string) (*LeaveGroupResponse, error) {
+func (ca *clusterAdmin) RemoveMemberFromConsumerGroup(group string, groupInstanceIds []string) (*LeaveGroupResponse, error) {
 	if !ca.conf.Version.IsAtLeast(V2_4_0_0) {
 		return nil, ConfigurationError("Removing members from a consumer group headers requires Kafka version of at least v2.4.0")
 	}
-
-	controller, err := ca.client.Coordinator(groupId)
-	if err != nil {
-		return nil, err
-	}
+	var response *LeaveGroupResponse
 	request := &LeaveGroupRequest{
 		Version: 3,
-		GroupId: groupId,
+		GroupId: group,
 	}
 	for _, instanceId := range groupInstanceIds {
 		groupInstanceId := instanceId
@@ -1303,5 +1355,28 @@ func (ca *clusterAdmin) RemoveMemberFromConsumerGroup(groupId string, groupInsta
 			GroupInstanceId: &groupInstanceId,
 		})
 	}
-	return controller.LeaveGroup(request)
+	err := ca.retryOnError(isRetriableGroupCoordinatorError, func() (err error) {
+		defer func() {
+			if err != nil && isRetriableGroupCoordinatorError(err) {
+				_ = ca.client.RefreshCoordinator(group)
+			}
+		}()
+
+		coordinator, err := ca.client.Coordinator(group)
+		if err != nil {
+			return err
+		}
+
+		response, err = coordinator.LeaveGroup(request)
+		if err != nil {
+			return err
+		}
+		if !errors.Is(response.Err, ErrNoError) {
+			return response.Err
+		}
+
+		return nil
+	})
+
+	return response, err
 }

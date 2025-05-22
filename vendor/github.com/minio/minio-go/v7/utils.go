@@ -41,6 +41,7 @@ import (
 
 	md5simd "github.com/minio/md5-simd"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 func trimEtag(etag string) string {
@@ -322,7 +323,13 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 			userMetadata[strings.TrimPrefix(k, "X-Amz-Meta-")] = v[0]
 		}
 	}
-	userTags := s3utils.TagDecode(h.Get(amzTaggingHeader))
+
+	userTags, err := tags.ParseObjectTags(h.Get(amzTaggingHeader))
+	if err != nil {
+		return ObjectInfo{}, ErrorResponse{
+			Code: "InternalError",
+		}
+	}
 
 	var tagCount int
 	if count := h.Get(amzTaggingCount); count != "" {
@@ -373,7 +380,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		// which are not part of object metadata.
 		Metadata:     metadata,
 		UserMetadata: userMetadata,
-		UserTags:     userTags,
+		UserTags:     userTags.ToMap(),
 		UserTagCount: tagCount,
 		Restore:      restore,
 
@@ -383,6 +390,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }
 

@@ -16,6 +16,25 @@ global:
   dnsService: "kube-dns"
   # -- configures DNS service namespace
   dnsNamespace: "kube-system"
+  # -- Common additional CLI arguments for all jobs (that is, -log.level debug, -config.expand-env=true or -log-config-reverse-order)
+  # scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.
+  extraArgs: []
+  # -- Common environment variables to add to all pods directly managed by this chart.
+  # scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.
+  extraEnv: []
+  # -- Common source of environment injections to add to all pods directly managed by this chart.
+  # scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.
+  # For example to inject values from a Secret, use:
+  # extraEnvFrom:
+  #   - secretRef:
+  #       name: mysecret
+  extraEnvFrom: []
+  # -- Common volumes to add to all pods directly managed by this chart.
+  # scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.
+  extraVolumes: []
+  # -- Common mount points to add to all pods directly managed by this chart.
+  # scope: admin-api, backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write.
+  extraVolumeMounts: []
 # -- Overrides the chart's name
 nameOverride: null
 # -- Overrides the chart's computed fullname
@@ -56,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.3.2
+    tag: 3.5.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -209,6 +228,11 @@ loki:
     {{ include "loki.rulerConfig" . }}
     {{- end }}
 
+    {{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+    ruler_storage:
+      {{- include "loki.rulerThanosStorageConfig" . | nindent 2 }}
+    {{- end }}
+
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
@@ -258,6 +282,12 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- if .Values.loki.ui.enabled }}
+    ui:
+      discovery:
+        join_peers:
+          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+    {{- end }}
     {{- with .Values.loki.querier }}
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -325,6 +355,7 @@ loki:
     replication_factor: 3
     compactor_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
+  # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
     # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
     # Please provide these values if you are using object storage.
@@ -384,6 +415,47 @@ loki:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
       admin_api_directory: /var/loki/admin
+
+    # Loki now supports using thanos storage clients for connecting to object storage backend.
+    # This will become the default way to configure storage in a future releases.
+    use_thanos_objstore: false
+
+    object_store:
+      # Type of object store. Valid options are: s3, gcs, azure
+      type: s3
+      # Optional prefix for storage keys
+      storage_prefix: null
+      # S3 configuration (when type is "s3")
+      s3:
+        # S3 endpoint URL
+        endpoint: null
+        # Optional region
+        region: null
+        # Optional access key
+        access_key_id: null
+        # Optional secret key
+        secret_access_key: null
+        # Optional. Enable if using self-signed TLS
+        insecure: false
+        # Optional server-side encryption configuration
+        sse: {}
+        # Optional HTTP client configuration
+        http: {}
+
+      # GCS configuration (when type is "gcs")
+      gcs:
+        # Name of the bucket
+        bucket_name: null
+        # Optional service account JSON
+        service_account: null
+
+      # Azure configuration (when type is "azure")
+      azure:
+        # Storage account name
+        account_name: null
+        # Optional storage account key
+        account_key: null
+
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -442,6 +514,13 @@ loki:
     enabled: false
   # --  Optional analytics configuration
   analytics: {}
+  # --  Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway
+  ui:
+    # Disabled by default for backwards compatibility. Enable to use the Loki UI.
+    enabled: false
+    gateway:
+      # enable gateway proxying to UI under /ui
+      enabled: true
   # --  Optional querier configuration
   query_range: {}
   # --  Optional querier configuration
@@ -480,7 +559,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: 3.1.1
+  version: 3.4.0
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -522,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.3.0
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -575,6 +654,8 @@ enterprise:
     enabled: true
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
+    # -- Hook type(s) to customize when the job runs.  defaults to post-install
+    hookType: "post-install"
     # -- Additional tenants to be created. Each tenant will get a read and write policy
     # and associated token. Tenant must have a name and a namespace for the secret containting
     # the token to be created in. For example
@@ -831,6 +912,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables to add to the admin-api pods
+  extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the admin-api pods
   extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
@@ -942,7 +1025,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.27-alpine
+    tag: 1.28-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy
@@ -1577,6 +1660,7 @@ read:
   tolerations: []
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
+  # -- read.persistence is used only if legacyReadTarget is set to true
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
@@ -1653,6 +1737,8 @@ backend:
   extraEnvFrom: []
   # -- Init containers to add to the backend pods
   initContainers: []
+  # -- Containers to add to the backend pods
+  extraContainers: []
   # -- Volume mounts to add to the backend pods
   extraVolumeMounts: []
   # -- Volumes to add to the backend pods
@@ -2871,6 +2957,8 @@ patternIngester:
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
   enabled: true
+  # -- Whether to enable the rules sidecar
+  sidecar: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
@@ -3016,12 +3104,82 @@ ruler:
   #         - alert: HighThroughputLogStreams
   #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
   #           for: 2m
+
+# -- Configuration for the overrides-exporter
+overridesExporter:
+  # -- The overrides-exporter component is optional and can be disabled if desired.
+  enabled: false
+  # -- Number of replicas for the overrides-exporter
+  replicas: 0
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  image:
+    # -- The Docker registry for the overrides-exporter image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the overrides-exporter image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the overrides-exporter image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for overrides-exporter pods
+  priorityClassName: null
+  # -- Labels for overrides-exporter pods
+  podLabels: {}
+  # -- Annotations for overrides-exporter pods
+  podAnnotations: {}
+  # -- Labels for overrides-exporter service
+  serviceLabels: {}
+  # -- Annotations for overrides-exporter service
+  serviceAnnotations: {}
+  # -- Additional CLI args for the overrides-exporter
+  extraArgs: []
+  # -- Environment variables to add to the overrides-exporter pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the overrides-exporter pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the overrides-exporter pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the overrides-exporter pods
+  extraVolumes: []
+  # -- Resource requests and limits for the overrides-exporter
+  resources: {}
+  # -- Containers to add to the overrides-exporter pods
+  extraContainers: []
+  # -- Init containers to add to the overrides-exporter pods
+  initContainers: []
+  # -- Grace period to allow the overrides-exporter to shutdown before it is killed
+  terminationGracePeriodSeconds: 300
+  # -- Affinity for overrides-exporter pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: overrides-exporter
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
+  # -- Node selector for overrides-exporter pods
+  nodeSelector: {}
+  # -- Topology Spread Constraints for overrides-exporter pods
+  topologySpreadConstraints: []
+  # -- Tolerations for overrides-exporter pods
+  tolerations: []
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
+
 memcached:
   image:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.33-alpine
+    tag: 1.6.38-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3043,7 +3201,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.0
+    tag: v0.15.2
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3301,8 +3459,16 @@ minio:
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
   # Since we only have 1 replica, that means 2 drives must be used.
   drivesPerNode: 2
-  rootUser: enterprise-logs
-  rootPassword: supersecret
+  # root user; not used for GEL authentication
+  rootUser: root-user
+  rootPassword: supersecretpassword
+  # The first user in the list below is used for Loki/GEL authentication.
+  # You can add additional users if desired; they will not impact Loki/GEL.
+  # `accessKey` = username, `secretKey` = password
+  users:
+    - accessKey: logs-user
+      secretKey: supersecretpassword
+      policy: readwrite
   buckets:
     - name: chunks
       policy: none
@@ -3359,7 +3525,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.28.0
+    tag: 1.30.3
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -3373,7 +3539,12 @@ sidecar:
   #     cpu: 50m
   #     memory: 50Mi
   # -- The SecurityContext for the sidecar.
-  securityContext: {}
+  securityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.

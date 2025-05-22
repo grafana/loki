@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/metric/embedded"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/metric/internal/aggregate"
+	"go.opentelemetry.io/otel/sdk/metric/internal/x"
 )
 
 var zeroScope instrumentation.Scope
@@ -144,6 +145,12 @@ type Stream struct {
 	// Use NewAllowKeysFilter from "go.opentelemetry.io/otel/attribute" to
 	// provide an allow-list of attribute keys here.
 	AttributeFilter attribute.Filter
+	// ExemplarReservoirProvider selects the
+	// [go.opentelemetry.io/otel/sdk/metric/exemplar.ReservoirProvider] based
+	// on the [Aggregation].
+	//
+	// If unspecified, [DefaultExemplarReservoirProviderSelector] is used.
+	ExemplarReservoirProviderSelector ExemplarReservoirProviderSelector
 }
 
 // instID are the identifying properties of a instrument.
@@ -184,6 +191,7 @@ var (
 	_ metric.Int64UpDownCounter = (*int64Inst)(nil)
 	_ metric.Int64Histogram     = (*int64Inst)(nil)
 	_ metric.Int64Gauge         = (*int64Inst)(nil)
+	_ x.EnabledInstrument       = (*int64Inst)(nil)
 )
 
 func (i *int64Inst) Add(ctx context.Context, val int64, opts ...metric.AddOption) {
@@ -194,6 +202,10 @@ func (i *int64Inst) Add(ctx context.Context, val int64, opts ...metric.AddOption
 func (i *int64Inst) Record(ctx context.Context, val int64, opts ...metric.RecordOption) {
 	c := metric.NewRecordConfig(opts)
 	i.aggregate(ctx, val, c.Attributes())
+}
+
+func (i *int64Inst) Enabled(_ context.Context) bool {
+	return len(i.measures) != 0
 }
 
 func (i *int64Inst) aggregate(ctx context.Context, val int64, s attribute.Set) { // nolint:revive  // okay to shadow pkg with method.
@@ -216,6 +228,7 @@ var (
 	_ metric.Float64UpDownCounter = (*float64Inst)(nil)
 	_ metric.Float64Histogram     = (*float64Inst)(nil)
 	_ metric.Float64Gauge         = (*float64Inst)(nil)
+	_ x.EnabledInstrument         = (*float64Inst)(nil)
 )
 
 func (i *float64Inst) Add(ctx context.Context, val float64, opts ...metric.AddOption) {
@@ -228,14 +241,18 @@ func (i *float64Inst) Record(ctx context.Context, val float64, opts ...metric.Re
 	i.aggregate(ctx, val, c.Attributes())
 }
 
+func (i *float64Inst) Enabled(_ context.Context) bool {
+	return len(i.measures) != 0
+}
+
 func (i *float64Inst) aggregate(ctx context.Context, val float64, s attribute.Set) {
 	for _, in := range i.measures {
 		in(ctx, val, s)
 	}
 }
 
-// observablID is a comparable unique identifier of an observable.
-type observablID[N int64 | float64] struct {
+// observableID is a comparable unique identifier of an observable.
+type observableID[N int64 | float64] struct {
 	name        string
 	description string
 	kind        InstrumentKind
@@ -287,7 +304,7 @@ func newInt64Observable(m *meter, kind InstrumentKind, name, desc, u string) int
 
 type observable[N int64 | float64] struct {
 	metric.Observable
-	observablID[N]
+	observableID[N]
 
 	meter           *meter
 	measures        measures[N]
@@ -296,7 +313,7 @@ type observable[N int64 | float64] struct {
 
 func newObservable[N int64 | float64](m *meter, kind InstrumentKind, name, desc, u string) *observable[N] {
 	return &observable[N]{
-		observablID: observablID[N]{
+		observableID: observableID[N]{
 			name:        name,
 			description: desc,
 			kind:        kind,

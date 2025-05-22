@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.7.1
+    containerImage: docker.io/grafana/loki-operator:0.8.0
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -288,6 +288,45 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Drop configures which attributes are dropped from the log entry.
+        displayName: Dropped Attributes
+        path: limits.global.otlp.drop
+      - description: LogAttributes lists the names of log attributes that should be
+          included in structured metadata.
+        displayName: Log Attributes
+        path: limits.global.otlp.drop.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.drop.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.drop.logAttributes[0].regex
+      - description: ResourceAttributes lists the names of resource attributes that
+          should be included in structured metadata.
+        displayName: Resource Attributes
+        path: limits.global.otlp.drop.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.drop.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.drop.resourceAttributes[0].regex
+      - description: ScopeAttributes lists the names of scope attributes that should
+          be included in structured metadata.
+        displayName: Scope Attributes
+        path: limits.global.otlp.drop.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.drop.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.drop.scopeAttributes[0].regex
       - description: StreamLabels configures which resource attributes are converted
           to Loki stream labels.
         displayName: Stream Labels
@@ -304,46 +343,6 @@ spec:
           instead of as a verbatim attribute name.
         displayName: Treat name as regular expression
         path: limits.global.otlp.streamLabels.resourceAttributes[0].regex
-      - description: StructuredMetadata configures which attributes are saved in structured
-          metadata.
-        displayName: Structured Metadata
-        path: limits.global.otlp.structuredMetadata
-      - description: LogAttributes lists the names of log attributes that should be
-          included in structured metadata.
-        displayName: Log Attributes
-        path: limits.global.otlp.structuredMetadata.logAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.logAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.logAttributes[0].regex
-      - description: ResourceAttributes lists the names of resource attributes that
-          should be included in structured metadata.
-        displayName: Resource Attributes
-        path: limits.global.otlp.structuredMetadata.resourceAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].regex
-      - description: ScopeAttributes lists the names of scope attributes that should
-          be included in structured metadata.
-        displayName: Scope Attributes
-        path: limits.global.otlp.structuredMetadata.scopeAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
@@ -357,7 +356,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.global.queries.maxEntriesLimitPerQuery
@@ -449,6 +448,45 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Drop configures which attributes are dropped from the log entry.
+        displayName: Dropped Attributes
+        path: limits.tenants.otlp.drop
+      - description: LogAttributes lists the names of log attributes that should be
+          included in structured metadata.
+        displayName: Log Attributes
+        path: limits.tenants.otlp.drop.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.drop.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.drop.logAttributes[0].regex
+      - description: ResourceAttributes lists the names of resource attributes that
+          should be included in structured metadata.
+        displayName: Resource Attributes
+        path: limits.tenants.otlp.drop.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.drop.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.drop.resourceAttributes[0].regex
+      - description: ScopeAttributes lists the names of scope attributes that should
+          be included in structured metadata.
+        displayName: Scope Attributes
+        path: limits.tenants.otlp.drop.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.drop.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.drop.scopeAttributes[0].regex
       - description: StreamLabels configures which resource attributes are converted
           to Loki stream labels.
         displayName: Stream Labels
@@ -465,46 +503,6 @@ spec:
           instead of as a verbatim attribute name.
         displayName: Treat name as regular expression
         path: limits.tenants.otlp.streamLabels.resourceAttributes[0].regex
-      - description: StructuredMetadata configures which attributes are saved in structured
-          metadata.
-        displayName: Structured Metadata
-        path: limits.tenants.otlp.structuredMetadata
-      - description: LogAttributes lists the names of log attributes that should be
-          included in structured metadata.
-        displayName: Log Attributes
-        path: limits.tenants.otlp.structuredMetadata.logAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].regex
-      - description: ResourceAttributes lists the names of resource attributes that
-          should be included in structured metadata.
-        displayName: Resource Attributes
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].regex
-      - description: ScopeAttributes lists the names of scope attributes that should
-          be included in structured metadata.
-        displayName: Scope Attributes
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked
@@ -539,7 +537,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.tenants.queries.maxEntriesLimitPerQuery
@@ -815,6 +813,17 @@ spec:
         path: template.ruler.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: |-
+          When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+          requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+          spikes, whether on the ingestion or query side.
+
+
+          Note: This is currently a tech-preview feature.
+        displayName: Use resource requests as limits
+        path: template.useRequestsAsLimits
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Tenants defines the per-tenant authentication and authorization
           spec for the lokistack-gateway component.
         displayName: Tenants Configuration
@@ -928,21 +937,19 @@ spec:
         displayName: OpenTelemetry Protocol
         path: tenants.openshift.otlp
       - description: |-
-          DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
-          metadata.
+          DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 
 
           Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-          meta information to not be available as stream labels or structured metadata, potentially making queries more
-          expensive and less performant.
+          some stream labels to disappear from the index, potentially making queries more expensive and less performant.
 
 
           Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
           added to the configuration, even if this field is set to true.
 
 
-          This option is supposed to be combined with a custom label configuration customizing the labels for the specific
-          usecase.
+          This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+          should continue to exist.
         displayName: Disable recommended OTLP attributes
         path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:
@@ -1093,7 +1100,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.global.queries.maxEntriesLimitPerQuery
@@ -1164,7 +1171,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.tenants.queries.maxEntriesLimitPerQuery
@@ -2500,5 +2507,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.7.0
+  replaces: loki-operator.v0.7.1
   version: 0.0.0

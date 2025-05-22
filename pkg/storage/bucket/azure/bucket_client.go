@@ -9,7 +9,14 @@ import (
 )
 
 func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
-	return newBucketClient(cfg, name, logger, wrapRT, azure.NewBucketWithConfig)
+	bucket, err := newBucketClient(cfg, name, logger, wrapRT, azure.NewBucketWithConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &keyRewriteBucket{
+		Bucket:    bucket,
+		delimiter: cfg.ChunkDelimiter,
+	}, nil
 }
 
 func newBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper, factory func(log.Logger, azure.Config, string, func(http.RoundTripper) http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
