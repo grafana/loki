@@ -14,25 +14,25 @@ import (
 )
 
 func TestIngestLimits_ServeHTTP(t *testing.T) {
-	l := IngestLimits{
+	s := Service{
 		cfg: Config{
-			WindowSize:     time.Minute,
-			RateWindow:     time.Minute,
-			BucketDuration: 30 * time.Second,
+			ActiveWindow: time.Minute,
+			RateWindow:   time.Minute,
+			BucketSize:   30 * time.Second,
 		},
-		metadata: &streamMetadata{
-			stripes: []map[string]map[int32]map[uint64]Stream{
+		usage: &usageStore{
+			stripes: []map[string]tenantUsage{
 				{
 					"tenant": {
 						0: {
 							0x1: {
-								Hash:      0x1,
-								TotalSize: 100,
-								RateBuckets: []RateBucket{{
-									Timestamp: time.Now().UnixNano(),
-									Size:      1,
+								hash:      0x1,
+								totalSize: 100,
+								rateBuckets: []rateBucket{{
+									timestamp: time.Now().UnixNano(),
+									size:      1,
 								}},
-								LastSeenAt: time.Now().UnixNano(),
+								lastSeenAt: time.Now().UnixNano(),
 							},
 						},
 					},
@@ -41,16 +41,18 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 			locks: make([]stripeLock, 1),
 		},
 		logger: log.NewNopLogger(),
-		partitionManager: &PartitionManager{
-			partitions: map[int32]int64{
-				0: time.Now().UnixNano(),
+		partitionManager: &partitionManager{
+			partitions: map[int32]partitionEntry{
+				0: {
+					assignedAt: time.Now().UnixNano(),
+				},
 			},
 		},
 	}
 
 	// Set up a mux router for the test server otherwise mux.Vars() won't work.
 	r := mux.NewRouter()
-	r.Path("/{tenant}").Methods("GET").Handler(&l)
+	r.Path("/{tenant}").Methods("GET").Handler(&s)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 

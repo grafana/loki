@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -279,7 +280,7 @@ namespace-2,NULL`
 func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	t.Helper()
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:          8_000,
 		TargetObjectSize:        math.MaxInt,
 		TargetSectionSize:       32_000,
@@ -297,5 +298,8 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	require.NoError(t, err)
 
 	r := bytes.NewReader(buf.Bytes())
-	return dataobj.FromReaderAt(r, r.Size())
+
+	obj, err := dataobj.FromReaderAt(r, r.Size())
+	require.NoError(t, err)
+	return obj
 }

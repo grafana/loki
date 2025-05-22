@@ -2,22 +2,25 @@ package querier
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -57,22 +60,26 @@ func TestStore_SelectSamples(t *testing.T) {
 			start:    now,
 			end:      now.Add(time.Hour),
 			want: []sampleWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(8 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(18 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(38 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(40 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(42 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
@@ -93,11 +100,12 @@ func TestStore_SelectSamples(t *testing.T) {
 			start:    now,
 			end:      now.Add(time.Hour),
 			want: []sampleWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
@@ -108,12 +116,13 @@ func TestStore_SelectSamples(t *testing.T) {
 			start:    now,
 			end:      now.Add(time.Hour),
 			want: []sampleWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3600000000000, Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: 3605000000000, Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: 3615000000000, Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: 3625000000000, Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3630000000000, Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: 3640000000000, Value: 1}},
+
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3600000000000, Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3630000000000, Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3645000000000, Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: 3650000000000, Value: 1}},
 			},
@@ -125,17 +134,23 @@ func TestStore_SelectSamples(t *testing.T) {
 			end:      now.Add(time.Hour),
 			shards:   []string{"0_of_2"},
 			want: []sampleWithLabels{
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(8 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(18 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(38 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(40 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(42 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
 		{
@@ -145,13 +160,10 @@ func TestStore_SelectSamples(t *testing.T) {
 			end:      now.Add(time.Hour),
 			shards:   []string{"1_of_2"},
 			want: []sampleWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(42 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
 		{
@@ -171,6 +183,7 @@ func TestStore_SelectSamples(t *testing.T) {
 			want: []sampleWithLabels{
 				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
@@ -191,7 +204,19 @@ func TestStore_SelectSamples(t *testing.T) {
 			require.NoError(t, err)
 			samples, err := readAllSamples(it)
 			require.NoError(t, err)
-			if diff := cmp.Diff(tt.want, samples); diff != "" {
+
+			// Sort the output by labels and timestamp; changes to how data objects
+			// are written can change the order of what we see, which is not what we
+			// care to test here.
+			slices.SortFunc(samples, func(a, b sampleWithLabels) int {
+				res := cmp.Compare(a.Labels, b.Labels)
+				if res == 0 {
+					return cmp.Compare(a.Samples.Timestamp, b.Samples.Timestamp)
+				}
+				return res
+			})
+
+			if diff := gocmp.Diff(tt.want, samples); diff != "" {
 				t.Errorf("samples mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -227,22 +252,26 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
 				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
+
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
+
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
@@ -267,11 +296,12 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
 				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
 				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
 				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
@@ -285,17 +315,23 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
 				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
 				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
+
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
 		},
 		{
@@ -307,13 +343,10 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
 			},
 		},
 		{
@@ -337,6 +370,7 @@ func TestStore_SelectLogs(t *testing.T) {
 			want: []entryWithLabels{
 				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
 				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
 				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
@@ -359,7 +393,19 @@ func TestStore_SelectLogs(t *testing.T) {
 			require.NoError(t, err)
 			entries, err := readAllEntries(it)
 			require.NoError(t, err)
-			if diff := cmp.Diff(tt.want, entries); diff != "" {
+
+			// Sort the output by labels; changes to how data objects are written can
+			// change the order of what we see, which is not what we care to test
+			// here.
+			slices.SortFunc(entries, func(a, b entryWithLabels) int {
+				res := cmp.Compare(a.Labels, b.Labels)
+				if res == 0 {
+					return a.Entry.Timestamp.Compare(b.Entry.Timestamp)
+				}
+				return res
+			})
+
+			if diff := gocmp.Diff(tt.want, entries); diff != "" {
 				t.Errorf("entries mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -451,7 +497,7 @@ type testDataBuilder struct {
 	dir    string
 
 	tenantID string
-	builder  *dataobj.Builder
+	builder  *logsobj.Builder
 	meta     *metastore.Updater
 	uploader *uploader.Uploader
 }
@@ -465,7 +511,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:    1024 * 1024,      // 1MB
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
@@ -510,7 +556,7 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
@@ -551,13 +597,13 @@ func readAllEntries(it iter.EntryIterator) ([]entryWithLabels, error) {
 func TestShardSections(t *testing.T) {
 	tests := []struct {
 		name      string
-		metadatas []dataobj.Metadata
+		metadatas []sectionsStats
 		shard     logql.Shard
 		want      [][]int
 	}{
 		{
 			name: "single section, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -572,7 +618,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -589,7 +635,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -606,7 +652,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -623,7 +669,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -638,7 +684,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -653,7 +699,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 0,4
 				{LogsSections: 5}, // sections 0,4
 				{LogsSections: 3}, // sections 0
@@ -672,7 +718,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 1,5
 				{LogsSections: 5}, // sections 1
 				{LogsSections: 3}, // sections 1
@@ -691,7 +737,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 2 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 2,6
 				{LogsSections: 5}, // sections 2
 				{LogsSections: 3}, // sections 2
@@ -710,7 +756,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 3 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 3
 				{LogsSections: 5}, // sections 3
 				{LogsSections: 3}, // no sections
@@ -729,7 +775,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -742,7 +788,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -755,7 +801,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple streams sections not supported",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1, StreamsSections: 2},
 			},
 			shard: logql.Shard{
@@ -820,12 +866,12 @@ func TestShardSections(t *testing.T) {
 }
 
 func TestBuildLogsPredicateFromPipeline(t *testing.T) {
-	var evalPredicate func(p dataobj.Predicate, item []byte) bool
-	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
+	var evalPredicate func(p logs.RowPredicate, item []byte) bool
+	evalPredicate = func(p logs.RowPredicate, line []byte) bool {
 		switch p := p.(type) {
-		case dataobj.LogMessageFilterPredicate:
+		case logs.LogMessageFilterRowPredicate:
 			return p.Keep(line)
-		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+		case logs.AndRowPredicate:
 			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
 		default:
 			t.Fatalf("unsupported predicate type: %T", p)
@@ -834,7 +880,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 	}
 
 	// helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
+	testPredicate := func(t *testing.T, pred logs.RowPredicate, testData [][]byte, expected []bool) {
 		t.Helper()
 		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
 
@@ -856,15 +902,15 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 		name         string
 		query        syntax.LogSelectorExpr
 		expectedExpr syntax.LogSelectorExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "single line match equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -875,9 +921,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "single line match not equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} != "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{false, false, true, true}
@@ -888,11 +934,11 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "multiple line filters",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
 				// we might expect AND predicate here, but the original expression
 				// only contains a single Filterer stage with chained OR filters
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// The result should match logs containing both "error" and "critical"
 				expected := []bool{false, true, false, false}
@@ -903,7 +949,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after line_format",
 			query:        mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`), // No filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				// Line filters after stages that mutate the line should be ignored
 				require.Nil(t, pred, "expected nil predicate for line filter after parser")
 			},
@@ -912,7 +958,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "no line filter",
 			query:        mustParseLogSelector(t, `{app="foo"} | json | bar>100`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | bar>100`), // No filters to remove
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.Nil(t, pred, "expected nil predicate for query without line filter")
 			},
 		},
@@ -920,9 +966,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after label_fmt",
 			query:        mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -933,9 +979,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "mixed filters with some removable",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
+				require.IsType(t, logs.AndRowPredicate{}, pred)
 				expected := []bool{false, true, false, false}
 				testPredicate(t, pred, testData, expected)
 			},
@@ -957,31 +1003,31 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 		name         string
 		query        syntax.SampleExpr
 		expectedExpr syntax.SampleExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "range aggregation with line filter",
 			query:        mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
 			expectedExpr: mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "vector aggregation with line filter",
 			query:        mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "binary expressions are not modified",
 			query:        mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.Nil(t, p)
 			},
 		},
@@ -989,9 +1035,9 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 			name:         "label replace with line filter",
 			query:        mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
 			expectedExpr: mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 	} {

@@ -2254,6 +2254,21 @@ scheduling of all Loki components to be deployed.</p>
 <tbody>
 <tr>
 <td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>compactor</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-LokiComponentSpec">

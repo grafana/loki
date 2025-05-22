@@ -2,149 +2,113 @@ package dataobj
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 )
 
-// metrics provides instrumnetation for the dataobj package.
-type metrics struct {
-	logs     *logs.Metrics
-	streams  *streams.Metrics
-	encoding *encoding.Metrics
-
-	targetPageSize   prometheus.Gauge
-	targetObjectSize prometheus.Gauge
-
-	appendTime    prometheus.Histogram
-	buildTime     prometheus.Histogram
-	flushFailures prometheus.Counter
-
-	sizeEstimate prometheus.Gauge
-	builtSize    prometheus.Histogram
+// Metrics instruments encoded data objects.
+type Metrics struct {
+	sectionsCount       prometheus.Histogram
+	fileMetadataSize    prometheus.Histogram
+	sectionMetadataSize *prometheus.HistogramVec
 }
 
-// newMetrics creates a new set of [metrics] for instrumenting data objects.
-func newMetrics() *metrics {
-	return &metrics{
-		logs:     logs.NewMetrics(),
-		streams:  streams.NewMetrics(),
-		encoding: encoding.NewMetrics(),
-		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_page_size_bytes",
+// NewMetrics creates a new set of metrics for encoding.
+func NewMetrics() *Metrics {
+	// To limit the number of time series per data object builder, these metrics
+	// are only available as classic histograms, otherwise we would have 10x the
+	// total number of metrics.
 
-			Help: "Configured target page size in bytes.",
+	return &Metrics{
+		sectionsCount: newNativeHistogram(prometheus.HistogramOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "sections_count",
+			Help:      "Distribution of sections per encoded data object.",
 		}),
 
-		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_object_size_bytes",
-
-			Help: "Configured target object size in bytes.",
+		fileMetadataSize: newNativeHistogram(prometheus.HistogramOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "file_metadata_size",
+			Help:      "Distribution of metadata size per encoded data object.",
 		}),
 
-		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "append_time_seconds",
-
-			Help: "Time taken appending a set of log lines in a stream to a data object.",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-
-		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "build_time_seconds",
-
-			Help: "Time taken building a data object to flush.",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-
-		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "size_estimate_bytes",
-
-			Help: "Current estimated size of the data object in bytes.",
-		}),
-
-		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "built_size_bytes",
-
-			Help: "Distribution of constructed data object sizes in bytes.",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-
-		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "flush_failures_total",
-
-			Help: "Total number of flush failures.",
-		}),
+		sectionMetadataSize: newNativeHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "section_metadata_size",
+			Help:      "Distribution of metadata size per encoded section.",
+		}, []string{"section"}),
 	}
 }
 
-// ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *metrics) ObserveConfig(cfg BuilderConfig) {
-	m.targetPageSize.Set(float64(cfg.TargetPageSize))
-	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
+func newNativeHistogram(opts prometheus.HistogramOpts) prometheus.Histogram {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+
+	return prometheus.NewHistogram(opts)
+}
+
+func newNativeHistogramVec(opts prometheus.HistogramOpts, labels []string) *prometheus.HistogramVec {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+
+	return prometheus.NewHistogramVec(opts, labels)
 }
 
 // Register registers metrics to report to reg.
-func (m *metrics) Register(reg prometheus.Registerer) error {
+func (m *Metrics) Register(reg prometheus.Registerer) error {
 	var errs []error
-
-	errs = append(errs, m.logs.Register(reg))
-	errs = append(errs, m.streams.Register(reg))
-	errs = append(errs, m.encoding.Register(reg))
-
-	errs = append(errs, reg.Register(m.targetPageSize))
-	errs = append(errs, reg.Register(m.targetObjectSize))
-
-	errs = append(errs, reg.Register(m.appendTime))
-	errs = append(errs, reg.Register(m.buildTime))
-
-	errs = append(errs, reg.Register(m.sizeEstimate))
-	errs = append(errs, reg.Register(m.builtSize))
-	errs = append(errs, reg.Register(m.flushFailures))
-
+	errs = append(errs, reg.Register(m.sectionsCount))
+	errs = append(errs, reg.Register(m.fileMetadataSize))
+	errs = append(errs, reg.Register(m.sectionMetadataSize))
 	return errors.Join(errs...)
 }
 
 // Unregister unregisters metrics from the provided Registerer.
-func (m *metrics) Unregister(reg prometheus.Registerer) {
-	m.logs.Unregister(reg)
-	m.streams.Unregister(reg)
-	m.encoding.Unregister(reg)
+func (m *Metrics) Unregister(reg prometheus.Registerer) {
+	reg.Unregister(m.sectionsCount)
+	reg.Unregister(m.fileMetadataSize)
+	reg.Unregister(m.sectionMetadataSize)
+}
 
-	reg.Unregister(m.targetPageSize)
-	reg.Unregister(m.targetObjectSize)
+// Observe updates metrics with statistics about the given [Object].
+func (m *Metrics) Observe(obj *Object) error {
+	m.sectionsCount.Observe(float64(len(obj.sections)))
+	m.fileMetadataSize.Observe(float64(proto.Size(obj.metadata)))
 
-	reg.Unregister(m.appendTime)
-	reg.Unregister(m.buildTime)
+	var errs []error
 
-	reg.Unregister(m.sizeEstimate)
-	reg.Unregister(m.builtSize)
-	reg.Unregister(m.flushFailures)
+	for _, section := range obj.metadata.Sections {
+		typ, err := getSectionType(obj.metadata, section)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("getting section type: %w", err))
+			continue
+		}
+
+		m.sectionMetadataSize.WithLabelValues(typ.String()).Observe(float64(calculateMetadataSize(section)))
+	}
+
+	return errors.Join(errs...)
+}
+
+// calculateMetadataSize returns the size of metadata in a section, accounting
+// for whether it's using the deprecated fields or the new layout.
+func calculateMetadataSize(section *filemd.SectionInfo) uint64 {
+	if section.GetLayout() != nil {
+		// This will return zero if GetMetadata returns nil, which is correct as it
+		// defines the section as having no metadata.
+		return section.GetLayout().GetMetadata().GetLength()
+	}
+
+	// Fallback to the deprecated field.
+	return section.MetadataSize //nolint:staticcheck // MetadataSize is deprecated but still used as a fallback.
 }
