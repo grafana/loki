@@ -46,8 +46,14 @@ var (
 	)
 	tenantStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_streams",
-		"The current number of streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		[]string{"tenant", "state"},
+		"The current number of streams per tenant, including streams outside the active window.",
+		[]string{"tenant"},
+		nil,
+	)
+	tenantActiveStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_active_streams",
+		"The current number of active streams per tenant.",
+		[]string{"tenant"},
 		nil,
 	)
 )
@@ -212,37 +218,35 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 func (s *Service) Describe(descs chan<- *prometheus.Desc) {
 	descs <- partitionsDesc
 	descs <- tenantStreamsDesc
+	descs <- tenantActiveStreamsDesc
 }
 
 func (s *Service) Collect(m chan<- prometheus.Metric) {
 	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 	// active counts the number of active streams (within the window) per tenant.
 	active := make(map[string]int)
-	// expired counts the number of expired streams (outside the window) per tenant.
-	expired := make(map[string]int)
+	// total counts the total number of streams per tenant.
+	total := make(map[string]int)
 	s.usage.all(func(tenant string, _ int32, stream streamUsage) {
-		if stream.lastSeenAt < cutoff {
-			expired[tenant]++
-		} else {
+		total[tenant]++
+		if stream.lastSeenAt >= cutoff {
 			active[tenant]++
 		}
 	})
-	for tenant, numActive := range active {
+	for tenant, numActiveStreams := range active {
 		m <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
+			tenantActiveStreamsDesc,
 			prometheus.GaugeValue,
-			float64(numActive),
+			float64(numActiveStreams),
 			tenant,
-			"active",
 		)
 	}
-	for tenant, numExpired := range expired {
+	for tenant, numStreams := range total {
 		m <- prometheus.MustNewConstMetric(
 			tenantStreamsDesc,
 			prometheus.GaugeValue,
-			float64(numExpired),
+			float64(numStreams),
 			tenant,
-			"expired",
 		)
 	}
 	partitions := s.partitionManager.list()
