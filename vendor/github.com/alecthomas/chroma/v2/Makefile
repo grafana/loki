@@ -15,7 +15,7 @@ tokentype_string.go: types.go
 .PHONY: chromad
 chromad: build/chromad
 
-build/chromad: $(find . -name '*.go' -o -name '*.html' -o '*.css' -o '*.js')
+build/chromad: $(shell find cmd/chromad -name '*.go' -o -name '*.html' -o -name '*.css' -o -name '*.js')
 	rm -rf build
 	esbuild --bundle cmd/chromad/static/index.js --minify --outfile=cmd/chromad/static/index.min.js
 	esbuild --bundle cmd/chromad/static/index.css --minify --outfile=cmd/chromad/static/index.min.css

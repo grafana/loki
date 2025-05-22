@@ -5,19 +5,19 @@ import (
 	"math"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 // buildLogsPredicate builds a logs predicate from an expression.
-func buildLogsPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
+func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	// TODO(rfratto): implement converting expressions into logs predicates.
 	//
 	// There's a few challenges here:
 	//
-	// - Expressions do not cleanly map to [dataobj.LogsPredicate]s. For example,
+	// - Expressions do not cleanly map to [logs.RowPredicate]s. For example,
 	//   an expression may be simply a column reference, but a logs predicate is
 	//   always some expression that can evaluate to true.
 	//
@@ -52,7 +52,7 @@ func buildLogsPredicate(expr physical.Expression) (dataobj.LogsPredicate, error)
 
 // Support for timestamp and metadata predicates has been implemented.
 // TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
-func mapInitiallySupportedPredicates(expr physical.Expression) (dataobj.LogsPredicate, error) {
+func mapInitiallySupportedPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 		if e.Left.Type() != physical.ExprTypeColumn {
@@ -76,23 +76,23 @@ func mapInitiallySupportedPredicates(expr physical.Expression) (dataobj.LogsPred
 	}
 }
 
-func mapTimestampPredicate(expr physical.Expression) (dataobj.TimeRangePredicate[dataobj.LogsPredicate], error) {
+func mapTimestampPredicate(expr physical.Expression) (logs.TimeRangeRowPredicate, error) {
 	m := newTimestampPredicateMapper()
 	if err := m.verify(expr); err != nil {
-		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{}, err
+		return logs.TimeRangeRowPredicate{}, err
 	}
 
 	if err := m.processExpr(expr); err != nil {
-		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{}, err
+		return logs.TimeRangeRowPredicate{}, err
 	}
 
 	// Check for impossible ranges that might have been formed.
 	if m.res.StartTime.After(m.res.EndTime) {
-		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{},
+		return logs.TimeRangeRowPredicate{},
 			fmt.Errorf("impossible time range: start_time (%v) is after end_time (%v)", m.res.StartTime, m.res.EndTime)
 	}
 	if m.res.StartTime.Equal(m.res.EndTime) && (!m.res.IncludeStart || !m.res.IncludeEnd) {
-		return dataobj.TimeRangePredicate[dataobj.LogsPredicate]{},
+		return logs.TimeRangeRowPredicate{},
 			fmt.Errorf("impossible time range: start_time (%v) equals end_time (%v) but the range is exclusive", m.res.StartTime, m.res.EndTime)
 	}
 
@@ -100,7 +100,7 @@ func mapTimestampPredicate(expr physical.Expression) (dataobj.TimeRangePredicate
 }
 
 func newTimestampPredicateMapper() *timestampPredicateMapper {
-	open := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	open := logs.TimeRangeRowPredicate{
 		StartTime:    time.Unix(0, math.MinInt64).UTC(),
 		EndTime:      time.Unix(0, math.MaxInt64).UTC(),
 		IncludeStart: true,
@@ -112,7 +112,7 @@ func newTimestampPredicateMapper() *timestampPredicateMapper {
 }
 
 type timestampPredicateMapper struct {
-	res dataobj.TimeRangePredicate[dataobj.LogsPredicate]
+	res logs.TimeRangeRowPredicate
 }
 
 // ensures the LHS is a timestamp column reference
@@ -271,7 +271,7 @@ func (m *timestampPredicateMapper) updateUpperBound(val time.Time, includeVal bo
 // mapMetadataPredicate converts a physical.Expression into a dataobj.Predicate for metadata filtering.
 // It supports MetadataMatcherPredicate for equality checks on metadata fields,
 // and can recursively handle AndPredicate, OrPredicate, and NotPredicate.
-func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, error) {
+func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 		switch e.Op {
@@ -299,7 +299,7 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			}
 			val := rightLiteral.Literal.(*datatype.StringLiteral).Value()
 
-			return dataobj.MetadataMatcherPredicate{
+			return logs.MetadataMatcherRowPredicate{
 				Key:   leftColumn.Ref.Column,
 				Value: val,
 			}, nil
@@ -312,7 +312,7 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
 			}
-			return dataobj.AndPredicate[dataobj.LogsPredicate]{
+			return logs.AndRowPredicate{
 				Left:  leftPredicate,
 				Right: rightPredicate,
 			}, nil
@@ -325,7 +325,7 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
 			}
-			return dataobj.OrPredicate[dataobj.LogsPredicate]{
+			return logs.OrRowPredicate{
 				Left:  leftPredicate,
 				Right: rightPredicate,
 			}, nil
@@ -340,7 +340,7 @@ func mapMetadataPredicate(expr physical.Expression) (dataobj.LogsPredicate, erro
 		if err != nil {
 			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
 		}
-		return dataobj.NotPredicate[dataobj.LogsPredicate]{
+		return logs.NotRowPredicate{
 			Inner: innerPredicate,
 		}, nil
 	default:
