@@ -20,14 +20,29 @@ var (
 		types.BinaryOpMatchRe:    labels.MatchRegexp,
 		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
 	}
+
+	noShard = ShardInfo{Shard: 0, Of: 1}
 )
+
+type ShardInfo struct {
+	Shard uint32
+	Of    uint32
+}
+
+func (s ShardInfo) String() string {
+	return fmt.Sprintf("%d_of_%d", s.Shard, s.Of)
+}
 
 // Catalog is an interface that provides methods for interacting with
 // storage metadata. In traditional database systems there are system tables
 // providing this information (e.g. pg_catalog, ...) whereas in Loki there
 // is the Metastore.
 type Catalog interface {
-	ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, error)
+	// ResolveDataObj returns a list of data object paths,
+	// a list of stream IDs for each data data object,
+	// and a list of sections for each data object
+	ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, [][]int, error)
+	ResolveDataObjWithShard(Expression, ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error)
 }
 
 // Context is the default implementation of [Catalog].
@@ -50,26 +65,52 @@ func NewContext(ctx context.Context, ms metastore.Metastore, from, through time.
 // ResolveDataObj resolves DataObj locations and streams IDs based on a given
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
-func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, error) {
+func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, [][]int, error) {
+	return c.ResolveDataObjWithShard(selector, noShard)
+}
+
+func (c *Context) ResolveDataObjWithShard(selector Expression, shard ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error) {
 	if c.metastore == nil {
-		return nil, nil, errors.New("no metastore to resolve objects")
+		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
 
 	matchers, err := expressionToMatchers(selector)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	paths, streamIDs, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
+	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
 
+	return filterForShard(shard, paths, streamIDs, numSections)
+}
+
+func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {
 	locations := make([]DataObjLocation, 0, len(paths))
-	for _, loc := range paths {
-		locations = append(locations, DataObjLocation(loc))
+	streams := make([][]int64, 0, len(paths))
+	sections := make([][]int, 0, len(paths))
+
+	var count int
+	for i := range paths {
+		sec := make([]int, 0, numSections[i])
+
+		for j := range numSections[i] {
+			if count%int(shard.Of) == int(shard.Shard) {
+				sec = append(sec, j)
+			}
+			count++
+		}
+
+		if len(sec) > 0 {
+			locations = append(locations, DataObjLocation(paths[i]))
+			streams = append(streams, streamIDs[i])
+			sections = append(sections, sec)
+		}
 	}
-	return locations, streamIDs, err
+
+	return locations, streams, sections, nil
 }
 
 func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
