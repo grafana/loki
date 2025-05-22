@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -1921,4 +1922,34 @@ func TestShardTopk(t *testing.T) {
   )
 )`
 	require.Equal(t, expected, mappedExpr.Pretty(0))
+}
+
+
+func TestShardSerializer(t *testing.T) {
+	tests := map[string]struct {
+		query string
+	}{
+		"approx_topk": {
+			query: `approx_topk(4, rate({cluster="eu-west-1"}[5m]))`,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			expr := syntax.MustParseExpr(test.query)
+
+			m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(5)), nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+			_, _, mappedExpr, err := m.Parse(expr)
+			require.NoError(t, err)
+
+			var buf bytes.Buffer
+			err = syntax.EncodeJSON(mappedExpr, &buf)
+			require.NoError(t, err)
+
+			actual, err := syntax.DecodeJSON(buf.String())
+			require.NoError(t, err)
+
+			syntax.AssertExpressions(t, expr, actual)
+		})
+	}
 }
