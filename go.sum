@@ -659,8 +659,8 @@ github.com/gorilla/sessions v1.2.1/go.mod h1:dk2InVEVJ0sfLlnXv9EAgkf6ecYs/i80K/z
 github.com/gorilla/websocket v0.0.0-20170926233335-4201258b820c/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5 h1:EkW+rjr8zqiB4Jd7Gn5BmUhDz6PsZ0w33/4osKRd5x8=
-github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5/go.mod h1:izhHi8mZ16lxMxsdlFjPHzkopbjKNdorTtitYyzAejY=
+github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34 h1:t1Nfp9udkvbYiCwNEz4THAR8C74jgR5jHuHPvabr1rM=
+github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34/go.mod h1:THPMJBdU2XgYUsYCG/PvtaYj1/NH4uNjw7U5kNohrLY=
 github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2 h1:qhugDMdQ4Vp68H0tp/0iN17DM2ehRo1rLEdOFe/gB8I=
 github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2/go.mod h1:w/aiO1POVIeXUQyl0VQSZjl5OAGDTL5aX+4v0RA1tcw=
 github.com/grafana/dskit v0.0.0-20250414072521-7b78bfe441ed h1:+D5CM2IictIjZTNhUaw/bLAdVZOwph85Cs+bUFKnXTU=
