@@ -324,7 +324,10 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.usage.evict()
+			evicted := s.usage.evict()
+			for tenant, numEvicted := range evicted {
+				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
 		}
 	}
 }
