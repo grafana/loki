@@ -77,10 +77,10 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
-func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, error) {
+func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Get all metastore paths for the time range
@@ -92,23 +92,24 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
-	streamIDs, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
+	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
 
 	// Remove objects that do not contain any matching streams
 	for i := 0; i < len(paths); i++ {
 		if len(streamIDs[i]) == 0 {
 			paths = slices.Delete(paths, i, i+1)
 			streamIDs = slices.Delete(streamIDs, i, i+1)
+			sections = slices.Delete(sections, i, i+1)
 			i--
 		}
 	}
 
-	return paths, streamIDs, err
+	return paths, streamIDs, sections, err
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
@@ -290,11 +291,17 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, error) {
+func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
 	streamIDs := make([][]int64, len(paths))
+	sections := make([]int, len(paths))
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
+
+	logsSectionType := dataobj.SectionType{
+		Namespace: "github.com/grafana/loki",
+		Kind:      "logs",
+	}
 
 	for i, path := range paths {
 		func(idx int) {
@@ -303,6 +310,9 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 				if err != nil {
 					return fmt.Errorf("getting object from bucket: %w", err)
 				}
+				sections[idx] = object.Sections().Count(func(s *dataobj.Section) bool {
+					return s.Type == logsSectionType
+				})
 
 				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 					streamIDs[idx] = append(streamIDs[idx], stream.ID)
@@ -312,10 +322,10 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return streamIDs, nil
+	return streamIDs, sections, nil
 }
 
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
