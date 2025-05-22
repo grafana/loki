@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,12 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // Iter iterates over records in the provided decoder. All logs sections are
@@ -77,7 +79,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 				return nil
 			}
 			for _, row := range rows[:n] {
-				err := decodeRow(streamsColumns, row, &record)
+				err := decodeRow(streamsColumns, row, &record, nil)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -89,7 +91,10 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 // decodeRow decodes a record from a [dataset.Row], using the provided columns
 // to determine the column type. The list of columns must match the columns
 // used to create the row.
-func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) error {
+//
+// The sym argument is used for reusing metadata strings between calls to
+// decodeRow. If sym is nil, metadata strings are always allocated.
+func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
 	metadataColumns := metadataColumns(columns)
 	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
 	record.Metadata = record.Metadata[:metadataColumns]
@@ -119,11 +124,14 @@ func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) er
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			// Convert the target pointer to a byte slice and grow it if necessary.
-			target := slicegrow.Copy(record.Metadata[nextMetadataIdx].Value, columnValue.ByteArray())
-
 			record.Metadata[nextMetadataIdx].Name = column.Info.Name
-			record.Metadata[nextMetadataIdx].Value = target
+
+			if sym != nil {
+				record.Metadata[nextMetadataIdx].Value = sym.Get(unsafeString(columnValue.ByteArray()))
+			} else {
+				record.Metadata[nextMetadataIdx].Value = string(columnValue.ByteArray())
+			}
+
 			nextMetadataIdx++
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
@@ -141,11 +149,11 @@ func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record) er
 	// Metadata is originally sorted in received order; we sort it by key
 	// per-record since it might not be obvious why keys appear in a certain
 	// order.
-	slices.SortFunc(record.Metadata, func(a, b RecordMetadata) int {
+	slices.SortFunc(record.Metadata, func(a, b labels.Label) int {
 		if res := strings.Compare(a.Name, b.Name); res != 0 {
 			return res
 		}
-		return bytes.Compare(a.Value, b.Value)
+		return strings.Compare(a.Value, b.Value)
 	})
 
 	return nil

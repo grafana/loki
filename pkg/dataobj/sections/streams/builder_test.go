@@ -63,7 +63,6 @@ func Test(t *testing.T) {
 		stream, err := result.Value()
 		require.NoError(t, err)
 		stream.Labels = copyLabels(stream.Labels)
-		stream.LbValueCaps = nil
 		actual = append(actual, stream)
 	}
 

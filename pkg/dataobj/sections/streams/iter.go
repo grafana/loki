@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // Iter iterates over streams in the provided decoder. All streams sections are
@@ -75,7 +76,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				if err := decodeRow(streamsColumns, row, &stream); err != nil {
+				if err := decodeRow(streamsColumns, row, &stream, nil); err != nil {
 					return err
 				}
 
@@ -90,12 +91,13 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 // decodeRow decodes a stream from a [dataset.Row], using the provided columns to
 // determine the column type. The list of columns must match the columns used
 // to create the row.
-func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream) error {
+//
+// The sym argument is used for reusing label values between calls to
+// decodeRow. If sym is nil, label value strings are always allocated.
+func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream, sym *symbolizer.Symbolizer) error {
 	labelColumns := labelColumns(columns)
 	stream.Labels = slicegrow.GrowToCap(stream.Labels, labelColumns)
 	stream.Labels = stream.Labels[:labelColumns]
-	stream.LbValueCaps = slicegrow.GrowToCap(stream.LbValueCaps, labelColumns)
-	stream.LbValueCaps = stream.LbValueCaps[:labelColumns]
 	nextLabelIdx := 0
 
 	for columnIndex, columnValue := range row.Values {
@@ -140,13 +142,14 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream)
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			// Convert the target pointer to a byte slice and grow it if necessary.
-			target := unsafeSlice(stream.Labels[nextLabelIdx].Value, stream.LbValueCaps[nextLabelIdx])
-			target = slicegrow.Copy(target, columnValue.ByteArray())
-			stream.LbValueCaps[nextLabelIdx] = cap(target)
-
 			stream.Labels[nextLabelIdx].Name = column.Info.Name
-			stream.Labels[nextLabelIdx].Value = unsafeString(target)
+
+			if sym != nil {
+				stream.Labels[nextLabelIdx].Value = sym.Get(unsafeString(columnValue.ByteArray()))
+			} else {
+				stream.Labels[nextLabelIdx].Value = string(columnValue.ByteArray())
+			}
+
 			nextLabelIdx++
 
 		default:

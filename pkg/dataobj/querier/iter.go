@@ -7,8 +7,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -103,7 +101,7 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, metadataToLabels(record.Metadata))
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 			if !ok {
 				continue
 			}
@@ -123,20 +121,6 @@ func newEntryIterator(ctx context.Context,
 	}
 
 	return heapIterator(&top), nil
-}
-
-func metadataToLabels(md []logs.RecordMetadata) labels.Labels {
-	// TODO(rfratto): The conversion here undoes some of the memory optimization
-	// work performed a few weeks ago; we need to revisit how to avoid the
-	// conversion here while still reusing memory where we can.
-	res := make(labels.Labels, len(md))
-	for i, m := range md {
-		res[i] = labels.Label{
-			Name:  m.Name,
-			Value: string(m.Value),
-		}
-	}
-	return res
 }
 
 func lessFn(direction logproto.Direction) func(a, b entryWithLabels) bool {
@@ -271,7 +255,7 @@ func newSampleIterator(ctx context.Context,
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
 				statistics.AddDecompressedLines(1)
-				samples, ok := streamExtractor.Process(timestamp, record.Line, metadataToLabels(record.Metadata)...)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 				if !ok {
 					continue
 				}

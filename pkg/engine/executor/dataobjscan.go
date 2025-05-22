@@ -526,7 +526,7 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		}
 
 	case types.ColumnTypeMetadata.String():
-		val := getMetadataValue(record.Metadata, field.Name)
+		val := record.Metadata.Get(field.Name)
 		if val == "" {
 			builder.(*array.StringBuilder).AppendNull()
 		} else {
@@ -549,15 +549,6 @@ func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field,
 		// This shouldn't happen; we control the metadata here on the fields.
 		panic(fmt.Sprintf("unsupported column type %s", columnType))
 	}
-}
-
-func getMetadataValue(md []logs.RecordMetadata, name string) string {
-	for _, m := range md {
-		if m.Name == name {
-			return string(m.Value)
-		}
-	}
-	return ""
 }
 
 // Value returns the current [arrow.Record] retrieved by the previous call to

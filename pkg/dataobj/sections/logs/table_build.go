@@ -30,8 +30,10 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 		_ = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
 
 		for _, md := range record.Metadata {
+			// Passing around md.Value as an unsafe slice is safe here: appending
+			// values is always read-only and the byte slice will never be mutated.
 			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(md.Value))
+			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(unsafeSlice(md.Value, 0)))
 		}
 	}
 

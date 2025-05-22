@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -40,7 +41,7 @@ func TestDecode(t *testing.T) {
 			expected: Record{
 				StreamID:  123,
 				Timestamp: time.Unix(0, 1234567890000000000),
-				Metadata:  []RecordMetadata{{Name: "app", Value: []byte("test-app")}, {Name: "env", Value: []byte("prod")}},
+				Metadata:  []labels.Label{{Name: "app", Value: "test-app"}, {Name: "env", Value: "prod"}},
 				Line:      []byte("test message"),
 			},
 		},
@@ -63,7 +64,7 @@ func TestDecode(t *testing.T) {
 			expected: Record{
 				StreamID:  123,
 				Timestamp: time.Unix(0, 1234567890000000000),
-				Metadata:  []RecordMetadata{},
+				Metadata:  []labels.Label{},
 				Line:      []byte("test message"),
 			},
 		},
@@ -120,7 +121,7 @@ func TestDecode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			record := Record{}
-			err := decodeRow(tt.columns, tt.row, &record)
+			err := decodeRow(tt.columns, tt.row, &record, nil)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
