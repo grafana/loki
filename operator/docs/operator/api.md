@@ -3136,6 +3136,7 @@ to queries that relied on these attributes as stream labels, as they will no lon
 </ul>
 <p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
 </tbody>

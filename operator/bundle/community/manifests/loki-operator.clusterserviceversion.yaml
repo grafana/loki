@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-05-21T10:12:25Z"
+    createdAt: "2025-05-22T14:28:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1041,6 +1041,9 @@ spec:
 
           This option is supposed to be combined with a custom attribute configuration listing the stream labels that
           should continue to exist.
+
+
+          See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
         displayName: Disable recommended OTLP attributes
         path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:

@@ -331,6 +331,8 @@ type OpenshiftOTLPConfig struct {
 	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 	// should continue to exist.
 	//
+	// See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
+	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Disable recommended OTLP attributes"
