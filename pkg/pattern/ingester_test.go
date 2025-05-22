@@ -389,6 +389,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+				{Name: "is_metric", Value: "true"},
 			},
 		)
 
@@ -407,6 +408,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelError},
+				{Name: "is_metric", Value: "true"},
 			},
 		)
 
@@ -425,6 +427,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelError},
+				{Name: "is_metric", Value: "true"},
 			},
 		)
 
