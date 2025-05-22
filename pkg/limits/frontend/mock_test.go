@@ -25,7 +25,7 @@ type mockExceedsLimitsGatherer struct {
 	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
 }
 
-func (g *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (g *mockExceedsLimitsGatherer) exceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if expected := g.expectedExceedsLimitsRequest; expected != nil {
 		require.Equal(g.t, expected, req)
 	}

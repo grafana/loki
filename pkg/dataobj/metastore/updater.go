@@ -17,6 +17,8 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -27,7 +29,7 @@ const (
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
-var metastoreBuilderCfg = dataobj.BuilderConfig{
+var metastoreBuilderCfg = logsobj.BuilderConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -37,7 +39,7 @@ var metastoreBuilderCfg = dataobj.BuilderConfig{
 }
 
 type Updater struct {
-	metastoreBuilder *dataobj.Builder
+	metastoreBuilder *logsobj.Builder
 	tenantID         string
 	metrics          *metastoreMetrics
 	bucket           objstore.Bucket
@@ -75,7 +77,7 @@ func (m *Updater) UnregisterMetrics(reg prometheus.Registerer) {
 func (m *Updater) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg)
+		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -87,7 +89,7 @@ func (m *Updater) initBuilder() error {
 }
 
 // Update adds provided dataobj path to the metastore. Flush stats are used to determine the stored metadata about this dataobj.
-func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dataobj.FlushStats) error {
+func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
 	var err error
 	processingTime := prometheus.NewTimer(m.metrics.metastoreProcessingTime)
 	defer processingTime.ObserveDuration()
@@ -96,8 +98,6 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 	if err := m.initBuilder(); err != nil {
 		return err
 	}
-
-	minTimestamp, maxTimestamp := flushStats.MinTimestamp, flushStats.MaxTimestamp
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
@@ -120,7 +120,10 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
-					object := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+					if err != nil {
+						return nil, errors.Wrap(err, "creating object from buffer")
+					}
 					if err := m.readFromExisting(ctx, object); err != nil {
 						return nil, errors.Wrap(err, "reading existing metastore version")
 					}
@@ -167,24 +170,27 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, flushStats dat
 
 // readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
 func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) error {
-	// Fetch sections
-	si, err := object.Metadata(ctx)
-	if err != nil {
-		return errors.Wrap(err, "resolving object metadata")
-	}
-
-	var streamsReader dataobj.StreamsReader
+	var streamsReader streams.RowReader
 	defer streamsReader.Close()
 
 	// Read streams from existing metastore object and write them to the builder for the new object
-	streams := make([]dataobj.Stream, 100)
-	for i := 0; i < si.StreamsSections; i++ {
-		streamsReader.Reset(object, i)
-		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
+	buf := make([]streams.Stream, 100)
+
+	for _, section := range object.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return errors.Wrap(err, "opening section")
+		}
+
+		streamsReader.Reset(sec)
+		for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading streams")
 			}
-			for _, stream := range streams[:n] {
+			for _, stream := range buf[:n] {
 				err = m.metastoreBuilder.Append(logproto.Stream{
 					Labels:  stream.Labels.String(),
 					Entries: []logproto.Entry{{Line: ""}},
@@ -195,5 +201,6 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 			}
 		}
 	}
+
 	return nil
 }
