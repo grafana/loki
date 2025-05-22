@@ -342,6 +342,7 @@ github.com/apache/arrow-go/v18/arrow/internal/flatbuf
 github.com/apache/arrow-go/v18/arrow/memory
 github.com/apache/arrow-go/v18/arrow/memory/internal/cgoalloc
 github.com/apache/arrow-go/v18/arrow/memory/mallocator
+github.com/apache/arrow-go/v18/arrow/scalar
 github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
