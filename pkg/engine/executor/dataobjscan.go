@@ -43,6 +43,7 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
+	Sections    []int                       // Logs sections to fetch.
 	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
@@ -86,8 +87,9 @@ func (s *dataobjScan) init() error {
 
 	s.readers = nil
 
-	for _, section := range s.opts.Object.Sections() {
-		if !logs.CheckSection(section) {
+	for idx, section := range s.opts.Object.Sections().Filter(logs.CheckSection) {
+		// Filter out sections that are not part of this shard
+		if !slices.Contains(s.opts.Sections, idx) {
 			continue
 		}
 
@@ -135,11 +137,7 @@ func (s *dataobjScan) initStreams() error {
 		s.streams[id] = labels.EmptyLabels()
 	}
 
-	for _, section := range s.opts.Object.Sections() {
-		if !streams.CheckSection(section) {
-			continue
-		}
-
+	for _, section := range s.opts.Object.Sections().Filter(streams.CheckSection) {
 		sec, err := streams.Open(s.ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
