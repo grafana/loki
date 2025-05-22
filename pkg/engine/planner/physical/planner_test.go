@@ -56,8 +56,8 @@ var _ Catalog = (*catalog)(nil)
 func TestMockCatalog(t *testing.T) {
 	catalog := &catalog{
 		streamsByObject: map[string]objectMeta{
-			"obj1": objectMeta{streamIDs: []int64{1, 2}, sections: 3},
-			"obj2": objectMeta{streamIDs: []int64{3, 4}, sections: 2},
+			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
+			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
 		},
 	}
 
@@ -135,11 +135,11 @@ func sections(t *testing.T, nodes []Node) [][]int {
 func TestPlanner_ConvertMaketable(t *testing.T) {
 	catalog := &catalog{
 		streamsByObject: map[string]objectMeta{
-			"obj1": objectMeta{streamIDs: []int64{1, 2}, sections: 2},
-			"obj2": objectMeta{streamIDs: []int64{3, 4}, sections: 2},
-			"obj3": objectMeta{streamIDs: []int64{5, 1}, sections: 2},
-			"obj4": objectMeta{streamIDs: []int64{2, 3}, sections: 2},
-			"obj5": objectMeta{streamIDs: []int64{4, 5}, sections: 2},
+			"obj1": {streamIDs: []int64{1, 2}, sections: 2},
+			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
+			"obj3": {streamIDs: []int64{5, 1}, sections: 2},
+			"obj4": {streamIDs: []int64{2, 3}, sections: 2},
+			"obj5": {streamIDs: []int64{4, 5}, sections: 2},
 		},
 	}
 	planner := NewPlanner(catalog)
@@ -241,8 +241,8 @@ func TestPlanner_Convert(t *testing.T) {
 
 	catalog := &catalog{
 		streamsByObject: map[string]objectMeta{
-			"obj1": objectMeta{streamIDs: []int64{1, 2}, sections: 3},
-			"obj2": objectMeta{streamIDs: []int64{3, 4}, sections: 1},
+			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
+			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
 		},
 	}
 	planner := NewPlanner(catalog)
