@@ -94,11 +94,12 @@ func TestStreamIDs(t *testing.T) {
 	}
 
 	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		paths, streamIDs, err := mstore.StreamIDs(ctx, start, end, matchers...)
+		paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
 		require.NoError(t, err)
 		require.Len(t, paths, 1)
 		require.Len(t, streamIDs, 1)
 		require.Equal(t, []int64{1}, streamIDs[0])
+		require.Equal(t, 1, sections[0])
 	})
 }
 
