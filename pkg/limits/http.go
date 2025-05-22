@@ -18,7 +18,7 @@ type httpTenantLimitsResponse struct {
 
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
-func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tenant := mux.Vars(r)["tenant"]
 	if tenant == "" {
 		http.Error(w, "invalid tenant", http.StatusBadRequest)
@@ -26,10 +26,10 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+	cutoff := time.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 
 	// Get the rate window cutoff for rate calculations
-	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
+	rateWindowCutoff := time.Now().Add(-s.cfg.BucketSize).UnixNano()
 
 	// Calculate stream counts and status per tenant
 	var (
@@ -38,25 +38,21 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	s.metadata.All(func(tenantID string, _ int32, stream Stream) {
-		if tenantID != tenant {
-			return
-		}
-
-		if stream.LastSeenAt >= cutoff {
+	s.usage.forTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+		if stream.lastSeenAt >= cutoff {
 			activeStreams++
 
 			// Calculate size only within the rate window
-			for _, bucket := range stream.RateBuckets {
-				if bucket.Timestamp >= rateWindowCutoff {
-					totalSize += bucket.Size
+			for _, bucket := range stream.rateBuckets {
+				if bucket.timestamp >= rateWindowCutoff {
+					totalSize += bucket.size
 				}
 			}
 		}
 	})
 
 	// Calculate rate using only data from within the rate window
-	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()
+	calculatedRate := float64(totalSize) / s.cfg.ActiveWindow.Seconds()
 
 	if activeStreams > 0 {
 		response = httpTenantLimitsResponse{

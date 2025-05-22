@@ -9,7 +9,7 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 const (
@@ -21,24 +21,24 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-// RingGatherer uses a ring to find limits instances.
-type RingGatherer struct {
+// ringGatherer uses a ring to find limits instances.
+type ringGatherer struct {
 	logger                  log.Logger
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
 	numPartitions           int
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse]
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 }
 
-// NewRingGatherer returns a new RingGatherer.
-func NewRingGatherer(
+// newRingGatherer returns a new ringGatherer.
+func newRingGatherer(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
-	assignedPartitionsCache Cache[string, *logproto.GetAssignedPartitionsResponse],
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
-) *RingGatherer {
-	return &RingGatherer{
+) *ringGatherer {
+	return &ringGatherer{
 		logger:                  logger,
 		ring:                    ring,
 		pool:                    pool,
@@ -47,10 +47,59 @@ func NewRingGatherer(
 	}
 }
 
-// ExceedsLimits implements ExceedsLimitsGatherer.
-func (g *RingGatherer) ExceedsLimits(_ context.Context, _ *logproto.ExceedsLimitsRequest) ([]*logproto.ExceedsLimitsResponse, error) {
-	// TODO(grobinson): Implement me.
-	return nil, nil
+// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
+func (g *ringGatherer) exceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+	if len(req.Streams) == 0 {
+		return nil, nil
+	}
+	rs, err := g.ring.GetAllHealthy(LimitsRead)
+	if err != nil {
+		return nil, err
+	}
+	partitionConsumers, err := g.getPartitionConsumers(ctx, rs.Instances)
+	if err != nil {
+		return nil, err
+	}
+	ownedStreams := make(map[string][]*proto.StreamMetadata)
+	for _, s := range req.Streams {
+		partition := int32(s.StreamHash % uint64(g.numPartitions))
+		addr, ok := partitionConsumers[partition]
+		if !ok {
+			// TODO(grobinson): Drop streams when ok is false.
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partition)
+			continue
+		}
+		ownedStreams[addr] = append(ownedStreams[addr], s)
+	}
+	errg, ctx := errgroup.WithContext(ctx)
+	responseCh := make(chan *proto.ExceedsLimitsResponse, len(ownedStreams))
+	for addr, streams := range ownedStreams {
+		errg.Go(func() error {
+			client, err := g.pool.GetClientFor(addr)
+			if err != nil {
+				level.Error(g.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
+				return err
+			}
+			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
+				Tenant:  req.Tenant,
+				Streams: streams,
+			})
+			if err != nil {
+				return err
+			}
+			responseCh <- resp
+			return nil
+		})
+	}
+	if err = errg.Wait(); err != nil {
+		return nil, err
+	}
+	close(responseCh)
+	responses := make([]*proto.ExceedsLimitsResponse, 0, len(rs.Instances))
+	for resp := range responseCh {
+		responses = append(responses, resp)
+	}
+	return responses, nil
 }
 
 type zonePartitionConsumersResult struct {
@@ -63,7 +112,7 @@ type zonePartitionConsumersResult struct {
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
-func (g *RingGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
+func (g *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
@@ -97,7 +146,7 @@ func (g *RingGatherer) getZoneAwarePartitionConsumers(ctx context.Context, insta
 
 type getAssignedPartitionsResponse struct {
 	addr     string
-	response *logproto.GetAssignedPartitionsResponse
+	response *proto.GetAssignedPartitionsResponse
 }
 
 // getPartitionConsumers returns the consumer for each partition.
@@ -116,7 +165,7 @@ type getAssignedPartitionsResponse struct {
 // should be called once for each zone, and instances should be filtered to
 // the respective zone. Alternatively, you can pass all instances for all zones
 // to find the most up to date consumer for each partition across all zones.
-func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
+func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responseCh := make(chan getAssignedPartitionsResponse, len(instances))
 	for _, instance := range instances {
@@ -124,7 +173,7 @@ func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 			// We use a cache to eliminate redundant gRPC requests for
 			// GetAssignedPartitions as the set of assigned partitions is
 			// expected to be stable outside consumer rebalances.
-			if resp, ok := g.assignedPartitionsCache.Get(instance.Addr); ok {
+			if resp, ok := g.assignedPartitionsCache.get(instance.Addr); ok {
 				responseCh <- getAssignedPartitionsResponse{
 					addr:     instance.Addr,
 					response: resp,
@@ -136,12 +185,12 @@ func (g *RingGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 				level.Error(g.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
+			resp, err := client.(proto.IngestLimitsClient).GetAssignedPartitions(ctx, &proto.GetAssignedPartitionsRequest{})
 			if err != nil {
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			g.assignedPartitionsCache.Set(instance.Addr, resp)
+			g.assignedPartitionsCache.set(instance.Addr, resp)
 			responseCh <- getAssignedPartitionsResponse{
 				addr:     instance.Addr,
 				response: resp,

@@ -15,9 +15,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
@@ -542,32 +542,32 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -577,32 +577,32 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -618,7 +618,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -628,7 +628,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -644,33 +644,33 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -686,7 +686,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -696,7 +696,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -728,29 +728,29 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 					},
@@ -782,12 +782,12 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -797,27 +797,27 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -1133,14 +1133,14 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (float64, lokilog.LabelsResult, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs ...labels.Label) ([]lokilog.ExtractedSample, bool) {
 	p.called++
-	return p.wrappedSP.Process(ts, line, lbs)
+	return p.wrappedSP.Process(ts, line, lbs...)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (float64, lokilog.LabelsResult, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs ...labels.Label) ([]lokilog.ExtractedSample, bool) {
 	p.called++
-	return p.wrappedSP.ProcessString(ts, line, lbs)
+	return p.wrappedSP.ProcessString(ts, line, lbs...)
 }
 
 func Test_store_GetSeries(t *testing.T) {

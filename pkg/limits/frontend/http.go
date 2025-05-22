@@ -7,17 +7,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type httpExceedsLimitsRequest struct {
-	Tenant  string                     `json:"tenant"`
-	Streams []*logproto.StreamMetadata `json:"streams"`
+	Tenant  string                  `json:"tenant"`
+	Streams []*proto.StreamMetadata `json:"streams"`
 }
 
 type httpExceedsLimitsResponse struct {
-	Results []*logproto.ExceedsLimitsResult `json:"results,omitempty"`
+	Results []*proto.ExceedsLimitsResult `json:"results,omitempty"`
 }
 
 // ServeHTTP implements http.Handler.
@@ -39,7 +39,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := f.ExceedsLimits(ctx, &logproto.ExceedsLimitsRequest{
+	resp, err := f.ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
 		Tenant:  req.Tenant,
 		Streams: req.Streams,
 	})
