@@ -455,14 +455,14 @@ func Test_MetricAggregationEnabled(t *testing.T) {
 		{
 			name: "when true",
 			yaml: `
-metric_aggregation_enabled: true
+aggregation_enabled: true
 `,
 			expected: true,
 		},
 		{
 			name: "when false",
 			yaml: `
-metric_aggregation_enabled: false
+aggregation_enabled: false
 `,
 			expected: false,
 		},
