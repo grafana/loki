@@ -72,7 +72,7 @@ spec:
             - -target={{ .Values.read.targetModule }}
             - -legacy-read-mode=false
             - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
-            {{- with .Values.read.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
