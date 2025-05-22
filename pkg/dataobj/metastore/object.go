@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -298,11 +299,6 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
-	logsSectionType := dataobj.SectionType{
-		Namespace: "github.com/grafana/loki",
-		Kind:      "logs",
-	}
-
 	for i, path := range paths {
 		func(idx int) {
 			g.Go(func() error {
@@ -310,9 +306,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 				if err != nil {
 					return fmt.Errorf("getting object from bucket: %w", err)
 				}
-				sections[idx] = object.Sections().Count(func(s *dataobj.Section) bool {
-					return s.Type == logsSectionType
-				})
+				sections[idx] = object.Sections().Count(logs.CheckSection)
 
 				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 					streamIDs[idx] = append(streamIDs[idx], stream.ID)
