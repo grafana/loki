@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
@@ -633,6 +634,8 @@ var info = constants.LogLevelInfo
 func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 	t.Parallel()
 	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
 	tests := []struct {
 		name       string
 		drain      *Drain

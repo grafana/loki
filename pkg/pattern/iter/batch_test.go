@@ -38,6 +38,7 @@ func TestReadBatch(t *testing.T) {
 				Series: []*logproto.PatternSeries{
 					{
 						Pattern: "foo",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},
@@ -56,6 +57,7 @@ func TestReadBatch(t *testing.T) {
 				Series: []*logproto.PatternSeries{
 					{
 						Pattern: "foo",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},

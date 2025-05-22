@@ -50,13 +50,13 @@ func TestMerge(t *testing.T) {
 			name: "Merge multiple iterators with similar samples",
 			iterators: []Iterator{
 				NewSlice("a", constants.LogLevelInfo, []logproto.PatternSample{{Timestamp: 10, Value: 2}, {Timestamp: 30, Value: 6}}),
-				NewSlice("a", constants.LogLevelInfo, []logproto.PatternSample{{Timestamp: 10, Value: 4}, {Timestamp: 30, Value: 12}}),
+				NewSlice("a", constants.LogLevelInfo, []logproto.PatternSample{{Timestamp: 10, Value: 2}, {Timestamp: 30, Value: 6}}),
 				NewSlice("b", constants.LogLevelInfo, []logproto.PatternSample{{Timestamp: 20, Value: 4}, {Timestamp: 40, Value: 8}}),
 			},
 			expected: []patternSample{
-				{"a", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 10, Value: 2}},
+				{"a", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 10, Value: 4}},
 				{"b", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 20, Value: 4}},
-				{"a", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 30, Value: 6}},
+				{"a", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 30, Value: 12}},
 				{"b", constants.LogLevelInfo, logproto.PatternSample{Timestamp: 40, Value: 8}},
 			},
 		},

@@ -66,6 +66,7 @@ func slice(it Iterator) []patternSample {
 	for it.Next() {
 		samples = append(samples, patternSample{
 			pattern: it.Pattern(),
+			level:   it.Level(),
 			sample:  it.At(),
 		})
 	}
