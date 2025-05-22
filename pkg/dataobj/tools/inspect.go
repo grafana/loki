@@ -8,71 +8,65 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func Inspect(dataobj io.ReaderAt, size int64) {
-	reader := encoding.ReaderAtDecoder(dataobj, size)
-
-	metadata, err := reader.Metadata(context.Background())
+func Inspect(r io.ReaderAt, size int64) {
+	obj, err := dataobj.FromReaderAt(r, size)
 	if err != nil {
-		log.Printf("failed to read sections: %v", err)
+		log.Printf("failed to open object: %v", err)
 		return
 	}
 
-	for _, section := range metadata.Sections {
-		typ, err := encoding.GetSectionType(metadata, section)
-		if err != nil {
-			log.Printf("failed to get section type: %s", err)
-			continue
-		}
+	for _, section := range obj.Sections() {
+		switch {
+		case streams.CheckSection(section):
+			streamsSection, err := streams.Open(context.Background(), section)
+			if err != nil {
+				log.Printf("failed to open streams section: %v", err)
+				continue
+			}
+			printStreamInfo(streamsSection)
 
-		switch typ {
-		case encoding.SectionTypeLogs:
-			printLogsInfo(reader, metadata, section)
-		case encoding.SectionTypeStreams:
-			printStreamInfo(reader, metadata, section)
+		case logs.CheckSection(section):
+			logsSection, err := logs.Open(context.Background(), section)
+			if err != nil {
+				log.Printf("failed to open streams section: %v", err)
+				continue
+			}
+			printLogsInfo(logsSection)
 		}
 	}
 }
 
-func printStreamInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
-	dec := reader.StreamsDecoder(metadata, section)
+func printStreamInfo(sec *streams.Section) {
 	fmt.Println("---- Streams Section ----")
-	cols, err := dec.Columns(context.Background())
+	stats, err := streams.ReadStats(context.Background(), sec)
 	if err != nil {
 		log.Printf("failed to read columns for streams section: %v", err)
 		return
 	}
-	totalCompressedSize := uint64(0)
-	totalUncompressedSize := uint64(0)
-	for _, col := range cols {
-		totalCompressedSize += col.Info.CompressedSize
-		totalUncompressedSize += col.Info.UncompressedSize
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(col.Info.CompressedSize), col.Info.Compression.String()[17:], humanize.Bytes(col.Info.UncompressedSize))
+	for _, col := range stats.Columns {
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type[12:], col.Name, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}
 	fmt.Println("")
-	fmt.Printf("Streams Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
+	fmt.Printf("Streams Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(stats.Columns), humanize.Bytes(stats.CompressedSize), humanize.Bytes(stats.UncompressedSize))
 	fmt.Println("")
 }
 
-func printLogsInfo(reader encoding.Decoder, metadata *filemd.Metadata, section *filemd.SectionInfo) {
+func printLogsInfo(sec *logs.Section) {
 	fmt.Println("---- Logs Section ----")
-	dec := reader.LogsDecoder(metadata, section)
-	cols, err := dec.Columns(context.Background())
+	stats, err := logs.ReadStats(context.Background(), sec)
 	if err != nil {
-		log.Printf("failed to read columns for logs section: %v", err)
+		log.Printf("failed to read columns for streams section: %v", err)
 		return
 	}
-	totalCompressedSize := uint64(0)
-	totalUncompressedSize := uint64(0)
-	for _, col := range cols {
-		totalCompressedSize += col.Info.CompressedSize
-		totalUncompressedSize += col.Info.UncompressedSize
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(col.Info.CompressedSize), col.Info.Compression.String()[17:], humanize.Bytes(col.Info.UncompressedSize))
+	for _, col := range stats.Columns {
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type[12:], col.Name, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}
 	fmt.Println("")
-	fmt.Printf("Logs Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
+	fmt.Printf("Logs Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(stats.Columns), humanize.Bytes(stats.CompressedSize), humanize.Bytes(stats.UncompressedSize))
 	fmt.Println("")
 }

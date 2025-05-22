@@ -33,6 +33,18 @@ func TestNewWriterClient(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid config with writer config",
+			config: kafka.Config{
+				Topic:        "abcd",
+				WriteTimeout: time.Second,
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "wrong password",
 			config: kafka.Config{
 				Address:      addr,

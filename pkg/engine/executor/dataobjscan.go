@@ -17,6 +17,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -28,7 +30,7 @@ type dataobjScan struct {
 	opts dataobjScanOptions
 
 	initialized bool
-	readers     []*dataobj.LogsReader
+	readers     []*logs.RowReader
 	streams     map[int64]labels.Labels
 
 	state state
@@ -41,7 +43,7 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
-	Predicates  []dataobj.LogsPredicate     // Predicate to apply to the logs.
+	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
 	Direction physical.Direction // Direction of timestamps to return.
@@ -78,18 +80,22 @@ func (s *dataobjScan) init() error {
 		return nil
 	}
 
-	md, err := s.opts.Object.Metadata(s.ctx)
-	if err != nil {
-		return fmt.Errorf("reading metadata: %w", err)
-	}
-
-	if err := s.initStreams(md); err != nil {
+	if err := s.initStreams(); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
-	s.readers = make([]*dataobj.LogsReader, 0, md.LogsSections)
+	s.readers = nil
 
-	for section := range md.LogsSections {
+	for _, section := range s.opts.Object.Sections() {
+		if !logs.CheckSection(section) {
+			continue
+		}
+
+		sec, err := logs.Open(s.ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening logs section: %w", err)
+		}
+
 		// TODO(rfratto): There's a few problems with using LogsReader as it is:
 		//
 		// 1. LogsReader doesn't support providing a subset of columns to read
@@ -100,7 +106,7 @@ func (s *dataobjScan) init() error {
 		//
 		// For the sake of the initial implementation I'm ignoring these issues,
 		// but we'll absolutely need to solve this prior to production use.
-		lr := dataobj.NewLogsReader(s.opts.Object, section)
+		lr := logs.NewRowReader(sec)
 
 		// The calls below can't fail because we're always using a brand new logs
 		// reader.
@@ -116,10 +122,10 @@ func (s *dataobjScan) init() error {
 
 // initStreams retrieves all requested stream records from streams sections so
 // that emitted [arrow.Record]s can include stream labels in results.
-func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
-	var sr dataobj.StreamsReader
+func (s *dataobjScan) initStreams() error {
+	var sr streams.RowReader
 
-	streams := make([]dataobj.Stream, 512)
+	streamsBuf := make([]streams.Stream, 512)
 
 	// Initialize entries in the map so we can do a presence test in the loop
 	// below.
@@ -128,22 +134,31 @@ func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
 		s.streams[id] = nil
 	}
 
-	for section := range md.StreamsSections {
+	for _, section := range s.opts.Object.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+
+		sec, err := streams.Open(s.ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening streams section: %w", err)
+		}
+
 		// TODO(rfratto): dataobj.StreamsPredicate is missing support for filtering
 		// on stream IDs when we already know them in advance; this can cause the
 		// Read here to take longer than it needs to since we're reading the
 		// entirety of every row.
-		sr.Reset(s.opts.Object, section)
+		sr.Reset(sec)
 
 		for {
-			n, err := sr.Read(s.ctx, streams)
+			n, err := sr.Read(s.ctx, streamsBuf)
 			if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			} else if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
 
-			for i, stream := range streams[:n] {
+			for i, stream := range streamsBuf[:n] {
 				if _, found := s.streams[stream.ID]; !found {
 					continue
 				}
@@ -152,7 +167,7 @@ func (s *dataobjScan) initStreams(md dataobj.Metadata) error {
 
 				// Zero out the stream entry from the slice so the next call to sr.Read
 				// doesn't overwrite any memory we just moved to s.streams.
-				streams[i] = dataobj.Stream{}
+				streamsBuf[i] = streams.Stream{}
 			}
 		}
 	}
@@ -182,7 +197,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	var (
 		heapMut sync.Mutex
-		heap    = topk.Heap[dataobj.Record]{
+		heap    = topk.Heap[logs.Record]{
 			Limit: int(s.opts.Limit),
 			Less:  s.getLessFunc(s.opts.Direction),
 		}
@@ -194,7 +209,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			buf := make([]dataobj.Record, 512)
+			buf := make([]logs.Record, 512)
 			for {
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
@@ -247,9 +262,9 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	return rb.NewRecord(), nil
 }
 
-func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Record) bool {
+func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b logs.Record) bool {
 	// compareStreams is used when two records have the same timestamp.
-	compareStreams := func(a, b dataobj.Record) bool {
+	compareStreams := func(a, b logs.Record) bool {
 		aStream, ok := s.streams[a.StreamID]
 		if !ok {
 			return false
@@ -265,14 +280,14 @@ func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Reco
 
 	switch dir {
 	case physical.Forward:
-		return func(a, b dataobj.Record) bool {
+		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
 			}
 			return a.Timestamp.After(b.Timestamp)
 		}
 	case physical.Backwards:
-		return func(a, b dataobj.Record) bool {
+		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
 			}
@@ -295,7 +310,7 @@ func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b dataobj.Reco
 // * Log message
 //
 // effectiveProjections does not mutate h.
-func (s *dataobjScan) effectiveProjections(h *topk.Heap[dataobj.Record]) ([]physical.ColumnExpression, error) {
+func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physical.ColumnExpression, error) {
 	if len(s.opts.Projections) > 0 {
 		return s.opts.Projections, nil
 	}
@@ -489,7 +504,7 @@ func builtinColumnType(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
 // builder. The metadata of field is used to determine the category of column.
 // appendToBuilder panics if the type of field does not match the datatype of
 // builder.
-func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field, record *dataobj.Record) {
+func (s *dataobjScan) appendToBuilder(builder array.Builder, field *arrow.Field, record *logs.Record) {
 	columnType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
 	if !ok {
 		// This shouldn't happen; we control the metadata here on the fields.

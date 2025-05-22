@@ -26,7 +26,7 @@ querier:
 
 ingest_limits:
   enabled: true
-  window_size: 1h
+  active_window: 1h
   num_partitions: 1
   lifecycler:
     ring:

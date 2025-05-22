@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -28,7 +28,7 @@ var (
 	now = time.Now().UTC()
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
-	streams = []logproto.Stream{
+	testStreams = []logproto.Stream{
 		{
 			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(-2 * time.Hour)}},
@@ -65,7 +65,7 @@ type testDataBuilder struct {
 	t      *testing.T
 	bucket objstore.Bucket
 
-	builder  *dataobj.Builder
+	builder  *logsobj.Builder
 	meta     *Updater
 	uploader *uploader.Uploader
 }
@@ -81,7 +81,7 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	path, err := b.uploader.Upload(context.Background(), buf)
 	require.NoError(b.t, err)
 
-	err = b.meta.Update(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
@@ -234,7 +234,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 
 	builder := newTestDataBuilder(t, tenantID)
 
-	for _, stream := range streams {
+	for _, stream := range testStreams {
 		builder.addStreamAndFlush(stream)
 	}
 
@@ -251,7 +251,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,      // 1MB
 		TargetObjectSize:        10 * 1024 * 1024, // 10MB
 		TargetSectionSize:       1024 * 1024,      // 1MB
