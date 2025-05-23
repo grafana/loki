@@ -114,7 +114,7 @@ Creating gs://loki-gcp-ruler/...
 
 ## Defining IAM roles and policies
 
-IAM determines who can access which resources on GCP and can be configured in several ways. The recommended method for allowing Loki to access GCS is to use Workload Identity Federation. This method is more secure than using creating and distributing a service account key. The below steps show how to create the role and policy using the gcloud CLI.
+IAM determines who can access which resources on GCP and can be configured in several ways. The recommended method for allowing Loki to access GCS is to use Workload Identity Federation. This method is more secure than creating and distributing a service account key. The below steps show how to create the role and policy using the gcloud CLI.
 
 ### Authenticating to the GKE cluster
 
