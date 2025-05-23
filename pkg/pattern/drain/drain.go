@@ -324,30 +324,6 @@ func (d *Drain) writePattern(
 	}
 }
 
-// func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-// 	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
-// 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
-// 	// Match no existing log cluster
-// 	if matchCluster == nil {
-// 		d.clustersCounter++
-// 		clusterID := d.clustersCounter
-// 		tokens, state = d.tokenizer.Clone(tokens, state)
-// 		matchCluster = &LogCluster{
-// 			Tokens:     tokens,
-// 			TokenState: state,
-// 			id:         clusterID,
-// 		}
-// 		d.idToCluster.Set(clusterID, matchCluster)
-// 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
-// 	} else {
-// 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-// 		// Touch cluster to update its state in the cache.
-// 		d.idToCluster.Get(matchCluster.id)
-// 	}
-// 	matchCluster.merge(samples)
-// 	return matchCluster
-// }
-
 func deduplicatePlaceholders(line string, placeholder string) string {
 	first := strings.Index(line, "<_><_>")
 	if first == -1 {
