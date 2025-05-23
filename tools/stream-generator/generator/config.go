@@ -40,8 +40,8 @@ type Config struct {
 	NumTenants                int           `yaml:"num_tenants"`
 	TenantPrefix              string        `yaml:"tenant_prefix"`
 	QPSPerTenant              int           `yaml:"qps_per_tenant"`
-	BatchSize                 int           `yaml:"batch_size"`
-	BatchInterval             time.Duration `yaml:"batch_interval"`
+	CreateBatchSize           int           `yaml:"create_batch_size"`
+	CreateNewStreamsInterval  time.Duration `yaml:"create_new_streams_interval"`
 	StreamsPerTenant          int           `yaml:"streams_per_tenant"`
 	StreamLabels              []string      `yaml:"stream_labels"`
 	MaxGlobalStreamsPerTenant int           `yaml:"max_global_streams_per_tenant"`
@@ -84,8 +84,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
 	f.StringVar(&c.TenantPrefix, "tenants.prefix", "", "Prefix for tenant IDs")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
-	f.IntVar(&c.BatchSize, "tenants.streams.batch-size", 100, "Number of streams to send to Kafka per tick")
-	f.DurationVar(&c.BatchInterval, "tenants.streams.batch-interval", 1*time.Minute, "Number of milliseconds to wait between batches. If set to 0, it will be calculated based on QPSPerTenant.")
+	f.IntVar(&c.CreateBatchSize, "tenants.streams.create-batch-size", 100, "Number of streams to send to Kafka per tick")
+	f.DurationVar(&c.CreateNewStreamsInterval, "tenants.streams.create-interval", 1*time.Minute, "Number of milliseconds to wait between batches. If set to 0, it will be calculated based on QPSPerTenant.")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
@@ -116,8 +116,8 @@ func (c *Config) Validate() error {
 	}
 	c.PushMode = PushModeType(c.pushModeRaw)
 
-	if c.BatchInterval <= 0 {
-		c.BatchInterval = time.Second / time.Duration(c.QPSPerTenant)
+	if c.CreateNewStreamsInterval <= 0 {
+		c.CreateNewStreamsInterval = time.Second / time.Duration(c.QPSPerTenant)
 	}
 
 	return nil
