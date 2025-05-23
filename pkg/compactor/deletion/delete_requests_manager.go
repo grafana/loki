@@ -333,7 +333,7 @@ func (d *DeleteRequestsManager) MarkPhaseStarted() {
 	status := statusSuccess
 	if batch, err := d.loadDeleteRequestsToProcess(DeleteRequestsAll); err != nil {
 		status = statusFail
-		d.currentBatch = nil
+		d.currentBatch = newDeleteRequestBatch(d.metrics)
 		level.Error(util_log.Logger).Log("msg", "failed to load delete requests to process", "err", err)
 	} else {
 		d.currentBatch = batch
