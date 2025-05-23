@@ -132,7 +132,7 @@ gcloud container clusters get-credentials loki-gcp \
   --region=europe-west4
 ```
 
-This will authenticate you via your GCP IAM identity, write the cluster's access info to your local kubeconfig (usually `~/.kube/config`), and then allow `kubectl` commands talk to the right cluster from now on.
+This will authenticate you via your GCP IAM identity, write the cluster's access info to your local kubeconfig (usually `~/.kube/config`), and then allow `kubectl` commands to talk to the right cluster from now on.
 
 Then check that you're connected to the GKE cluster and that you're accessing it via `kubectl` by running:
 
