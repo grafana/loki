@@ -1724,9 +1724,6 @@ func newSampleIterator(
 		return iter.NoopSampleIterator
 	}
 
-	//TODO(twhitney): now that extractors can return multiple samples, the multiExtractorSampleIterator
-	// is almost identical to the sampleBufferedIterator. Should we remove this, and remove support for
-	// multiple extractors?
 	if len(extractors) > 1 {
 		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
