@@ -201,7 +201,7 @@ The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storag
  permission. You can use this predefined role or create your own with matching permissions.
 {{< /admonition >}}
 
-Create an IAM policy binding on the bucket(s) using the KSA created previously and the role(s) of your choice. One command per bucket.
+Create an IAM policy binding on the bucket(s) using the KSA created previously and the role(s) of your choice. Use a separate command for each bucket.
 
 ```txt
 gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
