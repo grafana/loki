@@ -171,7 +171,7 @@ namespace/loki created
 
 A KSA is a cluster identity (service account, named `default` by default) assigned to pods that allows pods to interact with each other.
 
-Create a KSA on your K8s cluster:
+Create a KSA on your Kubernetes cluster:
 
 ```bash
 kubectl create serviceaccount <KSA_NAME> \
