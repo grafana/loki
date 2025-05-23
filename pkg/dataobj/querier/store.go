@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -32,6 +33,8 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -90,6 +93,7 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 		From:      c.From,
 		RowShards: uint32(c.ShardFactor),
 		Schema:    "v13",
+		IndexType: types.DataObjType,
 	}
 }
 
@@ -158,9 +162,35 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 }
 
 // Stats implements querier.Store
-func (s *Store) Stats(_ context.Context, _ string, _ model.Time, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
-	// TODO: Implement
-	return &stats.Stats{}, nil
+func (s *Store) Stats(ctx context.Context, tenant string, from model.Time, through model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+	// TODO: consolidate on convention to explicitly pass user or inject in context.
+	ctx = user.InjectOrgID(ctx, tenant)
+	logger := util_log.WithContext(ctx, s.logger)
+
+	objects, err := s.objectsForTimeRange(ctx, from.Time(), through.Time(), logger)
+	if err != nil {
+		return nil, err
+	}
+
+	metadatas, err := fetchMetadatas(ctx, objects)
+	if err != nil {
+		return nil, err
+	}
+
+	var sections int
+
+	for _, md := range metadatas {
+		sections += md.LogsSections
+	}
+
+	// adjust bytes so that we schedule one shard per section
+	// NB: this is a hack based on logic elsewhere which selects shard factors targeting
+	// a configurable targetBytesPerShard.
+	fakeBytes := sharding.DefaultTSDBMaxBytesPerShard * uint64(sections)
+
+	return &stats.Stats{
+		Bytes: fakeBytes,
+	}, nil
 }
 
 // Volume implements querier.Store
@@ -170,9 +200,21 @@ func (s *Store) Volume(_ context.Context, _ string, _ model.Time, _ model.Time, 
 }
 
 // GetShards implements querier.Store
-func (s *Store) GetShards(_ context.Context, _ string, _ model.Time, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
-	// TODO: Implement
-	return &logproto.ShardsResponse{}, nil
+func (s *Store) GetShards(ctx context.Context, tenant string, from model.Time, through model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+
+	// Get statistics to determine total data size
+	stats, err := s.Stats(ctx, tenant, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	// back out of the fake bytes calculation in `Stats()` to get the number of shards
+	n := stats.Bytes / sharding.DefaultTSDBMaxBytesPerShard
+	shards := sharding.LinearShards(int(n), stats.Bytes)
+
+	return &logproto.ShardsResponse{
+		Shards: shards,
+	}, nil
 }
 
 type object struct {
@@ -358,6 +400,8 @@ func shardSections(metadatas []sectionsStats, shard logql.Shard) [][]int {
 	for i, metadata := range metadatas {
 		sections := make([]int, 0, metadata.LogsSections)
 		for j := 0; j < metadata.LogsSections; j++ {
+			// NB: section sharding is only compatible with power of two sharding,
+			// not the more specialized "bounded" version.
 			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
 				if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
 					sectionIndex++
