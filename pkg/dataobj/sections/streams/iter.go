@@ -52,7 +52,10 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 			return err
 		}
 
-		dset := wrapDataset(dec)
+		dset, err := newColumnsDataset(section.Columns())
+		if err != nil {
+			return fmt.Errorf("creating columns dataset: %w", err)
+		}
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
