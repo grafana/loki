@@ -195,10 +195,11 @@ serviceaccount/loki-gcp-ksa created
 
 ### Add IAM Policy to Bucket(s)
 
-> [!NOTE]
-> The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki / GEL to
+{{< admonition type="note" >}}
+The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki / GEL to
  operate. See [IAM permissions for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-permissions) for details about each individual
  permission. You can use this predefined role or create your own with matching permissions.
+{{< /admonition >}}
 
 Create an IAM policy binding on the bucket(s) using the KSA created previously and the role(s) of your choice. One command per bucket.
 
