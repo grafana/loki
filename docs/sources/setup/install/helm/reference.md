@@ -3092,16 +3092,18 @@ null
     "additionalTenants": [],
     "affinity": {},
     "annotations": {},
+    "apiUrl": "{{ include \"loki.address\" . }}",
     "enabled": true,
     "env": [],
     "extraVolumeMounts": [],
+    "extraVolumes": [],
     "hookType": "post-install",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
-      "registry": "docker.io",
-      "repository": "grafana/enterprise-logs-provisioner",
-      "tag": null
+      "registry": "us-docker.pkg.dev",
+      "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+      "tag": "latest"
     },
     "labels": {},
     "nodeSelector": {},
@@ -3116,6 +3118,7 @@ null
     "tolerations": []
   },
   "tokengen": {
+    "adminTokenSecret": null,
     "affinity": {},
     "annotations": {},
     "enabled": true,
@@ -3275,22 +3278,24 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target</td>
+			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
   "affinity": {},
   "annotations": {},
+  "apiUrl": "{{ include \"loki.address\" . }}",
   "enabled": true,
   "env": [],
   "extraVolumeMounts": [],
+  "extraVolumes": [],
   "hookType": "post-install",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
-    "registry": "docker.io",
-    "repository": "grafana/enterprise-logs-provisioner",
-    "tag": null
+    "registry": "us-docker.pkg.dev",
+    "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+    "tag": "latest"
   },
   "labels": {},
   "nodeSelector": {},
@@ -3335,6 +3340,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.apiUrl</td>
+			<td>string</td>
+			<td>url of the admin api to use for the provisioner</td>
+			<td><pre lang="json">
+"{{ include \"loki.address\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.enabled</td>
 			<td>bool</td>
 			<td>Whether the job should be part of the deployment</td>
@@ -3362,6 +3376,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.hookType</td>
 			<td>string</td>
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
@@ -3378,9 +3401,9 @@ true
 {
   "digest": null,
   "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "grafana/enterprise-logs-provisioner",
-  "tag": null
+  "registry": "us-docker.pkg.dev",
+  "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -3408,7 +3431,7 @@ null
 			<td>string</td>
 			<td>The Docker registry</td>
 			<td><pre lang="json">
-"docker.io"
+"us-docker.pkg.dev"
 </pre>
 </td>
 		</tr>
@@ -3417,7 +3440,7 @@ null
 			<td>string</td>
 			<td>Docker image repository</td>
 			<td><pre lang="json">
-"grafana/enterprise-logs-provisioner"
+"grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner"
 </pre>
 </td>
 		</tr>
@@ -3426,7 +3449,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"latest"
 </pre>
 </td>
 		</tr>
@@ -3495,6 +3518,7 @@ null
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "adminTokenSecret": null,
   "affinity": {},
   "annotations": {},
   "enabled": true,
@@ -3515,6 +3539,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.adminTokenSecret</td>
+			<td>string</td>
+			<td>Name of the secret to store the admin token.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
