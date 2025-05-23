@@ -148,7 +148,7 @@ gke_my-project-123456_europe-west4_loki-gcp
 
 ### Create a Kubernetes Namespace
 
-Create a K8s namespace where you'll install your Loki workloads:
+Create a Kubernetes namespace where you'll install your Loki workloads:
 
 ```bash
 kubectl create namespace <NAMESPACE>
