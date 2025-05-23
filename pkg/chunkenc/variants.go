@@ -2,6 +2,9 @@ package chunkenc
 
 import (
 	"context"
+	"sort"
+
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -85,6 +88,25 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 	}
 
 	return false
+}
+
+func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {
+	var size int
+	for _, lbls := range many {
+		size += len(lbls)
+	}
+
+	if buf == nil || cap(buf) < size {
+		buf = make(labels.Labels, 0, size)
+	} else {
+		buf = buf[:0]
+	}
+
+	for _, lbls := range many {
+		buf = append(buf, lbls...)
+	}
+	sort.Sort(buf)
+	return buf
 }
 
 func (e *multiExtractorSampleBufferedIterator) Close() error {
