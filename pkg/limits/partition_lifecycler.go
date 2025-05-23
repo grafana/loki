@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -19,6 +20,9 @@ type partitionLifecycler struct {
 	usage            *usageStore
 	activeWindow     time.Duration
 	logger           log.Logger
+
+	// Used in tests.
+	clock quartz.Clock
 }
 
 // newPartitionLifecycler returns a new partitionLifecycler.
@@ -35,6 +39,7 @@ func newPartitionLifecycler(
 		usage:            usage,
 		activeWindow:     activeWindow,
 		logger:           logger,
+		clock:            quartz.NewReal(),
 	}
 }
 
@@ -90,7 +95,7 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	// Get the first offset produced within the window. This can be the same
 	// offset as the last produced offset if no records have been produced
 	// within that time.
-	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, time.Now().Add(-l.activeWindow))
+	nextOffset, err := l.offsetManager.NextOffset(ctx, partition, l.clock.Now().Add(-l.activeWindow))
 	if err != nil {
 		return fmt.Errorf("failed to get next offset: %w", err)
 	}
