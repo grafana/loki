@@ -178,7 +178,7 @@ kubectl create serviceaccount <KSA_NAME> \
   --namespace <NAMESPACE>
 ```
 
-Replace `<KSA_NAME>` with the name of the KSA created above, and `<NAMESPACE>` with the namespace where your Loki/GEL workloads are located.
+Replace `<KSA_NAME>` with the name of the KSA created above, and `<NAMESPACE>` with the namespace where your Loki workloads are located.
 
 Example:
 
@@ -196,7 +196,7 @@ serviceaccount/loki-gcp-ksa created
 ### Add IAM Policy to Bucket(s)
 
 {{< admonition type="note" >}}
-The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki / GEL to
+The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki to
  operate. See [IAM permissions for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-permissions) for details about each individual
  permission. You can use this predefined role or create your own with matching permissions.
 {{< /admonition >}}
@@ -211,7 +211,7 @@ gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
 ```
 
 Replace `<PROJECT_ID>` with the GCP project ID (ex. project-name), `<PROJECT_NUMBER>` with the project number (ex. 1234567890),
-`<NAMESPACE>` with the namespace where Loki/GEL is installed, and `<KSA_NAME>` with the name of the KSA you created above.
+`<NAMESPACE>` with the namespace where Loki is installed, and `<KSA_NAME>` with the name of the KSA you created above.
 
 Example:
 
