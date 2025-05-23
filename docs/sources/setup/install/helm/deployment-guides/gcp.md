@@ -374,6 +374,7 @@ queryScheduler:
 distributor:
  replicas: 3
  maxUnavailable: 2
+ 
 compactor:
  replicas: 1
 
