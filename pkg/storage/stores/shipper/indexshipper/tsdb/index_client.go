@@ -318,13 +318,6 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	return resp, nil
 }
 
-// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
-// This is only used for GetSeries implementation.
-// Todo we might want to pass it as a parameter to GetSeries instead.
-func (c *IndexClient) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	c.idx.SetChunkFilterer(chunkFilter)
-}
-
 // TODO(owen-d): in the future, handle this by preventing passing the __name__="logs" label
 // to TSDB indices at all.
 func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {

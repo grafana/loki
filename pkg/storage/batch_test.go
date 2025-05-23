@@ -58,7 +58,7 @@ func Test_batchIterSafeStart(t *testing.T) {
 		},
 	}
 
-	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
+	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{})
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
@@ -1001,7 +1001,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		s := schemaConfig
 		for name, tt := range tests {
 			t.Run(name, func(t *testing.T) {
-				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
+				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end)
 				require.NoError(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				_ = it.Close()
@@ -1428,7 +1428,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				newMatchers(tt.matchers),
 				tt.start,
 				tt.end,
-				nil,
 				ex,
 			)
 			require.NoError(t, err)
@@ -1748,7 +1747,7 @@ func TestBatchCancel(t *testing.T) {
 		},
 	}
 
-	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
+	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now())
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
 	//nolint:revive

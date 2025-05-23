@@ -722,10 +722,6 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 
 func (t *tenantHeads) Close() error { return nil }
 
-func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	t.chunkFilter = chunkFilter
-}
-
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
 }
@@ -740,9 +736,6 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	}
 
 	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
-	if t.chunkFilter != nil {
-		idx.SetChunkFilterer(t.chunkFilter)
-	}
 	return idx, true
 
 }

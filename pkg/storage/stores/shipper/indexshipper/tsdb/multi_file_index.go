@@ -11,13 +11,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type MultiIndex struct {
 	iter        IndexIter
-	filterer    chunk.RequestChunkFilterer
 	maxParallel int
 }
 
@@ -97,10 +95,6 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 	return lowest, highest
 }
 
-func (i *MultiIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.filterer = chunkFilter
-}
-
 func (i *MultiIndex) Close() error {
 	return i.forMatchingIndices(
 		context.Background(),
@@ -116,15 +110,6 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
 		if Overlap(idx, queryBounds) {
-
-			if i.filterer != nil {
-				// TODO(owen-d): Find a nicer way
-				// to handle filterer passing. Doing it
-				// in the read path rather than during instantiation
-				// feels bad :(
-				idx.SetChunkFilterer(i.filterer)
-			}
-
 			return f(ctx, idx)
 		}
 		return nil

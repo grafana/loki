@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -137,10 +136,6 @@ func (c *IndexGatewayClientStore) GetShards(ctx context.Context, _ string, from,
 		Query:               predicate.Plan().AST.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
-}
-
-func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
-	level.Warn(c.logger).Log("msg", "SetChunkFilterer called on index gateway client store, but it does not support it")
 }
 
 func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {

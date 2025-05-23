@@ -857,60 +857,6 @@ func Test_store_SelectSample(t *testing.T) {
 	}
 }
 
-type fakeChunkFilterer struct{}
-
-func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
-	return f
-}
-
-func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
-	return metric.Get("foo") == "bazz"
-}
-
-func (f fakeChunkFilterer) RequiredLabelNames() []string {
-	return []string{"foo"}
-}
-
-func Test_ChunkFilterer(t *testing.T) {
-	s := &LokiStore{
-		Store: storeFixture,
-		cfg: Config{
-			MaxChunkBatchSize: 10,
-		},
-		chunkMetrics: NilMetrics,
-	}
-	s.SetChunkFilterer(&fakeChunkFilterer{})
-	ctx = user.InjectOrgID(context.Background(), "test-user")
-	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectSamples() error = %v", err)
-		return
-	}
-	defer it.Close()
-	for it.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
-		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
-
-	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	if err != nil {
-		t.Errorf("store.SelectLogs() error = %v", err)
-		return
-	}
-	defer logit.Close()
-	for logit.Next() {
-		l, err := syntax.ParseLabels(it.Labels())
-		require.NoError(t, err)
-		require.NotEqual(t, "bazz", l.Get("foo"))
-	}
-	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
-	require.NoError(t, err)
-	for _, id := range ids {
-		require.NotEqual(t, "bazz", id.Get("foo"))
-	}
-}
-
 func Test_PipelineWrapper(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
