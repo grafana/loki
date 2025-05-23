@@ -3117,12 +3117,26 @@ bool
 <td>
 <em>(Optional)</em>
 <p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-some stream labels to disappear from the index, potentially making queries more expensive and less performant.</p>
-<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
-added to the configuration, even if this field is set to true.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
 <p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
 </tbody>
