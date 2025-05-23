@@ -203,12 +203,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	)
 
 	g, ctx := errgroup.WithContext(s.ctx)
+	g.SetLimit(1) // no parallelism
 
 	var gotData atomic.Bool
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			buf := make([]logs.Record, 512)
+			defer reader.Close()
+			buf := make([]logs.Record, 1024)
 			for {
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
