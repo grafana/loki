@@ -67,6 +67,7 @@ func NewDeleteRequestsManager(workingDir string, store DeleteRequestsStore, dele
 		batchSize:                 batchSize,
 		limits:                    limits,
 		processedSeries:           map[string]struct{}{},
+		currentBatch:              newDeleteRequestBatch(metrics),
 	}
 
 	var err error
