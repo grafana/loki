@@ -11,6 +11,8 @@ gateway common labels
 {{- define "loki.gatewayLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: gateway
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
