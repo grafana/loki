@@ -220,6 +220,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
   publishDockerPlugins: function(path, getDockerCredsFromVault=false, dockerUsername='grafanabot')
     job.new()
     + job.withNeeds(['createRelease'])
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps(
       [
         common.fetchReleaseLib,
