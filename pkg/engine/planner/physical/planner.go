@@ -28,7 +28,7 @@ func NewPlanner(catalog Catalog) *Planner {
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
 func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
-	p.plan = &Plan{}
+	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
@@ -43,6 +43,10 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
+}
+
+func (p *Planner) reset() {
+	p.plan = &Plan{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -85,15 +89,22 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	shard, ok := lp.Shard.(*logical.ShardInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
+	}
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard))
 	if err != nil {
 		return nil, err
 	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Sections:  sections[i],
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
