@@ -179,7 +179,7 @@ func TestUsageStore_Evict(t *testing.T) {
 	s.clock = clock
 	s1 := streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()}
 	s.set("tenant1", s1)
-	s2 := streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-61 * time.Minute).UnixNano()}
+	s2 := streamUsage{hash: 0x2, lastSeenAt: clock.Now().Add(-121 * time.Minute).UnixNano()}
 	s.set("tenant1", s2)
 	s3 := streamUsage{hash: 0x3, lastSeenAt: clock.Now().UnixNano()}
 	s.set("tenant2", s3)

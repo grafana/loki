@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	DefaultActiveWindow  = 1 * time.Hour
+	DefaultActiveWindow  = 2 * time.Hour
 	DefaultRateWindow    = 5 * time.Minute
 	DefaultBucketSize    = 1 * time.Minute
+	DefaultEvictInterval = 30 * time.Minute
 	DefaultNumPartitions = 64
 )
 
@@ -37,6 +38,9 @@ type Config struct {
 	// rates. Smaller buckets provide more precise rates but require more
 	// memory.
 	BucketSize time.Duration `yaml:"bucket_size"`
+
+	// EvictInterval defines the interval at which old streams are evicted.
+	EvictInterval time.Duration `yaml:"evict_interval"`
 
 	// The number of partitions for the Kafka topic used to read and write stream metadata.
 	// It is fixed, not a maximum.
@@ -77,6 +81,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		DefaultBucketSize,
 		"The size of the buckets used to calculate stream rates. Smaller buckets provide more precise rates but require more memory.",
 	)
+	f.DurationVar(
+		&cfg.EvictInterval,
+		"ingest-limits.evict-interval",
+		DefaultEvictInterval,
+		"The interval at which old streams are evicted.",
+	)
 	f.IntVar(
 		&cfg.NumPartitions,
 		"ingest-limits.num-partitions",
@@ -97,6 +107,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.RateWindow < cfg.BucketSize {
 		return errors.New("rate-window must be greater than or equal to bucket-size")
+	}
+	if cfg.ActiveWindow%cfg.EvictInterval != 0 {
+		return errors.New("active-window must be a multiple of evict-interval")
 	}
 	if cfg.NumPartitions <= 0 {
 		return errors.New("num-partitions must be greater than 0")
