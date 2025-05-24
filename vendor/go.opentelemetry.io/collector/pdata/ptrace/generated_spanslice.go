@@ -109,6 +109,10 @@ func (es SpanSlice) AppendEmpty() Span {
 func (es SpanSlice) MoveAndAppendTo(dest SpanSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
