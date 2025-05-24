@@ -267,6 +267,11 @@ func (s *Int8MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Int8MemoTable) Exists(val int8) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Int8MemoTable) Get(val interface{}) (int, bool) {
@@ -282,10 +287,13 @@ func (s *Int8MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Int8MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(int8))
+}
 
-	h := hashInt(uint64(val.(int8)), 0)
+func (s *Int8MemoTable) InsertOrGet(val int8) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v int8) bool {
-		return val.(int8) == v
+		return val == v
 	})
 
 	if ok {
@@ -293,7 +301,7 @@ func (s *Int8MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err e
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(int8), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -544,6 +552,11 @@ func (s *Uint8MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Uint8MemoTable) Exists(val uint8) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Uint8MemoTable) Get(val interface{}) (int, bool) {
@@ -559,10 +572,13 @@ func (s *Uint8MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Uint8MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(uint8))
+}
 
-	h := hashInt(uint64(val.(uint8)), 0)
+func (s *Uint8MemoTable) InsertOrGet(val uint8) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v uint8) bool {
-		return val.(uint8) == v
+		return val == v
 	})
 
 	if ok {
@@ -570,7 +586,7 @@ func (s *Uint8MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err 
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(uint8), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -821,6 +837,11 @@ func (s *Int16MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Int16MemoTable) Exists(val int16) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Int16MemoTable) Get(val interface{}) (int, bool) {
@@ -836,10 +857,13 @@ func (s *Int16MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Int16MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(int16))
+}
 
-	h := hashInt(uint64(val.(int16)), 0)
+func (s *Int16MemoTable) InsertOrGet(val int16) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v int16) bool {
-		return val.(int16) == v
+		return val == v
 	})
 
 	if ok {
@@ -847,7 +871,7 @@ func (s *Int16MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err 
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(int16), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -1098,6 +1122,11 @@ func (s *Uint16MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Uint16MemoTable) Exists(val uint16) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Uint16MemoTable) Get(val interface{}) (int, bool) {
@@ -1113,10 +1142,13 @@ func (s *Uint16MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Uint16MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(uint16))
+}
 
-	h := hashInt(uint64(val.(uint16)), 0)
+func (s *Uint16MemoTable) InsertOrGet(val uint16) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v uint16) bool {
-		return val.(uint16) == v
+		return val == v
 	})
 
 	if ok {
@@ -1124,7 +1156,7 @@ func (s *Uint16MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(uint16), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -1375,6 +1407,11 @@ func (s *Int32MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Int32MemoTable) Exists(val int32) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Int32MemoTable) Get(val interface{}) (int, bool) {
@@ -1390,10 +1427,13 @@ func (s *Int32MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Int32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(int32))
+}
 
-	h := hashInt(uint64(val.(int32)), 0)
+func (s *Int32MemoTable) InsertOrGet(val int32) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v int32) bool {
-		return val.(int32) == v
+		return val == v
 	})
 
 	if ok {
@@ -1401,7 +1441,7 @@ func (s *Int32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err 
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(int32), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -1652,6 +1692,11 @@ func (s *Int64MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Int64MemoTable) Exists(val int64) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Int64MemoTable) Get(val interface{}) (int, bool) {
@@ -1667,10 +1712,13 @@ func (s *Int64MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Int64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(int64))
+}
 
-	h := hashInt(uint64(val.(int64)), 0)
+func (s *Int64MemoTable) InsertOrGet(val int64) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v int64) bool {
-		return val.(int64) == v
+		return val == v
 	})
 
 	if ok {
@@ -1678,7 +1726,7 @@ func (s *Int64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err 
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(int64), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -1929,6 +1977,11 @@ func (s *Uint32MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Uint32MemoTable) Exists(val uint32) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Uint32MemoTable) Get(val interface{}) (int, bool) {
@@ -1944,10 +1997,13 @@ func (s *Uint32MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Uint32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(uint32))
+}
 
-	h := hashInt(uint64(val.(uint32)), 0)
+func (s *Uint32MemoTable) InsertOrGet(val uint32) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v uint32) bool {
-		return val.(uint32) == v
+		return val == v
 	})
 
 	if ok {
@@ -1955,7 +2011,7 @@ func (s *Uint32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(uint32), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -2206,6 +2262,11 @@ func (s *Uint64MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Uint64MemoTable) Exists(val uint64) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Uint64MemoTable) Get(val interface{}) (int, bool) {
@@ -2221,10 +2282,13 @@ func (s *Uint64MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Uint64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(uint64))
+}
 
-	h := hashInt(uint64(val.(uint64)), 0)
+func (s *Uint64MemoTable) InsertOrGet(val uint64) (idx int, found bool, err error) {
+	h := hashInt(uint64(val), 0)
 	e, ok := s.tbl.Lookup(h, func(v uint64) bool {
-		return val.(uint64) == v
+		return val == v
 	})
 
 	if ok {
@@ -2232,7 +2296,7 @@ func (s *Uint64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(uint64), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -2483,6 +2547,11 @@ func (s *Float32MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Float32MemoTable) Exists(val float32) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Float32MemoTable) Get(val interface{}) (int, bool) {
@@ -2508,19 +2577,23 @@ func (s *Float32MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Float32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(float32))
+}
+
+func (s *Float32MemoTable) InsertOrGet(val float32) (idx int, found bool, err error) {
 
 	var cmp func(float32) bool
 
-	if math.IsNaN(float64(val.(float32))) {
+	if math.IsNaN(float64(val)) {
 		cmp = isNan32Cmp
 		// use consistent internal bit pattern for NaN regardless of the pattern
 		// that is passed to us. NaN is NaN is NaN
 		val = float32(math.NaN())
 	} else {
-		cmp = func(v float32) bool { return val.(float32) == v }
+		cmp = func(v float32) bool { return val == v }
 	}
 
-	h := hashFloat32(val.(float32), 0)
+	h := hashFloat32(val, 0)
 	e, ok := s.tbl.Lookup(h, cmp)
 
 	if ok {
@@ -2528,7 +2601,7 @@ func (s *Float32MemoTable) GetOrInsert(val interface{}) (idx int, found bool, er
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(float32), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
@@ -2779,6 +2852,11 @@ func (s *Float64MemoTable) WriteOutSubsetLE(start int, out []byte) {
 	s.tbl.WriteOutSubset(start, out)
 }
 
+func (s *Float64MemoTable) Exists(val float64) bool {
+	_, ok := s.Get(val)
+	return ok
+}
+
 // Get returns the index of the requested value in the hash table or KeyNotFound
 // along with a boolean indicating if it was found or not.
 func (s *Float64MemoTable) Get(val interface{}) (int, bool) {
@@ -2803,18 +2881,22 @@ func (s *Float64MemoTable) Get(val interface{}) (int, bool) {
 // value into the table and return the new index. found indicates whether or not it already
 // existed in the table (true) or was inserted by this call (false).
 func (s *Float64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return s.InsertOrGet(val.(float64))
+}
+
+func (s *Float64MemoTable) InsertOrGet(val float64) (idx int, found bool, err error) {
 
 	var cmp func(float64) bool
-	if math.IsNaN(val.(float64)) {
+	if math.IsNaN(val) {
 		cmp = math.IsNaN
 		// use consistent internal bit pattern for NaN regardless of the pattern
 		// that is passed to us. NaN is NaN is NaN
 		val = math.NaN()
 	} else {
-		cmp = func(v float64) bool { return val.(float64) == v }
+		cmp = func(v float64) bool { return val == v }
 	}
 
-	h := hashFloat64(val.(float64), 0)
+	h := hashFloat64(val, 0)
 	e, ok := s.tbl.Lookup(h, cmp)
 
 	if ok {
@@ -2822,7 +2904,7 @@ func (s *Float64MemoTable) GetOrInsert(val interface{}) (idx int, found bool, er
 		found = true
 	} else {
 		idx = s.Size()
-		s.tbl.Insert(e, h, val.(float64), int32(idx))
+		s.tbl.Insert(e, h, val, int32(idx))
 	}
 	return
 }
