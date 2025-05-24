@@ -318,8 +318,8 @@ github.com/cockroachdb/datadriven v0.0.0-20190809214429-80d97fb3cbaa/go.mod h1:z
 github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd/go.mod h1:sE/e/2PUdi/liOCUjSTXgM1o87ZssimdTWN964YiIeI=
 github.com/coder/quartz v0.1.3 h1:hA2nI8uUA2fNN9uhXv2I4xZD4aHkA7oH3g2t03v4xf8=
 github.com/coder/quartz v0.1.3/go.mod h1:vsiCc+AHViMKH2CQpGIpFgdHIEQsxwm8yCscqKmzbRA=
-github.com/containerd/containerd/v2 v2.0.4 h1:+r7yJMwhTfMm3CDyiBjMBQO8a9CTBxL2Bg/JtqtIwB8=
-github.com/containerd/containerd/v2 v2.0.4/go.mod h1:5j9QUUaV/cy9ZeAx4S+8n9ffpf+iYnEj4jiExgcbuLY=
+github.com/containerd/containerd/v2 v2.0.5 h1:2vg/TjUXnaohAxiHnthQg8K06L9I4gdYEMcOLiMc8BQ=
+github.com/containerd/containerd/v2 v2.0.5/go.mod h1:Qqo0UN43i2fX1FLkrSTCg6zcHNfjN7gEnx3NPRZI+N0=
 github.com/containerd/fifo v1.1.0 h1:4I2mbh5stb1u6ycIABlBw9zgtlK8viPI9QkQNRQEEmY=
 github.com/containerd/fifo v1.1.0/go.mod h1:bmC4NWMbXlt2EZ0Hc7Fx7QzTFxgPID13eH0Qu+MAb2o=
 github.com/containerd/log v0.1.0 h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I=
