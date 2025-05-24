@@ -1,5 +1,18 @@
 ## Main
 
+## [0.8.1](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.8.1) (2025-05-24)
+
+
+### Features
+
+* **operator:** allow users to configure virtual-host-style for S3 secrets ([#17363](https://github.com/grafana/loki/issues/17363)) ([c4dace5](https://github.com/grafana/loki/commit/c4dace5c57646c0878fd8558d42ab1f7efaa0518))
+* **operator:** Allow using resource requests as limits ([#17484](https://github.com/grafana/loki/issues/17484)) ([0b2bae8](https://github.com/grafana/loki/commit/0b2bae87f3646492129c141695811eac9e0b1ffe))
+
+
+### Bug Fixes
+
+* **operator:** fix typo in docs regarding forcepathstyle ([#17725](https://github.com/grafana/loki/issues/17725)) ([14d7670](https://github.com/grafana/loki/commit/14d7670c92307d51d6ee4ddc9716cc8672c06a1b))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 
