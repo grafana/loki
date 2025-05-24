@@ -110,6 +110,9 @@ func (ds *DialSettings) IsNewAuthLibraryEnabled() bool {
 	if ds.EnableNewAuthLibrary {
 		return true
 	}
+	if ds.AuthCredentials != nil {
+		return true
+	}
 	if b, err := strconv.ParseBool(os.Getenv(newAuthLibEnvVar)); err == nil {
 		return b
 	}
