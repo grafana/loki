@@ -20,8 +20,34 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	if err != nil {
 		return nil, err
 	}
+	replaceApproxTopK(expr)
 	removeLineformat(expr)
 	return expr, nil
+}
+
+// replaceApproxTopKWithTopk replaces all ApproxTopKExpr with TopKExpr.
+// ApproxTopKExpr is not supported by the querier, so we replace it with the implementation if this function reaches the querier.
+func replaceApproxTopK(expr syntax.SampleExpr) {
+	expr.Walk(func(e syntax.Expr) bool {
+		vectorExpr, ok := e.(*syntax.VectorAggregationExpr)
+		if !ok {
+			return true
+		}
+		if vectorExpr.Operation != syntax.OpTypeApproxTopK {
+			return true
+		}
+
+		vectorExpr.Operation = syntax.OpTypeTopK
+		vectorExpr.Left = &CountMinSketchEvalExpr{
+			SampleExpr: &syntax.VectorAggregationExpr{
+				Operation: syntax.OpTypeCountMinSketch,
+				Params:    0,
+				Grouping:  vectorExpr.Grouping,
+				Left:      vectorExpr.Left,
+			},
+		}
+		return true
+	})
 }
 
 // removeLineformat removes unnecessary line_format within a SampleExpr.

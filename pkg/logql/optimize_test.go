@@ -27,6 +27,10 @@ func Test_optimizeSampleExpr(t *testing.T) {
 		{`sum by(name)(rate({region="us-east1"} | json | line_format "something else" | unwrap foo[5m]))`, `sum by (name)(rate({region="us-east1"} | json | unwrap foo[5m]))`},
 		{`quantile_over_time(1,{region="us-east1"} | json | line_format "something else" | unwrap foo[5m])`, `quantile_over_time(1,{region="us-east1"} | json | unwrap foo[5m])`},
 		{`sum by(name)(count_over_time({region="us-east1"} | json | line_format "something else" | label_format foo=bar | line_format "boo"[5m]))`, `sum by (name)(count_over_time({region="us-east1"} | json | label_format foo=bar[5m]))`},
+
+		// Replace approx_topk with __count_min_sketch__ variant
+		{`approx_topk(3, 1+1)`, `topk(3,CountMinSketchEval<__count_min_sketch__(2)>)`},
+		{`approx_topk(3, sum by(name)(rate({region="us-east1"}[5m])))`, `topk(3,CountMinSketchEval<__count_min_sketch__(sum by (name)(rate({region="us-east1"}[5m])))>)`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
