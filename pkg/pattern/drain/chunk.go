@@ -76,7 +76,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	}
 
 	// Re-scale samples into step-sized buckets
-	currentStep := truncateTimestamp(c.Samples[lo].Timestamp, step)
+	currentStep := TruncateTimestamp(c.Samples[lo].Timestamp, step)
 	aggregatedSamples := make([]logproto.PatternSample, 0, ((c.Samples[hi-1].Timestamp-currentStep)/step)+1)
 	aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
 		Timestamp: currentStep,
@@ -84,7 +84,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	})
 	for _, sample := range c.Samples[lo:hi] {
 		if sample.Timestamp >= currentStep+step {
-			stepForSample := truncateTimestamp(sample.Timestamp, step)
+			stepForSample := TruncateTimestamp(sample.Timestamp, step)
 			for i := currentStep + step; i <= stepForSample; i += step {
 				aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
 					Timestamp: i,
@@ -99,41 +99,45 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	return aggregatedSamples
 }
 
-func (c *Chunks) Add(ts model.Time) {
-	t := truncateTimestamp(ts, TimeResolution)
+// Add records the sample by incrementing the value of the current sample
+// or creating a new sample if past the time resolution of the current one.
+// Returns the previous sample if a new sample was created, nil otherwise.
+func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
+	t := TruncateTimestamp(ts, TimeResolution)
 
 	if len(*c) == 0 {
 		*c = append(*c, newChunk(t))
-		return
+		return nil
 	}
 	last := &(*c)[len(*c)-1]
 	if last.Samples[len(last.Samples)-1].Timestamp == t {
 		last.Samples[len(last.Samples)-1].Value++
-		return
+		return nil
 	}
 	if !last.spaceFor(t) {
 		*c = append(*c, newChunk(t))
-		return
+		return &last.Samples[len(last.Samples)-1]
 	}
 	if ts.Before(last.Samples[len(last.Samples)-1].Timestamp) {
-		return
+		return nil
 	}
 	last.Samples = append(last.Samples, logproto.PatternSample{
 		Timestamp: t,
 		Value:     1,
 	})
+	return &last.Samples[len(last.Samples)-2]
 }
 
-func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.Iterator {
+func (c Chunks) Iterator(pattern, lvl string, from, through, step model.Time) iter.Iterator {
 	iters := make([]iter.Iterator, 0, len(c))
 	for _, chunk := range c {
 		samples := chunk.ForRange(from, through, step)
 		if len(samples) == 0 {
 			continue
 		}
-		iters = append(iters, iter.NewSlice(pattern, samples))
+		iters = append(iters, iter.NewSlice(pattern, lvl, samples))
 	}
-	return iter.NewNonOverlappingIterator(pattern, iters)
+	return iter.NewNonOverlappingIterator(pattern, lvl, iters)
 }
 
 func (c Chunks) samples() []*logproto.PatternSample {
@@ -206,4 +210,4 @@ func (c *Chunks) size() int {
 	return size
 }
 
-func truncateTimestamp(ts, step model.Time) model.Time { return ts - ts%step }
+func TruncateTimestamp(ts, step model.Time) model.Time { return ts - ts%step }

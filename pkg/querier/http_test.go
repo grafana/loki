@@ -355,7 +355,7 @@ func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptes
 
 func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) *QuerierAPI {
 	defaultLimits := defaultLimitsTestConfig()
-	defaultLimits.MetricAggregationEnabled = enableMetricAggregation
+	defaultLimits.AggregationEnabled = enableMetricAggregation
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
