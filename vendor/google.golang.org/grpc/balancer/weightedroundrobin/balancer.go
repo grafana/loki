@@ -16,6 +16,15 @@
  *
  */
 
+// Package weightedroundrobin provides an implementation of the weighted round
+// robin LB policy, as defined in [gRFC A58].
+//
+// # Experimental
+//
+// Notice: This package is EXPERIMENTAL and may be changed or removed in a
+// later release.
+//
+// [gRFC A58]: https://github.com/grpc/proposal/blob/master/A58-client-side-weighted-round-robin-lb-policy.md
 package weightedroundrobin
 
 import (
@@ -95,8 +104,8 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		ClientConn:       cc,
 		target:           bOpts.Target.String(),
 		metricsRecorder:  cc.MetricsRecorder(),
-		addressWeights:   resolver.NewAddressMap(),
-		endpointToWeight: resolver.NewEndpointMap(),
+		addressWeights:   resolver.NewAddressMapV2[*endpointWeight](),
+		endpointToWeight: resolver.NewEndpointMap[*endpointWeight](),
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
@@ -146,17 +155,15 @@ func (bb) Name() string {
 //
 // Caller must hold b.mu.
 func (b *wrrBalancer) updateEndpointsLocked(endpoints []resolver.Endpoint) {
-	endpointSet := resolver.NewEndpointMap()
-	addressSet := resolver.NewAddressMap()
+	endpointSet := resolver.NewEndpointMap[*endpointWeight]()
+	addressSet := resolver.NewAddressMapV2[*endpointWeight]()
 	for _, endpoint := range endpoints {
 		endpointSet.Set(endpoint, nil)
 		for _, addr := range endpoint.Addresses {
 			addressSet.Set(addr, nil)
 		}
-		var ew *endpointWeight
-		if ewi, ok := b.endpointToWeight.Get(endpoint); ok {
-			ew = ewi.(*endpointWeight)
-		} else {
+		ew, ok := b.endpointToWeight.Get(endpoint)
+		if !ok {
 			ew = &endpointWeight{
 				logger:            b.logger,
 				connectivityState: connectivity.Connecting,
@@ -205,8 +212,8 @@ type wrrBalancer struct {
 	cfg              *lbConfig // active config
 	locality         string
 	stopPicker       *grpcsync.Event
-	addressWeights   *resolver.AddressMap  // addr -> endpointWeight
-	endpointToWeight *resolver.EndpointMap // endpoint -> endpointWeight
+	addressWeights   *resolver.AddressMapV2[*endpointWeight]
+	endpointToWeight *resolver.EndpointMap[*endpointWeight]
 	scToWeight       map[balancer.SubConn]*endpointWeight
 }
 
@@ -251,13 +258,12 @@ func (b *wrrBalancer) UpdateState(state balancer.State) {
 
 	for _, childState := range childStates {
 		if childState.State.ConnectivityState == connectivity.Ready {
-			ewv, ok := b.endpointToWeight.Get(childState.Endpoint)
+			ew, ok := b.endpointToWeight.Get(childState.Endpoint)
 			if !ok {
 				// Should never happen, simply continue and ignore this endpoint
 				// for READY pickers.
 				continue
 			}
-			ew := ewv.(*endpointWeight)
 			readyPickersWeight = append(readyPickersWeight, pickerWeightedEndpoint{
 				picker:           childState.State.Picker,
 				weightedEndpoint: ew,
@@ -320,7 +326,7 @@ func (b *wrrBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 	if err != nil {
 		return nil, err
 	}
-	b.scToWeight[sc] = ewi.(*endpointWeight)
+	b.scToWeight[sc] = ewi
 	return sc, nil
 }
 
@@ -389,8 +395,7 @@ func (b *wrrBalancer) Close() {
 	b.mu.Unlock()
 
 	// Ensure any lingering OOB watchers are stopped.
-	for _, ewv := range b.endpointToWeight.Values() {
-		ew := ewv.(*endpointWeight)
+	for _, ew := range b.endpointToWeight.Values() {
 		if ew.stopORCAListener != nil {
 			ew.stopORCAListener()
 		}

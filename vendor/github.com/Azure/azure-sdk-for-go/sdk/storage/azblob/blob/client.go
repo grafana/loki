@@ -185,9 +185,9 @@ func (b *Client) GetProperties(ctx context.Context, options *GetPropertiesOption
 
 // SetHTTPHeaders changes a blob's HTTP headers.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-blob-properties.
-func (b *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
+func (b *Client) SetHTTPHeaders(ctx context.Context, httpHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
 	opts, leaseAccessConditions, modifiedAccessConditions := o.format()
-	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &HTTPHeaders, leaseAccessConditions, modifiedAccessConditions)
+	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &httpHeaders, leaseAccessConditions, modifiedAccessConditions)
 	return resp, err
 }
 
@@ -448,6 +448,7 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 			return 0, err
 		}
 		size = *props.ContentLength - do.Range.Offset
+		do.Range.Count = size
 	} else {
 		size = count
 	}

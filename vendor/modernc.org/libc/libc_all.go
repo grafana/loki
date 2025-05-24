@@ -32,3 +32,21 @@ func X__sync_sub_and_fetch[T constraints.Integer](t *TLS, p uintptr, v T) T {
 		panic(todo(""))
 	}
 }
+
+// GoString returns the value of a C string at s.
+func GoString(s uintptr) string {
+	if s == 0 {
+		return ""
+	}
+
+	p := s
+	for *(*byte)(unsafe.Pointer(p)) != 0 {
+		p++
+	}
+	return string(unsafe.Slice((*byte)(unsafe.Pointer(s)), p-s))
+}
+
+// GoBytes returns a byte slice from a C char* having length len bytes.
+func GoBytes(s uintptr, len int) []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(s)), len)
+}
