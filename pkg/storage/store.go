@@ -94,7 +94,6 @@ type LokiStore struct {
 	limits StoreLimits
 	logger log.Logger
 
-	chunkFilterer               chunk.RequestChunkFilterer
 	extractorWrapper            lokilog.SampleExtractorWrapper
 	pipelineWrapper             lokilog.PipelineWrapper
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
@@ -383,11 +382,6 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 	return matchers, nil
 }
 
-func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
-	s.chunkFilterer = chunkFilterer
-	s.Store.SetChunkFilterer(chunkFilterer)
-}
-
 func (s *LokiStore) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
 	s.extractorWrapper = wrapper
 }
@@ -523,12 +517,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, req.Plan.String(), userID)
 	}
 
-	var chunkFilterer chunk.Filterer
-	if s.chunkFilterer != nil {
-		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
-	}
-
-	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End)
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -575,11 +564,6 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		extractors[i] = extractor
 	}
 
-	var chunkFilterer chunk.Filterer
-	if s.chunkFilterer != nil {
-		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
-	}
-
 	return newSampleBatchIterator(
 		ctx,
 		s.schemaCfg,
@@ -589,7 +573,6 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		matchers,
 		req.Start,
 		req.End,
-		chunkFilterer,
 		extractors...,
 	)
 }

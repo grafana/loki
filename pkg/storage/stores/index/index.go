@@ -17,11 +17,6 @@ import (
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
-type Filterable interface {
-	// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
-}
-
 type BaseReader interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
@@ -48,7 +43,6 @@ type Reader interface {
 	BaseReader
 	StatsReader
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
-	Filterable
 }
 
 type Writer interface {
@@ -180,16 +174,6 @@ func (m MonitoredReaderWriter) GetShards(
 	return shards, nil
 }
 
-func (m MonitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	m.rw.SetChunkFilterer(chunkFilter)
-}
-
-func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
-		return m.rw.IndexChunk(ctx, from, through, chk)
-	})
-}
-
 func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.ForSeries, bool) {
 	if impl, ok := m.rw.HasForSeries(from, through); ok {
 		wrapped := sharding.ForSeriesFunc(
@@ -214,4 +198,10 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 		return wrapped, true
 	}
 	return nil, false
+}
+
+func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
+	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		return m.rw.IndexChunk(ctx, from, through, chk)
+	})
 }

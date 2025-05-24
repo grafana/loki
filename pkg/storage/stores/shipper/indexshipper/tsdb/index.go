@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
@@ -45,7 +44,6 @@ type shouldIncludeChunk func(index.ChunkMeta) bool
 
 type Index interface {
 	Bounded
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
 	Close() error
 	sharding.ForSeries
 	// GetChunkRefs accepts an optional []ChunkRef argument.
@@ -79,9 +77,11 @@ func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []
 func (NoopIndex) Series(_ context.Context, _ string, _, _ model.Time, _ []Series, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]Series, error) {
 	return nil, nil
 }
+
 func (NoopIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
+
 func (NoopIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
@@ -89,8 +89,6 @@ func (NoopIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ str
 func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStatsAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
 	return nil
 }
-
-func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
 func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ index.FingerprintFilter, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
 	return nil

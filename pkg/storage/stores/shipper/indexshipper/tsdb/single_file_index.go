@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -121,8 +120,7 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader      IndexReader
-	chunkFilter chunk.RequestChunkFilterer
+	reader IndexReader
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -153,10 +151,6 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
-func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.chunkFilter = chunkFilter
-}
-
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
 // Iteration will stop if the callback returns true.
@@ -169,11 +163,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
 
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
-
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
@@ -183,10 +172,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
-				continue
-			}
-
-			if filterer != nil && filterer.ShouldFilter(ls) {
 				continue
 			}
 
@@ -300,16 +285,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
-		var filterer chunk.Filterer
 		by := make(map[string]struct{})
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-			if filterer != nil {
-				for _, k := range filterer.RequiredLabelNames() {
-					by[k] = struct{}{}
-				}
-			}
-		}
 
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
@@ -319,10 +295,6 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(fp)) {
-				continue
-			}
-
-			if filterer != nil && filterer.ShouldFilter(ls) {
 				continue
 			}
 
@@ -377,21 +349,10 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
 	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
 		by = make(map[string]struct{}, len(labelsToMatch))
 		for k := range labelsToMatch {
 			by[k] = struct{}{}
-		}
-
-		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
-		if filterer != nil {
-			for _, k := range filterer.RequiredLabelNames() {
-				by[k] = struct{}{}
-			}
 		}
 	}
 
@@ -405,10 +366,6 @@ func (i *TSDBIndex) Volume(
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(fp)) {
-				continue
-			}
-
-			if filterer != nil && filterer.ShouldFilter(ls) {
 				continue
 			}
 
