@@ -53,7 +53,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=table-manager
-            {{- with .Values.tableManager.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.tableManager.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -84,7 +84,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.tableManager.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.tableManager.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -120,7 +120,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.tableManager.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.tableManager.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}
