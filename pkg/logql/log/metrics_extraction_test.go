@@ -7,8 +7,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -541,79 +539,4 @@ func (p *stubStreamExtractor) ProcessString(
 
 func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
-}
-
-func TestVariantsStreamSampleExtractorWrapper(t *testing.T) {
-	tests := []struct {
-		name               string
-		index              int
-		input              string
-		labels             labels.Labels
-		structuredMetadata labels.Labels
-		want               float64
-		wantLbs            labels.Labels
-		wantBaseLbs        labels.Labels
-	}{
-		{
-			name:        "extraction with variant 0",
-			index:       0,
-			input:       "test line",
-			labels:      labels.FromStrings("foo", "bar"),
-			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "0"),
-		},
-		{
-			name:        "extraction with variant 1",
-			index:       1,
-			input:       "test line",
-			labels:      labels.FromStrings("foo", "bar"),
-			want:        1.0,
-			wantLbs:     labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
-			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "1"),
-		},
-		{
-			name:               "with structured metadata",
-			index:              2,
-			input:              "test line",
-			labels:             labels.FromStrings("foo", "bar"),
-			structuredMetadata: labels.FromStrings("meta", "data"),
-			want:               1.0,
-			wantLbs: labels.FromStrings(
-				"foo",
-				"bar",
-				constants.VariantLabel,
-				"2",
-				"meta",
-				"data",
-			),
-			wantBaseLbs: labels.FromStrings("foo", "bar", constants.VariantLabel, "2"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create base extractor that always returns 1.0 and the input labels
-			baseExtractor := &stubStreamExtractor{}
-			wrapped := NewVariantsStreamSampleExtractorWrapper(tt.index, baseExtractor)
-
-			// Test Process
-			samples, ok := wrapped.Process(0, []byte(tt.input), tt.structuredMetadata...)
-			require.Equal(t, true, ok)
-			require.Len(t, samples, 1, "Expected exactly one sample")
-			require.Equal(t, tt.want, samples[0].Value)
-			require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
-
-			// Test ProcessString
-			samples, ok = wrapped.ProcessString(0, tt.input, tt.structuredMetadata...)
-			require.Equal(t, true, ok)
-			require.Len(t, samples, 1, "Expected exactly one sample")
-			require.Equal(t, tt.want, samples[0].Value)
-			require.Equal(t, tt.wantLbs, samples[0].Labels.Labels())
-
-			// Test BaseLabels
-			baseLbs := wrapped.BaseLabels()
-			require.Equal(t, tt.wantBaseLbs, baseLbs.Labels())
-		})
-	}
 }

@@ -480,6 +480,10 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(t, err)
+	countExtractor := extractors[0]
+
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),
@@ -525,6 +529,10 @@ func BenchmarkUnorderedRead(b *testing.B) {
 			c:    unordered,
 		},
 	}
+
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(b, err)
+	countExtractor := extractors[0]
 
 	b.Run("itr", func(b *testing.B) {
 		for _, tc := range tcs {
@@ -590,6 +598,10 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
+
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(t, err)
+	countExtractor := extractors[0]
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),

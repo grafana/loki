@@ -9,8 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
-
 	"github.com/dustin/go-humanize"
 )
 
@@ -333,96 +331,4 @@ func convertBytes(v string) (float64, error) {
 		return 0, err
 	}
 	return float64(b), nil
-}
-
-type variantsSampleExtractorWrapper struct {
-	SampleExtractor
-	index int
-}
-
-func NewVariantsSampleExtractorWrapper(
-	index int,
-	extractor SampleExtractor,
-) SampleExtractor {
-	return &variantsSampleExtractorWrapper{
-		SampleExtractor: extractor,
-		index:           index,
-	}
-}
-
-func (v *variantsSampleExtractorWrapper) ForStream(labels labels.Labels) StreamSampleExtractor {
-	return NewVariantsStreamSampleExtractorWrapper(v.index, v.SampleExtractor.ForStream(labels))
-}
-
-type variantsStreamSampleExtractorWrapper struct {
-	StreamSampleExtractor
-	index int
-}
-
-func NewVariantsStreamSampleExtractorWrapper(
-	index int,
-	extractor StreamSampleExtractor,
-) StreamSampleExtractor {
-	return &variantsStreamSampleExtractorWrapper{
-		StreamSampleExtractor: extractor,
-		index:                 index,
-	}
-}
-
-func (v *variantsStreamSampleExtractorWrapper) BaseLabels() LabelsResult {
-	return appendVariantLabel(v.StreamSampleExtractor.BaseLabels(), v.index)
-}
-
-func (v *variantsStreamSampleExtractorWrapper) Process(
-	ts int64,
-	line []byte,
-	structuredMetadata ...labels.Label,
-) ([]ExtractedSample, bool) {
-	samples, ok := v.StreamSampleExtractor.Process(ts, line, structuredMetadata...)
-	if !ok {
-		return nil, false
-	}
-
-	// Add variant label to each sample
-	result := make([]ExtractedSample, len(samples))
-	for i, sample := range samples {
-		result[i] = ExtractedSample{
-			Value:  sample.Value,
-			Labels: appendVariantLabel(sample.Labels, v.index),
-		}
-	}
-	return result, true
-}
-
-func (v *variantsStreamSampleExtractorWrapper) ProcessString(
-	ts int64,
-	line string,
-	structuredMetadata ...labels.Label,
-) ([]ExtractedSample, bool) {
-	samples, ok := v.StreamSampleExtractor.ProcessString(ts, line, structuredMetadata...)
-	if !ok {
-		return nil, false
-	}
-
-	// Add variant label to each sample
-	result := make([]ExtractedSample, len(samples))
-	for i, sample := range samples {
-		result[i] = ExtractedSample{
-			Value:  sample.Value,
-			Labels: appendVariantLabel(sample.Labels, v.index),
-		}
-	}
-	return result, true
-}
-
-func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
-	newLbls := lbls.Stream()
-	newLbls = append(newLbls, labels.Label{
-		Name:  constants.VariantLabel,
-		Value: strconv.Itoa(variantIndex),
-	})
-	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
-	builder.Add(StructuredMetadataLabel, lbls.StructuredMetadata())
-	builder.Add(ParsedLabel, lbls.Parsed())
-	return builder.LabelsResult()
 }

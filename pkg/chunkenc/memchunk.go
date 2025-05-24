@@ -1348,7 +1348,6 @@ func (hb *headBlock) SampleIterator(
 				})
 			}
 
-			//TODO(twhitney): will need to solve for this with multivariate extractor
 			if extractor.ReferencedStructuredMetadata() {
 				setQueryReferencedStructuredMetadata = true
 			}
