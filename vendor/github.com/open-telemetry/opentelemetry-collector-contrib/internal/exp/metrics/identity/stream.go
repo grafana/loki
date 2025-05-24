@@ -4,6 +4,7 @@
 package identity // import "github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
 
 import (
+	"fmt"
 	"hash"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -12,18 +13,22 @@ import (
 )
 
 type Stream struct {
-	metric
-	attrs [16]byte
+	metric Metric
+	attrs  [16]byte
 }
 
-func (i Stream) Hash() hash.Hash64 {
-	sum := i.metric.Hash()
-	sum.Write(i.attrs[:])
+func (s Stream) Hash() hash.Hash64 {
+	sum := s.metric.Hash()
+	sum.Write(s.attrs[:])
 	return sum
 }
 
-func (i Stream) Metric() Metric {
-	return i.metric
+func (s Stream) Metric() Metric {
+	return s.metric
+}
+
+func (s Stream) String() string {
+	return fmt.Sprintf("stream/%x", s.Hash().Sum64())
 }
 
 func OfStream[DataPoint attrPoint](m Metric, dp DataPoint) Stream {

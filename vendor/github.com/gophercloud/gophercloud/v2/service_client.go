@@ -115,13 +115,17 @@ func (client *ServiceClient) Head(ctx context.Context, url string, opts *Request
 }
 
 func (client *ServiceClient) setMicroversionHeader(opts *RequestOpts) {
+	serviceType := client.Type
+
 	switch client.Type {
 	case "compute":
 		opts.MoreHeaders["X-OpenStack-Nova-API-Version"] = client.Microversion
-	case "sharev2":
+	case "shared-file-system", "sharev2", "share":
 		opts.MoreHeaders["X-OpenStack-Manila-API-Version"] = client.Microversion
-	case "volume":
+	case "block-storage", "block-store", "volume", "volumev3":
 		opts.MoreHeaders["X-OpenStack-Volume-API-Version"] = client.Microversion
+		// cinder should accept block-storage but (as of Dalmatian) does not
+		serviceType = "volume"
 	case "baremetal":
 		opts.MoreHeaders["X-OpenStack-Ironic-API-Version"] = client.Microversion
 	case "baremetal-introspection":
@@ -129,7 +133,7 @@ func (client *ServiceClient) setMicroversionHeader(opts *RequestOpts) {
 	}
 
 	if client.Type != "" {
-		opts.MoreHeaders["OpenStack-API-Version"] = client.Type + " " + client.Microversion
+		opts.MoreHeaders["OpenStack-API-Version"] = serviceType + " " + client.Microversion
 	}
 }
 

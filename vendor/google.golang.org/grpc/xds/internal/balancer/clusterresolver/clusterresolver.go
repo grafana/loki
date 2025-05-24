@@ -327,7 +327,12 @@ func (b *clusterResolverBalancer) run() {
 				b.handleClientConnUpdate(update)
 			case exitIdle:
 				if b.child == nil {
-					b.logger.Errorf("xds: received ExitIdle with no child balancer")
+					// This is not necessarily an error. The EDS/DNS watch may
+					// not have  returned a list of endpoints yet, so the child
+					// may not be built.
+					if b.logger.V(2) {
+						b.logger.Infof("xds: received ExitIdle with no child balancer")
+					}
 					break
 				}
 				// This implementation assumes the child balancer supports
