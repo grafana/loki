@@ -592,32 +592,6 @@ func roundup(n, to uintptr) uintptr {
 	return n
 }
 
-func GoString(s uintptr) string {
-	if s == 0 {
-		return ""
-	}
-
-	var buf []byte
-	for {
-		b := *(*byte)(unsafe.Pointer(s))
-		if b == 0 {
-			return string(buf)
-		}
-
-		buf = append(buf, b)
-		s++
-	}
-}
-
-// GoBytes returns a byte slice from a C char* having length len bytes.
-func GoBytes(s uintptr, len int) []byte {
-	if len == 0 {
-		return nil
-	}
-
-	return (*RawMem)(unsafe.Pointer(s))[:len:len]
-}
-
 func Bool(v bool) bool { return v }
 
 func Bool32(b bool) int32 {

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -45,7 +44,7 @@ func newDecimalData[T interface {
 	decimal.Num[T]
 }](data arrow.ArrayData) *baseDecimal[T] {
 	a := &baseDecimal[T]{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -148,11 +147,13 @@ func NewDecimal256Data(data arrow.ArrayData) *Decimal256 {
 	return newDecimalData[decimal.Decimal256](data)
 }
 
-type Decimal32Builder = baseDecimalBuilder[decimal.Decimal32]
-type Decimal64Builder = baseDecimalBuilder[decimal.Decimal64]
-type Decimal128Builder struct {
-	*baseDecimalBuilder[decimal.Decimal128]
-}
+type (
+	Decimal32Builder  = baseDecimalBuilder[decimal.Decimal32]
+	Decimal64Builder  = baseDecimalBuilder[decimal.Decimal64]
+	Decimal128Builder struct {
+		*baseDecimalBuilder[decimal.Decimal128]
+	}
+)
 
 func (b *Decimal128Builder) NewDecimal128Array() *Decimal128 {
 	return b.NewDecimalArray()
@@ -182,18 +183,20 @@ func newDecimalBuilder[T interface {
 	decimal.DecimalTypes
 	decimal.Num[T]
 }, DT arrow.DecimalType](mem memory.Allocator, dtype DT) *baseDecimalBuilder[T] {
-	return &baseDecimalBuilder[T]{
-		builder: builder{refCount: 1, mem: mem},
+	bdb := &baseDecimalBuilder[T]{
+		builder: builder{mem: mem},
 		dtype:   dtype,
 	}
+	bdb.builder.refCount.Add(1)
+	return bdb
 }
 
 func (b *baseDecimalBuilder[T]) Type() arrow.DataType { return b.dtype }
 
 func (b *baseDecimalBuilder[T]) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -429,4 +432,9 @@ var (
 	_ Builder     = (*Decimal64Builder)(nil)
 	_ Builder     = (*Decimal128Builder)(nil)
 	_ Builder     = (*Decimal256Builder)(nil)
+
+	_ arrow.TypedArray[decimal.Decimal32]  = (*Decimal32)(nil)
+	_ arrow.TypedArray[decimal.Decimal64]  = (*Decimal64)(nil)
+	_ arrow.TypedArray[decimal.Decimal128] = (*Decimal128)(nil)
+	_ arrow.TypedArray[decimal.Decimal256] = (*Decimal256)(nil)
 )
