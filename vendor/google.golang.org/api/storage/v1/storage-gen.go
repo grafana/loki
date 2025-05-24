@@ -155,9 +155,6 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.Objects = NewObjectsService(s)
 	s.Operations = NewOperationsService(s)
 	s.Projects = NewProjectsService(s)
-	if err != nil {
-		return nil, err
-	}
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -11228,6 +11225,18 @@ func (c *ObjectsMoveCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatc
 // in the request.
 func (c *ObjectsMoveCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *ObjectsMoveCall {
 	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
+	return c
+}
+
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
+//
+// Possible values:
+//
+//	"full" - Include all properties.
+//	"noAcl" - Omit the owner, acl property.
+func (c *ObjectsMoveCall) Projection(projection string) *ObjectsMoveCall {
+	c.urlParams_.Set("projection", projection)
 	return c
 }
 

@@ -126,6 +126,9 @@ type Client struct {
 
 	// tc is the transport-agnostic client implemented with either gRPC or HTTP.
 	tc storageClient
+
+	// Option to use gRRPC appendable upload API was set.
+	grpcAppendableUploads bool
 }
 
 // NewClient creates a new Google Cloud Storage client using the HTTP transport.
@@ -238,8 +241,10 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	if err != nil {
 		return nil, err
 	}
-
-	return &Client{tc: tc}, nil
+	return &Client{
+		tc:                    tc,
+		grpcAppendableUploads: tc.config.grpcAppendableUploads,
+	}, nil
 }
 
 // CheckDirectConnectivitySupported checks if gRPC direct connectivity
@@ -1107,7 +1112,9 @@ type ObjectAttrsToUpdate struct {
 }
 
 // Delete deletes the single specified object.
-func (o *ObjectHandle) Delete(ctx context.Context) error {
+func (o *ObjectHandle) Delete(ctx context.Context) (err error) {
+	ctx, _ = startSpan(ctx, "Object.Delete")
+	defer func() { endSpan(ctx, err) }()
 	if err := o.validate(); err != nil {
 		return err
 	}
@@ -1238,6 +1245,7 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 		donec:       make(chan struct{}),
 		ObjectAttrs: ObjectAttrs{Name: o.object},
 		ChunkSize:   googleapi.DefaultUploadChunkSize,
+		Append:      o.c.grpcAppendableUploads,
 	}
 }
 
@@ -1267,7 +1275,7 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 // This feature is in preview and is not yet available for general use.
 func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Writer")
-	if o.gen == 0 {
+	if o.gen < 0 {
 		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
 	}
 	w := &Writer{
