@@ -58,6 +58,32 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
 - [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
 - [ENHANCEMENT] Bump Loki version to 3.3.2
+- [BUGFIX] Fix broken `readinessProbe` and `livenessProbe` helper template definitons.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api.
+- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-builder.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner.
+- [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the exporter container in the memcached pods.
+- [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the memcached container in the memcached pods.
+- [ENHANCEMENT] Add configurable `startupProbe` to compactor.
+- [ENHANCEMENT] Add configurable `startupProbe` to distributor.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the gateway container in the enterprise-gateway pods.
+- [ENHANCEMENT] Add configurable `startupProbe` to index-gateway.
+- [ENHANCEMENT] Add configurable `startupProbe` to ingester.
+- [ENHANCEMENT] Make `readinessProbe` configurable in loki-canary.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to loki-canary.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to pattern-ingester.
+- [ENHANCEMENT] Add configurable `startupProbe` to querier.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend.
+- [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the read pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler.
+- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the single-binary pods.
+- [ENHANCEMENT] Add configurable `startupProbe` to table-manager.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to write.
 
 ## 6.23.0
 
