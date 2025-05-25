@@ -176,6 +176,10 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- with .Values.backend.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
