@@ -46,8 +46,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 								{
 									Alert: "alert",
 									Labels: map[string]string{
-										opaDefaultLabelMatcher:    "test-ns",
-										ocpMonitoringGroupByLabel: "test-ns",
+										"kubernetes_namespace_name": "test-ns",
+										"k8s_namespace_name":        "test-ns",
+										ocpMonitoringGroupByLabel:   "test-ns",
 									},
 								},
 							},
