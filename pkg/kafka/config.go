@@ -86,7 +86,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.ReaderConfig.RegisterFlagsWithPrefix(prefix+".reader", f)
 	cfg.WriterConfig.RegisterFlagsWithPrefix(prefix+".writer", f)
 
-	f.StringVar(&cfg.Address, prefix+".address", "localhost:9092", "The Kafka backend address. This setting is deprecated and will be removed in the next minor release.")
+	f.StringVar(&cfg.Address, prefix+".address", "", "The Kafka backend address. This setting is deprecated and will be removed in the next minor release.")
 	f.StringVar(&cfg.Topic, prefix+".topic", "", "The Kafka topic name.")
 	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID. This setting is deprecated and will be removed in the next minor release.")
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
