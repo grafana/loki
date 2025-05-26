@@ -99,6 +99,9 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
 	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
+	}
 
 	// Remove objects that do not contain any matching streams
 	for i := 0; i < len(paths); i++ {
@@ -110,7 +113,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 		}
 	}
 
-	return paths, streamIDs, sections, err
+	return paths, streamIDs, sections, nil
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
