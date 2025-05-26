@@ -108,8 +108,8 @@ func (cfg *Config) Validate() error {
 	if cfg.RateWindow < cfg.BucketSize {
 		return errors.New("rate-window must be greater than or equal to bucket-size")
 	}
-	if cfg.ActiveWindow%cfg.EvictionInterval != 0 {
-		return errors.New("active-window must be a multiple of evict-interval")
+	if cfg.EvictionInterval <= 0 {
+		return errors.New("eviction-interval must be greater than 0")
 	}
 	if cfg.NumPartitions <= 0 {
 		return errors.New("num-partitions must be greater than 0")
