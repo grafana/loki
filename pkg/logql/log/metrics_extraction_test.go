@@ -391,7 +391,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	structuredMetadata := labels.FromStrings("user", "bob")
-	expectedLabelsResults := append(lbs, structuredMetadata...)
+	expectedLabelsResults := appendLabels(lbs, structuredMetadata)
 	se, err := NewLineSampleExtractor(CountExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
@@ -415,7 +415,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	expectedLabelsResults = append(lbs, labels.Label{
 		Name: "foo_extracted", Value: "baz",
 	})
-	expectedLabelsResults = append(expectedLabelsResults, structuredMetadata...)
+	expectedLabelsResults = appendLabels(expectedLabelsResults, structuredMetadata)
 	samples, ok = sse.Process(0, []byte(`foo`), append(structuredMetadata, labels.Label{
 		Name: "foo", Value: "baz",
 	})...)

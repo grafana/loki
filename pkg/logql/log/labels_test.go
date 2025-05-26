@@ -2,7 +2,8 @@ package log
 
 import (
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,11 +188,8 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 		"buzz", "fuzz",
 		"ToReplace", "other",
 	)
-	expected := make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+
+	expected := mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
@@ -220,11 +218,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 		"ToReplace", "other",
 	)
 
-	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected = mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
 	assertLabelResult(t, expected, b.LabelsResult())
@@ -250,11 +244,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 	expectedStucturedMetadataLbls := labels.FromStrings("stzz", "stvzz")
 	expectedParsedLbls := labels.FromStrings("toreplace", "buzz")
 
-	expected := make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected := mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	actual := b.LabelsResult()
 	assertLabelResult(t, expected, actual)
@@ -272,11 +262,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 	expectedStucturedMetadataLbls = labels.FromStrings("stzz", "stvzz")
 	expectedParsedLbls = labels.FromStrings("toreplace", "buzz")
 
-	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected = mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	actual = b.LabelsResult()
 	assertLabelResult(t, expected, actual)
@@ -293,11 +279,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 	expectedStucturedMetadataLbls = labels.FromStrings("toreplace", "muzz")
 	expectedParsedLbls = labels.FromStrings("stzz", "stvzz")
 
-	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected = mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	actual = b.LabelsResult()
 	assertLabelResult(t, expected, actual)
@@ -315,11 +297,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 	expectedStucturedMetadataLbls = labels.FromStrings("stzz", "stvzzz")
 	expectedParsedLbls = labels.FromStrings("toreplace", "puzz")
 
-	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected = mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	actual = b.LabelsResult()
 	assertLabelResult(t, expected, actual)
@@ -336,11 +314,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 	expectedStucturedMetadataLbls = labels.FromStrings("toreplace", "muzz")
 	expectedParsedLbls = labels.FromStrings("stzz", "stvzzz")
 
-	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
-	expected = append(expected, expectedStreamLbls...)
-	expected = append(expected, expectedStucturedMetadataLbls...)
-	expected = append(expected, expectedParsedLbls...)
-	expected = labels.New(expected...)
+	expected = mergeLabels(expectedStreamLbls, expectedStucturedMetadataLbls, expectedParsedLbls)
 
 	actual = b.LabelsResult()
 	assertLabelResult(t, expected, actual)
@@ -357,29 +331,35 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
-	b.add[StructuredMetadataLabel] = labels.FromStrings("toreplace", "buzz", "fzz", "bzz")
-	b.add[ParsedLabel] = labels.FromStrings("pzz", "pvzz")
-	expected := labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "buzz", "pzz", "pvzz")
+	b.add[StructuredMetadataLabel] = []labels.Label{{"toreplace", "buzz"}, {"fzz", "bzz"}}
+	b.add[ParsedLabel] = []labels.Label{{"pzz", "pvzz"}}
+	expected := []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "buzz"}, {"pzz", "pvzz"}}
 	actual := b.UnsortedLabels(nil)
 	require.ElementsMatch(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = labels.FromStrings("fzz", "bzz")
-	b.add[ParsedLabel] = labels.FromStrings("toreplace", "buzz", "pzz", "pvzz")
-	expected = labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "buzz", "pzz", "pvzz")
+	b.add[StructuredMetadataLabel] = []labels.Label{{"fzz", "bzz"}}
+	b.add[ParsedLabel] = []labels.Label{{"toreplace", "buzz"}, {"pzz", "pvzz"}}
+	expected = []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "buzz"}, {"pzz", "pvzz"}}
 	actual = b.UnsortedLabels(nil)
-	sort.Sort(expected)
-	sort.Sort(actual)
+	sortLabelSlice(expected)
+	sortLabelSlice(actual)
 	assert.Equal(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = labels.FromStrings("fzz", "bzz", "toreplacezz", "test")
-	b.add[ParsedLabel] = labels.FromStrings("toreplacezz", "buzz", "pzz", "pvzz")
-	expected = labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "fuzz", "pzz", "pvzz", "toreplacezz", "buzz")
+	b.add[StructuredMetadataLabel] = []labels.Label{{"fzz", "bzz"}, {"toreplacezz", "test"}}
+	b.add[ParsedLabel] = []labels.Label{{"toreplacezz", "buzz"}, {"pzz", "pvzz"}}
+	expected = []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "fuzz"}, {"pzz", "pvzz"}, {"toreplacezz", "buzz"}}
 	actual = b.UnsortedLabels(nil)
-	sort.Sort(expected)
-	sort.Sort(actual)
+	sortLabelSlice(expected)
+	sortLabelSlice(actual)
 	assert.Equal(t, expected, actual)
+}
+
+func sortLabelSlice(l []labels.Label) {
+	slices.SortFunc(l, func(a, b labels.Label) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
@@ -464,6 +444,18 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		lbs.String(),
 		res.String(),
 	)
+}
+
+func mergeLabels(lbls ...labels.Labels) labels.Labels {
+	builder := labels.NewBuilder(lbls[0])
+
+	for _, l := range lbls[1:] {
+		l.Range(func(l labels.Label) {
+			builder.Set(l.Name, l.Value)
+		})
+	}
+
+	return builder.Labels()
 }
 
 // benchmark streamLineSampleExtractor.Process method
