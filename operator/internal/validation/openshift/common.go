@@ -64,7 +64,7 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	}
 
 	matchers := selector.Matchers()
-	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
+	if tenantID == tenantApplication && !validateIncludesNamespace(namespace, matchers) {
 		return lokiv1.ErrRuleMustMatchNamespace
 	}
 
