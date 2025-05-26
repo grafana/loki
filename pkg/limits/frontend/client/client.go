@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -85,7 +85,7 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Client is a gRPC client for the ingest-limits-frontend.
 type Client struct {
-	logproto.IngestLimitsFrontendClient
+	proto.IngestLimitsFrontendClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
@@ -95,7 +95,8 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(getGRPCInterceptors(&cfg))
+	unaryInterceptors, streamInterceptors := getGRPCInterceptors(&cfg)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		IngestLimitsFrontendClient: logproto.NewIngestLimitsFrontendClient(conn),
+		IngestLimitsFrontendClient: proto.NewIngestLimitsFrontendClient(conn),
 		HealthClient:               grpc_health_v1.NewHealthClient(conn),
 		Closer:                     conn,
 	}, nil

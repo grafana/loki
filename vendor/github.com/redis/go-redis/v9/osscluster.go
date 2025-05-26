@@ -21,6 +21,10 @@ import (
 	"github.com/redis/go-redis/v9/internal/rand"
 )
 
+const (
+	minLatencyMeasurementInterval = 10 * time.Second
+)
+
 var errClusterNoNodes = fmt.Errorf("redis: cluster has no nodes")
 
 // ClusterOptions are used to configure a cluster client and should be
@@ -86,8 +90,19 @@ type ClusterOptions struct {
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
 
-	TLSConfig        *tls.Config
-	DisableIndentity bool // Disable set-lib on connect. Default is false.
+	TLSConfig *tls.Config
+
+	// DisableIndentity - Disable set-lib on connect.
+	//
+	// default: false
+	//
+	// Deprecated: Use DisableIdentity instead.
+	DisableIndentity bool
+
+	// DisableIdentity is used to disable CLIENT SETINFO command on connect.
+	//
+	// default: false
+	DisableIdentity bool
 
 	IdentitySuffix string // Add suffix to client name. Default is empty.
 
@@ -96,9 +111,10 @@ type ClusterOptions struct {
 }
 
 func (opt *ClusterOptions) init() {
-	if opt.MaxRedirects == -1 {
+	switch opt.MaxRedirects {
+	case -1:
 		opt.MaxRedirects = 0
-	} else if opt.MaxRedirects == 0 {
+	case 0:
 		opt.MaxRedirects = 3
 	}
 
@@ -299,7 +315,8 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		MaxActiveConns:   opt.MaxActiveConns,
 		ConnMaxIdleTime:  opt.ConnMaxIdleTime,
 		ConnMaxLifetime:  opt.ConnMaxLifetime,
-		DisableIndentity: opt.DisableIndentity,
+		DisableIdentity:  opt.DisableIdentity,
+		DisableIndentity: opt.DisableIdentity,
 		IdentitySuffix:   opt.IdentitySuffix,
 		TLSConfig:        opt.TLSConfig,
 		// If ClusterSlots is populated, then we probably have an artificial
@@ -320,6 +337,10 @@ type clusterNode struct {
 	latency    uint32 // atomic
 	generation uint32 // atomic
 	failing    uint32 // atomic
+
+	// last time the latency measurement was performed for the node, stored in nanoseconds
+	// from epoch
+	lastLatencyMeasurement int64 // atomic
 }
 
 func newClusterNode(clOpt *ClusterOptions, addr string) *clusterNode {
@@ -372,6 +393,7 @@ func (n *clusterNode) updateLatency() {
 		latency = float64(dur) / float64(successes)
 	}
 	atomic.StoreUint32(&n.latency, uint32(latency+0.5))
+	n.SetLastLatencyMeasurement(time.Now())
 }
 
 func (n *clusterNode) Latency() time.Duration {
@@ -401,10 +423,23 @@ func (n *clusterNode) Generation() uint32 {
 	return atomic.LoadUint32(&n.generation)
 }
 
+func (n *clusterNode) LastLatencyMeasurement() int64 {
+	return atomic.LoadInt64(&n.lastLatencyMeasurement)
+}
+
 func (n *clusterNode) SetGeneration(gen uint32) {
 	for {
 		v := atomic.LoadUint32(&n.generation)
 		if gen < v || atomic.CompareAndSwapUint32(&n.generation, v, gen) {
+			break
+		}
+	}
+}
+
+func (n *clusterNode) SetLastLatencyMeasurement(t time.Time) {
+	for {
+		v := atomic.LoadInt64(&n.lastLatencyMeasurement)
+		if t.UnixNano() < v || atomic.CompareAndSwapInt64(&n.lastLatencyMeasurement, v, t.UnixNano()) {
 			break
 		}
 	}
@@ -499,10 +534,11 @@ func (c *clusterNodes) GC(generation uint32) {
 	c.mu.Lock()
 
 	c.activeAddrs = c.activeAddrs[:0]
+	now := time.Now()
 	for addr, node := range c.nodes {
 		if node.Generation() >= generation {
 			c.activeAddrs = append(c.activeAddrs, addr)
-			if c.opt.RouteByLatency {
+			if c.opt.RouteByLatency && node.LastLatencyMeasurement() < now.Add(-minLatencyMeasurementInterval).UnixNano() {
 				go node.updateLatency()
 			}
 			continue
@@ -888,6 +924,9 @@ type ClusterClient struct {
 // NewClusterClient returns a Redis Cluster client as described in
 // http://redis.io/topics/cluster-spec.
 func NewClusterClient(opt *ClusterOptions) *ClusterClient {
+	if opt == nil {
+		panic("redis: NewClusterClient nil options")
+	}
 	opt.init()
 
 	c := &ClusterClient{
@@ -1327,7 +1366,9 @@ func (c *ClusterClient) processPipelineNode(
 	_ = node.Client.withProcessPipelineHook(ctx, cmds, func(ctx context.Context, cmds []Cmder) error {
 		cn, err := node.Client.getConn(ctx)
 		if err != nil {
-			node.MarkAsFailing()
+			if !isContextError(err) {
+				node.MarkAsFailing()
+			}
 			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 			setCmdsErr(cmds, err)
 			return err
@@ -1819,7 +1860,7 @@ func (c *ClusterClient) cmdInfo(ctx context.Context, name string) *CommandInfo {
 
 func (c *ClusterClient) cmdSlot(ctx context.Context, cmd Cmder) int {
 	args := cmd.Args()
-	if args[0] == "cluster" && args[1] == "getkeysinslot" {
+	if args[0] == "cluster" && (args[1] == "getkeysinslot" || args[1] == "countkeysinslot") {
 		return args[2].(int)
 	}
 

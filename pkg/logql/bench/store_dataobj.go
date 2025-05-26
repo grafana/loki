@@ -3,6 +3,7 @@ package bench
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -24,7 +25,7 @@ import (
 type DataObjStore struct {
 	dir      string
 	tenantID string
-	builder  *dataobj.Builder
+	builder  *logsobj.Builder
 	buf      *bytes.Buffer
 	uploader *uploader.Uploader
 	meta     *metastore.Updater
@@ -54,11 +55,13 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		return nil, fmt.Errorf("failed to create bucket: %w", err)
 	}
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:    2 * 1024 * 1024,   // 2MB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
 		BufferSize:        16 * 1024 * 1024,  // 16MB
+
+		SectionStripeMergeLimit: 2,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
@@ -83,7 +86,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 // Write implements Store
 func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error {
 	for _, stream := range streams {
-		if err := s.builder.Append(stream); err == dataobj.ErrBuilderFull {
+		if err := s.builder.Append(stream); errors.Is(err, logsobj.ErrBuilderFull) {
 			// If the builder is full, flush it and try again
 			if err := s.flush(); err != nil {
 				return fmt.Errorf("failed to flush builder: %w", err)
@@ -120,7 +123,7 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update metastore with the new data object
-	err = s.meta.Update(context.Background(), path, stats)
+	err = s.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}

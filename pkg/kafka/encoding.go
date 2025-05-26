@@ -16,10 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-const (
-	metadataTopicSuffix = ".metadata"
-)
-
 var (
 	encoderPool = sync.Pool{
 		New: func() any {
@@ -181,11 +177,16 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 
 // DecodeWithoutLabels converts a Kafka record's byte data back into a logproto.Stream without parsing labels.
 func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
-	d.stream.Entries = d.stream.Entries[:0]
-	if err := d.stream.Unmarshal(data); err != nil {
+	if len(data) == 0 {
+		return logproto.Stream{}, errors.New("empty data received")
+	}
+
+	stream := logproto.Stream{}
+	if err := stream.Unmarshal(data); err != nil {
 		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
-	return *d.stream, nil
+
+	return stream, nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.
@@ -193,48 +194,4 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 // in Protocol Buffers' variable-length integer format.
 func sovPush(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
-}
-
-// EncodeStreamMetadata encodes the stream metadata into a Kafka record
-// using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic, tenantID string, streamHash, entriesSize, structuredMetadataSize uint64) (*kgo.Record, error) {
-	// Validate stream hash
-	if streamHash == 0 {
-		return nil, fmt.Errorf("invalid stream hash '%d'", streamHash)
-	}
-
-	metadata := logproto.StreamMetadata{
-		StreamHash:             streamHash,
-		EntriesSize:            entriesSize,
-		StructuredMetadataSize: structuredMetadataSize,
-	}
-
-	// Encode the metadata into a byte slice
-	value, err := metadata.Marshal()
-	if err != nil {
-		return nil, err
-	}
-
-	return &kgo.Record{
-		Key:       []byte(tenantID),
-		Value:     value,
-		Partition: partition,
-		Topic:     MetadataTopicFor(topic),
-	}, nil
-}
-
-// DecodeStreamMetadata decodes a Kafka record into a StreamMetadata.
-// It returns the decoded metadata and any error encountered.
-func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) {
-	var metadata logproto.StreamMetadata
-	if err := metadata.Unmarshal(record.Value); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal stream metadata: %w", err)
-	}
-
-	return &metadata, nil
-}
-
-// MetadataTopicFor returns the metadata topic name for the given topic.
-func MetadataTopicFor(topic string) string {
-	return topic + metadataTopicSuffix
 }

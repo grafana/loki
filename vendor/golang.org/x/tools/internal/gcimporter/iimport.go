@@ -400,7 +400,7 @@ type iimporter struct {
 	indent int // for tracing support
 }
 
-func (p *iimporter) trace(format string, args ...interface{}) {
+func (p *iimporter) trace(format string, args ...any) {
 	if !trace {
 		// Call sites should also be guarded, but having this check here allows
 		// easily enabling/disabling debug trace statements.
@@ -671,7 +671,9 @@ func (r *importReader) obj(name string) {
 	case varTag:
 		typ := r.typ()
 
-		r.declare(types.NewVar(pos, r.currPkg, name, typ))
+		v := types.NewVar(pos, r.currPkg, name, typ)
+		typesinternal.SetVarKind(v, typesinternal.PackageVar)
+		r.declare(v)
 
 	default:
 		errorf("unexpected tag: %v", tag)

@@ -51,8 +51,6 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 | Transformer| [loki.process](https://grafana.com/docs/alloy/latest/reference/components/loki.process/)            |
 | Writer     | [loki.write](https://grafana.com/docs/alloy/latest/reference/components/loki.write/)                |
 | Writer     | [otelcol.exporter.loki](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.loki/) |
-| Writer     | [otelcol.exporter.logging](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.logging/) |
-
 
 ## Interactive Tutorials
 
@@ -60,5 +58,3 @@ To learn more about how to configure Alloy to send logs to Loki within different
 
 - [Sending OpenTelemetry logs to Loki using Alloy](examples/alloy-otel-logs/)
 - [Sending logs over Kafka to Loki using Alloy](examples/alloy-kafka-logs/)
-
-

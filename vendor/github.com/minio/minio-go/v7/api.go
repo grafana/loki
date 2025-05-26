@@ -40,8 +40,10 @@ import (
 
 	md5simd "github.com/minio/md5-simd"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/kvcache"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/minio-go/v7/pkg/signer"
+	"github.com/minio/minio-go/v7/pkg/singleflight"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -68,9 +70,11 @@ type Client struct {
 	secure bool
 
 	// Needs allocation.
-	httpClient     *http.Client
-	httpTrace      *httptrace.ClientTrace
-	bucketLocCache *bucketLocationCache
+	httpClient         *http.Client
+	httpTrace          *httptrace.ClientTrace
+	bucketLocCache     *kvcache.Cache[string, string]
+	bucketSessionCache *kvcache.Cache[string, credentials.Value]
+	credsGroup         singleflight.Group[string, credentials.Value]
 
 	// Advanced functionality.
 	isTraceEnabled  bool
@@ -155,7 +159,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.88"
+	libraryVersion = "v7.0.92"
 )
 
 // User Agent should always following the below style.
@@ -280,8 +284,11 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	}
 	clnt.region = opts.Region
 
-	// Instantiate bucket location cache.
-	clnt.bucketLocCache = newBucketLocationCache()
+	// Initialize bucket region cache.
+	clnt.bucketLocCache = &kvcache.Cache[string, string]{}
+
+	// Initialize bucket session cache (s3 express).
+	clnt.bucketSessionCache = &kvcache.Cache[string, credentials.Value]{}
 
 	// Introduce a new locked random seed.
 	clnt.random = rand.New(&lockedRandSource{src: rand.NewSource(time.Now().UTC().UnixNano())})
@@ -598,7 +605,7 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 
 	// If trace is enabled, dump http request and response,
 	// except when the traceErrorsOnly enabled and the response's status code is ok
-	if c.isTraceEnabled && !(c.traceErrorsOnly && resp.StatusCode == http.StatusOK) {
+	if c.isTraceEnabled && (!c.traceErrorsOnly || resp.StatusCode != http.StatusOK) {
 		err = c.dumpHTTP(req, resp)
 		if err != nil {
 			return nil, err
@@ -660,13 +667,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(crc.Sum(nil)))
 	}
 
-	// Create cancel context to control 'newRetryTimer' go routine.
-	retryCtx, cancel := context.WithCancel(ctx)
-
-	// Indicate to our routine to exit cleanly upon return.
-	defer cancel()
-
-	for range c.newRetryTimer(retryCtx, reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter) {
+	for range c.newRetryTimer(ctx, reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter) {
 		// Retry executes the following function body if request has an
 		// error until maxRetries have been exhausted, retry attempts are
 		// performed after waiting for a given period of time in a
@@ -779,7 +780,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 	}
 
 	// Return an error when retry is canceled or deadlined
-	if e := retryCtx.Err(); e != nil {
+	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
 
@@ -824,14 +825,21 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		ctx = httptrace.WithClientTrace(ctx, c.httpTrace)
 	}
 
-	// Initialize a new HTTP request for the method.
-	req, err = http.NewRequestWithContext(ctx, method, targetURL.String(), nil)
+	// make sure to de-dup calls to credential services, this reduces
+	// the overall load to the endpoint generating credential service.
+	value, err, _ := c.credsGroup.Do(metadata.bucketName, func() (credentials.Value, error) {
+		if s3utils.IsS3ExpressBucket(metadata.bucketName) && s3utils.IsAmazonEndpoint(*c.endpointURL) {
+			return c.CreateSession(ctx, metadata.bucketName, SessionReadWrite)
+		}
+		// Get credentials from the configured credentials provider.
+		return c.credsProvider.GetWithContext(c.CredContext())
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.GetWithContext(c.CredContext())
+	// Initialize a new HTTP request for the method.
+	req, err = http.NewRequestWithContext(ctx, method, targetURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -842,6 +850,10 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		secretAccessKey = value.SecretAccessKey
 		sessionToken    = value.SessionToken
 	)
+
+	if s3utils.IsS3ExpressBucket(metadata.bucketName) && sessionToken != "" {
+		req.Header.Set("x-amz-s3session-token", sessionToken)
+	}
 
 	// Custom signer set then override the behavior.
 	if c.overrideSignerType != credentials.SignatureDefault {
@@ -909,6 +921,11 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 
 	// For anonymous requests just return.
 	if signerType.IsAnonymous() {
+		if len(metadata.trailer) > 0 {
+			req.Header.Set("X-Amz-Content-Sha256", unsignedPayloadTrailer)
+			return signer.UnsignedTrailer(*req, metadata.trailer), nil
+		}
+
 		return req, nil
 	}
 
@@ -923,8 +940,13 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		// Streaming signature is used by default for a PUT object request.
 		// Additionally, we also look if the initialized client is secure,
 		// if yes then we don't need to perform streaming signature.
-		req = signer.StreamingSignV4(req, accessKeyID,
-			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
+		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
+			req = signer.StreamingSignV4Express(req, accessKeyID,
+				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
+		} else {
+			req = signer.StreamingSignV4(req, accessKeyID,
+				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
+		}
 	default:
 		// Set sha256 sum for signature calculation only with signature version '4'.
 		shaHeader := unsignedPayload
@@ -939,8 +961,12 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		}
 		req.Header.Set("X-Amz-Content-Sha256", shaHeader)
 
-		// Add signature version '4' authorization header.
-		req = signer.SignV4Trailer(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
+		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
+			req = signer.SignV4TrailerExpress(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
+		} else {
+			// Add signature version '4' authorization header.
+			req = signer.SignV4Trailer(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
+		}
 	}
 
 	// Return request.
@@ -973,8 +999,17 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 		} else {
 			// Do not change the host if the endpoint URL is a FIPS S3 endpoint or a S3 PrivateLink interface endpoint
 			if !s3utils.IsAmazonFIPSEndpoint(*c.endpointURL) && !s3utils.IsAmazonPrivateLinkEndpoint(*c.endpointURL) {
-				// Fetch new host based on the bucket location.
-				host = getS3Endpoint(bucketLocation, c.s3DualstackEnabled)
+				if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
+					if bucketName == "" {
+						host = getS3ExpressEndpoint(bucketLocation, false)
+					} else {
+						// Fetch new host based on the bucket location.
+						host = getS3ExpressEndpoint(bucketLocation, s3utils.IsS3ExpressBucket(bucketName))
+					}
+				} else {
+					// Fetch new host based on the bucket location.
+					host = getS3Endpoint(bucketLocation, c.s3DualstackEnabled)
+				}
 			}
 		}
 	}
@@ -1065,4 +1100,12 @@ func (c *Client) CredContext() *credentials.CredContext {
 		Client:   httpClient,
 		Endpoint: c.endpointURL.String(),
 	}
+}
+
+// GetCreds returns the access creds for the client
+func (c *Client) GetCreds() (credentials.Value, error) {
+	if c.credsProvider == nil {
+		return credentials.Value{}, errors.New("no credentials provider")
+	}
+	return c.credsProvider.GetWithContext(c.CredContext())
 }

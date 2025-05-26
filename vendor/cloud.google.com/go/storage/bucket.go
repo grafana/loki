@@ -514,6 +514,9 @@ type BucketAttrs struct {
 	// It cannot be modified after bucket creation time.
 	// UniformBucketLevelAccess must also also be enabled on the bucket.
 	HierarchicalNamespace *HierarchicalNamespace
+
+	// OwnerEntity contains entity information in the form "project-owner-projectId".
+	OwnerEntity string
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -864,6 +867,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
 		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
 		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromRaw(b.Owner),
 	}, nil
 }
 
@@ -900,6 +904,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
 		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
 		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromProto(b.GetOwner()),
 	}
 }
 
@@ -2222,6 +2227,20 @@ func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *Hierarc
 	return &HierarchicalNamespace{
 		Enabled: r.Enabled,
 	}
+}
+
+func ownerEntityFromRaw(r *raw.BucketOwner) string {
+	if r == nil {
+		return ""
+	}
+	return r.Entity
+}
+
+func ownerEntityFromProto(p *storagepb.Owner) string {
+	if p == nil {
+		return ""
+	}
+	return p.GetEntity()
 }
 
 // Objects returns an iterator over the objects in the bucket that match the

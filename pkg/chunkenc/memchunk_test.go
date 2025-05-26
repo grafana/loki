@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -274,7 +275,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, `__variant__="0"`) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
@@ -285,7 +286,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, `__variant__="0"`) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
@@ -961,11 +962,11 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(_ int64, line []byte, _ labels.Labels) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
-func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(_ int64, line string, _ labels.Labels) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
@@ -1030,11 +1031,11 @@ func BenchmarkRead(b *testing.B) {
 type noopTestPipeline struct{}
 
 func (noopTestPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (noopTestPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (noopTestPipeline) Process(_ int64, line []byte, _ labels.Labels) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
-func (noopTestPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+func (noopTestPipeline) ProcessString(_ int64, line string, _ labels.Labels) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
@@ -1101,7 +1102,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 
 				var structuredMetadata labels.Labels
 				if withStructuredMetadata {
-					structuredMetadata = labels.Labels{{Name: "foo", Value: "foo"}}
+					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
 				for i := 0; i < j; i++ {
@@ -1119,6 +1120,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					for iter.Next() {
 						_ = iter.At()
 					}
+					iter.Close()
 				}
 			})
 		}
@@ -1133,7 +1135,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				var structuredMetadata labels.Labels
 				if withStructuredMetadata {
-					structuredMetadata = labels.Labels{{Name: "foo", Value: "foo"}}
+					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
 				for i := 0; i < j; i++ {
@@ -1165,7 +1167,7 @@ func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 
 				var structuredMetadata labels.Labels
 				if withStructuredMetadata {
-					structuredMetadata = labels.Labels{{Name: "foo", Value: "foo"}}
+					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
 				for i := 0; i < j; i++ {
@@ -1379,24 +1381,24 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 			_ = fillChunk(c)
 
 			labelsSet := []labels.Labels{
-				{
-					{Name: "cluster", Value: "us-central1"},
-					{Name: "stream", Value: "stdout"},
-					{Name: "filename", Value: "/var/log/pods/loki-prod_query-frontend-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log"},
-					{Name: "namespace", Value: "loki-dev"},
-					{Name: "job", Value: "loki-prod/query-frontend"},
-					{Name: "container", Value: "query-frontend"},
-					{Name: "pod", Value: "query-frontend-6894f97b98-89q2n"},
-				},
-				{
-					{Name: "cluster", Value: "us-central2"},
-					{Name: "stream", Value: "stderr"},
-					{Name: "filename", Value: "/var/log/pods/loki-prod_querier-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log"},
-					{Name: "namespace", Value: "loki-dev"},
-					{Name: "job", Value: "loki-prod/querier"},
-					{Name: "container", Value: "querier"},
-					{Name: "pod", Value: "querier-6894f97b98-89q2n"},
-				},
+				labels.FromStrings(
+					"cluster", "us-central1",
+					"stream", "stdout",
+					"filename", "/var/log/pods/loki-prod_query-frontend-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log",
+					"namespace", "loki-dev",
+					"job", "loki-prod/query-frontend",
+					"container", "query-frontend",
+					"pod", "query-frontend-6894f97b98-89q2n",
+				),
+				labels.FromStrings(
+					"cluster", "us-central2",
+					"stream", "stderr",
+					"filename", "/var/log/pods/loki-prod_querier-6894f97b98-89q2n_eac98024-f60f-44af-a46f-d099bc99d1e7/query-frontend/0.log",
+					"namespace", "loki-dev",
+					"job", "loki-prod/querier",
+					"container", "querier",
+					"pod", "querier-6894f97b98-89q2n",
+				),
 			}
 			for _, test := range []string{
 				`{app="foo"}`,
@@ -1506,7 +1508,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 				require.NoError(t, err)
 				p, err := expr.Pipeline()
 				require.NoError(t, err)
-				it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.Labels{{Name: "app", Value: "foo"}}))
+				it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.FromStrings("app", "foo")))
 				require.NoError(t, err)
 				for it.Next() {
 					total--
@@ -1631,7 +1633,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "no matches",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, nil, nil, false),
-			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, in string, _ labels.Labels) bool {
 				return strings.HasPrefix(in, "matching")
 			},
 			nrMatching:    0,
@@ -1640,7 +1642,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "some lines removed",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, false),
-			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, in string, _ labels.Labels) bool {
 				return strings.HasPrefix(in, "matching")
 			},
 			nrMatching:    5,
@@ -1649,7 +1651,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "all lines match",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
-			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, in string, _ labels.Labels) bool {
 				return strings.HasPrefix(in, "matching")
 			},
 			err: chunk.ErrSliceNoDataInRange,
@@ -1659,8 +1661,8 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "no matches - chunk without structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
-			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+			filterFunc: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+				return structuredMetadata.Get(lblPing) == lblPong
 			},
 			nrMatching:    0,
 			nrNotMatching: 10,
@@ -1668,8 +1670,8 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "structured metadata not matching",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
-			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-				return labels.Labels(structuredMetadata).Get("ding") == "dong"
+			filterFunc: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+				return structuredMetadata.Get("ding") == "dong"
 			},
 			nrMatching:    0,
 			nrNotMatching: 10,
@@ -1677,8 +1679,8 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "some lines removed - with structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
-			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
-				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
+			filterFunc: func(_ time.Time, _ string, structuredMetadata labels.Labels) bool {
+				return structuredMetadata.Get(lblPing) == lblPong
 			},
 			nrMatching:    5,
 			nrNotMatching: 5,
@@ -1686,8 +1688,8 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "all lines match -  with structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
-				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong && strings.HasPrefix(in, "matching")
+			filterFunc: func(_ time.Time, in string, structuredMetadata labels.Labels) bool {
+				return structuredMetadata.Get(lblPing) == lblPong && strings.HasPrefix(in, "matching")
 			},
 			err: chunk.ErrSliceNoDataInRange,
 		},
@@ -1877,7 +1879,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 					chk.blocks = make([]block, tc.nBlocks)
 					chk.cutBlockSize = tc.cutBlockSize
 					for i := 0; i < tc.headSize; i++ {
-						dup, err := chk.head.Append(int64(i), "a", nil)
+						dup, err := chk.head.Append(int64(i), "a", labels.EmptyLabels())
 						require.False(t, dup)
 						require.NoError(t, err)
 					}
@@ -1897,9 +1899,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 	for _, enc := range testEncodings {
 		t.Run(enc.String(), func(t *testing.T) {
-			streamLabels := labels.Labels{
-				{Name: "job", Value: "fake"},
-			}
+			streamLabels := labels.FromStrings("job", "fake")
 			chk := newMemChunkWithFormat(ChunkFormatV4, enc, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			dup, err := chk.Append(logprotoEntryWithStructuredMetadata(1, "lineA", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},

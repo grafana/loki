@@ -387,7 +387,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, registerer),
+			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
 		)
@@ -1356,7 +1356,48 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-	return instance.Series(ctx, req)
+
+	resp, err := instance.Series(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		var storeSeries []logproto.SeriesIdentifier
+		var parsed syntax.Expr
+
+		groups := []string{""}
+		if len(req.Groups) != 0 {
+			groups = req.Groups
+		}
+
+		for _, group := range groups {
+			if group != "" {
+				parsed, err = syntax.ParseExpr(group)
+				if err != nil {
+					return nil, err
+				}
+			}
+			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector:  group,
+					Limit:     1,
+					Start:     start,
+					End:       end,
+					Direction: logproto.FORWARD,
+					Shards:    req.Shards,
+					Plan: &plan.QueryPlan{
+						AST: parsed,
+					},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			resp.Series = append(resp.Series, storeSeries...)
+		}
+	}
+	return resp, nil
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {

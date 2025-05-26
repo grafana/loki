@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -76,7 +77,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	b.Reset()
 
 	// This works for any category
-	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details")...)
+	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"))
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
@@ -489,7 +490,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "level", "info")
 	filter := NewStringLabelFilter(matcher)
 	stages := []Stage{
-		NewJSONParser(),
+		NewJSONParser(false),
 		filter,
 	}
 	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false)
@@ -499,6 +500,32 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta...)
+		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta...)
+	}
+}
+
+func BenchmarkLabelsBuilder_Add(b *testing.B) {
+	sizes := []int{10, 100, 1000, 10000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			// Pre-generate labels that should be added
+			newB := labels.NewScratchBuilder(size)
+			for i := 0; i < size; i++ {
+				newB.Add(fmt.Sprintf("label_%d", i), fmt.Sprintf("value_%d", i))
+			}
+			newLabels := newB.Labels()
+
+			lbs := labels.FromStrings("already", "in")
+			builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				builder.Reset()
+				builder.Add(StructuredMetadataLabel, newLabels)
+			}
+		})
 	}
 }

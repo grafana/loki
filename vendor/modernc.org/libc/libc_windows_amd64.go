@@ -5,11 +5,11 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"golang.org/x/sys/windows"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/sys/types"
 	"os"
 	"strings"
-	"syscall"
 	"unsafe"
 )
 
@@ -231,7 +231,7 @@ func Xlseek64(t *TLS, fd int32, offset types.Off_t, whence int32) types.Off_t {
 		return -1
 	}
 
-	n, err := syscall.Seek(f.Handle, offset, int(whence))
+	n, err := windows.Seek(f.Handle, offset, int(whence))
 	if err != nil {
 		if dmesgs {
 			dmesg("%v: fd %v, off %#x, whence %v: %v", origin(1), f._fd, offset, whenceStr(whence), n)
@@ -363,7 +363,7 @@ func Xunlink(t *TLS, pathname uintptr) int32 {
 		trc("t=%v pathname=%v, (%v:)", t, pathname, origin(2))
 	}
 
-	err := syscall.DeleteFile((*uint16)(unsafe.Pointer(pathname)))
+	err := windows.DeleteFile((*uint16)(unsafe.Pointer(pathname)))
 	if err != nil {
 		t.setErrno(err)
 		return -1
@@ -501,7 +501,7 @@ func Xfopen64(t *TLS, pathname, mode uintptr) uintptr {
 		panic(m)
 	}
 	//TODO- flags |= fcntl.O_LARGEFILE
-	h, err := syscall.Open(GoString(pathname), int(flags), uint32(0666))
+	h, err := windows.Open(GoString(pathname), int(flags), uint32(0666))
 	if err != nil {
 		t.setErrno(err)
 		return 0
@@ -511,7 +511,7 @@ func Xfopen64(t *TLS, pathname, mode uintptr) uintptr {
 	if p != 0 {
 		return p
 	}
-	_ = syscall.Close(h)
+	_ = windows.Close(h)
 	t.setErrno(errno.ENOMEM)
 	return 0
 }

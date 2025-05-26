@@ -89,6 +89,7 @@ type ruleLimits struct {
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	alertManagerConfig   map[string]*config.AlertManagerConfig
+	enableWALReplay      bool
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -105,6 +106,10 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 
 func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManagerConfig {
 	return r.alertManagerConfig[tenantID]
+}
+
+func (r ruleLimits) RulerEnableWALReplay(_ string) bool {
+	return r.enableWALReplay
 }
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
@@ -140,7 +145,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(q)
 
-	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
+	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15, enableWALReplay: true}, reg
 }
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
@@ -270,7 +275,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	n.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+		Labels: labels.FromStrings("alertname", "testalert"),
 	})
 
 	wg.Wait()
@@ -356,11 +361,11 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 	}
 
 	n1.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname1", Value: "testalert1"}},
+		Labels: labels.FromStrings("alertname1", "testalert1"),
 	})
 
 	n2.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname2", Value: "testalert2"}},
+		Labels: labels.FromStrings("alertname2", "testalert2"),
 	})
 
 	// Wait for notifications with a timeout
@@ -1743,8 +1748,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ValidUntil:  time.Unix(3, 0),
@@ -1752,8 +1757,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
 					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left=%%7B%%22queries%%22%%3A%%5B%s%%5D%%7D", escapedExpression),
@@ -1763,8 +1768,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ResolvedAt:  time.Unix(4, 0),
@@ -1772,8 +1777,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
 					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left=%%7B%%22queries%%22%%3A%%5B%s%%5D%%7D", escapedExpression),
@@ -1861,10 +1866,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 			return series.NewConcreteSeriesSet([]storage.Series{
 				series.NewConcreteSeries(
-					labels.Labels{
-						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
-						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
-					},
+					labels.FromStrings(labels.MetricName, "ALERTS_FOR_STATE", labels.AlertName, mockRules["user1"][0].GetRules()[0].Alert),
 					[]model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
 				),
 			})
@@ -2003,20 +2005,14 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 				fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
-							labels.Labels{
-								{Name: labels.MetricName, Value: "http_requests"},
-								{Name: labels.InstanceName, Value: "server1"},
-							},
+							labels.FromStrings(labels.MetricName, "http_requests", labels.InstanceName, "server1"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
 							},
 						),
 						series.NewConcreteSeries(
-							labels.Labels{
-								{Name: labels.MetricName, Value: "http_requests"},
-								{Name: labels.InstanceName, Value: "server2"},
-							},
+							labels.FromStrings(labels.MetricName, "http_requests", labels.InstanceName, "server2"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},

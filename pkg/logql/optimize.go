@@ -6,12 +6,12 @@ import "github.com/grafana/loki/v3/pkg/logql/syntax"
 func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	var skip bool
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch e.(type) {
 		case *ConcatSampleExpr, DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr, *MergeFirstOverTimeExpr, *MergeLastOverTimeExpr:
 			skip = true
-			return
 		}
+		return true
 	})
 	if skip {
 		return expr, nil
@@ -26,19 +26,19 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 
 // removeLineformat removes unnecessary line_format within a SampleExpr.
 func removeLineformat(expr syntax.SampleExpr) {
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		rangeExpr, ok := e.(*syntax.RangeAggregationExpr)
 		if !ok {
-			return
+			return true
 		}
 		// bytes operation count bytes of the log line so line_format changes the result.
 		if rangeExpr.Operation == syntax.OpRangeTypeBytes ||
 			rangeExpr.Operation == syntax.OpRangeTypeBytesRate {
-			return
+			return true
 		}
 		pipelineExpr, ok := rangeExpr.Left.Left.(*syntax.PipelineExpr)
 		if !ok {
-			return
+			return true
 		}
 		temp := pipelineExpr.MultiStages[:0]
 		for i, s := range pipelineExpr.MultiStages {
@@ -82,5 +82,6 @@ func removeLineformat(expr syntax.SampleExpr) {
 		if len(pipelineExpr.MultiStages) == 0 {
 			rangeExpr.Left.Left = &syntax.MatchersExpr{Mts: rangeExpr.Left.Left.Matchers()}
 		}
+		return true
 	})
 }

@@ -15,7 +15,7 @@ package core
 // limitations under the License.
 
 import (
-	"gopkg.in/yaml.v2"
+	yaml "sigs.k8s.io/yaml/goyaml.v2"
 )
 
 // OrderedMaps provides a wrapper around the yaml package's

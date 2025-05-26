@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -19,17 +20,17 @@ const (
 )
 
 var (
-	_ retention.SeriesCleaner = &seriesCleaner{}
+	_ retention.IndexCleaner = &seriesCleaner{}
 )
 
-func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.PeriodConfig, callback retention.ChunkEntryCallback) error {
+func ForEachSeries(ctx context.Context, bucket *bbolt.Bucket, config config.PeriodConfig, callback retention.SeriesCallback) error {
 	labelsMapper, err := newSeriesLabelsMapper(bucket, config)
 	if err != nil {
 		return err
 	}
 
 	cursor := bucket.Cursor()
-	var current retention.ChunkEntry
+	current := retention.NewSeries()
 
 	for key, _ := cursor.First(); key != nil && ctx.Err() == nil; key, _ = cursor.Next() {
 		ref, ok, err := parseChunkRef(decodeKey(key))
@@ -40,17 +41,32 @@ func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.Perio
 		if !ok {
 			continue
 		}
-		current.ChunkRef = ref
-		current.Labels = labelsMapper.Get(ref.SeriesID, ref.UserID)
-		deleteChunk, err := callback(current)
-		if err != nil {
-			return err
-		}
 
-		if deleteChunk {
-			if err := cursor.Delete(); err != nil {
+		if len(current.Chunks()) == 0 {
+			current.Reset(ref.SeriesID, ref.UserID, labelsMapper.Get(ref.SeriesID, ref.UserID))
+		} else if !bytes.Equal(current.UserID(), ref.UserID) || !bytes.Equal(current.SeriesID(), ref.SeriesID) {
+			err = callback(current)
+			if err != nil {
 				return err
 			}
+
+			current.Reset(ref.SeriesID, ref.UserID, labelsMapper.Get(ref.SeriesID, ref.UserID))
+		}
+
+		current.AppendChunks(retention.Chunk{
+			ChunkID: ref.ChunkID,
+			From:    ref.From,
+			Through: ref.Through,
+		})
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	if len(current.Chunks()) != 0 {
+		err = callback(current)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -112,6 +128,35 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 			if err != nil {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID []byte) error {
+	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
+	if lbls.Get(labels.MetricName) == "" {
+		lbls = append(lbls, labels.Label{
+			Name:  labels.MetricName,
+			Value: logMetricName,
+		})
+	}
+
+	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, string(chunkID))
+	if err != nil {
+		return err
+	}
+
+	for _, indexEntry := range indexEntries {
+		key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
+		key = append(key, []byte(indexEntry.HashValue)...)
+		key = append(key, []byte(separator)...)
+		key = append(key, indexEntry.RangeValue...)
+
+		err := s.bucket.Delete(key)
+		if err != nil {
+			return err
 		}
 	}
 

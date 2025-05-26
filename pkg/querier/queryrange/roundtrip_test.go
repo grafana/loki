@@ -114,32 +114,20 @@ var (
 					F: 0.013333333333333334,
 				},
 			},
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	vector = promql.Vector{
 		{
 			T: toMs(testTime.Add(-4 * time.Hour)),
 			F: 0.013333333333333334,
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	streams = logqlmodel.Streams{
@@ -1412,6 +1400,7 @@ type fakeLimits struct {
 	maxStatsCacheFreshness      time.Duration
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
+	enableMultiVariantQueries   bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1541,6 +1530,9 @@ func (f fakeLimits) TSDBShardingStrategy(string) string {
 
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
+}
+func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
+	return f.enableMultiVariantQueries
 }
 
 type ingesterQueryOpts struct {

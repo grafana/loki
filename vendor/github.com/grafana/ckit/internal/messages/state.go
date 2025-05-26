@@ -27,14 +27,8 @@ var _ Message = (*State)(nil)
 // Type implements Message.
 func (s *State) Type() Type { return TypeState }
 
-// Invalidates implements Message.
-func (s *State) Invalidates(m Message) bool {
-	other, ok := m.(*State)
-	if !ok {
-		return false
-	}
-	return s.NodeName == other.NodeName && s.Time > other.Time
-}
+// Name implements Message.
+func (s *State) Name() string { return s.NodeName }
 
 // Cache implements Message.
 func (s *State) Cache() bool { return true }

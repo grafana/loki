@@ -7,6 +7,9 @@
 package pcommon
 
 import (
+	"iter"
+	"slices"
+
 	"go.opentelemetry.io/collector/pdata/internal"
 )
 
@@ -55,6 +58,17 @@ func (ms Int32Slice) At(i int) int32 {
 	return (*ms.getOrig())[i]
 }
 
+// All returns an iterator over index-value pairs in the slice.
+func (ms Int32Slice) All() iter.Seq2[int, int32] {
+	return func(yield func(int, int32) bool) {
+		for i := 0; i < ms.Len(); i++ {
+			if !yield(i, ms.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // SetAt sets int32 item at particular index.
 // Equivalent of int32Slice[i] = val
 func (ms Int32Slice) SetAt(i int, val int32) {
@@ -100,6 +114,11 @@ func (ms Int32Slice) MoveTo(dest Int32Slice) {
 func (ms Int32Slice) CopyTo(dest Int32Slice) {
 	dest.getState().AssertMutable()
 	*dest.getOrig() = copyInt32Slice(*dest.getOrig(), *ms.getOrig())
+}
+
+// Equal checks equality with another Int32Slice
+func (ms Int32Slice) Equal(val Int32Slice) bool {
+	return slices.Equal(*ms.getOrig(), *val.getOrig())
 }
 
 func copyInt32Slice(dst, src []int32) []int32 {

@@ -18,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
-	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
@@ -373,7 +372,7 @@ type chunksPlusError struct {
 // GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
-	defer log.Span.Finish()
+	defer log.Finish()
 	level.Debug(log).Log("chunks requested", len(chunks))
 
 	dynamoDBChunks := chunks
@@ -422,7 +421,7 @@ var placeholder = []byte{'c'}
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
-	defer log.Span.Finish()
+	defer log.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
@@ -802,7 +801,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	if len(path) > 0 {
 		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
-	config, err := awscommon.ConfigFromURL(awsURL)
+	config, err := ConfigFromURL(awsURL)
 	if err != nil {
 		return nil, err
 	}

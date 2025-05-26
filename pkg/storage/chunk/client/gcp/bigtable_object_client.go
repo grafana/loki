@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/grafana/dskit/middleware"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -23,7 +24,8 @@ type bigtableObjectClient struct {
 // NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
 func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg config.SchemaConfig) (client.Client, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(bigtableInstrumentation())
+	unaryInterceptors, streamInterceptors := bigtableInstrumentation()
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

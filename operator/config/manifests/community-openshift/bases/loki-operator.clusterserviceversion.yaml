@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.7.1
+    containerImage: docker.io/grafana/loki-operator:0.8.0
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -813,6 +813,17 @@ spec:
         path: template.ruler.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: |-
+          When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+          requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+          spikes, whether on the ingestion or query side.
+
+
+          Note: This is currently a tech-preview feature.
+        displayName: Use resource requests as limits
+        path: template.useRequestsAsLimits
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Tenants defines the per-tenant authentication and authorization
           spec for the lokistack-gateway component.
         displayName: Tenants Configuration
@@ -2496,5 +2507,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.7.0
+  replaces: loki-operator.v0.7.1
   version: 0.0.0

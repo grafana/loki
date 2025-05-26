@@ -5,10 +5,10 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"math"
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -57,19 +57,27 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant", "aggregated_metric", "policy"})
 
+	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_otlp_exporter_streams_total",
+		Help:      "The total number of streams with exporter=OTLP label",
+	}, []string{"tenant"})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const (
-	applicationJSON       = "application/json"
-	LabelServiceName      = "service_name"
-	ServiceUnknown        = "unknown_service"
-	AggregatedMetricLabel = "__aggregated_metric__"
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
 )
 
-var ErrAllLogsFiltered = errors.New("all logs lines filtered during parsing")
+var (
+	ErrAllLogsFiltered     = errors.New("all logs lines filtered during parsing")
+	ErrRequestBodyTooLarge = errors.New("request body too large")
+)
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -103,7 +111,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -137,9 +145,12 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
+		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
+			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
+		}
 		return nil, err
 	}
 
@@ -153,8 +164,19 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative log lines bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 			entriesSize += size
 		}
 	}
@@ -163,10 +185,21 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 
-			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
-			bytesReceivedStats.Inc(size)
-			structuredMetadataBytesReceivedStats.Inc(size)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+				structuredMetadataBytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative structured metadata bytes received",
+					"userID", userID,
+					"retentionHours", retentionHours,
+					"isAggregatedMetric", isAggregatedMetric,
+					"policyName", policyName,
+					"size", size)
+			}
 
 			entriesSize += size
 			structuredMetadataSize += size
@@ -197,13 +230,26 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, limits Limi
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
+
+	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
+	// Therefore, if the header is included, only log the first address
+	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	if agentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	}
+
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent != "" {
+		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -263,7 +309,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker Usa
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
-		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -282,7 +328,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker Usa
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
-		if lbs.Has(AggregatedMetricLabel) {
+		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
 
@@ -341,7 +387,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tracker Usa
 			}
 		}
 
-		if tracker != nil {
+		if tracker != nil && !pushStats.IsAggregatedMetric {
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
 		}
 

@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
-	"syscall"
 	gotime "time"
 	"unsafe"
 
@@ -43,6 +42,8 @@ var (
 	startTime    = gotime.Now() // For clock(3)
 	in6_addr_any in.In6_addr
 )
+
+type syscallErrno = unix.Errno
 
 // // Keep these outside of the var block otherwise go generate will miss them.
 var X__stderrp = Xstdout
@@ -971,7 +972,7 @@ func Xfileno(t *TLS, stream uintptr) int32 {
 	panic(todo(""))
 }
 
-func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) uintptr {
+func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) uintptr {
 	p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(fts.FTSENT{})))
 	if p == 0 {
 		panic("OOM")
@@ -1377,7 +1378,7 @@ func Xabort(t *TLS) {
 	// (*signal.Sigaction)(unsafe.Pointer(p)).F__sigaction_u.F__sa_handler = signal.SIG_DFL
 	// Xsigaction(t, signal.SIGABRT, p, 0)
 	// Xfree(t, p)
-	// unix.Kill(unix.Getpid(), syscall.Signal(signal.SIGABRT))
+	// unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
 	// panic(todo("unrechable"))
 }
 
@@ -1610,7 +1611,7 @@ func Xreaddir64(t *TLS, dir uintptr) uintptr {
 	return Xreaddir(t, dir)
 }
 
-func __syscall(r, _ uintptr, errno syscall.Errno) long {
+func __syscall(r, _ uintptr, errno syscallErrno) long {
 	if errno != 0 {
 		return long(-errno)
 	}
@@ -1845,7 +1846,7 @@ func Xpipe(t *TLS, pipefd uintptr) int32 {
 		trc("t=%v pipefd=%v, (%v:)", t, pipefd, origin(2))
 	}
 	var a [2]int
-	if err := syscall.Pipe(a[:]); err != nil {
+	if err := unix.Pipe(a[:]); err != nil {
 		if dmesgs {
 			dmesg("%v: %v FAIL", origin(1), err)
 		}
@@ -2772,7 +2773,7 @@ func Xgetrlimit64(t *TLS, resource int32, rlim uintptr) int32 {
 	return 0
 }
 
-func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) (r *fts.FTSENT) {
+func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) (r *fts.FTSENT) {
 	var statp uintptr
 	if stat != nil {
 		statp = Xmalloc(t, types.Size_t(unsafe.Sizeof(unix.Stat_t{})))

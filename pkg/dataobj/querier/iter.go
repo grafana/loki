@@ -1,25 +1,27 @@
 package querier
 
 import (
-	"container/heap"
 	"context"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 	"sync"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
 var (
 	recordsPool = sync.Pool{
 		New: func() interface{} {
-			records := make([]dataobj.Record, 1024)
+			records := make([]logs.Record, 1024)
 			return &records
 		},
 	}
@@ -48,11 +50,11 @@ type entryWithLabels struct {
 // The topk heap is used to maintain the top k entries based on the direction.
 // The final result is returned as a slice of entries.
 func newEntryIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
-	reader *dataobj.LogsReader,
+	streams map[int64]streams.Stream,
+	reader *logs.RowReader,
 	req logql.SelectLogParams,
 ) (iter.EntryIterator, error) {
-	bufPtr := recordsPool.Get().(*[]dataobj.Record)
+	bufPtr := recordsPool.Get().(*[]logs.Record)
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
@@ -69,7 +71,12 @@ func newEntryIterator(ctx context.Context,
 		prevStreamID    int64 = -1
 		streamExtractor log.StreamPipeline
 		streamHash      uint64
-		top             = newTopK(int(req.Limit), req.Direction)
+		top             = topk.Heap[entryWithLabels]{
+			Limit: int(req.Limit),
+			Less:  lessFn(req.Direction),
+		}
+
+		statistics = stats.FromContext(ctx)
 	)
 
 	for {
@@ -94,68 +101,26 @@ func newEntryIterator(ctx context.Context,
 			}
 
 			timestamp := record.Timestamp.UnixNano()
-			line, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
+			line, parsedLabels, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 			if !ok {
 				continue
 			}
-			var metadata []logproto.LabelAdapter
-			if len(record.Metadata) > 0 {
-				metadata = logproto.FromLabelsToLabelAdapters(record.Metadata)
-			}
-			top.Add(entryWithLabels{
+			statistics.AddPostFilterRows(1)
+
+			top.Push(entryWithLabels{
 				Labels:     parsedLabels.String(),
 				StreamHash: streamHash,
 				Entry: logproto.Entry{
 					Timestamp:          record.Timestamp,
-					Line:               line,
-					StructuredMetadata: metadata,
+					Line:               string(line),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLabels.StructuredMetadata()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLabels.Parsed()),
 				},
 			})
 		}
 	}
-	return top.Iterator(), nil
-}
 
-// entryHeap implements a min-heap of entries based on a custom less function.
-// The less function determines the ordering based on the direction (FORWARD/BACKWARD).
-// For FORWARD direction:
-//   - When comparing timestamps: entry.Timestamp.After(b) means 'a' is "less" than 'b'
-//   - Example: [t3, t2, t1] where t3 is most recent, t3 will be at the root (index 0)
-//
-// For BACKWARD direction:
-//   - When comparing timestamps: entry.Timestamp.Before(b) means 'a' is "less" than 'b'
-//   - Example: [t1, t2, t3] where t1 is oldest, t1 will be at the root (index 0)
-//
-// In both cases:
-//   - When timestamps are equal, we use labels as a tiebreaker
-//   - The root of the heap (index 0) contains the entry we want to evict first
-type entryHeap struct {
-	less    func(a, b entryWithLabels) bool
-	entries []entryWithLabels
-}
-
-func (h *entryHeap) Push(x any) {
-	h.entries = append(h.entries, x.(entryWithLabels))
-}
-
-func (h *entryHeap) Pop() any {
-	old := h.entries
-	n := len(old)
-	x := old[n-1]
-	h.entries = old[:n-1]
-	return x
-}
-
-func (h *entryHeap) Len() int {
-	return len(h.entries)
-}
-
-func (h *entryHeap) Less(i, j int) bool {
-	return h.less(h.entries[i], h.entries[j])
-}
-
-func (h *entryHeap) Swap(i, j int) {
-	h.entries[i], h.entries[j] = h.entries[j], h.entries[i]
+	return heapIterator(&top), nil
 }
 
 func lessFn(direction logproto.Direction) func(a, b entryWithLabels) bool {
@@ -179,71 +144,27 @@ func lessFn(direction logproto.Direction) func(a, b entryWithLabels) bool {
 	}
 }
 
-// topk maintains a min-heap of the k most relevant entries.
-// The heap is ordered by timestamp (and labels as tiebreaker) based on the direction:
-//   - For FORWARD: keeps k oldest entries by evicting newest entries first
-//     Example with k=3: If entries arrive as [t1,t2,t3,t4,t5], heap will contain [t1,t2,t3]
-//   - For BACKWARD: keeps k newest entries by evicting oldest entries first
-//     Example with k=3: If entries arrive as [t1,t2,t3,t4,t5], heap will contain [t3,t4,t5]
-type topk struct {
-	k       int
-	minHeap entryHeap
-}
+// heapIterator creates a new EntryIterator for the given topk heap. After
+// calling heapIterator, h is emptied.
+func heapIterator(h *topk.Heap[entryWithLabels]) iter.EntryIterator {
+	elems := h.PopAll()
 
-func newTopK(k int, direction logproto.Direction) *topk {
-	if k <= 0 {
-		panic("k must be greater than 0")
-	}
-	entries := entryWithLabelsPool.Get().(*[]entryWithLabels)
-	return &topk{
-		k: k,
-		minHeap: entryHeap{
-			less:    lessFn(direction),
-			entries: *entries,
-		},
-	}
-}
+	// We need to reverse the order of the entries in the slice to maintain the order of logs we
+	// want to return:
+	//
+	// For FORWARD direction, we want smallest timestamps first (but the heap is
+	// ordered by largest timestamps first due to lessFn).
+	//
+	// For BACKWARD direction, we want largest timestamps first (but the heap is
+	// ordered by smallest timestamps first due to lessFn).
+	slices.Reverse(elems)
 
-// Add adds a new entry to the topk heap.
-// If the heap has less than k entries, the entry is added directly.
-// Otherwise, if the new entry should be evicted before the root (index 0),
-// it is discarded. If not, the root is popped (discarded) and the new entry is pushed.
-//
-// For FORWARD direction:
-//   - Root contains newest entry (to be evicted first)
-//   - New entries that are newer than root are discarded
-//     Example: With k=3 and heap=[t1,t2,t3], a new entry t4 is discarded
-//
-// For BACKWARD direction:
-//   - Root contains oldest entry (to be evicted first)
-//   - New entries that are older than root are discarded
-//     Example: With k=3 and heap=[t3,t4,t5], a new entry t2 is discarded
-func (t *topk) Add(r entryWithLabels) {
-	if t.minHeap.Len() < t.k {
-		heap.Push(&t.minHeap, r)
-		return
-	}
-	if t.minHeap.less(t.minHeap.entries[0], r) {
-		_ = heap.Pop(&t.minHeap)
-		heap.Push(&t.minHeap, r)
-	}
+	return &sliceIterator{entries: elems}
 }
 
 type sliceIterator struct {
 	entries []entryWithLabels
 	curr    entryWithLabels
-}
-
-func (t *topk) Iterator() iter.EntryIterator {
-	// We swap i and j in the less comparison to reverse the ordering from the minHeap.
-	// The minHeap is ordered such that the entry to evict is at index 0.
-	// For FORWARD: newest entries are evicted first, so we want oldest entries first in the final slice
-	// For BACKWARD: oldest entries are evicted first, so we want newest entries first in the final slice
-	// By swapping i and j, we effectively reverse the minHeap ordering to get the desired final ordering
-	sort.Slice(t.minHeap.entries, func(i, j int) bool {
-		return t.minHeap.less(t.minHeap.entries[j], t.minHeap.entries[i])
-	})
-	return &sliceIterator{entries: t.minHeap.entries}
 }
 
 func (s *sliceIterator) Next() bool {
@@ -272,16 +193,17 @@ func (s *sliceIterator) StreamHash() uint64 {
 }
 
 func (s *sliceIterator) Close() error {
+	clear(s.entries)
 	entryWithLabelsPool.Put(&s.entries)
 	return nil
 }
 
 func newSampleIterator(ctx context.Context,
-	streams map[int64]dataobj.Stream,
+	streamsMap map[int64]streams.Stream,
 	extractors []syntax.SampleExtractor,
-	reader *dataobj.LogsReader,
+	reader *logs.RowReader,
 ) (iter.SampleIterator, error) {
-	bufPtr := recordsPool.Get().(*[]dataobj.Record)
+	bufPtr := recordsPool.Get().(*[]logs.Record)
 	defer recordsPool.Put(bufPtr)
 	buf := *bufPtr
 
@@ -292,6 +214,10 @@ func newSampleIterator(ctx context.Context,
 		series          = map[string]*logproto.Series{}
 		streamHash      uint64
 	)
+
+	statistics := stats.FromContext(ctx)
+	// For dataobjs, this maps to sections downloaded
+	statistics.AddChunksDownloaded(1)
 
 	for {
 		n, err := reader.Read(ctx, buf)
@@ -307,7 +233,7 @@ func newSampleIterator(ctx context.Context,
 
 		// Process records in the current batch
 		for _, record := range buf[:n] {
-			stream, ok := streams[record.StreamID]
+			stream, ok := streamsMap[record.StreamID]
 			if !ok {
 				continue
 			}
@@ -328,25 +254,33 @@ func newSampleIterator(ctx context.Context,
 				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
 				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
 				// other filters and processing already done.
-				value, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
+				statistics.AddDecompressedLines(1)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
 				if !ok {
 					continue
 				}
+				statistics.AddPostFilterLines(1)
 
-				// Get or create series for the parsed labels
-				labelString := parsedLabels.String()
-				s, exists := series[labelString]
-				if !exists {
-					s = createNewSeries(labelString, streamHash)
-					series[labelString] = s
+				for _, sample := range samples {
+
+					parsedLabels := sample.Labels
+					value := sample.Value
+
+					// Get or create series for the parsed labels
+					labelString := parsedLabels.String()
+					s, exists := series[labelString]
+					if !exists {
+						s = createNewSeries(labelString, streamHash)
+						series[labelString] = s
+					}
+
+					// Add sample to the series
+					s.Samples = append(s.Samples, logproto.Sample{
+						Timestamp: timestamp,
+						Value:     value,
+						Hash:      0,
+					})
 				}
-
-				// Add sample to the series
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: timestamp,
-					Value:     value,
-					Hash:      0,
-				})
 			}
 		}
 	}

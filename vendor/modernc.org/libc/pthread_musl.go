@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build linux && (amd64 || arm64 || loong64)
+//go:build linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)
 
 package libc // import "modernc.org/libc"
 
@@ -22,14 +22,14 @@ type pthreadCleanupItem struct {
 	routine, arg uintptr
 }
 
-// C version is 40 bytes.
-type pthreadMutex struct {
-	sync.Mutex            //  0	8
-	count      int32      //  8	4
-	mType      uint32     // 12	4
-	outer      sync.Mutex // 16	8
-	owner      int32      // 20	4
-	//			 24
+// C version is 40 bytes (64b) and 24 bytes (32b).
+type pthreadMutex struct { // 64b        32b
+	sync.Mutex            //  0	8    0     8
+	count      int32      //  8	4    8     4
+	mType      uint32     // 12	4   12     4
+	outer      sync.Mutex // 16	8   16     8
+	owner      int32      // 24	4   24     4
+	//			 28         28
 }
 
 type pthreadConds struct {
@@ -374,7 +374,7 @@ func Xpthread_cond_timedwait(tls *TLS, c, m, ts uintptr) (r int32) {
 	if ts != 0 {
 		deadlineSecs := (*Ttimespec)(unsafe.Pointer(ts)).Ftv_sec
 		deadlineNsecs := (*Ttimespec)(unsafe.Pointer(ts)).Ftv_nsec
-		deadline := time.Unix(deadlineSecs, deadlineNsecs)
+		deadline := time.Unix(deadlineSecs, int64(deadlineNsecs))
 		d := deadline.Sub(time.Now())
 		if d <= 0 {
 			return ETIMEDOUT

@@ -18,18 +18,18 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 var (
-	backendClients = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingest_limits_backend_clients",
-		Help: "The current number of ingest limits backend clients.",
+	numClients = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingest_limits_clients",
+		Help: "The current number of ingest limits clients.",
 	})
-	backendRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "loki_ingest_limits_backend_client_request_duration_seconds",
-		Help:    "Time spent doing ingest limits backend requests.",
+	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "loki_ingest_limits_client_request_duration_seconds",
+		Help:    "Time spent doing ingest limits requests.",
 		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 	}, []string{"operation", "status_code"})
 )
@@ -67,7 +67,7 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Client is a gRPC client for the ingest-limits.
 type Client struct {
-	logproto.IngestLimitsClient
+	proto.IngestLimitsClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
@@ -77,7 +77,8 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(getGRPCInterceptors(&cfg))
+	unaryInterceptors, streamInterceptors := getGRPCInterceptors(&cfg)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +89,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		IngestLimitsClient: logproto.NewIngestLimitsClient(conn),
+		IngestLimitsClient: proto.NewIngestLimitsClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		Closer:             conn,
 	}, nil
@@ -108,7 +109,7 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	}
-	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(backendRequestDuration))
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(requestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
@@ -117,7 +118,7 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	}
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(backendRequestDuration))
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(requestDuration))
 
 	return unaryInterceptors, streamInterceptors
 }
@@ -140,7 +141,7 @@ func NewPool(
 		poolCfg,
 		ring_client.NewRingServiceDiscovery(ring),
 		factory,
-		backendClients,
+		numClients,
 		logger,
 	)
 }

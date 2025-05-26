@@ -3,6 +3,7 @@ package consumer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -14,7 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -28,14 +29,14 @@ type partitionProcessor struct {
 	tenantID  []byte
 	// Processing pipeline
 	records          chan *kgo.Record
-	builder          *dataobj.Builder
+	builder          *logsobj.Builder
 	decoder          *kafka.Decoder
 	uploader         *uploader.Uploader
 	metastoreUpdater *metastore.Updater
 
 	// Builder initialization
 	builderOnce sync.Once
-	builderCfg  dataobj.BuilderConfig
+	builderCfg  logsobj.BuilderConfig
 	bucket      objstore.Bucket
 	bufPool     *sync.Pool
 
@@ -58,7 +59,7 @@ type partitionProcessor struct {
 func newPartitionProcessor(
 	ctx context.Context,
 	client *kgo.Client,
-	builderCfg dataobj.BuilderConfig,
+	builderCfg logsobj.BuilderConfig,
 	uploaderCfg uploader.Config,
 	bucket objstore.Bucket,
 	tenantID string,
@@ -174,7 +175,7 @@ func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
 		// Dataobj builder
-		builder, err := dataobj.NewBuilder(p.builderCfg)
+		builder, err := logsobj.NewBuilder(p.builderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -189,7 +190,7 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
-	flushedDataobjStats, err := p.builder.Flush(flushBuffer)
+	stats, err := p.builder.Flush(flushBuffer)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 		return err
@@ -201,7 +202,7 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 		return err
 	}
 
-	if err := p.metastoreUpdater.Update(p.ctx, objectPath, flushedDataobjStats); err != nil {
+	if err := p.metastoreUpdater.Update(p.ctx, objectPath, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}
@@ -235,8 +236,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
+	p.metrics.incAppendsTotal()
 	if err := p.builder.Append(stream); err != nil {
-		if err != dataobj.ErrBuilderFull {
+		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
 			p.metrics.incAppendFailures()
 			return
@@ -259,6 +261,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
+		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
@@ -278,6 +281,7 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
+		p.metrics.incCommitsTotal()
 		err := p.client.CommitRecords(p.ctx, record)
 		if err == nil {
 			return nil
