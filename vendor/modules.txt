@@ -735,7 +735,7 @@ github.com/eapache/go-xerial-snappy
 # github.com/eapache/queue v1.1.0
 ## explicit
 github.com/eapache/queue
-# github.com/ebitengine/purego v0.8.2
+# github.com/ebitengine/purego v0.8.4
 ## explicit; go 1.18
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
@@ -1062,8 +1062,8 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.3
 ## explicit; go 1.12
 github.com/gorilla/websocket
-# github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5
-## explicit; go 1.20
+# github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
+## explicit; go 1.23.0
 github.com/grafana/ckit
 github.com/grafana/ckit/internal/chash
 github.com/grafana/ckit/internal/gossiphttp
