@@ -100,7 +100,7 @@ func validateExclusiveNamespaceLabels(matchers []*labels.Matcher) bool {
 	}
 
 	// Only one of the labels should be set, not both
-	return (namespaceLabelSet || otlpLabelSet) && !(namespaceLabelSet && otlpLabelSet)
+	return (namespaceLabelSet || otlpLabelSet) && (!namespaceLabelSet || !otlpLabelSet)
 }
 
 func tenantForNamespace(namespace string) []string {
