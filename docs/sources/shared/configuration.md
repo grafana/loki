@@ -911,7 +911,7 @@ ingest_limits:
   # have not been updated within this window are considered inactive and not
   # counted towards limits.
   # CLI flag: -ingest-limits.active-window
-  [active_window: <duration> | default = 1h]
+  [active_window: <duration> | default = 2h]
 
   # The time window for rate calculation. This should match the window used in
   # Prometheus rate() queries for consistency.
@@ -922,6 +922,10 @@ ingest_limits:
   # provide more precise rates but require more memory.
   # CLI flag: -ingest-limits.bucket-size
   [bucket_size: <duration> | default = 1m]
+
+  # The interval at which old streams are evicted.
+  # CLI flag: -ingest-limits.eviction-interval
+  [eviction_interval: <duration> | default = 30m]
 
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.

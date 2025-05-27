@@ -168,7 +168,7 @@ func (s *Generator) running(ctx context.Context) error {
 			defer s.wg.Done()
 
 			// Create a ticker for rate limiting based on QPSPerTenant
-			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
+			ticker := time.NewTicker(s.cfg.BatchInterval)
 			defer ticker.Stop()
 
 			// Keep track of current stream index and whether we've completed first pass
