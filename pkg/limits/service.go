@@ -160,7 +160,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 
 	offsetManager, err := partition.NewKafkaOffsetManager(
 		kCfg,
-		"ingest-limits",
+		kCfg.ConsumerGroup,
 		logger,
 		prometheus.NewRegistry(),
 	)
@@ -176,7 +176,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	)
 
 	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
-		kgo.ConsumerGroup(consumerGroup),
+		kgo.ConsumerGroup(kCfg.ConsumerGroup),
 		kgo.ConsumeTopics(kCfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
