@@ -1480,7 +1480,6 @@ type sampleWithLabelsAndStreamHash struct {
 	streamHash uint64
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIterator) Next(index int) bool {
 	// Check if there are samples in the buffer for the requested index
 	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
@@ -1574,14 +1573,12 @@ type bufferedVariantsIteratorWrapper struct {
 	index int
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIteratorWrapper) Next() bool {
 	return it.bufferedVariantsIterator.Next(it.index)
 }
 
 // VariantsEvaluator is responsible for making sure the window is loaded from all
 // evaluators for all variants
-// TODO(twhitney): does this need its own test?
 type VariantsEvaluator struct {
 	current int64
 
