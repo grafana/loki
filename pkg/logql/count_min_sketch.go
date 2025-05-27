@@ -2,6 +2,7 @@ package logql
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -322,7 +323,7 @@ type CountMinSketchVectorStepEvaluator struct {
 	buffer []byte
 }
 
-var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewCountMinSketchVectorStepEvaluator(nil)
 
 func NewCountMinSketchVectorStepEvaluator(vec *CountMinSketchVector) *CountMinSketchVectorStepEvaluator {
 	return &CountMinSketchVectorStepEvaluator{
@@ -357,3 +358,45 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
+
+var _ StepEvaluator = (*CountMinSketchEvalStepEvaluator)(nil)
+
+// CountMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
+type CountMinSketchEvalStepEvaluator struct {
+	ctx           context.Context
+	nextEvFactory SampleEvaluatorFactory
+	expr          *CountMinSketchEvalExpr
+	params        Params
+}
+
+func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
+	return &CountMinSketchEvalStepEvaluator{
+		ctx:           ctx,
+		nextEvFactory: nextEvFactory,
+		expr:          expr,
+		params:        params,
+	}, nil
+}
+
+func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
+	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
+	if err != nil {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	ok, _, results := nextEv.Next()
+	if !ok {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	data := results.CountMinSketchVec()
+	handler := NewCountMinSketchVectorStepEvaluator(&data)
+
+	return handler.Next()
+}
+
+func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
+
+func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
+
+func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}
