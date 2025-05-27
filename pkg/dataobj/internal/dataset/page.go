@@ -125,20 +125,15 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			zstdPool.Put(zr)
 		}()
 
-		decompressed := sliceWriterPool.Get().(sliceWriter)
-		defer func() {
-			decompressed.Reset()
-			sliceWriterPool.Put(decompressed)
-		}()
-
-		n, err := io.Copy(&decompressed, zr)
+		decompressed := bytes.NewBuffer(make([]byte, 0, p.PageInfo().UncompressedSize))
+		n, err := io.Copy(decompressed, zr)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to decompress page: %w", err)
 		}
 
-		r := bytes.NewReader(decompressed[:n])
+		r := bytes.NewReader(decompressed.Bytes()[:n])
 		return bitmapReader, &closerFunc{Reader: r, onClose: func() error {
-			r.Reset(nil)
+			r.Reset(nil) // Allow releasing the buffer.
 			return nil
 		}}, nil
 
@@ -147,23 +142,6 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		// a newer format.
 		return nil, nil, fmt.Errorf("unknown compression type %q", compression.String())
 	}
-}
-
-type sliceWriter []byte
-
-func (s *sliceWriter) Write(b []byte) (int, error) {
-	*s = append(*s, b...)
-	return len(b), nil
-}
-
-func (s *sliceWriter) Reset() {
-	*s = (*s)[:0]
-}
-
-var sliceWriterPool = sync.Pool{
-	New: func() any {
-		return sliceWriter(make([]byte, 0, 2<<20))
-	},
 }
 
 var snappyPool = sync.Pool{
