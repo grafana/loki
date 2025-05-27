@@ -173,6 +173,15 @@ func (s *Service) run(ctx context.Context) error {
 				return
 			}
 
+			// Calculate total bytes in this batch
+			var totalBytes int64
+			for _, record := range records {
+				totalBytes += int64(len(record.Value))
+			}
+
+			// Update metrics
+			processor.metrics.addBytesProcessed(totalBytes)
+
 			_ = processor.Append(records)
 		})
 	}
