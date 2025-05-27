@@ -238,6 +238,11 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
 	}
 
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent != "" {
+		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 

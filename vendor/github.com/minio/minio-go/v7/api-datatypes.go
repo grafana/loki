@@ -32,6 +32,8 @@ type BucketInfo struct {
 	Name string `json:"name"`
 	// Date the bucket was created.
 	CreationDate time.Time `json:"creationDate"`
+	// BucketRegion region where the bucket is present
+	BucketRegion string `json:"bucketRegion"`
 }
 
 // StringMap represents map with custom UnmarshalXML
