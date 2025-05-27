@@ -25,7 +25,6 @@ type partitionOffsetMetrics struct {
 
 	// Data volume metrics
 	bytesProcessed prometheus.Counter
-	bytesPerSecond prometheus.Gauge
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -58,10 +57,6 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_bytes_processed_total",
 			Help: "Total number of bytes processed from this partition",
 		}),
-		bytesPerSecond: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_consumer_bytes_per_second",
-			Help: "Current rate of bytes being processed from this partition",
-		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -86,7 +81,6 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.currentOffset,
 		p.processingDelay,
 		p.bytesProcessed,
-		p.bytesPerSecond,
 	}
 
 	for _, collector := range collectors {
@@ -106,7 +100,6 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.currentOffset,
 		p.processingDelay,
 		p.bytesProcessed,
-		p.bytesPerSecond,
 	}
 
 	for _, collector := range collectors {
@@ -143,5 +136,4 @@ func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Tim
 
 func (p *partitionOffsetMetrics) addBytesProcessed(bytes int64) {
 	p.bytesProcessed.Add(float64(bytes))
-	p.bytesPerSecond.Set(float64(bytes)) // This is a simple implementation - you might want to use a more sophisticated rate calculation
 }
