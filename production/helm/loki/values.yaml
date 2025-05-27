@@ -53,6 +53,7 @@ imagePullSecrets: []
 # - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
+
 ######################################################################################################################
 #
 # Base Loki Configs including kubernetes configurations and configurations for Loki itself,
@@ -62,6 +63,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -69,6 +72,8 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
+  # Configures the startup probe for all of the Loki pods
+  startupProbe: {}
   image:
     # -- The Docker registry
     registry: docker.io
@@ -742,6 +747,7 @@ test:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+
 # The Loki canary pushes logs to and queries from this loki installation to test
 # that it's working correctly
 lokiCanary:
@@ -797,6 +803,15 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  livenessProbe: {}
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 15
+    timeoutSeconds: 1
+  startupProbe: {}
+
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
@@ -940,12 +955,16 @@ adminApi:
   # -- Update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -1149,6 +1168,8 @@ gateway:
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
+  # -- liveness probe for the nginx container in the gateway pods.
+  livenessProbe: {}
   # Configures the readiness probe for the gateway
   readinessProbe:
     httpGet:
@@ -1156,6 +1177,8 @@ gateway:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- startup probe for the nginx container in the gateway pods.
+  startupProbe: {}
   nginxConfig:
     # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
     schema: http
@@ -1187,6 +1210,7 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
+
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
@@ -1227,12 +1251,16 @@ enterpriseGateway:
   # -- update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -1256,6 +1284,7 @@ enterpriseGateway:
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 60
+
 # -- Ingress configuration Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.
@@ -1902,6 +1931,8 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- UpdateStrategy for the ingester StatefulSets.
   updateStrategy:
     # -- One of  'OnDelete' or 'RollingUpdate'
@@ -2447,6 +2478,7 @@ indexGateway:
     # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
     # rollingUpdate:
     #   partition: 0
+
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
@@ -2498,6 +2530,8 @@ compactor:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the compactor
   resources: {}
   # -- Containers to add to the compactor pods
@@ -2555,6 +2589,7 @@ compactor:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-gateway
 bloomGateway:
   # -- Number of replicas for the bloom-gateway
@@ -2606,6 +2641,8 @@ bloomGateway:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty, use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the bloom-gateway
   resources: {}
   # -- Containers to add to the bloom-gateway pods
@@ -2654,6 +2691,7 @@ bloomGateway:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-planner
 bloomPlanner:
   # -- Number of replicas for the bloom-planner
@@ -2705,6 +2743,8 @@ bloomPlanner:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the bloom-planner
   resources: {}
   # -- Containers to add to the bloom-planner pods
@@ -2753,6 +2793,7 @@ bloomPlanner:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-builder
 bloomBuilder:
   # -- Number of replicas for the bloom-builder
@@ -2843,6 +2884,7 @@ bloomBuilder:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+
 # -- Configuration for the pattern ingester
 patternIngester:
   # -- Number of replicas for the pattern ingester
@@ -2894,6 +2936,8 @@ patternIngester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the pattern ingester
   resources: {}
   # -- Containers to add to the pattern ingester pods
@@ -2953,6 +2997,7 @@ patternIngester:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the ruler
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
@@ -3196,6 +3241,10 @@ memcached:
     capabilities:
       drop: [ALL]
     allowPrivilegeEscalation: false
+  livenessProbe: {}
+  readinessProbe: {}
+  startupProbe: {}
+
 memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
@@ -3222,6 +3271,10 @@ memcachedExporter:
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
   extraArgs: {}
+  livenessProbe: {}
+  readinessProbe: {}
+  startupProbe: {}
+
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
@@ -3320,6 +3373,7 @@ resultsCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
@@ -3422,6 +3476,7 @@ chunksCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+
 ######################################################################################################################
 #
 # Subchart configurations
@@ -3553,6 +3608,8 @@ sidecar:
   readinessProbe: {}
   # -- Liveness probe definition. Probe is disabled on the sidecar by default.
   livenessProbe: {}
+  # -- Startup probe definition. Probe is disabled on the sidecar by default.
+  startupProbe: {}
   rules:
     # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.
     enabled: true
