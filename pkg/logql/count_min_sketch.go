@@ -359,18 +359,18 @@ func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
 
-var _ StepEvaluator = (*countMinSketchEvalStepEvaluator)(nil)
+var _ StepEvaluator = (*CountMinSketchEvalStepEvaluator)(nil)
 
-// countMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
-type countMinSketchEvalStepEvaluator struct {
+// CountMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
+type CountMinSketchEvalStepEvaluator struct {
 	ctx           context.Context
 	nextEvFactory SampleEvaluatorFactory
 	expr          *CountMinSketchEvalExpr
 	params        Params
 }
 
-func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*countMinSketchEvalStepEvaluator, error) {
-	return &countMinSketchEvalStepEvaluator{
+func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
+	return &CountMinSketchEvalStepEvaluator{
 		ctx:           ctx,
 		nextEvFactory: nextEvFactory,
 		expr:          expr,
@@ -378,7 +378,7 @@ func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory Sampl
 	}, nil
 }
 
-func (e *countMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
+func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
 	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
 	if err != nil {
 		return false, 0, CountMinSketchVector{}
@@ -395,9 +395,8 @@ func (e *countMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
 	return handler.Next()
 }
 
-func (*countMinSketchEvalStepEvaluator) Close() error { return nil }
+func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
 
-func (*countMinSketchEvalStepEvaluator) Error() error { return nil }
+func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
 
-func (e *countMinSketchEvalStepEvaluator) Explain(parent Node) {
-}
+func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}
