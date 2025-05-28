@@ -20,6 +20,8 @@ common:
 
 kafka_config:
   topic: "loki"
+  address: localhost:9092
+  consumer_group: ingesters
 
 querier:
   query_partition_ingesters: true
@@ -28,6 +30,13 @@ ingest_limits:
   enabled: true
   active_window: 1h
   num_partitions: 1
+  kafka_config:
+    topic: loki
+    consumer_group: ingest-limits
+    reader_config:
+      address: localhost:9092
+    writer_config:
+      address: localhost:9092
   lifecycler:
     ring:
       kvstore:

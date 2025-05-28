@@ -48,7 +48,7 @@ type Config struct {
 
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-	KafkaConfig      kafka.Config          `yaml:"-"`
+	KafkaConfig      kafka.Config          `yaml:"kafka_config,omitempty"`
 
 	// Deprecated.
 	WindowSize     time.Duration `yaml:"window_size" doc:"hidden|deprecated"`
@@ -57,6 +57,8 @@ type Config struct {
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.", f, util_log.Logger)
+	cfg.KafkaConfig.RegisterFlagsWithPrefix("ingest-limits.kafka_config.", f)
+
 	f.BoolVar(
 		&cfg.Enabled,
 		"ingest-limits.enabled",
