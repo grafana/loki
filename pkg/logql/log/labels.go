@@ -15,7 +15,7 @@ import (
 const MaxInternedStrings = 1024
 
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.EmptyLabels().Hash(), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
-var terminateLoopEarly = errors.New("dummy error used to terminate loop early")
+var errTerminateLoopEarly = errors.New("dummy error used to terminate loop early")
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -299,7 +299,7 @@ func (b *LabelsBuilder) getWithCategory(key string) (string, LabelCategory, bool
 			foundInBase = true
 			value = l.Value
 
-			return terminateLoopEarly
+			return errTerminateLoopEarly
 		}
 
 		return nil
@@ -745,7 +745,7 @@ Outer:
 			if g == l.Name {
 				b.buf = append(b.buf, l)
 
-				return terminateLoopEarly
+				return errTerminateLoopEarly
 			}
 
 			return nil
