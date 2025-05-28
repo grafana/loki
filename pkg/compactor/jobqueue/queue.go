@@ -25,7 +25,7 @@ type Builder interface {
 	BuildJobs(ctx context.Context, jobsChan chan<- *Job) error
 
 	// OnJobResponse reports back the response of the job execution.
-	OnJobResponse(response *JobResponse)
+	OnJobResponse(response *ReportJobResultRequest)
 }
 
 // Queue implements the job queue service
@@ -189,24 +189,24 @@ func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueRespons
 }
 
 // ReportJobResponse implements the gRPC ReportJobResponse method
-func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResponseRequest) (*ReportJobResponseResponse, error) {
-	if req.Response == nil {
-		return nil, status.Error(codes.InvalidArgument, "response is required")
+func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResultRequest) (*ReportJobResultResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
 	q.processingJobsMtx.Lock()
 	defer q.processingJobsMtx.Unlock()
-	pj, exists := q.processingJobs[req.Response.JobId]
+	pj, exists := q.processingJobs[req.JobId]
 	if !exists {
 		return nil, status.Error(codes.NotFound, "job not found")
 	}
 
-	if req.Response.Error != "" {
+	if req.Error != "" {
 		level.Error(util_log.Logger).Log(
 			"msg", "job execution failed",
-			"job_id", req.Response.JobId,
-			"job_type", req.Response.JobType,
-			"error", req.Response.Error,
+			"job_id", req.JobId,
+			"job_type", req.JobType,
+			"error", req.Error,
 			"retry_count", pj.retryCount,
 		)
 
@@ -215,8 +215,8 @@ func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResponseReq
 			pj.retryCount++
 			level.Info(util_log.Logger).Log(
 				"msg", "retrying failed job",
-				"job_id", req.Response.JobId,
-				"job_type", req.Response.JobType,
+				"job_id", req.JobId,
+				"job_type", req.JobType,
 				"retry_count", pj.retryCount,
 				"max_retries", q.maxRetries,
 			)
@@ -225,29 +225,29 @@ func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResponseReq
 			select {
 			case <-ctx.Done():
 			case q.queue <- pj.job:
-				return &ReportJobResponseResponse{}, nil
+				return &ReportJobResultResponse{}, nil
 			}
 		} else {
 			level.Error(util_log.Logger).Log(
 				"msg", "job failed after max retries",
-				"job_id", req.Response.JobId,
-				"job_type", req.Response.JobType,
+				"job_id", req.JobId,
+				"job_type", req.JobType,
 				"max_retries", q.maxRetries,
 			)
 		}
 	} else {
 		level.Debug(util_log.Logger).Log(
 			"msg", "job execution succeeded",
-			"job_id", req.Response.JobId,
-			"job_type", req.Response.JobType,
+			"job_id", req.JobId,
+			"job_type", req.JobType,
 		)
 	}
-	q.builders[req.Response.JobType].OnJobResponse(req.Response)
+	q.builders[req.JobType].OnJobResponse(req)
 
 	// Remove the job from processing jobs
-	delete(q.processingJobs, req.Response.JobId)
+	delete(q.processingJobs, req.JobId)
 
-	return &ReportJobResponseResponse{}, nil
+	return &ReportJobResultResponse{}, nil
 }
 
 // Close closes the queue and releases all resources

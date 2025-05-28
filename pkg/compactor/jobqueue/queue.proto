@@ -28,26 +28,21 @@ message DequeueResponse {
   Job job = 1;
 }
 
-// JobResponse represents the result of executing a job
-message JobResponse {
+// ReportJobResultRequest is used to report the result of executing a job
+message ReportJobResultRequest {
   string job_id = 1;
   JobType job_type = 2;
   string error = 3;  // Empty string indicates success
   google.protobuf.Any result = 4;
 }
 
-// ReportJobResponseRequest is used to report the result of executing a job
-message ReportJobResponseRequest {
-  JobResponse response = 1;
-}
-
-// ReportJobResponseResponse is the response to reporting a job result
-message ReportJobResponseResponse {}
+// ReportJobResultResponse is the response to reporting a job result
+message ReportJobResultResponse {}
 
 // JobQueue provides RPC methods for job queue operations
 service JobQueue {
   // Dequeue retrieves the next job from the queue
   rpc Dequeue(DequeueRequest) returns (DequeueResponse) {}
   // ReportJobResponse reports the result of executing a job
-  rpc ReportJobResponse(ReportJobResponseRequest) returns (ReportJobResponseResponse) {}
+  rpc ReportJobResponse(ReportJobResultResponse) returns (ReportJobResultRequest) {}
 } 

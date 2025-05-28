@@ -159,7 +159,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			go func() {
 				for job := range jobsChan {
 					jobsBuilt = append(jobsBuilt, *job)
-					builder.OnJobResponse(&jobqueue.JobResponse{
+					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
 						JobId:   job.Id,
 						JobType: job.Type,
 					})
@@ -225,7 +225,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			jobsChan := make(chan *jobqueue.Job)
 			go func() {
 				for job := range jobsChan {
-					builder.OnJobResponse(&jobqueue.JobResponse{
+					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
 						JobId:   job.Id,
 						JobType: job.Type,
 						Error:   tc.jobProcessingError,

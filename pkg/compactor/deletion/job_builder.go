@@ -272,7 +272,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupId strin
 }
 
 // OnJobResponse implements jobqueue.Builder interface
-func (b *JobBuilder) OnJobResponse(response *jobqueue.JobResponse) {
+func (b *JobBuilder) OnJobResponse(response *jobqueue.ReportJobResultRequest) {
 	b.currentManifestMtx.Lock()
 	defer b.currentManifestMtx.Unlock()
 

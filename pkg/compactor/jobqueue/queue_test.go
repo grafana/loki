@@ -15,7 +15,7 @@ type mockBuilder struct {
 	buildErr    error
 }
 
-func (m *mockBuilder) OnJobResponse(_ *JobResponse) {}
+func (m *mockBuilder) OnJobResponse(_ *ReportJobResultRequest) {}
 
 func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *Job) error {
 	if m.buildErr != nil {
@@ -101,11 +101,9 @@ func TestQueue_ReportJobResponse(t *testing.T) {
 	q.processingJobsMtx.Unlock()
 
 	// Test successful response
-	resp, err := q.ReportJobResponse(ctx, &ReportJobResponseRequest{
-		Response: &JobResponse{
-			JobId:   job.Id,
-			JobType: job.Type,
-		},
+	resp, err := q.ReportJobResponse(ctx, &ReportJobResultRequest{
+		JobId:   job.Id,
+		JobType: job.Type,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -126,12 +124,10 @@ func TestQueue_ReportJobResponse(t *testing.T) {
 	}
 	q.processingJobsMtx.Unlock()
 
-	resp, err = q.ReportJobResponse(ctx, &ReportJobResponseRequest{
-		Response: &JobResponse{
-			JobId:   job.Id,
-			JobType: job.Type,
-			Error:   "test error",
-		},
+	resp, err = q.ReportJobResponse(ctx, &ReportJobResultRequest{
+		JobId:   job.Id,
+		JobType: job.Type,
+		Error:   "test error",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
