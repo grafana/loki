@@ -242,7 +242,7 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	// We can just log the error and move on.
 	p.eventsProducerClient.Produce(p.ctx, &kgo.Record{
 		Value: eventBytes,
-	}, func(r *kgo.Record, err error) {
+	}, func(_ *kgo.Record, err error) {
 		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", err)
 		}
