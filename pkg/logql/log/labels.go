@@ -73,24 +73,6 @@ func (l labelsResult) Parsed() labels.Labels {
 	return l.parsed
 }
 
-type hasher struct {
-	buf []byte // buffer for computing hash without bytes slice allocation.
-}
-
-// newHasher allow to compute hashes for labels by reusing the same buffer.
-func newHasher() *hasher {
-	return &hasher{
-		buf: make([]byte, 0, 1024),
-	}
-}
-
-// Hash hashes the labels
-func (h *hasher) Hash(lbs labels.Labels) uint64 {
-	var hash uint64
-	hash, h.buf = lbs.HashWithoutLabels(h.buf, []string(nil)...)
-	return hash
-}
-
 type LabelCategory int
 
 const (
