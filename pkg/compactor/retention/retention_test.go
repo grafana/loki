@@ -631,6 +631,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.EmptyLabels()),
 						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
