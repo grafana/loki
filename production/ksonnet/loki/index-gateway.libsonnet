@@ -61,7 +61,11 @@
     statefulSet.mixin.spec.withServiceName('index-gateway') +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
-    k.util.configVolumeMount('overrides', '/etc/loki/overrides') +
+    k.util.configVolumeMount(
+      $._config.overrides_configmap_mount_name,
+      $._config.overrides_configmap_mount_path,
+    ) +
+    k.util.antiAffinity +
     statefulSet.mixin.spec.updateStrategy.withType('RollingUpdate') +
     statefulSet.mixin.spec.template.spec.securityContext.withFsGroup(10001)  // 10001 is the group ID assigned to Loki in the Dockerfile
   else {},
