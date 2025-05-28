@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package jobqueue;
+
+option go_package = "github.com/grafana/loki/pkg/compactor/jobqueue";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// Job represents a single job in the queue
+message Job {
+  string id = 1;
+  JobType type = 2;
+  bytes payload = 3;  // encoded job specific payload
+}
+
+// JobType represents the type of job
+enum JobType {
+  JOB_TYPE_DELETION = 0;
+  // Add more job types as needed
+}
+
+// DequeueRequest is used to request a job from the queue
+message DequeueRequest {}
+
+// DequeueResponse contains the dequeued job
+message DequeueResponse {
+  Job job = 1;
+}
+
+// JobResponse represents the result of executing a job
+message JobResponse {
+  string job_id = 1;
+  JobType job_type = 2;
+  string error = 3;  // Empty string indicates success
+  google.protobuf.Any result = 4;
+}
+
+// ReportJobResponseRequest is used to report the result of executing a job
+message ReportJobResponseRequest {
+  JobResponse response = 1;
+}
+
+// ReportJobResponseResponse is the response to reporting a job result
+message ReportJobResponseResponse {}
+
+// JobQueue provides RPC methods for job queue operations
+service JobQueue {
+  // Dequeue retrieves the next job from the queue
+  rpc Dequeue(DequeueRequest) returns (DequeueResponse) {}
+  // ReportJobResponse reports the result of executing a job
+  rpc ReportJobResponse(ReportJobResponseRequest) returns (ReportJobResponseResponse) {}
+} 
