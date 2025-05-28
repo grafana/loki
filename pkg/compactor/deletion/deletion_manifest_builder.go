@@ -21,8 +21,8 @@ const (
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 type ChunksGroup struct {
-	Requests []DeleteRequest   `json:"requests"`
-	Chunks   []retention.Chunk `json:"chunks"`
+	Requests []DeleteRequest `json:"requests"`
+	Chunks   []string        `json:"chunks"`
 }
 
 // segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
@@ -158,7 +158,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 		}
 
 		group := d.currentSegment[chunksGroupIdentifier]
-		group.Chunks = append(group.Chunks, chk)
+		group.Chunks = append(group.Chunks, chk.ChunkID)
 		d.currentSegment[chunksGroupIdentifier] = group
 	}
 
