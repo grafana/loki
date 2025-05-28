@@ -145,7 +145,7 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, presumedAgentIP string) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
@@ -231,11 +231,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
 
-	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
-	// Therefore, if the header is included, only log the first address
-	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	if agentIP != "" {
-		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	if presumedAgentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
 	}
 
 	userAgent := r.Header.Get("User-Agent")

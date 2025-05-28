@@ -2,14 +2,17 @@ package runtime
 
 import (
 	"flag"
+
+	"github.com/grafana/dskit/flagext"
 )
 
 type Config struct {
-	LogStreamCreation      bool `yaml:"log_stream_creation"`
-	LogPushRequest         bool `yaml:"log_push_request"`
-	LogPushRequestStreams  bool `yaml:"log_push_request_streams"`
-	LogDuplicateMetrics    bool `yaml:"log_duplicate_metrics"`
-	LogDuplicateStreamInfo bool `yaml:"log_duplicate_stream_info"`
+	LogStreamCreation           bool     `yaml:"log_stream_creation"`
+	LogPushRequest              bool     `yaml:"log_push_request"`
+	LogPushRequestStreams       bool     `yaml:"log_push_request_streams"`
+	FilterPushRequestStreamsIPs []string `yaml:"filter_push_request_streams_ips"`
+	LogDuplicateMetrics         bool     `yaml:"log_duplicate_metrics"`
+	LogDuplicateStreamInfo      bool     `yaml:"log_duplicate_stream_info"`
 
 	// LimitedLogPushErrors is to be implemented and will allow logging push failures at a controlled pace.
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
@@ -20,6 +23,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogStreamCreation, "operation-config.log-stream-creation", false, "Log every new stream created by a push request (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogPushRequest, "operation-config.log-push-request", false, "Log every push request (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogPushRequestStreams, "operation-config.log-push-request-streams", false, "Log every stream in a push request (very verbose, recommend to enable via runtime config only).")
+	f.Var((*flagext.StringSlice)(&cfg.FilterPushRequestStreamsIPs), "operation-config.filter-push-request-streams-ips", "Only show streams that match a provided IP address, LogPushRequestStreams must be enabled. Can be used multiple times to filter by multiple IPs.")
 	f.BoolVar(&cfg.LogDuplicateMetrics, "operation-config.log-duplicate-metrics", false, "Log metrics for duplicate lines received.")
 	f.BoolVar(&cfg.LogDuplicateStreamInfo, "operation-config.log-duplicate-stream-info", false, "Log stream info for duplicate lines received")
 	f.BoolVar(&cfg.LimitedLogPushErrors, "operation-config.limited-log-push-errors", true, "Log push errors with a rate limited logger, will show client push errors without overly spamming logs.")
@@ -96,6 +100,10 @@ func (o *TenantConfigs) LogPushRequest(userID string) bool {
 
 func (o *TenantConfigs) LogPushRequestStreams(userID string) bool {
 	return o.getOverridesForUser(userID).LogPushRequestStreams
+}
+
+func (o *TenantConfigs) FilterPushRequestStreamsIPs(userID string) []string {
+	return o.getOverridesForUser(userID).FilterPushRequestStreamsIPs
 }
 
 func (o *TenantConfigs) LogDuplicateMetrics(userID string) bool {

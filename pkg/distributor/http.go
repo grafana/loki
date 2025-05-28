@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log/level"
@@ -45,7 +46,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	req, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams)
+	filterPushRequestStreamsIPs := d.tenantConfigs.FilterPushRequestStreamsIPs(tenantID)
+	presumedAgentIP := extractPresumedAgentIP(r)
+	req, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams, presumedAgentIP)
 	if err != nil {
 		switch {
 		case errors.Is(err, push.ErrRequestBodyTooLarge):
@@ -102,14 +105,28 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	}
 
 	if logPushRequestStreams {
-		var sb strings.Builder
-		for _, s := range req.Streams {
-			sb.WriteString(s.Labels)
+		shouldLog := true
+		if len(filterPushRequestStreamsIPs) > 0 {
+			// if there are filter IP's set, we only want to log if the presumed agent IP is in the list
+			// this would also then exclude any requests that don't have a presumed agent IP
+			shouldLog = slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP)
 		}
-		level.Debug(logger).Log(
-			"msg", "push request streams",
-			"streams", sb.String(),
-		)
+
+		if shouldLog {
+			var sb strings.Builder
+			for _, s := range req.Streams {
+				sb.WriteString(s.Labels)
+			}
+			logValues := []interface{}{
+				"msg", "push request streams",
+				"streams", sb.String(),
+			}
+
+			if presumedAgentIP != "" {
+				logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
+			}
+			level.Debug(logger).Log(logValues...)
+		}
 	}
 
 	_, err = d.PushWithResolver(r.Context(), req, streamResolver)
@@ -169,4 +186,10 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				</body>
 			</html>`
 	util.WriteHTMLResponse(w, noRingPage)
+}
+
+func extractPresumedAgentIP(r *http.Request) string {
+	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
+	// Therefore, if the header is included, only log the first address
+	return strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
 }
