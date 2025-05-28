@@ -65,7 +65,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
 	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
-	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
 	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
@@ -90,7 +90,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
 	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
-	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
 	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
@@ -469,12 +469,12 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 		"stream", "stdout",
 	)
 
-	structuredMeta := []labels.Label{
-		{Name: "level", Value: "info"},
-		{Name: "caller", Value: "http.go:42"},
-		{Name: "user", Value: "john"},
-		{Name: "trace_id", Value: "abc123"},
-	}
+	structuredMeta := labels.FromStrings(
+		"level", "info",
+		"caller", "http.go:42",
+		"user", "john",
+		"trace_id", "abc123",
+	)
 
 	testLine := []byte(`{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"test message","duration_ms":150}`)
 
@@ -492,7 +492,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta...)
+		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
 	}
 }
 

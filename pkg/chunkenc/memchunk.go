@@ -1317,7 +1317,7 @@ func (hb *headBlock) SampleIterator(
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
-			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
 			if !ok || len(samples) == 0 {
 				continue
 			}
@@ -1769,7 +1769,7 @@ func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		e.stats.AddPostFilterLines(1)
 
-		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !ok || len(samples) == 0 {
 			continue
 		}

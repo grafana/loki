@@ -390,8 +390,8 @@ func TestDropLabelsPipeline(t *testing.T) {
 		for i, line := range tt.lines {
 			_, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-			require.Nil(t, finalLbs.Stream())
-			require.Nil(t, finalLbs.StructuredMetadata())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 		}
@@ -512,8 +512,8 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				finalLine, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 				require.Equal(t, tt.wantLine[i], finalLine)
 				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-				require.Nil(t, finalLbs.Stream())
-				require.Nil(t, finalLbs.StructuredMetadata())
+				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 				require.Equal(t, tt.wantLabels[i].String(), finalLbs.String())
@@ -621,7 +621,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line)
+			samples, ok := ex.Process(0, line, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
 				resLbs = samples[0].Labels
@@ -634,7 +634,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString)
+			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
 				resLbs = samples[0].Labels
@@ -652,7 +652,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line)
+			samples, ok := ex.Process(0, line, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
 				resLbs = samples[0].Labels
@@ -665,7 +665,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString)
+			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
 				resLbs = samples[0].Labels
