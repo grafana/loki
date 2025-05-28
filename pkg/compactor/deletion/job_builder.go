@@ -230,7 +230,7 @@ func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*ma
 	return &m, nil
 }
 
-func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupId string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupID string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
 	deletionQueries := make([]string, 0, len(group.Requests))
 	for _, req := range group.Requests {
 		deletionQueries = append(deletionQueries, req.Query)
@@ -252,7 +252,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupId strin
 		}
 
 		job := &jobqueue.Job{
-			Id:      fmt.Sprintf("%s_%d", groupId, i/maxChunksPerJob),
+			Id:      fmt.Sprintf("%s_%d", groupID, i/maxChunksPerJob),
 			Type:    jobqueue.JOB_TYPE_DELETION,
 			Payload: payload,
 		}
