@@ -384,7 +384,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		}}},
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
 			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x2,
+				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}}},
@@ -395,7 +395,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
-				StreamHash: 0x2,
+				StreamHash: 0x1,
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
