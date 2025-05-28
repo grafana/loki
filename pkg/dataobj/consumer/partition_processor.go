@@ -54,6 +54,8 @@ type partitionProcessor struct {
 	wg     sync.WaitGroup
 	reg    prometheus.Registerer
 	logger log.Logger
+
+	eventsProducerClient *kgo.Client
 }
 
 func newPartitionProcessor(
@@ -70,6 +72,7 @@ func newPartitionProcessor(
 	reg prometheus.Registerer,
 	bufPool *sync.Pool,
 	idleFlushTimeout time.Duration,
+	eventsProducerClient *kgo.Client,
 ) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
@@ -99,25 +102,26 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
-		client:           client,
-		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
-		topic:            topic,
-		partition:        partition,
-		records:          make(chan *kgo.Record, 1000),
-		ctx:              ctx,
-		cancel:           cancel,
-		decoder:          decoder,
-		reg:              reg,
-		builderCfg:       builderCfg,
-		bucket:           bucket,
-		tenantID:         []byte(tenantID),
-		metrics:          metrics,
-		uploader:         uploader,
-		metastoreUpdater: metastoreUpdater,
-		bufPool:          bufPool,
-		idleFlushTimeout: idleFlushTimeout,
-		lastFlush:        time.Now(),
-		lastModified:     time.Now(),
+		client:               client,
+		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		topic:                topic,
+		partition:            partition,
+		records:              make(chan *kgo.Record, 1000),
+		ctx:                  ctx,
+		cancel:               cancel,
+		decoder:              decoder,
+		reg:                  reg,
+		builderCfg:           builderCfg,
+		bucket:               bucket,
+		tenantID:             []byte(tenantID),
+		metrics:              metrics,
+		uploader:             uploader,
+		metastoreUpdater:     metastoreUpdater,
+		bufPool:              bufPool,
+		idleFlushTimeout:     idleFlushTimeout,
+		lastFlush:            time.Now(),
+		lastModified:         time.Now(),
+		eventsProducerClient: eventsProducerClient,
 	}
 }
 
@@ -207,7 +211,42 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 		return err
 	}
 
+	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
+		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
+		return err
+	}
+
 	p.lastFlush = time.Now()
+
+	return nil
+}
+
+func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
+	if p.eventsProducerClient == nil {
+		return nil
+	}
+
+	event := &metastore.ObjectWrittenEvent{
+		Tenant:     string(p.tenantID),
+		ObjectPath: objectPath,
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+
+	eventBytes, err := event.Marshal()
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to marshal metastore event", "err", err)
+		return err
+	}
+
+	// Emitting the event is non-critical so we don't need to wait for it.
+	// We can just log the error and move on.
+	p.eventsProducerClient.Produce(p.ctx, &kgo.Record{
+		Value: eventBytes,
+	}, func(r *kgo.Record, err error) {
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", err)
+		}
+	})
 
 	return nil
 }
