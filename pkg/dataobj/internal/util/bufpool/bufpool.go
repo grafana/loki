@@ -39,3 +39,24 @@ func Put(buf *bytes.Buffer) {
 	}
 	b.pool.Put(buf)
 }
+
+// GetUnsized returns a buffer from the unsized pool. Returned buffers are
+// reset and ready for writes.
+//
+// Buffers retrieved by GetUnsized should be returned to the pool with
+// [PutUnsized].
+func GetUnsized() *bytes.Buffer {
+	buf := unsizedPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
+
+// PutUnsized returns a buffer to the unsized pool. PutUnsized should only be
+// used for buffers retrieved by [GetUnsized].
+func PutUnsized(buf *bytes.Buffer) {
+	if buf == nil {
+		return
+	}
+
+	unsizedPool.Put(buf)
+}

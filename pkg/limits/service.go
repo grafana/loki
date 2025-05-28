@@ -46,8 +46,14 @@ var (
 	)
 	tenantStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_streams",
-		"The current number of streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		[]string{"tenant", "state"},
+		"The current number of streams per tenant, including streams outside the active window.",
+		[]string{"tenant"},
+		nil,
+	)
+	tenantActiveStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_active_streams",
+		"The current number of active streams per tenant.",
+		[]string{"tenant"},
 		nil,
 	)
 )
@@ -80,8 +86,8 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
-// IngestLimits is a service that manages stream metadata limits.
-type IngestLimits struct {
+// Service is a service that manages stream metadata limits.
+type Service struct {
 	services.Service
 
 	cfg               Config
@@ -91,8 +97,8 @@ type IngestLimits struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	partitionManager    *PartitionManager
-	partitionLifecycler *PartitionLifecycler
+	partitionManager    *partitionManager
+	partitionLifecycler *partitionLifecycler
 
 	// metrics
 	metrics *metrics
@@ -101,31 +107,31 @@ type IngestLimits struct {
 	limits Limits
 
 	// Track stream metadata
-	usage    *UsageStore
-	consumer *Consumer
-	producer *Producer
+	usage    *usageStore
+	consumer *consumer
+	producer *producer
 
 	// Used for tests.
 	clock quartz.Clock
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *IngestLimits) Flush() {}
+func (s *Service) Flush() {}
 
 // TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *IngestLimits) TransferOut(_ context.Context) error {
+func (s *Service) TransferOut(_ context.Context) error {
 	return nil
 }
 
-// NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
+// New creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
-	s := &IngestLimits{
+	s := &Service{
 		cfg:              cfg,
 		logger:           logger,
-		usage:            NewUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
-		partitionManager: NewPartitionManager(),
+		usage:            newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
+		partitionManager: newPartitionManager(),
 		metrics:          newMetrics(reg),
 		limits:           lims,
 		clock:            quartz.NewReal(),
@@ -161,7 +167,7 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
 	}
-	s.partitionLifecycler = NewPartitionLifecycler(
+	s.partitionLifecycler = newPartitionLifecycler(
 		s.partitionManager,
 		offsetManager,
 		s.usage,
@@ -175,8 +181,8 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
-		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
+		kgo.OnPartitionsAssigned(s.partitionLifecycler.assign),
+		kgo.OnPartitionsRevoked(s.partitionLifecycler.revoke),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -187,16 +193,16 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
-	s.consumer = NewConsumer(
+	s.consumer = newConsumer(
 		s.clientReader,
 		s.partitionManager,
 		s.usage,
-		NewOffsetReadinessCheck(s.partitionManager),
+		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
 		reg,
 	)
-	s.producer = NewProducer(
+	s.producer = newProducer(
 		s.clientWriter,
 		kCfg.Topic,
 		s.cfg.NumPartitions,
@@ -209,45 +215,43 @@ func NewIngestLimits(cfg Config, lims Limits, logger log.Logger, reg prometheus.
 	return s, nil
 }
 
-func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
+func (s *Service) Describe(descs chan<- *prometheus.Desc) {
 	descs <- partitionsDesc
 	descs <- tenantStreamsDesc
+	descs <- tenantActiveStreamsDesc
 }
 
-func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
+func (s *Service) Collect(m chan<- prometheus.Metric) {
 	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
 	// active counts the number of active streams (within the window) per tenant.
 	active := make(map[string]int)
-	// expired counts the number of expired streams (outside the window) per tenant.
-	expired := make(map[string]int)
-	s.usage.All(func(tenant string, _ int32, stream Stream) {
-		if stream.LastSeenAt < cutoff {
-			expired[tenant]++
-		} else {
+	// total counts the total number of streams per tenant.
+	total := make(map[string]int)
+	s.usage.all(func(tenant string, _ int32, stream streamUsage) {
+		total[tenant]++
+		if stream.lastSeenAt >= cutoff {
 			active[tenant]++
 		}
 	})
-	for tenant, numActive := range active {
+	for tenant, numActiveStreams := range active {
+		m <- prometheus.MustNewConstMetric(
+			tenantActiveStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numActiveStreams),
+			tenant,
+		)
+	}
+	for tenant, numStreams := range total {
 		m <- prometheus.MustNewConstMetric(
 			tenantStreamsDesc,
 			prometheus.GaugeValue,
-			float64(numActive),
+			float64(numStreams),
 			tenant,
-			"active",
 		)
 	}
-	for tenant, numExpired := range expired {
-		m <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numExpired),
-			tenant,
-			"expired",
-		)
-	}
-	partitions := s.partitionManager.List()
+	partitions := s.partitionManager.list()
 	for partition := range partitions {
-		state, ok := s.partitionManager.GetState(partition)
+		state, ok := s.partitionManager.getState(partition)
 		if ok {
 			m <- prometheus.MustNewConstMetric(
 				partitionsDesc,
@@ -259,7 +263,7 @@ func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
 	}
 }
 
-func (s *IngestLimits) CheckReady(ctx context.Context) error {
+func (s *Service) CheckReady(ctx context.Context) error {
 	if s.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", s.State())
 	}
@@ -272,7 +276,7 @@ func (s *IngestLimits) CheckReady(ctx context.Context) error {
 
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
-func (s *IngestLimits) starting(ctx context.Context) (err error) {
+func (s *Service) starting(ctx context.Context) (err error) {
 	defer func() {
 		if err != nil {
 			// if starting() fails for any reason (e.g., context canceled),
@@ -298,10 +302,10 @@ func (s *IngestLimits) starting(ctx context.Context) (err error) {
 // running implements the Service interface's running method.
 // It runs the main service loop that consumes stream metadata from Kafka and manages
 // the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
-func (s *IngestLimits) running(ctx context.Context) error {
+func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
-	go s.consumer.Run(ctx)
+	go s.consumer.run(ctx)
 
 	for {
 		select {
@@ -316,15 +320,18 @@ func (s *IngestLimits) running(ctx context.Context) error {
 
 // evictOldStreamsPeriodic runs a periodic job that evicts old streams.
 // It runs two evictions per window size.
-func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
-	ticker := time.NewTicker(s.cfg.ActiveWindow / 2)
+func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
+	ticker := time.NewTicker(s.cfg.EvictionInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.usage.Evict()
+			evicted := s.usage.evict()
+			for tenant, numEvicted := range evicted {
+				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
 		}
 	}
 }
@@ -333,7 +340,7 @@ func (s *IngestLimits) evictOldStreamsPeriodic(ctx context.Context) {
 // It performs cleanup when the service is stopping, including closing the Kafka client.
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
-func (s *IngestLimits) stopping(failureCase error) error {
+func (s *Service) stopping(failureCase error) error {
 	if s.clientReader != nil {
 		s.clientReader.Close()
 	}
@@ -355,16 +362,16 @@ func (s *IngestLimits) stopping(failureCase error) error {
 
 // GetAssignedPartitions implements the proto.IngestLimitsServer interface.
 // It returns the partitions that the tenant is assigned to and the instance still owns.
-func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
+func (s *Service) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
 	resp := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.partitionManager.ListByState(PartitionReady),
+		AssignedPartitions: s.partitionManager.listByState(partitionReady),
 	}
 	return &resp, nil
 }
 
 // ExceedsLimits implements the proto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	var (
 		lastSeenAt = s.clock.Now()
 		// Calculate the max active streams per tenant per partition
@@ -377,7 +384,7 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partition); !assigned {
+		if assigned := s.partitionManager.has(partition); !assigned {
 			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
@@ -388,13 +395,13 @@ func (s *IngestLimits) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
+	accepted, rejected := s.usage.update(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
-		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		err := s.producer.produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
 		}

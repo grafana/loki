@@ -16,6 +16,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
 - [FEATURE] Added affinity property to the loki-canary deamonset
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
+- [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
 
 ## 6.29.0
 

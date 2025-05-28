@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -62,6 +63,7 @@ type Config struct {
 	ProducerMaxBufferedBytes   int64 `yaml:"producer_max_buffered_bytes"`
 
 	MaxConsumerLagAtStartup time.Duration `yaml:"max_consumer_lag_at_startup"`
+	MaxConsumerWorkers      int           `yaml:"max_consumer_workers"`
 
 	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
 }
@@ -84,7 +86,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.ReaderConfig.RegisterFlagsWithPrefix(prefix+".reader", f)
 	cfg.WriterConfig.RegisterFlagsWithPrefix(prefix+".writer", f)
 
-	f.StringVar(&cfg.Address, prefix+".address", "localhost:9092", "The Kafka backend address. This setting is deprecated and will be removed in the next minor release.")
+	f.StringVar(&cfg.Address, prefix+".address", "", "The Kafka backend address. This setting is deprecated and will be removed in the next minor release.")
 	f.StringVar(&cfg.Topic, prefix+".topic", "", "The Kafka topic name.")
 	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID. This setting is deprecated and will be removed in the next minor release.")
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
@@ -108,6 +110,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxConsumerLagAtStartup, prefix+".max-consumer-lag-at-startup", 15*time.Second, "The guaranteed maximum lag before a consumer is considered to have caught up reading from a partition at startup, becomes ACTIVE in the hash ring and passes the readiness check. "+consumerLagUsage)
 
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
+	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for processing records from Kafka.")
+
+	// If the number of workers is set to 0, use the number of available CPUs
+	if cfg.MaxConsumerWorkers == 0 {
+		cfg.MaxConsumerWorkers = runtime.GOMAXPROCS(0)
+	}
 }
 
 func (cfg *Config) Validate() error {

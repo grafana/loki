@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -35,15 +36,16 @@ const (
 )
 
 type Config struct {
-	NumPartitions             int          `yaml:"num_partitions"`
-	NumTenants                int          `yaml:"num_tenants"`
-	TenantPrefix              string       `yaml:"tenant_prefix"`
-	QPSPerTenant              int          `yaml:"qps_per_tenant"`
-	BatchSize                 int          `yaml:"batch_size"`
-	StreamsPerTenant          int          `yaml:"streams_per_tenant"`
-	StreamLabels              []string     `yaml:"stream_labels"`
-	MaxGlobalStreamsPerTenant int          `yaml:"max_global_streams_per_tenant"`
-	PushMode                  PushModeType `yaml:"push_mode"`
+	NumPartitions             int           `yaml:"num_partitions"`
+	NumTenants                int           `yaml:"num_tenants"`
+	TenantPrefix              string        `yaml:"tenant_prefix"`
+	QPSPerTenant              int           `yaml:"qps_per_tenant"`
+	BatchSize                 int           `yaml:"batch_size"`
+	BatchInterval             time.Duration `yaml:"batch_interval"`
+	StreamsPerTenant          int           `yaml:"streams_per_tenant"`
+	StreamLabels              []string      `yaml:"stream_labels"`
+	MaxGlobalStreamsPerTenant int           `yaml:"max_global_streams_per_tenant"`
+	PushMode                  PushModeType  `yaml:"push_mode"`
 	pushModeRaw               string
 
 	// Stream size control parameter
@@ -83,6 +85,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.StringVar(&c.TenantPrefix, "tenants.prefix", "", "Prefix for tenant IDs")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.BatchSize, "tenants.streams.batch-size", 100, "Number of streams to send to Kafka per tick")
+	f.DurationVar(&c.BatchInterval, "tenants.streams.batch-interval", 1*time.Minute, "Number of milliseconds to wait between batches. If set to 0, it will be calculated based on QPSPerTenant.")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
@@ -112,6 +115,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid push mode: %s", c.pushModeRaw)
 	}
 	c.PushMode = PushModeType(c.pushModeRaw)
+
+	if c.BatchInterval <= 0 {
+		c.BatchInterval = time.Second / time.Duration(c.QPSPerTenant)
+	}
 
 	return nil
 }
