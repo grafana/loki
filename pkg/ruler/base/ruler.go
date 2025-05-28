@@ -802,7 +802,7 @@ func RemoveRuleTokenFromGroupName(name string) string {
 func (r *Ruler) GetRules(ctx context.Context, req *RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id found in context")
+		return nil, fmt.Errorf("no user id found in context: %w", err)
 	}
 
 	if r.cfg.EnableSharding {
