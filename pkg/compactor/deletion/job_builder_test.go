@@ -22,7 +22,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 	}{
 		{
 			name:          "no manifests in storage",
-			setupManifest: func(client client.ObjectClient) {},
+			setupManifest: func(_ client.ObjectClient) {},
 		},
 		{
 			name: "one manifest in storage with less than maxChunksPerJob",
@@ -191,6 +191,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			objectClient, err := local.NewFSObjectClient(local.FSConfig{
 				Directory: t.TempDir(),
 			})
+			require.NoError(t, err)
 
 			builder := NewJobBuilder(objectClient)
 

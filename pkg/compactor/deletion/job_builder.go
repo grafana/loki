@@ -138,7 +138,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 				return ctx.Err()
 			}
 
-			if err := b.createJobsForChunksGroup(ctx, fmt.Sprintf("%d", i), segment.UserID, segment.TableName, group, jobsChan); err != nil {
+			if err := b.createJobsForChunksGroup(ctx, fmt.Sprintf("%d", i), group, jobsChan); err != nil {
 				return err
 			}
 		}
@@ -230,7 +230,7 @@ func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*ma
 	return &m, nil
 }
 
-func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupId, userID, tableName string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupId string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
 	deletionQueries := make([]string, 0, len(group.Requests))
 	for _, req := range group.Requests {
 		deletionQueries = append(deletionQueries, req.Query)

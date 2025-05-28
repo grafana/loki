@@ -81,8 +81,9 @@ func TestQueue_Dequeue(t *testing.T) {
 }
 
 func TestQueue_ReportJobResponse(t *testing.T) {
-	q := New()
 	ctx := context.Background()
+	q := New()
+	require.NoError(t, q.RegisterBuilder(JOB_TYPE_DELETION, &mockBuilder{}))
 
 	// Create a test job
 	job := &Job{
