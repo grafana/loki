@@ -96,13 +96,17 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys requested", len(keys)))
-		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
-		if fetchErr != nil {
-			ext.Error.Set(sp, true)
-			sp.LogFields(otlog.String("event", "error"), otlog.String("message", fetchErr.Error()))
+		if sp != nil {
+			sp.LogFields(otlog.Int("keys requested", len(keys)))
 		}
-		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
+		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
+		if sp != nil {
+			if fetchErr != nil {
+				ext.Error.Set(sp, true)
+				sp.LogFields(otlog.String("event", "error"), otlog.String("message", fetchErr.Error()))
+			}
+			sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
+		}
 		return fetchErr
 	})
 
