@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 - [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
+- [FEATURE] Added affinity property to the loki-canary deamonset
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
 - [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
 - [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
