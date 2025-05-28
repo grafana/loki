@@ -97,7 +97,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 		},
 		{
-			name: "one manifest in storage with multiple segments",
+			name: "one manifest in storage with multiple groups",
 			setupManifest: func(client client.ObjectClient) {
 				deleteRequestBatch := newDeleteRequestBatch(nil)
 				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
