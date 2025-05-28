@@ -9,5 +9,5 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/metastore";
 message ObjectWrittenEvent {
   string tenant = 1;
   string objectPath = 2;
-  string writeTime = 3; 
+  string writeTime = 3;
 }
