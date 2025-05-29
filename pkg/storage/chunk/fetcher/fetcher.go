@@ -129,7 +129,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "ChunkStore.FetchChunks")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	// Extend the extendedHandoff to be 10% larger to allow for some overlap because this is a sliding window

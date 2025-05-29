@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -69,7 +70,7 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	var (
