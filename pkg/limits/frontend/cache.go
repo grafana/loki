@@ -10,14 +10,14 @@ import (
 type cache[K comparable, V any] interface {
 	// get returns the value for the key. It returns true if the key exists,
 	// otherwise false.
-	get(K) (V, bool)
+	Get(K) (V, bool)
 	// set stores the value for the key.
-	set(K, V)
+	Set(K, V)
 	// delete removes the key. If the key does not exist, the operation is a
 	// no-op.
-	delete(K)
+	Delete(K)
 	// reset removes all keys.
-	reset()
+	Reset()
 }
 
 // item contains the value and expiration time for a key.
@@ -50,7 +50,7 @@ func newTTLCache[K comparable, V any](ttl time.Duration) *ttlcache[K, V] {
 }
 
 // Get implements the [cache] interface.
-func (c *ttlcache[K, V]) get(key K) (V, bool) {
+func (c *ttlcache[K, V]) Get(key K) (V, bool) {
 	var (
 		value  V
 		exists bool
@@ -66,7 +66,7 @@ func (c *ttlcache[K, V]) get(key K) (V, bool) {
 }
 
 // Set implements the [cache] interface.
-func (c *ttlcache[K, V]) set(key K, value V) {
+func (c *ttlcache[K, V]) Set(key K, value V) {
 	now := c.clock.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -81,14 +81,14 @@ func (c *ttlcache[K, V]) set(key K, value V) {
 }
 
 // Delete implements the [cache] interface.
-func (c *ttlcache[K, V]) delete(key K) {
+func (c *ttlcache[K, V]) Delete(key K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.items, key)
 }
 
 // Reset implements the [cache] interface.
-func (c *ttlcache[K, V]) reset() {
+func (c *ttlcache[K, V]) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items = make(map[K]item[V])
@@ -110,10 +110,10 @@ type nopcache[K comparable, V any] struct{}
 func newNopCache[K comparable, V any]() *nopcache[K, V] {
 	return &nopcache[K, V]{}
 }
-func (c *nopcache[K, V]) get(_ K) (V, bool) {
+func (c *nopcache[K, V]) Get(_ K) (V, bool) {
 	var value V
 	return value, false
 }
-func (c *nopcache[K, V]) set(_ K, _ V) {}
-func (c *nopcache[K, V]) delete(_ K)   {}
-func (c *nopcache[K, V]) reset()       {}
+func (c *nopcache[K, V]) Set(_ K, _ V) {}
+func (c *nopcache[K, V]) Delete(_ K)   {}
+func (c *nopcache[K, V]) Reset()       {}

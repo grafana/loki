@@ -424,7 +424,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			actual, err := g.exceedsLimits(ctx, test.request)
+			actual, err := g.ExceedsLimits(ctx, test.request)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.Nil(t, actual)
@@ -799,7 +799,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	require.Equal(t, 1, client1.numAssignedPartitionsRequests)
 
 	// Expire the cache, it should be a cache miss.
-	cache.reset()
+	cache.Reset()
 
 	// The third call should be a cache miss.
 	actual, err = g.getPartitionConsumers(ctx, instances)

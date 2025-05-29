@@ -77,10 +77,10 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s
 }
 
-// all iterates all streams, and calls the [iterateFunc] closure for each
-// iterated stream. As [all] acquires a read lock, the closure must not
+// All iterates all streams, and calls the [iterateFunc] closure for each
+// iterated stream. As [All] acquires a read lock, the closure must not
 // make blocking calls while iterating streams.
-func (s *usageStore) all(fn iterateFunc) {
+func (s *usageStore) All(fn iterateFunc) {
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
@@ -92,10 +92,10 @@ func (s *usageStore) all(fn iterateFunc) {
 	})
 }
 
-// forTenant iterates all streams for the tenant, and calls the [iterateFunc]
-// closure for each iterated stream. As [forTenant] aquires a read lock, the
+// ForTenant iterates all streams for the tenant, and calls the [iterateFunc]
+// closure for each iterated stream. As [ForTenant] aquires a read lock, the
 // closure must not make blocking calls while iterating streams.
-func (s *usageStore) forTenant(tenant string, fn iterateFunc) {
+func (s *usageStore) ForTenant(tenant string, fn iterateFunc) {
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
@@ -105,7 +105,7 @@ func (s *usageStore) forTenant(tenant string, fn iterateFunc) {
 	})
 }
 
-func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
@@ -166,8 +166,8 @@ func (s *usageStore) update(tenant string, streams []*proto.StreamMetadata, last
 	return stored, rejected
 }
 
-// evict evicts all streams that have not been seen within the window.
-func (s *usageStore) evict() map[string]int {
+// Evict evicts all streams that have not been seen within the window.
+func (s *usageStore) Evict() map[string]int {
 	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
@@ -185,8 +185,8 @@ func (s *usageStore) evict() map[string]int {
 	return evicted
 }
 
-// evictPartitions evicts all streams for the specified partitions.
-func (s *usageStore) evictPartitions(partitionsToEvict []int32) {
+// EvictPartitions evicts all streams for the specified partitions.
+func (s *usageStore) EvictPartitions(partitionsToEvict []int32) {
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, partitionToEvict := range partitionsToEvict {
