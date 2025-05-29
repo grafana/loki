@@ -10,9 +10,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
-	"github.com/grafana/dskit/spanprofiler"
 	"github.com/grafana/dskit/tracing"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
@@ -90,13 +88,11 @@ func main() {
 
 	if config.Tracing.Enabled {
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-		trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+		trace, err := tracing.NewOTelFromJaegerEnv(fmt.Sprintf("loki-%s", config.Target))
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-		if config.Tracing.ProfilingEnabled {
-			opentracing.SetGlobalTracer(spanprofiler.NewTracer(opentracing.GlobalTracer()))
-		}
+		
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
