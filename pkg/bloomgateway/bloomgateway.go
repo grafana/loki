@@ -19,6 +19,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -31,6 +32,8 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/bloomgateway")
 
 const (
 	metricsSubsystem        = "bloom_gateway"

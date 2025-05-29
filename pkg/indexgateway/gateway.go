@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -35,6 +36,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/indexgateway")
 
 const (
 	maxIndexEntriesPerResponse = 1000
@@ -106,7 +109,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.New(context.Background(), g.log, "IndexGateway.QueryIndex")
+	log, _ := spanlogger.NewOTel(context.Background(), g.log, tracer, "IndexGateway.QueryIndex")
 	defer log.Finish()
 
 	var outerErr, innerErr error
