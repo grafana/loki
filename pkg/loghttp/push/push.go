@@ -120,23 +120,25 @@ type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
 
 func NewPushStats() *Stats {
 	return &Stats{
-		LogLinesBytes:                   map[string]map[time.Duration]int64{},
-		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
-		PolicyNumLines:                  map[string]int64{},
-		ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{},
+		LogLinesBytes:                     map[string]map[time.Duration]int64{},
+		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
+		PolicyNumLines:                    map[string]int64{},
+		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
+		MostRecentEntryTimestampPerStream: map[string]time.Time{},
 	}
 }
 
 type Stats struct {
-	Errs                            []error
-	PolicyNumLines                  map[string]int64
-	LogLinesBytes                   PolicyWithRetentionWithBytes
-	StructuredMetadataBytes         PolicyWithRetentionWithBytes
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
-	StreamLabelsSize                int64
-	MostRecentEntryTimestamp        time.Time
-	ContentType                     string
-	ContentEncoding                 string
+	Errs                              []error
+	PolicyNumLines                    map[string]int64
+	LogLinesBytes                     PolicyWithRetentionWithBytes
+	StructuredMetadataBytes           PolicyWithRetentionWithBytes
+	ResourceAndSourceMetadataLabels   map[string]map[time.Duration]push.LabelsAdapter
+	StreamLabelsSize                  int64
+	MostRecentEntryTimestamp          time.Time
+	MostRecentEntryTimestampPerStream map[string]time.Time
+	ContentType                       string
+	ContentEncoding                   string
 
 	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
@@ -145,13 +147,13 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, presumedAgentIP string) (*logproto.PushRequest, error) {
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, presumedAgentIP string) (*logproto.PushRequest, *Stats, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
-			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
+			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	var (
@@ -243,7 +245,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
-	return req, err
+	return req, pushStats, err
 }
 
 func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
@@ -371,6 +373,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
+		mostRecentEntryTimestamp := time.Time{}
 		for _, e := range s.Entries {
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
@@ -382,6 +385,15 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
 			}
+
+			if e.Timestamp.After(mostRecentEntryTimestamp) {
+				mostRecentEntryTimestamp = e.Timestamp
+			}
+		}
+
+		// Only populate this map if we are going to log it.
+		if logPushRequestStreams {
+			pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
 		}
 
 		if tracker != nil && !pushStats.IsAggregatedMetric {
