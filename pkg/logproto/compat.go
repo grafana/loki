@@ -276,7 +276,7 @@ func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
-// LogToSpan writes information about this request to an OpenTracing span
+// LogToSpan writes information about this request to an OTel span
 func (m *IndexStatsRequest) LogToSpan(sp trace.Span) {
 	sp.SetAttributes(
 		attribute.String("query", m.GetQuery()),
@@ -326,7 +326,7 @@ func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
-// LogToSpan writes information about this request to an OpenTracing span
+// LogToSpan writes information about this request to an OTel span
 func (m *VolumeRequest) LogToSpan(sp trace.Span) {
 	sp.SetAttributes(
 		attribute.String("query", m.GetQuery()),

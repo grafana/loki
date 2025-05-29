@@ -57,7 +57,6 @@ func init() {
 		// w3c Propagator is the default propagator for opentelemetry
 		propagation.TraceContext{}, propagation.Baggage{},
 	}...))
-
 }
 
 const (
