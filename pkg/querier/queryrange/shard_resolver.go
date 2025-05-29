@@ -185,7 +185,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, r.logger)
 	defer log.Finish()
 
 	combined, err := r.GetStats(e)
@@ -223,7 +223,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	[]logproto.ChunkRefGroup,
 	error,
 ) {
-	log := spanlogger.FromContext(r.ctx)
+	log := spanlogger.FromContext(r.ctx, r.logger)
 
 	var (
 		adjustedFrom    = r.from
