@@ -60,10 +60,7 @@ func TestQueue_Dequeue(t *testing.T) {
 
 	go func() {
 		// Enqueue the job
-		select {
-		case q.queue <- job:
-			// Successfully enqueued
-		}
+		q.queue <- job
 	}()
 
 	// Dequeue the job
