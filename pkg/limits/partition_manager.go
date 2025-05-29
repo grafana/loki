@@ -54,8 +54,8 @@ func newPartitionManager() *partitionManager {
 	}
 }
 
-// assign assigns the partitions.
-func (m *partitionManager) assign(_ context.Context, partitions []int32) {
+// Assign assigns the partitions.
+func (m *partitionManager) Assign(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -66,18 +66,18 @@ func (m *partitionManager) assign(_ context.Context, partitions []int32) {
 	}
 }
 
-// getState returns the current state of the partition. It returns false
+// GetState returns the current state of the partition. It returns false
 // if the partition does not exist.
-func (m *partitionManager) getState(partition int32) (partitionState, bool) {
+func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
 	return entry.state, ok
 }
 
-// targetOffsetReached returns true if the partition is replaying and the
+// TargetOffsetReached returns true if the partition is replaying and the
 // target offset has been reached.
-func (m *partitionManager) targetOffsetReached(partition int32, offset int64) bool {
+func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
@@ -87,17 +87,17 @@ func (m *partitionManager) targetOffsetReached(partition int32, offset int64) bo
 	return false
 }
 
-// has returns true if the partition is assigned, otherwise false.
-func (m *partitionManager) has(partition int32) bool {
+// Has returns true if the partition is assigned, otherwise false.
+func (m *partitionManager) Has(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	_, ok := m.partitions[partition]
 	return ok
 }
 
-// list returns a map of all assigned partitions and the timestamp of when
+// List returns a map of all assigned partitions and the timestamp of when
 // each partition was assigned.
-func (m *partitionManager) list() map[int32]int64 {
+func (m *partitionManager) List() map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	result := make(map[int32]int64)
@@ -107,9 +107,9 @@ func (m *partitionManager) list() map[int32]int64 {
 	return result
 }
 
-// listByState returns all partitions with the specified state and their last
+// ListByState returns all partitions with the specified state and their last
 // updated timestamps.
-func (m *partitionManager) listByState(state partitionState) map[int32]int64 {
+func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	result := make(map[int32]int64)
@@ -121,10 +121,10 @@ func (m *partitionManager) listByState(state partitionState) map[int32]int64 {
 	return result
 }
 
-// setReplaying sets the partition as replaying and the offset that must
+// SetReplaying sets the partition as replaying and the offset that must
 // be consumed for it to become ready. It returns false if the partition
 // does not exist.
-func (m *partitionManager) setReplaying(partition int32, offset int64) bool {
+func (m *partitionManager) SetReplaying(partition int32, offset int64) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
@@ -136,9 +136,9 @@ func (m *partitionManager) setReplaying(partition int32, offset int64) bool {
 	return ok
 }
 
-// setReady sets the partition as ready. It returns false if the partition
+// SetReady sets the partition as ready. It returns false if the partition
 // does not exist.
-func (m *partitionManager) setReady(partition int32) bool {
+func (m *partitionManager) SetReady(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
@@ -150,8 +150,8 @@ func (m *partitionManager) setReady(partition int32) bool {
 	return ok
 }
 
-// revoke deletes the partitions.
-func (m *partitionManager) revoke(_ context.Context, partitions []int32) {
+// Revoke deletes the partitions.
+func (m *partitionManager) Revoke(_ context.Context, partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
