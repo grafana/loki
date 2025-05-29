@@ -181,8 +181,8 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(s.partitionLifecycler.assign),
-		kgo.OnPartitionsRevoked(s.partitionLifecycler.revoke),
+		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
+		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -227,7 +227,7 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// total counts the total number of streams per tenant.
 	total := make(map[string]int)
-	s.usage.all(func(tenant string, _ int32, stream streamUsage) {
+	s.usage.All(func(tenant string, _ int32, stream streamUsage) {
 		total[tenant]++
 		if stream.lastSeenAt >= cutoff {
 			active[tenant]++
@@ -249,9 +249,9 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 			tenant,
 		)
 	}
-	partitions := s.partitionManager.list()
+	partitions := s.partitionManager.List()
 	for partition := range partitions {
-		state, ok := s.partitionManager.getState(partition)
+		state, ok := s.partitionManager.GetState(partition)
 		if ok {
 			m <- prometheus.MustNewConstMetric(
 				partitionsDesc,
@@ -305,7 +305,7 @@ func (s *Service) starting(ctx context.Context) (err error) {
 func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
-	go s.consumer.run(ctx)
+	go s.consumer.Run(ctx)
 
 	for {
 		select {
@@ -328,7 +328,7 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			evicted := s.usage.evict()
+			evicted := s.usage.Evict()
 			for tenant, numEvicted := range evicted {
 				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
@@ -364,7 +364,7 @@ func (s *Service) stopping(failureCase error) error {
 // It returns the partitions that the tenant is assigned to and the instance still owns.
 func (s *Service) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
 	resp := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.partitionManager.listByState(partitionReady),
+		AssignedPartitions: s.partitionManager.ListByState(partitionReady),
 	}
 	return &resp, nil
 }
@@ -384,7 +384,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.has(partition); !assigned {
+		if assigned := s.partitionManager.Has(partition); !assigned {
 			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
 			continue
 		}
@@ -395,13 +395,13 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	streams = streams[:valid]
 
 	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.update(req.Tenant, streams, lastSeenAt, cond)
+	accepted, rejected := s.usage.Update(req.Tenant, streams, lastSeenAt, cond)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize
 
-		err := s.producer.produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
 		}

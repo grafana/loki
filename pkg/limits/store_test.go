@@ -23,7 +23,7 @@ func TestUsageStore_All(t *testing.T) {
 	// Check that we can iterate all stored streams.
 	expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
 	actual := make([]uint64, 0, len(expected))
-	s.all(func(_ string, _ int32, s streamUsage) {
+	s.All(func(_ string, _ int32, s streamUsage) {
 		actual = append(actual, s.hash)
 	})
 	require.ElementsMatch(t, expected, actual)
@@ -46,13 +46,13 @@ func TestUsageStore_ForTenant(t *testing.T) {
 	// Check we can iterate just the streams for each tenant.
 	expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
 	actual1 := make([]uint64, 0, 5)
-	s.forTenant("tenant1", func(_ string, _ int32, stream streamUsage) {
+	s.ForTenant("tenant1", func(_ string, _ int32, stream streamUsage) {
 		actual1 = append(actual1, stream.hash)
 	})
 	require.ElementsMatch(t, expected1, actual1)
 	expected2 := []uint64{0x5, 0x6, 0x7, 0x8, 0x9}
 	actual2 := make([]uint64, 0, 5)
-	s.forTenant("tenant2", func(_ string, _ int32, stream streamUsage) {
+	s.ForTenant("tenant2", func(_ string, _ int32, stream streamUsage) {
 		actual2 = append(actual2, stream.hash)
 	})
 	require.ElementsMatch(t, expected2, actual2)
@@ -164,9 +164,9 @@ func TestUsageStore_Store(t *testing.T) {
 			s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions)
 			clock := quartz.NewMock(t)
 			s.clock = clock
-			s.update("tenant", test.seed, clock.Now(), nil)
+			s.Update("tenant", test.seed, clock.Now(), nil)
 			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.update("tenant", test.streams, clock.Now(), streamLimitCond)
+			accepted, rejected := s.Update("tenant", test.streams, clock.Now(), streamLimitCond)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
@@ -186,9 +186,9 @@ func TestUsageStore_Evict(t *testing.T) {
 	s4 := streamUsage{hash: 0x4, lastSeenAt: clock.Now().Add(-59 * time.Minute).UnixNano()}
 	s.set("tenant2", s4)
 	// Evict all streams older than the window size.
-	s.evict()
+	s.Evict()
 	actual := make(map[string][]streamUsage)
-	s.all(func(tenant string, _ int32, stream streamUsage) {
+	s.All(func(tenant string, _ int32, stream streamUsage) {
 		actual[tenant] = append(actual[tenant], stream)
 	})
 	// We can't use require.Equal as [All] iterates streams in a non-deterministic
@@ -214,11 +214,11 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 		s.set("tenant", streamUsage{hash: uint64(i)})
 	}
 	// Evict the first 5 partitions.
-	s.evictPartitions([]int32{0, 1, 2, 3, 4})
+	s.EvictPartitions([]int32{0, 1, 2, 3, 4})
 	// The last 5 partitions should still have data.
 	expected := []int32{5, 6, 7, 8, 9}
 	actual := make([]int32, 0, len(expected))
-	s.all(func(_ string, partition int32, _ streamUsage) {
+	s.All(func(_ string, partition int32, _ streamUsage) {
 		actual = append(actual, partition)
 	})
 	require.ElementsMatch(t, expected, actual)

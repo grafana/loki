@@ -58,7 +58,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.update(tenant, metadata, updateTime, nil)
+				s.Update(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -77,7 +77,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				s.update(tenant, metadata, updateTime, nil)
+				s.Update(tenant, metadata, updateTime, nil)
 			}
 		})
 
@@ -99,7 +99,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.update(tenant, metadata, updateTime, nil)
+					s.Update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
@@ -120,7 +120,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					s.update(tenant, metadata, updateTime, nil)
+					s.Update(tenant, metadata, updateTime, nil)
 					i++
 				}
 			})
