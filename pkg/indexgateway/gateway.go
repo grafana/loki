@@ -106,7 +106,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.New(context.Background(), "IndexGateway.QueryIndex")
+	log, _ := spanlogger.New(context.Background(), g.log, "IndexGateway.QueryIndex")
 	defer log.Finish()
 
 	var outerErr, innerErr error
