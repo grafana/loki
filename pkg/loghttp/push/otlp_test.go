@@ -575,10 +575,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				tc.generateLogs(),
 				"foo",
 				tc.otlpConfig,
+				nil,
 				defaultServiceDetection,
 				tracker,
 				stats,
-				false,
 				log.NewNopLogger(),
 				streamResolver,
 			)
@@ -911,10 +911,10 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		generateLogs(),
 		"test-user",
 		customOTLPConfig,
+		nil,
 		[]string{}, // No service name discovery needed
 		tracker,
 		stats,
-		false,
 		log.NewNopLogger(),
 		streamResolver,
 	)
@@ -1031,10 +1031,10 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		generateLogs(),
 		"test-user",
 		customOTLPConfig,
+		nil,
 		[]string{}, // No service name discovery needed
 		tracker,
 		stats,
-		false,
 		log.NewNopLogger(),
 		streamResolver,
 	)

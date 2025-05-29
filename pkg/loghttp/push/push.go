@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -111,7 +112,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -147,8 +148,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, presumedAgentIP string) (*logproto.PushRequest, *Stats, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP string) (*logproto.PushRequest, *Stats, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
 			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
@@ -248,7 +249,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	return req, pushStats, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -318,6 +319,14 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 	pushStats.ContentEncoding = contentEncoding
 
 	discoverServiceName := limits.DiscoverServiceName(userID)
+
+	logServiceNameDiscovery := false
+	logPushRequestStreams := false
+	if tenantConfigs != nil {
+		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
+		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+	}
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 		pushStats.StreamLabelsSize += int64(len(s.Labels))
@@ -332,7 +341,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 		}
 
 		var beforeServiceName string
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			beforeServiceName = lbs.String()
 		}
 
@@ -350,7 +359,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			s.Labels = lbs.String()
 		}
 
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			level.Debug(logger).Log(
 				"msg", "push request stream before service name discovery",
 				"labels", beforeServiceName,
