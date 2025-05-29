@@ -21,10 +21,10 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -301,15 +301,15 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 
 	retryer := newRetryer(ctx, a.cfg.BackoffConfig)
 	err := instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
-		if sp := ot.SpanFromContext(innerCtx); sp != nil {
-			sp.SetTag("tableName", query.TableName)
-			sp.SetTag("hashValue", query.HashValue)
-		}
+		span := trace.SpanFromContext(innerCtx)
+		span.SetAttributes(
+			attribute.String("tableName", query.TableName),
+			attribute.String("hashValue", query.HashValue),
+		)
 		return a.DynamoDB.QueryPagesWithContext(innerCtx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 			pageCount++
-			if sp := ot.SpanFromContext(innerCtx); sp != nil {
-				sp.LogFields(otlog.Int("page", pageCount))
-			}
+
+			span.SetAttributes(attribute.Int("page", pageCount))
 
 			if cc := output.ConsumedCapacity; cc != nil {
 				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
@@ -371,7 +371,9 @@ type chunksPlusError struct {
 
 // GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
+	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "GetChunks.DynamoDB",
+		"numChunks", len(chunks),
+	)
 	defer log.Finish()
 	level.Debug(log).Log("chunks requested", len(chunks))
 
@@ -420,7 +422,9 @@ var placeholder = []byte{'c'}
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
+	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "getDynamoDBChunks",
+		"numChunks", len(chunks),
+	)
 	defer log.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}

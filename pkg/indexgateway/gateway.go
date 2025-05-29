@@ -13,12 +13,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -212,8 +213,8 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	logger := util_log.WithContext(ctx, g.log)
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetChunkRef")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "indexgateway.GetChunkRef")
+	defer sp.End()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -270,14 +271,19 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	for _, s := range series {
 		seriesMap[s.Hash()] = s
 	}
-	sp.LogKV("msg", "indexQuerier.GetSeries", "duration", time.Since(start), "count", len(series))
+	sp.AddEvent("indexQuerier.GetSeries", trace.WithAttributes(
+		attribute.String("duration", time.Since(start).String()),
+		attribute.Int("count", len(series)),
+	))
 
 	start = time.Now()
 	chunkRefs, used, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, seriesMap, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}
-	sp.LogKV("msg", "bloomQuerier.FilterChunkRefs", "duration", time.Since(start))
+	sp.AddEvent("bloomQuerier.FilterChunkRefs", trace.WithAttributes(
+		attribute.String("duration", time.Since(start).String()),
+	))
 
 	result.Refs = chunkRefs
 	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs), "used_blooms", used)
@@ -399,8 +405,8 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 
 func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
 	ctx := server.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetShards")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "indexgateway.GetShards")
+	defer sp.End()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -414,10 +420,9 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 
 	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
 	if !ok {
-		sp.LogKV(
-			"msg", "index does not support forSeries",
-			"action", "falling back to indexQuerier.GetShards impl",
-		)
+		sp.AddEvent("index does not support forSeries", trace.WithAttributes(
+			attribute.String("action", "falling back to indexQuerier.GetShards impl"),
+		))
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
@@ -458,8 +463,8 @@ func (g *Gateway) boundedShards(
 	// sending multiple requests to the entire keyspace).
 
 	logger := util_log.WithContext(ctx, g.log)
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.boundedShards")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
+	defer sp.End()
 
 	// 1) for all bounds, get chunk refs
 	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p, nil)
@@ -472,10 +477,9 @@ func (g *Gateway) boundedShards(
 		ct += len(g)
 	}
 
-	sp.LogKV(
-		"stage", "queried local index",
-		"index_chunks_resolved", ct,
-	)
+	sp.AddEvent("queried local index", trace.WithAttributes(
+		attribute.Int("index_chunks_resolved", ct),
+	))
 	// TODO(owen-d): pool
 	refs := make([]*logproto.ChunkRef, 0, ct)
 
@@ -532,8 +536,10 @@ func (g *Gateway) boundedShards(
 		}
 	}
 
-	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
-
+	sp.AddEvent("send shards response", trace.WithAttributes(
+		attribute.Int("shards", len(resp.Shards)),
+	))
+	
 	var refCt int
 	for _, grp := range resp.ChunkGroups {
 		refCt += len(grp.Refs)

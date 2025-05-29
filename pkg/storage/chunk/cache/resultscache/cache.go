@@ -12,10 +12,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
-	"github.com/uber/jaeger-client-go"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -24,6 +24,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/cache/resultscache")
 
 // ConstSplitter is a utility for using a constant split interval when determining cache keys
 type ConstSplitter time.Duration
@@ -100,8 +102,9 @@ func NewResultsCache(
 }
 
 func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "resultsCache.Do")
+	defer sp.End()
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -121,12 +124,12 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	sp.LogKV(
-		"query", r.GetQuery(),
-		"step", time.UnixMilli(r.GetStep()),
-		"start", r.GetStart(),
-		"end", r.GetEnd(),
-		"key", key,
+	sp.SetAttributes(
+		attribute.String("query", r.GetQuery()),
+		attribute.String("step", time.UnixMilli(r.GetStep()).String()),
+		attribute.String("start", r.GetStart().String()),
+		attribute.String("end", r.GetEnd().String()),
+		attribute.String("key", key),
 	)
 
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
@@ -180,8 +183,8 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		reqResps []RequestResponse
 		err      error
 	)
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "handleHit")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "handleHit")
+	defer sp.End()
 
 	requests, responses, err := s.partition(r, extents)
 	if err != nil {
@@ -254,7 +257,9 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 			continue
 		}
 
-		accumulator.TraceId = jaegerTraceID(ctx)
+		if spanContext := trace.SpanFromContext(ctx).SpanContext(); spanContext.IsValid() {
+			accumulator.TraceId = spanContext.TraceID().String()
+		}
 		accumulator.End = extents[i].End
 		currentRes, err := extents[i].toResponse()
 		if err != nil {
@@ -311,11 +316,15 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 	if err != nil {
 		return Extent{}, err
 	}
+	traceID := ""
+	if spanContext := trace.SpanFromContext(ctx).SpanContext(); spanContext.IsValid() {
+		traceID = spanContext.TraceID().String()
+	}
 	return Extent{
 		Start:    req.GetStart().UnixMilli(),
 		End:      req.GetEnd().UnixMilli(),
 		Response: anyResp,
-		TraceId:  jaegerTraceID(ctx),
+		TraceId:  traceID,
 	}, nil
 }
 
@@ -421,10 +430,10 @@ func (s ResultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "unmarshal-extent")
+	defer sp.End() //nolint:ineffassign,staticcheck
 
-	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
+	sp.SetAttributes(attribute.Int("bytes", len(bufs[0])))
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error unmarshalling cached value", "err", err)
@@ -456,20 +465,6 @@ func (s ResultsCache) put(ctx context.Context, key string, extents []Extent) {
 	}
 
 	_ = s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
-}
-
-func jaegerTraceID(ctx context.Context) string {
-	span := opentracing.SpanFromContext(ctx)
-	if span == nil {
-		return ""
-	}
-
-	spanContext, ok := span.Context().(jaeger.SpanContext)
-	if !ok {
-		return ""
-	}
-
-	return spanContext.TraceID().String()
 }
 
 func (e *Extent) toResponse() (Response, error) {

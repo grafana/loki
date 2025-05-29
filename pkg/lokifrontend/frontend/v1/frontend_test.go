@@ -23,8 +23,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
+	"go.opentelemetry.io/otel"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
@@ -38,6 +41,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/limits"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
+
+var (
+	spanExporter = tracetest.NewInMemoryExporter()
+)
+
+func init() {
+	otel.SetTracerProvider(
+		tracesdk.NewTracerProvider(
+			tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(spanExporter)),
+		),
+	)
+}
 
 const (
 	query        = "/loki/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
@@ -78,19 +93,19 @@ func TestFrontendPropagateTrace(t *testing.T) {
 	observedTraceID := make(chan string, 2)
 
 	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		sp := opentracing.SpanFromContext(ctx)
-		defer sp.Finish()
+		sp := trace.SpanFromContext(ctx)
 
-		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+		traceID := sp.SpanContext().TraceID().String()
 		observedTraceID <- traceID
 
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 
 	test := func(addr string, _ *Frontend) {
-		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
-		defer sp.Finish()
-		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+		ctx, sp := tracesdk.NewTracerProvider().Tracer("test").Start(context.Background(), "client")
+		defer sp.End()
+
+		traceID := sp.SpanContext().TraceID().String()
 
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
