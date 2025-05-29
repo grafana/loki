@@ -16,7 +16,6 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"go.opentelemetry.io/otel"
@@ -213,7 +212,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 
 	buf, err := bodyBuffer(r)
 	if err != nil {
-		log.Error(err)
+		sp.RecordError(err)
 		return nil, err
 	}
 	sp.SetAttributes(attribute.Int("bytes", len(buf)))
