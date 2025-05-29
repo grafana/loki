@@ -602,7 +602,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.2
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -779,6 +779,8 @@ lokiCanary:
   nodeSelector: {}
   # -- Tolerations for canary pods
   tolerations: []
+  # -- Affinity for canary pods
+  affinity: {}
   # -- The name of the PriorityClass for loki-canary pods
   priorityClassName: null
   # -- Image to use for loki canary
@@ -1640,6 +1642,8 @@ read:
   extraVolumes: []
   # -- Resource requests and limits for the read
   resources: {}
+  # -- liveness probe settings for read pods. If empty, applies no livenessProbe
+  livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for read pods.

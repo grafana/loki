@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go/bigtable v1.37.0
 	cloud.google.com/go/pubsub v1.49.0
 	cloud.google.com/go/storage v1.52.0
-	dario.cat/mergo v1.0.1
+	dario.cat/mergo v1.0.2
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/baidubce/bce-sdk-go v0.9.225
+	github.com/baidubce/bce-sdk-go v0.9.227
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -50,16 +50,16 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/ckit v0.0.0-20250226083311-4f9f4aacabb5
+	github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250414072521-7b78bfe441ed
+	github.com/grafana/dskit v0.0.0-20250506140631-ccd9ffae26bb
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20250318131618-74242eea118d
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
-	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.1
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-	github.com/hashicorp/consul/api v1.32.0
+	github.com/hashicorp/consul/api v1.32.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/influxdata/telegraf v1.34.1
 	github.com/jmespath/go-jmespath v0.4.0
@@ -69,7 +69,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/leodido/go-syslog/v4 v4.2.0
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.91
+	github.com/minio/minio-go/v7 v7.0.92
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.2
@@ -99,10 +99,10 @@ require (
 	go.etcd.io/bbolt v1.4.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.37.0
-	golang.org/x/net v0.39.0
-	golang.org/x/sync v0.13.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/crypto v0.38.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sync v0.14.0
+	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
 	google.golang.org/api v0.229.0
 	google.golang.org/grpc v1.71.1
@@ -143,7 +143,7 @@ require (
 	github.com/prometheus/sigv4 v0.1.2
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/shirou/gopsutil/v4 v4.25.3
+	github.com/shirou/gopsutil/v4 v4.25.4
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.18.1
@@ -154,17 +154,17 @@ require (
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.30.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/oauth2 v0.29.0
-	golang.org/x/text v0.24.0
+	golang.org/x/oauth2 v0.30.0
+	golang.org/x/text v0.25.0
 	google.golang.org/protobuf v1.36.6
 	gotest.tools v2.2.0+incompatible
-	k8s.io/apimachinery v0.33.0
+	k8s.io/apimachinery v0.33.1
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	zombiezen.com/go/sqlite v1.4.0
 )
 
 require (
-	cel.dev/expr v0.19.2 // indirect
+	cel.dev/expr v0.23.1 // indirect
 	cloud.google.com/go/auth v0.16.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.1 // indirect
@@ -183,7 +183,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/containerd/containerd/v2 v2.0.4 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
-	github.com/ebitengine/purego v0.8.2 // indirect
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -195,6 +195,7 @@ require (
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/gophercloud/gophercloud/v2 v2.4.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
+	github.com/grafana/otel-profiling-go v0.5.1 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/kamstrup/intmap v0.5.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
@@ -217,6 +218,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.116.0 // indirect
+	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
@@ -225,6 +227,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
+	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.13 // indirect
 	github.com/tklauser/numcpus v0.7.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
@@ -239,10 +242,13 @@ require (
 	go.opentelemetry.io/collector/pipeline v0.118.0 // indirect
 	go.opentelemetry.io/collector/processor v0.118.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.35.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.59.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.60.0 // indirect
+	go.opentelemetry.io/contrib/propagators/jaeger v1.35.0 // indirect
+	go.opentelemetry.io/contrib/samplers/jaegerremote v0.29.0 // indirect
+	go.opentelemetry.io/otel/exporters/jaeger v1.17.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
-	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
+	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	modernc.org/libc v1.61.13 // indirect
@@ -274,7 +280,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.17.2
+	github.com/alecthomas/chroma/v2 v2.18.0
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -411,9 +417,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/tools v0.30.0 // indirect
+	golang.org/x/mod v0.24.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/tools v0.31.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250414145226-207652e42e2e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250414145226-207652e42e2e
@@ -432,8 +438,6 @@ require (
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
-
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.6
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

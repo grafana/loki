@@ -35,6 +35,19 @@ func TestNewReaderClient(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid config with reader config",
+			config: kafka.Config{
+				Topic:        "abcd",
+				SASLUsername: "user",
+				SASLPassword: flagext.SecretWithValue("password"),
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "wrong password",
 			config: kafka.Config{
 				Address:      addr,

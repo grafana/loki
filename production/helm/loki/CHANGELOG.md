@@ -13,10 +13,19 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-- [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI
+- [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+
+## 6.30.1
+
+- [BUGFIX] Add livenessProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191#issuecomment-2769843275)
+
+## 6.29.1
 
 - [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
+- [FEATURE] Added affinity property to the loki-canary deamonset
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
+- [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
 
 ## 6.29.0
 

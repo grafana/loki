@@ -35,6 +35,14 @@ type listAllMyBucketsResult struct {
 	Owner owner
 }
 
+// listAllMyDirectoryBucketsResult container for listDirectoryBuckets response.
+type listAllMyDirectoryBucketsResult struct {
+	Buckets struct {
+		Bucket []BucketInfo
+	}
+	ContinuationToken string
+}
+
 // owner container for bucket owner information.
 type owner struct {
 	DisplayName string
