@@ -83,11 +83,9 @@ func (g *ringGatherer) exceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// Make a copy of the streams from the request. We will prune this slice
 	// each time we receive the responses from a zone.
 	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
-	for _, stream := range req.Streams {
-		streams = append(streams, stream)
-	}
+	streams = append(streams, req.Streams...)
 	// Query each zone as ordered in zonesToQuery. If a zone answers all
-	// streams, the request is satisifed and there is no need to query
+	// streams, the request is satisfied and there is no need to query
 	// subsequent zones. If a zone answers just a subset of streams
 	// (i.e. the instance that is consuming a partition is unavailable or the
 	// partition that owns one or more streams does not have a consumer)

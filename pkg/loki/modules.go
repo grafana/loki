@@ -442,6 +442,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	}
 
 	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
 
 	ingestLimits, err := limits.New(
 		t.Cfg.IngestLimits,
