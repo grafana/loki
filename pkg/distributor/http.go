@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -48,7 +49,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
 	filterPushRequestStreamsIPs := d.tenantConfigs.FilterPushRequestStreamsIPs(tenantID)
 	presumedAgentIP := extractPresumedAgentIP(r)
-	req, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams, presumedAgentIP)
+	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, pushRequestParser, d.usageTracker, streamResolver, logPushRequestStreams, presumedAgentIP)
 	if err != nil {
 		switch {
 		case errors.Is(err, push.ErrRequestBodyTooLarge):
@@ -113,19 +114,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 
 		if shouldLog {
-			var sb strings.Builder
 			for _, s := range req.Streams {
-				sb.WriteString(s.Labels)
+				logValues := []interface{}{
+					"msg", "push request streams",
+					"stream", s.Labels,
+				}
+				if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
+					logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())
+				}
+				if presumedAgentIP != "" {
+					logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
+				}
+				level.Debug(logger).Log(logValues...)
 			}
-			logValues := []interface{}{
-				"msg", "push request streams",
-				"streams", sb.String(),
-			}
-
-			if presumedAgentIP != "" {
-				logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
-			}
-			level.Debug(logger).Log(logValues...)
 		}
 	}
 
