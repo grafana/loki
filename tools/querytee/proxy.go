@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 var errMinBackends = errors.New("at least 1 backend is required")
@@ -38,6 +40,7 @@ type ProxyConfig struct {
 	SkipSamplesBefore              flagext.Time
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
+	Goldfish                       goldfish.Config
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -58,6 +61,9 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		return err
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
+
+	// Register Goldfish configuration flags
+	cfg.Goldfish.RegisterFlags(f)
 }
 
 type Route struct {
@@ -81,6 +87,9 @@ type Proxy struct {
 
 	// Wait group used to wait until the server has done.
 	done sync.WaitGroup
+
+	// Goldfish manager for query sampling and comparison
+	goldfishManager *goldfish.Manager
 }
 
 func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Route, registerer prometheus.Registerer) (*Proxy, error) {
@@ -94,6 +103,11 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 
 	if cfg.InstrumentCompares && !cfg.CompareResponses {
 		return nil, fmt.Errorf("when enabling instrumentation of comparisons of results -proxy.compare-responses flag must be set")
+	}
+
+	// Validate Goldfish configuration
+	if err := cfg.Goldfish.Validate(); err != nil {
+		return nil, errors.Wrap(err, "invalid goldfish configuration")
 	}
 
 	p := &Proxy{
@@ -171,6 +185,27 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 		}
 	}
 
+	// Initialize Goldfish if enabled
+	if cfg.Goldfish.Enabled {
+		// Create storage backend
+		storage, err := goldfish.NewStorage(cfg.Goldfish.StorageConfig)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create goldfish storage")
+		}
+
+		// Create Goldfish manager
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, logger, registerer)
+		if err != nil {
+			storage.Close()
+			return nil, errors.Wrap(err, "failed to create goldfish manager")
+		}
+		p.goldfishManager = goldfishManager
+
+		level.Info(logger).Log("msg", "Goldfish enabled",
+			"storage_type", cfg.Goldfish.StorageConfig.Type,
+			"default_rate", cfg.Goldfish.SamplingConfig.DefaultRate)
+	}
+
 	return p, nil
 }
 
@@ -194,7 +229,12 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares))
+		endpoint := NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares)
+		// Add Goldfish if configured
+		if p.goldfishManager != nil {
+			endpoint.WithGoldfish(p.goldfishManager)
+		}
+		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
 
 	for _, route := range p.writeRoutes {
@@ -234,6 +274,13 @@ func (p *Proxy) Start() error {
 func (p *Proxy) Stop() error {
 	if p.srv == nil {
 		return nil
+	}
+
+	// Close Goldfish manager if it exists
+	if p.goldfishManager != nil {
+		if err := p.goldfishManager.Close(); err != nil {
+			level.Warn(p.logger).Log("msg", "Failed to close Goldfish manager", "err", err)
+		}
 	}
 
 	return p.srv.Shutdown(context.Background())
