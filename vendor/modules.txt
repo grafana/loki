@@ -1116,7 +1116,6 @@ github.com/grafana/dskit/server
 github.com/grafana/dskit/services
 github.com/grafana/dskit/signals
 github.com/grafana/dskit/spanlogger
-github.com/grafana/dskit/spanprofiler
 github.com/grafana/dskit/tenant
 github.com/grafana/dskit/test
 github.com/grafana/dskit/tracing
@@ -1155,9 +1154,6 @@ github.com/grafana/tail/winfile
 # github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery
-# github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-## explicit
-github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 ## explicit
 github.com/hailocab/go-hostpool
@@ -1501,7 +1497,6 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-github.com/opentracing/opentracing-go/mocktracer
 # github.com/oschwald/geoip2-golang v1.11.0
 ## explicit; go 1.21
 github.com/oschwald/geoip2-golang
