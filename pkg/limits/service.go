@@ -227,7 +227,7 @@ func (s *Service) Collect(m chan<- prometheus.Metric) {
 	active := make(map[string]int)
 	// total counts the total number of streams per tenant.
 	total := make(map[string]int)
-	s.usage.All(func(tenant string, _ int32, stream streamUsage) {
+	s.usage.Iter(func(tenant string, _ int32, stream streamUsage) {
 		total[tenant]++
 		if stream.lastSeenAt >= cutoff {
 			active[tenant]++
