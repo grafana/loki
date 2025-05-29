@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -31,7 +32,7 @@ type Builder interface {
 // Queue implements the job queue service
 type Queue struct {
 	queue                     chan *Job
-	closed                    bool
+	closed                    atomic.Bool
 	builders                  map[JobType]Builder
 	wg                        sync.WaitGroup
 	stop                      chan struct{}
@@ -58,13 +59,14 @@ func New() *Queue {
 // newQueue creates a new job queue with a configurable timed out jobs check ticker interval (for testing)
 func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 	q := &Queue{
-		queue:                     make(chan *Job, 1000),
+		queue:                     make(chan *Job),
 		builders:                  make(map[JobType]Builder),
 		stop:                      make(chan struct{}),
 		checkTimedOutJobsInterval: checkTimedOutJobsInterval,
 		processingJobs:            make(map[string]*processingJob),
-		jobTimeout:                15 * time.Minute,
-		maxRetries:                3,
+		// ToDo(Sandeep): make jobTimeout and maxRetries configurable(possibly job specific)
+		jobTimeout: 15 * time.Minute,
+		maxRetries: 3,
 	}
 
 	// Start the job timeout checker
@@ -161,7 +163,7 @@ func (q *Queue) checkJobTimeouts() {
 
 // Dequeue implements the gRPC Dequeue method
 func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueResponse, error) {
-	if q.closed {
+	if q.closed.Load() {
 		return &DequeueResponse{}, nil
 	}
 
@@ -188,8 +190,8 @@ func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueRespons
 	}
 }
 
-// ReportJobResponse implements the gRPC ReportJobResponse method
-func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResultRequest) (*ReportJobResultResponse, error) {
+// ReportJobResult implements the gRPC ReportJobResult method
+func (q *Queue) ReportJobResult(ctx context.Context, req *ReportJobResultRequest) (*ReportJobResultResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
@@ -252,8 +254,8 @@ func (q *Queue) ReportJobResponse(ctx context.Context, req *ReportJobResultReque
 
 // Close closes the queue and releases all resources
 func (q *Queue) Close() {
-	if !q.closed {
+	if !q.closed.Load() {
 		close(q.queue)
-		q.closed = true
+		q.closed.Store(true)
 	}
 }

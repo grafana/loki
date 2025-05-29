@@ -3,6 +3,7 @@ package jobqueue
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,13 +59,15 @@ func TestQueue_Dequeue(t *testing.T) {
 		Type: JOB_TYPE_DELETION,
 	}
 
-	// Enqueue the job
-	select {
-	case q.queue <- job:
-		// Successfully enqueued
-	case <-time.After(time.Second):
-		t.Fatal("failed to enqueue job")
-	}
+	go func() {
+		// Enqueue the job
+		select {
+		case q.queue <- job:
+			// Successfully enqueued
+		case <-time.After(time.Minute):
+			t.Fatal("failed to enqueue job")
+		}
+	}()
 
 	// Dequeue the job
 	resp, err := q.Dequeue(ctx, &DequeueRequest{})
@@ -80,7 +83,7 @@ func TestQueue_Dequeue(t *testing.T) {
 	require.Equal(t, 0, pj.retryCount)
 }
 
-func TestQueue_ReportJobResponse(t *testing.T) {
+func TestQueue_ReportJobResult(t *testing.T) {
 	ctx := context.Background()
 	q := New()
 	require.NoError(t, q.RegisterBuilder(JOB_TYPE_DELETION, &mockBuilder{}))
@@ -101,7 +104,7 @@ func TestQueue_ReportJobResponse(t *testing.T) {
 	q.processingJobsMtx.Unlock()
 
 	// Test successful response
-	resp, err := q.ReportJobResponse(ctx, &ReportJobResultRequest{
+	resp, err := q.ReportJobResult(ctx, &ReportJobResultRequest{
 		JobId:   job.Id,
 		JobType: job.Type,
 	})
@@ -124,21 +127,30 @@ func TestQueue_ReportJobResponse(t *testing.T) {
 	}
 	q.processingJobsMtx.Unlock()
 
-	resp, err = q.ReportJobResponse(ctx, &ReportJobResultRequest{
-		JobId:   job.Id,
-		JobType: job.Type,
-		Error:   "test error",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		resp, err = q.ReportJobResult(ctx, &ReportJobResultRequest{
+			JobId:   job.Id,
+			JobType: job.Type,
+			Error:   "test error",
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	}()
 
 	// Verify job is requeued with timeout
 	select {
 	case requeuedJob := <-q.queue:
 		require.Equal(t, job, requeuedJob)
-	case <-time.After(time.Second):
+	case <-time.After(time.Minute):
 		t.Fatal("job was not requeued")
 	}
+
+	wg.Wait()
 
 	// Verify retry count is incremented
 	q.processingJobsMtx.RLock()
@@ -217,7 +229,7 @@ func TestQueue_Close(t *testing.T) {
 	q.Close()
 
 	// Verify queue is closed
-	require.True(t, q.closed)
+	require.True(t, q.closed.Load())
 
 	// Verify channel is closed
 	select {
