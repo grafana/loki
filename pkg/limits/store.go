@@ -1,17 +1,34 @@
 package limits
 
 import (
+	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 // The number of stripe locks.
 const numStripes = 64
+
+var (
+	tenantStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_streams",
+		"The current number of streams per tenant, including streams outside the active window.",
+		[]string{"tenant"},
+		nil,
+	)
+	tenantActiveStreamsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_active_streams",
+		"The current number of active streams per tenant.",
+		[]string{"tenant"},
+		nil,
+	)
+)
 
 // iterateFunc is a closure called for each stream.
 type iterateFunc func(tenant string, partition int32, stream streamUsage)
@@ -61,7 +78,7 @@ type stripeLock struct {
 }
 
 // newUsageStore returns a new UsageStore.
-func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int) *usageStore {
+func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, reg prometheus.Registerer) (*usageStore, error) {
 	s := &usageStore{
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
@@ -74,7 +91,10 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]tenantUsage)
 	}
-	return s
+	if err := reg.Register(s); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+	return s, nil
 }
 
 // Iter iterates all active streams and calls f for each iterated stream.
@@ -196,6 +216,51 @@ func (s *usageStore) EvictPartitions(partitionsToEvict []int32) {
 			}
 		}
 	})
+}
+
+// Describe implements [prometheus.Collector].
+func (s *usageStore) Describe(descs chan<- *prometheus.Desc) {
+	descs <- tenantStreamsDesc
+	descs <- tenantActiveStreamsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
+	var (
+		cutoff = s.clock.Now().Add(-s.activeWindow).UnixNano()
+		active = make(map[string]int)
+		total  = make(map[string]int)
+	)
+	// Count both the total number of active streams and the total number of
+	// streams for each tenants.
+	s.forEachRLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			for _, streams := range partitions {
+				for _, stream := range streams {
+					total[tenant]++
+					if stream.lastSeenAt >= cutoff {
+						active[tenant]++
+					}
+				}
+			}
+		}
+	})
+	for tenant, numActiveStreams := range active {
+		metrics <- prometheus.MustNewConstMetric(
+			tenantActiveStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numActiveStreams),
+			tenant,
+		)
+	}
+	for tenant, numStreams := range total {
+		metrics <- prometheus.MustNewConstMetric(
+			tenantStreamsDesc,
+			prometheus.GaugeValue,
+			float64(numStreams),
+			tenant,
+		)
+	}
 }
 
 func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {

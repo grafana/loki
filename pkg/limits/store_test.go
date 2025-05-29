@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -12,7 +13,8 @@ import (
 
 func TestUsageStore_All(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
+	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
@@ -31,7 +33,8 @@ func TestUsageStore_All(t *testing.T) {
 
 func TestUsageStore_ForTenant(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
+	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
@@ -161,7 +164,8 @@ func TestUsageStore_Store(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions)
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, prometheus.NewRegistry())
+			require.NoError(t, err)
 			clock := quartz.NewMock(t)
 			s.clock = clock
 			s.Update("tenant", test.seed, clock.Now(), nil)
@@ -174,7 +178,8 @@ func TestUsageStore_Store(t *testing.T) {
 }
 
 func TestUsageStore_Evict(t *testing.T) {
-	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	s1 := streamUsage{hash: 0x1, lastSeenAt: clock.Now().UnixNano()}
@@ -205,7 +210,8 @@ func TestUsageStore_Evict(t *testing.T) {
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10)
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
+	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
