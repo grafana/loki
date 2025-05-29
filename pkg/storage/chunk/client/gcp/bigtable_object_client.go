@@ -7,7 +7,9 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/grafana/dskit/middleware"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	attribute "go.opentelemetry.io/otel/attribute"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -28,6 +30,7 @@ func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg config.S
 	if err != nil {
 		return nil, err
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err

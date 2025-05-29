@@ -26,12 +26,11 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
@@ -189,10 +188,10 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 				},
 			),
 			grpc.WithChainUnaryInterceptor(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 				middleware.ClientUserHeaderInterceptor,
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		},
 		tlsDialOptions...,
 	)
