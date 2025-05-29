@@ -51,7 +51,6 @@ func TestQueue_RegisterBuilder(t *testing.T) {
 
 func TestQueue_Dequeue(t *testing.T) {
 	q := New()
-	ctx := context.Background()
 
 	// Create a test job
 	job := &Job{
@@ -64,12 +63,13 @@ func TestQueue_Dequeue(t *testing.T) {
 		select {
 		case q.queue <- job:
 			// Successfully enqueued
-		case <-time.After(time.Minute):
-			t.Fatal("failed to enqueue job")
 		}
 	}()
 
 	// Dequeue the job
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
 	resp, err := q.Dequeue(ctx, &DequeueRequest{})
 	require.NoError(t, err)
 	require.Equal(t, job, resp.Job)
