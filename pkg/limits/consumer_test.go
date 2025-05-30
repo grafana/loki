@@ -41,13 +41,16 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 			}}},
 		}
 		ctx := context.Background()
+		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
-		m := newPartitionManager()
+		m, err := newPartitionManager(reg)
+		require.NoError(t, err)
 		m.Assign(ctx, []int32{1})
 		m.SetReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		require.NoError(t, err)
 		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
@@ -85,13 +88,16 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 			}}},
 		}
 		ctx := context.Background()
+		reg := prometheus.NewRegistry()
 		// Need to assign the partition and set it to ready.
-		m := newPartitionManager()
+		m, err := newPartitionManager(reg)
+		require.NoError(t, err)
 		m.Assign(ctx, []int32{1})
 		m.SetReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		require.NoError(t, err)
 		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
@@ -156,14 +162,17 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 		}}},
 	}
 	ctx := context.Background()
+	reg := prometheus.NewRegistry()
 	// Need to assign the partition and set it to replaying.
-	m := newPartitionManager()
+	m, err := newPartitionManager(reg)
+	require.NoError(t, err)
 	m.Assign(ctx, []int32{1})
 	// The partition should be marked ready when the second record
 	// has been consumed.
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1)
+	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+	require.NoError(t, err)
 	c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
