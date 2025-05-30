@@ -725,20 +725,24 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 	exp := []entry{
 		{
-			t: time.Unix(1, 0).UnixNano(),
-			s: "1",
+			t:                  time.Unix(1, 0).UnixNano(),
+			s:                  "1",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(3, 0).UnixNano(),
-			s: "3",
+			t:                  time.Unix(3, 0).UnixNano(),
+			s:                  "3",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(5, 0).UnixNano(),
-			s: "5",
+			t:                  time.Unix(5, 0).UnixNano(),
+			s:                  "5",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(7, 0).UnixNano(),
-			s: "7",
+			t:                  time.Unix(7, 0).UnixNano(),
+			s:                  "7",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 	}
 	iterEq(t, exp, itr)
