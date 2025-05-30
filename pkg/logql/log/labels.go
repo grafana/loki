@@ -50,7 +50,21 @@ func (l labelsResult) String() string {
 }
 
 func (l labelsResult) Labels() labels.Labels {
-	return flattenLabels(l.stream, l.structuredMetadata, l.parsed)
+	size := l.stream.Len() + l.structuredMetadata.Len() + l.parsed.Len()
+	b := labels.NewScratchBuilder(size)
+
+	l.stream.Range(func(l labels.Label) {
+		b.Add(l.Name, l.Value)
+	})
+	l.structuredMetadata.Range(func(l labels.Label) {
+		b.Add(l.Name, l.Value)
+	})
+	l.parsed.Range(func(l labels.Label) {
+		b.Add(l.Name, l.Value)
+	})
+
+	b.Sort()
+	return b.Labels()
 }
 
 func (l labelsResult) Hash() uint64 {
@@ -608,24 +622,6 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	b.resultCache[hash] = result
 
 	return result
-}
-
-func flattenLabels(many ...labels.Labels) labels.Labels {
-	var size int
-	for _, lbls := range many {
-		size += lbls.Len()
-	}
-
-	b := labels.NewScratchBuilder(size)
-
-	for _, lbls := range many {
-		lbls.Range(func(l labels.Label) {
-			b.Add(l.Name, l.Value)
-		})
-	}
-
-	b.Sort()
-	return b.Labels()
 }
 
 func labelsContain(labels []labels.Label, name string) bool {
