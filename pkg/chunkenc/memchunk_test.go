@@ -527,7 +527,7 @@ func TestSerialization(t *testing.T) {
 							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
-							require.Equal(t, labels.EmptyLabels(), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
+							require.Empty(t, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 						}
 					}
 					require.NoError(t, it.Err())

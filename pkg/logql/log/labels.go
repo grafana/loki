@@ -1,7 +1,6 @@
 package log
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -15,7 +14,6 @@ import (
 const MaxInternedStrings = 1024
 
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.EmptyLabels().Hash(), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
-var errTerminateLoopEarly = errors.New("dummy error used to terminate loop early")
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -289,23 +287,9 @@ func (b *LabelsBuilder) getWithCategory(key string) (string, LabelCategory, bool
 		}
 	}
 
-	foundInBase := false
-	value := ""
+	value := b.base.Get(key)
 
-	// HACK: we use Validate here so we can return early once we've found the desired label.
-	// (Range doesn't support terminating the loop early.)
-	_ = b.base.Validate(func(l labels.Label) error {
-		if l.Name == key {
-			foundInBase = true
-			value = l.Value
-
-			return errTerminateLoopEarly
-		}
-
-		return nil
-	})
-
-	if foundInBase {
+	if value != "" {
 		return value, StreamLabel, true
 	}
 
@@ -739,17 +723,10 @@ Outer:
 			}
 		}
 
-		// HACK: we use Validate here so we can terminate early once we've found the desired label.
-		// (Range doesn't support terminating the loop early.)
-		_ = b.base.Validate(func(l labels.Label) error {
-			if g == l.Name {
-				b.buf = append(b.buf, l)
-
-				return errTerminateLoopEarly
-			}
-
-			return nil
-		})
+		value := b.base.Get(g)
+		if value != "" {
+			b.buf = append(b.buf, labels.Label{Name: g, Value: value})
+		}
 	}
 	return b.toUncategorizedResult(b.buf)
 }
