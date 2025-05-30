@@ -5847,6 +5847,9 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
+    "compactor": [
+      "/loki/api/v1/delete"
+    ],
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
@@ -5893,6 +5896,17 @@ null
 			<td><pre lang="json">
 [
   "loki.example.com"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.compactor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Compactor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/loki/api/v1/delete"
 ]
 </pre>
 </td>
