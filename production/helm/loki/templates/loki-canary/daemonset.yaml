@@ -115,6 +115,10 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
       {{- with $.Values.lokiCanary.extraVolumes }}
       {{- toYaml . | nindent 8 }}

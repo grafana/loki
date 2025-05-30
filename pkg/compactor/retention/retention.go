@@ -32,7 +32,7 @@ const (
 )
 
 type Chunk struct {
-	ChunkID []byte
+	ChunkID string
 	From    model.Time
 	Through model.Time
 }
@@ -94,7 +94,7 @@ type SeriesIterator interface {
 }
 
 type IndexCleaner interface {
-	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID []byte) error
+	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error
 	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
 	// It would only be called for the series that have all their chunks deleted without adding new ones.
 	CleanupSeries(userID []byte, lbls labels.Labels) error
@@ -268,7 +268,7 @@ func markForDelete(
 					// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
 					// the retention would fail because it would fail to find it in the storage.
 					if filterFunc == nil || c.From >= tableInterval.Start {
-						if err := marker.Put(c.ChunkID); err != nil {
+						if err := marker.Put(unsafeGetBytes(c.ChunkID)); err != nil {
 							return err
 						}
 					}
@@ -442,9 +442,8 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 // the status of which is set to wroteChunks.
 func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chunk, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userIDStr := unsafeGetString(userID)
-	chunkID := unsafeGetString(ce.ChunkID)
 
-	chk, err := chunk.ParseExternalKey(userIDStr, chunkID)
+	chk, err := chunk.ParseExternalKey(userIDStr, ce.ChunkID)
 	if err != nil {
 		return false, false, err
 	}

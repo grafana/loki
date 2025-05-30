@@ -40,6 +40,50 @@ func TestRecordingRuleValidator(t *testing.T) {
 			wantErrors: nil,
 		},
 		{
+			desc: "success audit tenant",
+			spec: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "recording-rule",
+					Namespace: "openshift-logging",
+				},
+				Spec: lokiv1.RecordingRuleSpec{
+					TenantID: "audit",
+					Groups: []*lokiv1.RecordingRuleGroup{
+						{
+							Rules: []*lokiv1.RecordingRuleGroupSpec{
+								{
+									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: nil,
+		},
+		{
+			desc: "success infrastructure tenant",
+			spec: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "recording-rule",
+					Namespace: "openshift-logging",
+				},
+				Spec: lokiv1.RecordingRuleSpec{
+					TenantID: "infrastructure",
+					Groups: []*lokiv1.RecordingRuleGroup{
+						{
+							Rules: []*lokiv1.RecordingRuleGroupSpec{
+								{
+									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: nil,
+		},
+		{
 			desc: "wrong tenant",
 			spec: &lokiv1.RecordingRule{
 				ObjectMeta: metav1.ObjectMeta{

@@ -78,6 +78,35 @@ func TestAlertingRuleValidator(t *testing.T) {
 			wantErrors: nil,
 		},
 		{
+			desc: "allow infrastructure in openshift-logging without namespace label",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "openshift-logging",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "infrastructure",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: nil,
+		},
+		{
 			desc: "wrong tenant",
 			spec: &lokiv1.AlertingRule{
 				ObjectMeta: metav1.ObjectMeta{

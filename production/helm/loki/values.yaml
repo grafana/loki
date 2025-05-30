@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.0
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -620,6 +620,8 @@ enterprise:
     enabled: true
     # -- Comma-separated list of Loki modules to load for tokengen
     targetModule: "tokengen"
+    # -- Name of the secret to store the admin token.
+    adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -649,6 +651,7 @@ enterprise:
     # -- The name of the PriorityClass for tokengen Pods
     priorityClassName: ""
   # -- Configuration for `provisioner` target
+  # Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.
   provisioner:
     # -- Whether the job should be part of the deployment
     enabled: true
@@ -656,6 +659,8 @@ enterprise:
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
     hookType: "post-install"
+    # -- url of the admin api to use for the provisioner
+    apiUrl: '{{ include "loki.address" . }}'
     # -- Additional tenants to be created. Each tenant will get a read and write policy
     # and associated token. Tenant must have a name and a namespace for the secret containting
     # the token to be created in. For example
@@ -686,17 +691,19 @@ enterprise:
     # -- Provisioner image to Utilize
     image:
       # -- The Docker registry
-      registry: docker.io
+      registry: us-docker.pkg.dev
       # -- Docker image repository
-      repository: grafana/enterprise-logs-provisioner
+      repository: grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner
       # -- Overrides the image tag whose default is the chart's appVersion
-      tag: null
+      tag: latest
       # -- Overrides the image tag with an image digest
       digest: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
+    # -- Additional volumes for Pods
+    extraVolumes: []
 # -- kubetclImage is used in the enterprise provisioner and tokengen jobs
 kubectlImage:
   # -- The Docker registry
@@ -780,6 +787,8 @@ lokiCanary:
   nodeSelector: {}
   # -- Tolerations for canary pods
   tolerations: []
+  # -- Affinity for canary pods
+  affinity: {}
   # -- The name of the PriorityClass for loki-canary pods
   priorityClassName: null
   # -- Image to use for loki canary
@@ -1641,6 +1650,8 @@ read:
   extraVolumes: []
   # -- Resource requests and limits for the read
   resources: {}
+  # -- liveness probe settings for read pods. If empty, applies no livenessProbe
+  livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for read pods.
