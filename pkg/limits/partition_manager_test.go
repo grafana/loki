@@ -6,11 +6,13 @@ import (
 	"testing"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPartitionManager_Assign(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	// Advance the clock so we compare with a time that is not the default
@@ -61,7 +63,8 @@ func TestPartitionManager_Assign(t *testing.T) {
 }
 
 func TestPartitionManager_GetState(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1, 2, 3})
@@ -75,7 +78,8 @@ func TestPartitionManager_GetState(t *testing.T) {
 }
 
 func TestPartitionManager_TargetOffsetReached(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1})
@@ -93,7 +97,8 @@ func TestPartitionManager_TargetOffsetReached(t *testing.T) {
 }
 
 func TestPartitionManager_Has(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1, 2, 3})
@@ -104,7 +109,8 @@ func TestPartitionManager_Has(t *testing.T) {
 }
 
 func TestPartitionManager_List(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	// Advance the clock so we compare with a time that is not the default
@@ -126,7 +132,8 @@ func TestPartitionManager_List(t *testing.T) {
 }
 
 func TestPartitionManager_ListByState(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	// Advance the clock so we compare with a time that is not the default
@@ -155,7 +162,8 @@ func TestPartitionManager_ListByState(t *testing.T) {
 }
 
 func TestPartitionManager_SetReplaying(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1, 2, 3})
@@ -169,7 +177,8 @@ func TestPartitionManager_SetReplaying(t *testing.T) {
 }
 
 func TestPartitionManager_SetReady(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1, 2, 3})
@@ -183,7 +192,8 @@ func TestPartitionManager_SetReady(t *testing.T) {
 }
 
 func TestPartitionManager_Revoke(t *testing.T) {
-	m := newPartitionManager()
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
 	m.Assign(context.Background(), []int32{1, 2, 3})
