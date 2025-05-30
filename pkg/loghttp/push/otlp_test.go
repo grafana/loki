@@ -113,6 +113,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 		{
@@ -160,6 +161,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         27,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 		{
@@ -207,6 +209,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 		{
@@ -297,6 +300,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 		{
@@ -396,6 +400,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 		{
@@ -556,6 +561,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				StreamLabelsSize:         42,
 				MostRecentEntryTimestamp: now,
+				StreamSizeBytes:          map[string]int64{},
 			},
 		},
 	} {
