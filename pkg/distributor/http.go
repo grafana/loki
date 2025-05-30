@@ -127,6 +127,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				if presumedAgentIP != "" {
 					logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
 				}
+				if pushStats.HashOfAllStreams != 0 {
+					logValues = append(logValues, "hashOfAllStreams", pushStats.HashOfAllStreams)
+				}
 				level.Debug(logger).Log(logValues...)
 			}
 		}

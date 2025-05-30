@@ -140,6 +140,7 @@ type Stats struct {
 	MostRecentEntryTimestamp          time.Time
 	MostRecentEntryTimestampPerStream map[string]time.Time
 	StreamSizeBytes                   map[string]int64
+	HashOfAllStreams                  uint64
 	ContentType                       string
 	ContentEncoding                   string
 
@@ -259,6 +260,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 			resultHash ^= hash
 		}
 		logValues = append(logValues, "hashOfLabels", resultHash)
+		pushStats.HashOfAllStreams = resultHash
 	}
 
 	logValues = append(logValues, pushStats.Extra...)
