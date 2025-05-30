@@ -8,16 +8,21 @@ import (
 )
 
 type metrics struct {
-	activeStreamsTotal   *prometheus.CounterVec
-	kafkaWriteLatency    prometheus.Histogram
-	kafkaWriteBytesTotal prometheus.Counter
+	streamsCreatedTotal   *prometheus.CounterVec
+	streamsKeepAliveTotal *prometheus.CounterVec
+	kafkaWriteLatency     prometheus.Histogram
+	kafkaWriteBytesTotal  prometheus.Counter
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
-		activeStreamsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "active_streams_total",
-			Help: "The total number of active streams",
+		streamsCreatedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "streams_created_total",
+			Help: "The total number of streams create operations per tenant",
+		}, []string{"tenant"}),
+		streamsKeepAliveTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "streams_keep_alive_total",
+			Help: "The total number of streams keep alive operations per tenant",
 		}, []string{"tenant"}),
 		kafkaWriteLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "kafka_write_latency_seconds",
