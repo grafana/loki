@@ -81,6 +81,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 	}
 
 	testCases := map[string]struct {
+		tenantID           string
 		configuredRules    rulespb.RuleGroupList
 		expectedConfigured int
 		expectedStatusCode int
@@ -89,6 +90,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 		queryParams        string
 	}{
 		"should load and evaluate the configured rules": {
+			tenantID: userID,
 			configuredRules: rulespb.RuleGroupList{
 				&rulespb.RuleGroupDesc{
 					Name:      "group1",
@@ -217,6 +219,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"Invalid type param": {
+			tenantID:           userID,
 			configuredRules:    rulespb.RuleGroupList{},
 			expectedConfigured: 0,
 			queryParams:        "?type=foo",
@@ -224,13 +227,24 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			expectedErrorType:  v1.ErrBadData,
 			expectedRules:      []*RuleGroup{},
 		},
+		"Too many org ids": {
+			tenantID:           "1|2|3",
+			configuredRules:    rulespb.RuleGroupList{},
+			expectedConfigured: 0,
+			queryParams:        "?org_id=1|2|3",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorType:  v1.ErrBadData,
+			expectedRules:      []*RuleGroup{},
+		},
 		"when filtering by an unknown namespace then the API returns nothing": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?file=unknown",
 			expectedRules:      []*RuleGroup{},
 		},
 		"when filtering by a single known namespace then the API returns only rules from that namespace": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"file": []string{namespaceName(1)}}.Encode(),
@@ -265,6 +279,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"when filtering by a multiple known namespaces then the API returns rules from both namespaces": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"file": []string{namespaceName(1), namespaceName(2)}}.Encode(),
@@ -326,12 +341,14 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"when filtering by an unknown group then the API returns nothing": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?rule_group=unknown",
 			expectedRules:      []*RuleGroup{},
 		},
 		"when filtering by a known group then the API returns only rules from that group": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"rule_group": []string{groupName(2)}}.Encode(),
@@ -366,6 +383,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"when filtering by multiple known groups then the API returns rules from both groups": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"rule_group": []string{groupName(2), groupName(3)}}.Encode(),
@@ -428,12 +446,14 @@ func TestRuler_PrometheusRules(t *testing.T) {
 		},
 
 		"when filtering by an unknown rule name then the API returns all empty groups": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?rule_name=unknown",
 			expectedRules:      []*RuleGroup{},
 		},
 		"when filtering by a known rule name then the API returns only rules with that name": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"rule_name": []string{"UniqueNamedRuleN1G2"}}.Encode(),
@@ -449,6 +469,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"when filtering by multiple known rule names then the API returns both rules": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams:        "?" + url.Values{"rule_name": []string{"UniqueNamedRuleN1G2", "UniqueNamedRuleN2G3"}}.Encode(),
@@ -472,6 +493,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 			},
 		},
 		"when filtering by a known namespace and group then the API returns only rules from that namespace and group": {
+			tenantID:           userID,
 			configuredRules:    makeFilterTestRules(),
 			expectedConfigured: len(makeFilterTestRules()),
 			queryParams: "?" + url.Values{
@@ -516,7 +538,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 
 			a := NewAPI(r, r.store, log.NewNopLogger())
 
-			req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, "user1")
+			req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, tc.tenantID)
 			w := httptest.NewRecorder()
 			a.PrometheusRules(w, req)
 

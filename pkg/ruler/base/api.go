@@ -177,8 +177,12 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	rgs, err := a.ruler.GetRules(req.Context(), &rulesReq)
-
 	if err != nil {
+		if errors.Is(err, user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		respondServerError(logger, w, err.Error())
 		return
 	}
@@ -272,6 +276,12 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := a.ruler.GetRules(req.Context(), &RulesRequest{Filter: AlertingRule})
 
 	if err != nil {
+		fmt.Println("err", err)
+		if errors.As(err, &user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		respondServerError(logger, w, err.Error())
 		return
 	}
