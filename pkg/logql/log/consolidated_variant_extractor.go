@@ -81,6 +81,7 @@ func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
 	})
 
 	newLblsBuilder.Add(constants.VariantLabel, strconv.Itoa(variantIndex))
+	newLblsBuilder.Sort()
 	newLbls := newLblsBuilder.Labels()
 
 	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
