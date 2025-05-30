@@ -31,6 +31,7 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
 			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
+			tree.NewProperty("section_ids", true, toAnySlice(node.Sections)...),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),

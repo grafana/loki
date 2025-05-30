@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
+	"strings"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -76,7 +78,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	builder := newResultBuilder()
 
 	logger := utillog.WithContext(ctx, e.logger)
-	logger = log.With(logger, "query", params.QueryString(), "engine", "v2")
+	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 
 	t := time.Now() // start stopwatch for logical planning
 	logicalPlan, err := logical.BuildPlan(params)
@@ -106,7 +108,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
 	durPhysicalPlanning := time.Since(t)
 
-	level.Info(logger).Log("msg", "execute query with new engine", "query", params.QueryString())
+	level.Info(logger).Log(
+		"msg", "execute query with new engine",
+		"logical_plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"physical_plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+	)
 
 	t = time.Now() // start stopwatch for execution
 	cfg := executor.Config{
@@ -128,9 +134,8 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	e.metrics.execution.Observe(time.Since(t).Seconds())
 	durExecution := time.Since(t)
 
-	level.Debug(e.logger).Log(
+	level.Debug(logger).Log(
 		"msg", "subquery execution durations",
-		"query", params.QueryString(),
 		"logical_planning", durLogicalPlanning,
 		"physical_planning", durPhysicalPlanning,
 		"execution", durExecution,
