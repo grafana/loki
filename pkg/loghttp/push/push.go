@@ -245,6 +245,22 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
 	}
 
+	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
+		resultHash := uint64(0)
+		for _, stream := range req.Streams {
+			// I don't believe a hash will be set, but if it is, use it.
+			hash := stream.Hash
+			if hash == 0 {
+				// calculate an fnv32 hash of the stream labels
+				// reusing our query hash function for simplicity
+				hash = uint64(util.HashedQuery(stream.Labels))
+			}
+			// xor the hash with the result hash, this will result in the same hash regardless of the order of the streams
+			resultHash ^= hash
+		}
+		logValues = append(logValues, "hashOfLabels", resultHash)
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 

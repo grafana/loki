@@ -9,6 +9,7 @@ import (
 type Config struct {
 	LogStreamCreation           bool     `yaml:"log_stream_creation"`
 	LogPushRequest              bool     `yaml:"log_push_request"`
+	LogHashOfLabels             bool     `yaml:"log_hash_of_labels"`
 	LogPushRequestStreams       bool     `yaml:"log_push_request_streams"`
 	FilterPushRequestStreamsIPs []string `yaml:"filter_push_request_streams_ips"`
 	LogServiceNameDiscovery     bool     `yaml:"log_service_name_discovery"`
@@ -23,6 +24,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogStreamCreation, "operation-config.log-stream-creation", false, "Log every new stream created by a push request (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogPushRequest, "operation-config.log-push-request", false, "Log every push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&cfg.LogHashOfLabels, "operation-config.log-hash-of-labels", false, "Log a commutative hash of the labels for all streams in a push request. In some cases this can potentially be used as an identifier of the agent sending the stream. Calculating hashes is epensive so only enable as needed.")
 	f.BoolVar(&cfg.LogPushRequestStreams, "operation-config.log-push-request-streams", false, "Log every stream in a push request (very verbose, recommend to enable via runtime config only).")
 	f.Var((*flagext.StringSlice)(&cfg.FilterPushRequestStreamsIPs), "operation-config.filter-push-request-streams-ips", "Only show streams that match a provided IP address, LogPushRequestStreams must be enabled. Can be used multiple times to filter by multiple IPs.")
 	f.BoolVar(&cfg.LogServiceNameDiscovery, "operation-config.log-service-name-discovery", false, "Log service name discovery (very verbose, recommend to enable via runtime config only).")
@@ -98,6 +100,10 @@ func (o *TenantConfigs) LogStreamCreation(userID string) bool {
 
 func (o *TenantConfigs) LogPushRequest(userID string) bool {
 	return o.getOverridesForUser(userID).LogPushRequest
+}
+
+func (o *TenantConfigs) LogHashOfLabels(userID string) bool {
+	return o.getOverridesForUser(userID).LogHashOfLabels
 }
 
 func (o *TenantConfigs) LogPushRequestStreams(userID string) bool {
