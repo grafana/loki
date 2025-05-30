@@ -207,7 +207,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
-	ctx, sp := tracer.Start(ctx, "ParseQueryRangeResponse")
+	_, sp := tracer.Start(ctx, "ParseQueryRangeResponse")
 	defer sp.End() //nolint:ineffassign,staticcheck
 
 	buf, err := bodyBuffer(r)

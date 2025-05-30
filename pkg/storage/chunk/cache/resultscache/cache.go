@@ -430,7 +430,7 @@ func (s ResultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	ctx, sp := tracer.Start(ctx, "unmarshal-extent")
+	_, sp := tracer.Start(ctx, "unmarshal-extent")
 	defer sp.End() //nolint:ineffassign,staticcheck
 
 	sp.SetAttributes(attribute.Int("bytes", len(bufs[0])))
