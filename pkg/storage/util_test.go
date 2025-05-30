@@ -168,7 +168,6 @@ type mockChunkStore struct {
 	schemas config.SchemaConfig
 	chunks  []chunk.Chunk
 	client  *mockChunkStoreClient
-	f       chunk.RequestChunkFilterer
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
@@ -203,11 +202,6 @@ Outer:
 				}
 			}
 			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
-			if m.f != nil {
-				if m.f.ForRequest(ctx).ShouldFilter(l) {
-					continue
-				}
-			}
 
 			result = append(result, l)
 			unique[c.Fingerprint] = struct{}{}
@@ -223,10 +217,6 @@ func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _
 
 func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
-}
-
-func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
-	m.f = f
 }
 
 func (m *mockChunkStore) DeleteChunk(_ context.Context, _, _ model.Time, _, _ string, _ labels.Labels, _ *model.Interval) error {

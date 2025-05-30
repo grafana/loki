@@ -70,13 +70,13 @@ type IndexReaderWriter struct {
 	index            series_index.Client
 	schemaCfg        config.SchemaConfig
 	fetcher          *fetcher.Fetcher
-	chunkFilterer    chunk.RequestChunkFilterer
 	chunkBatchSize   int
 	writeDedupeCache cache.Cache
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
-	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) *IndexReaderWriter {
+	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache,
+) *IndexReaderWriter {
 	return &IndexReaderWriter{
 		schema:           schema,
 		index:            index,
@@ -194,10 +194,6 @@ func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	return chunks, nil
 }
 
-func (c *IndexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
-	c.chunkFilterer = f
-}
-
 type chunkGroup struct {
 	schema config.SchemaConfig
 	chunks []chunk.Chunk
@@ -207,6 +203,7 @@ func (c chunkGroup) Len() int { return len(c.chunks) }
 func (c chunkGroup) Swap(i, j int) {
 	c.chunks[i], c.chunks[j] = c.chunks[j], c.chunks[i]
 }
+
 func (c chunkGroup) Less(i, j int) bool {
 	return c.schema.ExternalKey(c.chunks[i].ChunkRef) < c.schema.ExternalKey(c.chunks[j].ChunkRef)
 }
@@ -231,11 +228,6 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 	split := c.chunkBatchSize
 	if len(chunksBySeries) < split {
 		split = len(chunksBySeries)
-	}
-
-	var chunkFilterer chunk.Filterer
-	if c.chunkFilterer != nil {
-		chunkFilterer = c.chunkFilterer.ForRequest(ctx)
 	}
 
 	for split > 0 {
@@ -268,10 +260,6 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 					if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
 						continue outer
 					}
-				}
-
-				if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Metric) {
-					continue outer
 				}
 
 				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())

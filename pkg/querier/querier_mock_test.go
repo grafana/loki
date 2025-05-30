@@ -271,7 +271,6 @@ type storeMock struct {
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
-func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer)    {}
 func (s *storeMock) SetExtractorWrapper(log.SampleExtractorWrapper) {}
 func (s *storeMock) SetPipelineWrapper(log.PipelineWrapper)         {}
 

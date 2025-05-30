@@ -474,9 +474,6 @@ func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
 	return defaultPeriodConfigs
 }
 
-func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
-}
-
 // chunk.Store methods
 func (s *mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil

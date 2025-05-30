@@ -41,7 +41,6 @@ type ChunkFetcher interface {
 type Store interface {
 	index.BaseReader
 	index.StatsReader
-	index.Filterable
 	ChunkWriter
 	ChunkFetcher
 	ChunkFetcherProvider
@@ -104,12 +103,6 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
-}
-
-func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	for _, store := range c.stores {
-		store.Store.SetChunkFilterer(chunkFilter)
-	}
 }
 
 func (c CompositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {

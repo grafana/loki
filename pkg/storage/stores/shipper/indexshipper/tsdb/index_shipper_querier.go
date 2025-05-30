@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -22,9 +21,8 @@ type indexShipperIterator interface {
 
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper     indexShipperIterator
-	chunkFilter chunk.RequestChunkFilterer
-	tableRange  config.TableRange
+	shipper    indexShipperIterator
+	tableRange config.TableRange
 }
 
 func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
@@ -60,10 +58,6 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 	})
 
 	idx := NewMultiIndex(itr)
-
-	if i.chunkFilter != nil {
-		idx.SetChunkFilterer(i.chunkFilter)
-	}
 	return idx, nil
 }
 
@@ -72,10 +66,6 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 // underlying tsdbs, which is safe, but can we optimize this?
 func (i *indexShipperQuerier) Bounds() (model.Time, model.Time) {
 	return 0, math.MaxInt64
-}
-
-func (i *indexShipperQuerier) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.chunkFilter = chunkFilter
 }
 
 // Close implements Index.Close, but we offload this responsibility

@@ -515,8 +515,6 @@ func TestTSDBIndex_Volume(t *testing.T) {
 		})
 
 		t.Run("it can filter chunks", func(t *testing.T) {
-			tsdbIndex.SetChunkFilterer(&filterAll{})
-			defer tsdbIndex.SetChunkFilterer(nil)
 
 			matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
 			acc := seriesvolume.NewAccumulator(10, 10)
@@ -672,9 +670,6 @@ func TestTSDBIndex_Volume(t *testing.T) {
 		})
 
 		t.Run("it can filter chunks", func(t *testing.T) {
-			tsdbIndex.SetChunkFilterer(&filterAll{})
-			defer tsdbIndex.SetChunkFilterer(nil)
-
 			matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
 			acc := seriesvolume.NewAccumulator(10, 10)
 			err := tsdbIndex.Volume(context.Background(), "fake", from, through, acc, nil, nil, nil, seriesvolume.Labels, matcher)
