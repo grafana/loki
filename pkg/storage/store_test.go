@@ -2041,6 +2041,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			entry := logproto.Entry{
 				Timestamp: ts,
 				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+				Parsed:    logproto.EmptyLabelAdapters(),
 			}
 
 			if withStructuredMetadata {
@@ -2054,6 +2055,8 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 						Value: "1",
 					},
 				}
+			} else {
+				entry.StructuredMetadata = logproto.EmptyLabelAdapters()
 			}
 			dup, err := chunkEnc.Append(&entry)
 			require.False(t, dup)
@@ -2086,6 +2089,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			expectedEntry := logproto.Entry{
 				Timestamp: ts.Truncate(0),
 				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+				Parsed:    logproto.EmptyLabelAdapters(),
 			}
 
 			if withStructuredMetadata {
@@ -2099,6 +2103,8 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 						Value: "1",
 					},
 				}
+			} else {
+				expectedEntry.StructuredMetadata = logproto.EmptyLabelAdapters()
 			}
 			require.Equal(t, expectedEntry, it.At())
 		}

@@ -26,7 +26,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 			Timestamp:          time.Unix(0, exp[i].t),
 			Line:               exp[i].s,
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
-			Parsed:             logproto.FromLabelsToLabelAdapters(labels.EmptyLabels()),
+			Parsed:             logproto.EmptyLabelAdapters(),
 		}
 		require.Equal(t, expected, got.At())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
