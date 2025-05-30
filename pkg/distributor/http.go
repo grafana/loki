@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
@@ -118,6 +119,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				logValues := []interface{}{
 					"msg", "push request streams",
 					"stream", s.Labels,
+					"streamSizeBytes", humanize.Bytes(uint64(pushStats.StreamSizeBytes[s.Labels])),
 				}
 				if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
 					logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())

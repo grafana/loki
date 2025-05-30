@@ -126,6 +126,7 @@ func NewPushStats() *Stats {
 		PolicyNumLines:                    map[string]int64{},
 		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
 		MostRecentEntryTimestampPerStream: map[string]time.Time{},
+		StreamSizeBytes:                   map[string]int64{},
 	}
 }
 
@@ -138,6 +139,7 @@ type Stats struct {
 	StreamLabelsSize                  int64
 	MostRecentEntryTimestamp          time.Time
 	MostRecentEntryTimestampPerStream map[string]time.Time
+	StreamSizeBytes                   map[string]int64
 	ContentType                       string
 	ContentEncoding                   string
 
@@ -382,11 +384,15 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
+		// These two variables are used to track the most recent entry timestamp and the size of the stream.
+		// They are only used when logPushRequestStreams is true.
 		mostRecentEntryTimestamp := time.Time{}
+		streamSizeBytes := int64(0)
 		for _, e := range s.Entries {
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
+			streamSizeBytes += int64(len(e.Line)) + entryLabelsSize
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 			totalBytesReceived += int64(len(e.Line))
 			totalBytesReceived += entryLabelsSize
@@ -403,6 +409,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		// Only populate this map if we are going to log it.
 		if logPushRequestStreams {
 			pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
+			pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
 		}
 
 		if tracker != nil && !pushStats.IsAggregatedMetric {

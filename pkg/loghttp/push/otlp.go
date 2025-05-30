@@ -391,12 +391,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 		if logPushRequestStreams {
 			mostRecentEntryTimestamp := time.Time{}
+			streamSizeBytes := int64(0)
+			// It's difficult to calculate these values inline when we process the payload because promotion of resource attributes or log attributes to labels can change the stream with each entry.
+			// So for simplicity and because this logging is typically disabled, we iterate on the entries to calculate these values here.
 			for _, entry := range stream.Entries {
+				streamSizeBytes += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
 				if entry.Timestamp.After(mostRecentEntryTimestamp) {
 					mostRecentEntryTimestamp = entry.Timestamp
 				}
 			}
 			stats.MostRecentEntryTimestampPerStream[stream.Labels] = mostRecentEntryTimestamp
+			stats.StreamSizeBytes[stream.Labels] = streamSizeBytes
 		}
 	}
 
