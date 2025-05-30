@@ -40,7 +40,7 @@ func shardResolverForConf(
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	if conf.IndexType == types.TSDBType {
+	if conf.IndexType == types.TSDBType || conf.IndexType == types.DataObjType {
 		return &dynamicShardResolver{
 			ctx:              ctx,
 			logger:           logger,
