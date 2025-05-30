@@ -491,23 +491,22 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-eviction-ratio
   [max_eviction_ratio: <float> | default = 0.25]
 
-  # Configures the metric aggregation and storage behavior of the pattern
-  # ingester.
-  metric_aggregation:
-    # How often to downsample metrics from raw push observations.
-    # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
-    [downsample_period: <duration> | default = 10s]
+  # Configures the aggregation and storage behavior of the pattern ingester.
+  aggregation:
+    # How often to sample metrics and patterns from raw push observations.
+    # CLI flag: -pattern-ingester.aggregation.downsample-period
+    [sample_period: <duration> | default = 10s]
 
     # The address of the Loki instance to push aggregated metrics to.
-    # CLI flag: -pattern-ingester.metric-aggregation.loki-address
+    # CLI flag: -pattern-ingester.aggregation.loki-address
     [loki_address: <string> | default = ""]
 
     # The timeout for writing to Loki.
-    # CLI flag: -pattern-ingester.metric-aggregation.timeout
+    # CLI flag: -pattern-ingester.aggregation.timeout
     [timeout: <duration> | default = 10s]
 
     # How long to wait in between pushes to Loki.
-    # CLI flag: -pattern-ingester.metric-aggregation.push-period
+    # CLI flag: -pattern-ingester.aggregation.push-period
     [push_period: <duration> | default = 30s]
 
     # The HTTP client configuration for pushing metrics to Loki.
@@ -633,31 +632,31 @@ pattern_ingester:
         [: <map of string to Header>]
 
     # Whether to use TLS for pushing metrics to Loki.
-    # CLI flag: -pattern-ingester.metric-aggregation.tls
+    # CLI flag: -pattern-ingester.aggregation.tls
     [use_tls: <boolean> | default = false]
 
     # The basic auth configuration for pushing metrics to Loki.
     basic_auth:
       # Basic auth username for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
+      # CLI flag: -pattern-ingester.aggregation.basic-auth.username
       [username: <string> | default = ""]
 
       # Basic auth password for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
+      # CLI flag: -pattern-ingester.aggregation.basic-auth.password
       [password: <string> | default = ""]
 
     # The backoff configuration for pushing metrics to Loki.
     backoff_config:
       # Minimum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-min-period
+      # CLI flag: -pattern-ingester.aggregation.backoff-min-period
       [min_period: <duration> | default = 100ms]
 
       # Maximum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-max-period
+      # CLI flag: -pattern-ingester.aggregation.backoff-max-period
       [max_period: <duration> | default = 10s]
 
       # Number of times to backoff and retry before failing.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
+      # CLI flag: -pattern-ingester.aggregation.backoff-retries
       [max_retries: <int> | default = 10]
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
@@ -4161,12 +4160,11 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
-# Enable metric aggregation. When enabled, pushed streams will be sampled for
-# bytes and count, and these metric will be written back into Loki as a special
-# __aggregated_metric__ stream, which can be queried for faster histogram
-# queries.
-# CLI flag: -limits.metric-aggregation-enabled
-[metric_aggregation_enabled: <boolean> | default = false]
+# Enable metric and pattern aggregation. When enabled, pushed streams will be
+# sampled for bytes, line count, and patterns. These metrics will be written
+# back into Loki as a special __aggregated_metric__ stream.
+# CLI flag: -limits.aggregation-enabled
+[aggregation_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

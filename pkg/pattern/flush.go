@@ -62,6 +62,7 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
+	level.Debug(i.logger).Log("msg", "sweeping instance", "instance", instance.instanceID)
 	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 		if mayRemoveStreams {
 			instance.streams.WithLock(func() {
