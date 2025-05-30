@@ -74,8 +74,13 @@ func (c *consolidatedMultiVariantStreamExtractor) Process(ts int64, line []byte,
 }
 
 func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
-	newLblsBuilder := labels.NewBuilder(lbls.Stream())
-	newLblsBuilder.Set(constants.VariantLabel, strconv.Itoa(variantIndex))
+	newLblsBuilder := labels.NewScratchBuilder(lbls.Stream().Len() + 1)
+
+	lbls.Stream().Range(func(l labels.Label) {
+		newLblsBuilder.Add(l.Name, l.Value)
+	})
+
+	newLblsBuilder.Add(constants.VariantLabel, strconv.Itoa(variantIndex))
 	newLbls := newLblsBuilder.Labels()
 
 	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
