@@ -124,7 +124,7 @@ func (s *usageStore) Update(tenant string, streams []*proto.StreamMetadata, last
 		activeStreams := make(map[int32]int)
 
 		for _, stream := range streams {
-			partition := int32(stream.StreamHash % uint64(s.numPartitions))
+			partition := s.getPartitionForHash(stream.StreamHash)
 
 			if _, ok := s.stripes[i][tenant][partition]; !ok {
 				s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
@@ -295,9 +295,14 @@ func (s *usageStore) getStripe(tenant string) int {
 	return int(h.Sum32() % uint32(len(s.locks)))
 }
 
+// getPartitionForHash returns the partition for the hash.
+func (s *usageStore) getPartitionForHash(hash uint64) int32 {
+	return int32(hash % uint64(s.numPartitions))
+}
+
 // Used in tests.
 func (s *usageStore) set(tenant string, stream streamUsage) {
-	partition := int32(stream.hash % uint64(s.numPartitions))
+	partition := s.getPartitionForHash(stream.hash)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
