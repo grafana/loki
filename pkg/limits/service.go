@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/coder/quartz"
@@ -36,27 +35,6 @@ const (
 func MetadataTopic(topic string) string {
 	return topic + ".metadata"
 }
-
-var (
-	partitionsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_partitions",
-		"The state of each partition.",
-		[]string{"partition"},
-		nil,
-	)
-	tenantStreamsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_streams",
-		"The current number of streams per tenant, including streams outside the active window.",
-		[]string{"tenant"},
-		nil,
-	)
-	tenantActiveStreamsDesc = prometheus.NewDesc(
-		"loki_ingest_limits_active_streams",
-		"The current number of active streams per tenant.",
-		[]string{"tenant"},
-		nil,
-	)
-)
 
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
@@ -128,18 +106,21 @@ func (s *Service) TransferOut(_ context.Context) error {
 func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
 	s := &Service{
-		cfg:              cfg,
-		logger:           logger,
-		usage:            newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions),
-		partitionManager: newPartitionManager(),
-		metrics:          newMetrics(reg),
-		limits:           lims,
-		clock:            quartz.NewReal(),
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg),
+		limits:  lims,
+		clock:   quartz.NewReal(),
 	}
 
-	// Initialize internal metadata metrics
-	if err := reg.Register(s); err != nil {
-		return nil, fmt.Errorf("failed to register ingest limits internal metadata metrics: %w", err)
+	s.partitionManager, err = newPartitionManager(reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create partition manager: %w", err)
+	}
+
+	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
 
 	// Initialize lifecycler
@@ -213,54 +194,6 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
-}
-
-func (s *Service) Describe(descs chan<- *prometheus.Desc) {
-	descs <- partitionsDesc
-	descs <- tenantStreamsDesc
-	descs <- tenantActiveStreamsDesc
-}
-
-func (s *Service) Collect(m chan<- prometheus.Metric) {
-	cutoff := s.clock.Now().Add(-s.cfg.ActiveWindow).UnixNano()
-	// active counts the number of active streams (within the window) per tenant.
-	active := make(map[string]int)
-	// total counts the total number of streams per tenant.
-	total := make(map[string]int)
-	s.usage.All(func(tenant string, _ int32, stream streamUsage) {
-		total[tenant]++
-		if stream.lastSeenAt >= cutoff {
-			active[tenant]++
-		}
-	})
-	for tenant, numActiveStreams := range active {
-		m <- prometheus.MustNewConstMetric(
-			tenantActiveStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numActiveStreams),
-			tenant,
-		)
-	}
-	for tenant, numStreams := range total {
-		m <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numStreams),
-			tenant,
-		)
-	}
-	partitions := s.partitionManager.List()
-	for partition := range partitions {
-		state, ok := s.partitionManager.GetState(partition)
-		if ok {
-			m <- prometheus.MustNewConstMetric(
-				partitionsDesc,
-				prometheus.GaugeValue,
-				float64(state),
-				strconv.FormatInt(int64(partition), 10),
-			)
-		}
-	}
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {

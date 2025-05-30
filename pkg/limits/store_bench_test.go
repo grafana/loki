@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -42,7 +45,8 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
+		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, prometheus.NewRegistry())
+		require.NoError(b, err)
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
 
@@ -81,7 +85,8 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 			}
 		})
 
-		s = newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions)
+		s, err = newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, prometheus.NewRegistry())
+		require.NoError(b, err)
 
 		// Run parallel benchmark
 		b.Run(bm.name+"_create_parallel", func(b *testing.B) {
