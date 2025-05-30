@@ -2,8 +2,6 @@ package log
 
 import (
 	"fmt"
-	"slices"
-	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -408,16 +406,6 @@ func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
 	}
 
 	return path
-}
-
-// Labels returns the labels from the builder. If no modifications
-// were made, the original labels are returned.
-func (b *LabelsBuilder) labels(categories ...LabelCategory) []labels.Label {
-	b.buf = b.UnsortedLabels(b.buf, categories...)
-	slices.SortFunc(b.buf, func(a, b labels.Label) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	return b.buf
 }
 
 func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {

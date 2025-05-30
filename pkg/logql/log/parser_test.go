@@ -237,7 +237,7 @@ func TestKeyShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			require.False(t, result)
 		})
 	}
@@ -277,7 +277,7 @@ func TestLabelShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
 			require.Equal(t, ParsedLabel, category)
