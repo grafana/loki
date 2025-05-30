@@ -120,10 +120,20 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			// directly.
 			zr = zstdPool.New().(*zstdWrapper)
 		}
-
-		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
+		defer func() {
 			_ = zr.Reset(nil) // Allow releasing the buffer.
 			zstdPool.Put(zr)
+		}()
+
+		decompressed := bytes.NewBuffer(make([]byte, 0, p.PageInfo().UncompressedSize))
+		n, err := io.Copy(decompressed, zr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to decompress page: %w", err)
+		}
+
+		r := bytes.NewReader(decompressed.Bytes()[:n])
+		return bitmapReader, &closerFunc{Reader: r, onClose: func() error {
+			r.Reset(nil) // Allow releasing the buffer.
 			return nil
 		}}, nil
 
