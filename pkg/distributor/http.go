@@ -20,14 +20,14 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError)
+	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError, push.HTTPSuccess)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError)
+	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError, push.OTLPFullSuccess)
 }
 
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, successWriter push.SuccessWriter) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -99,6 +99,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
+		successWriter(w, r, logger)
+		return
 	}
 
 	if logPushRequestStreams {
@@ -119,7 +122,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"msg", "push request successful",
 			)
 		}
-		w.WriteHeader(http.StatusNoContent)
+
+		successWriter(w, r, logger)
 		return
 	}
 
