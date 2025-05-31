@@ -3,7 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	strings "strings"
+	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -142,8 +141,8 @@ func getStatsForMatchers(
 }
 
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
-	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(r.ctx, "dynamicShardResolver.GetStats")
+	defer sp.End()
 
 	start := time.Now()
 
@@ -183,8 +182,9 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 }
 
 func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
-	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.Shards")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(r.ctx, "dynamicShardResolver.Shards")
+	defer sp.End()
+
 	log := spanlogger.FromContext(ctx, r.logger)
 	defer log.Finish()
 

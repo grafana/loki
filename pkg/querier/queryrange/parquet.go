@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -17,8 +16,8 @@ import (
 )
 
 func encodeResponseParquet(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "codec.EncodeResponse")
+	defer sp.End()
 
 	var buf bytes.Buffer
 

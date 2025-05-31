@@ -9,17 +9,18 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -32,6 +33,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 )
+
+var tracer = otel.Tracer("pkg/pattern/aggregation")
 
 const (
 	defaultContentType         = "application/x-protobuf"
@@ -172,11 +175,8 @@ func (p *Push) Stop() {
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
 func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
-	sp, _ := opentracing.StartSpanFromContext(
-		ctx,
-		"patternIngester.aggregation.Push.buildPayload",
-	)
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.buildPayload")
+	defer sp.End()
 
 	entries := p.entries.reset()
 	if len(entries) == 0 {
@@ -243,13 +243,12 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
 	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
 
-	sp.LogKV(
-		"event", "build aggregated metrics payload",
-		"num_service", len(entriesByStream),
-		"first_1k_services", strings.Join(services, ","),
-		"num_streams", len(streams),
-		"num_entries", len(entries),
-	)
+	sp.AddEvent("build aggregated metrics payload", trace.WithAttributes(
+		attribute.Int("num_service", len(entriesByStream)),
+		attribute.StringSlice("first_1k_services", services),
+		attribute.Int("num_streams", len(streams)),
+		attribute.Int("num_entries", len(entries)),
+	))
 
 	return payload, nil
 }
@@ -325,8 +324,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
 	defer cancel()
 
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "patternIngester.aggregation.Push.send")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.send")
+	defer sp.End()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
 	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))

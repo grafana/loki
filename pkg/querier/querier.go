@@ -16,10 +16,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -44,6 +46,8 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 )
+
+var tracer = otel.Tracer("pkg/querier")
 
 type interval struct {
 	start, end time.Time
@@ -173,7 +177,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -184,11 +188,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		if sp != nil {
-			sp.LogKV(
-				"msg", "querying ingester",
-				"params", newParams)
-		}
+		sp.AddEvent("querying ingester", trace.WithAttributes(
+			attribute.Stringer("params", newParams),
+		))
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -200,11 +202,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		if sp != nil {
-			sp.LogKV(
-				"msg", "querying store",
-				"params", params)
-		}
+		sp.AddEvent("querying store", trace.WithAttributes(
+			attribute.Stringer("params", params),
+		))
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
@@ -662,8 +662,8 @@ func (q *SingleTenantQuerier) IndexShards(
 }
 
 func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Querier.Volume")
+	defer sp.End()
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -680,14 +680,14 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	sp.LogKV(
-		"user", userID,
-		"from", req.From.Time(),
-		"through", req.Through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"limit", req.Limit,
-		"targetLabels", req.TargetLabels,
-		"aggregateBy", req.AggregateBy,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", req.From.Time().String()),
+		attribute.String("through", req.Through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int("limit", int(req.Limit)),
+		attribute.StringSlice("targetLabels", req.TargetLabels),
+		attribute.String("aggregateBy", req.AggregateBy),
 	)
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())

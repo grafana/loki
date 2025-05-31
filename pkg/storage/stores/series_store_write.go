@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -17,6 +17,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/storage/stores")
 
 var (
 	DedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
@@ -68,8 +70,9 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 // PutOne implements Store
 func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.PutOne")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.PutOne")
+	defer sp.End()
+
 	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 

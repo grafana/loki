@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -42,6 +44,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 )
+
+var tracer = otel.Tracer("pkg/storage")
 
 var (
 	indexTypeStats  = analytics.NewString("store_index_type")

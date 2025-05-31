@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -111,8 +113,10 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelNamesForMetricName", trace.WithAttributes(
+		attribute.String("metric", metricName),
+	))
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -120,14 +124,13 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	} else if shortcut {
 		return nil, nil
 	}
-	sp.LogKV("metric", metricName)
 
 	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -151,8 +154,8 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.Volume")
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -161,14 +164,14 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		return nil, nil
 	}
 
-	sp.LogKV(
-		"user", userID,
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"err", err,
-		"limit", limit,
-		"aggregateBy", aggregateBy,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.String("err", err.Error()),
+		attribute.Int("limit", int(limit)),
+		attribute.String("aggregateBy", aggregateBy),
 	)
 
 	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)

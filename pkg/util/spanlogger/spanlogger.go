@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/spanlogger" //lint:ignore faillint // This package is the wrapper that should be used.
 	"github.com/grafana/dskit/tenant"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -30,10 +31,10 @@ var (
 // SpanLogger unifies tracing and logging, to reduce repetition.
 type SpanLogger = spanlogger.SpanLogger
 
-// New makes a new SpanLogger with a log.Logger to send logs to. The provided context will have the logger attached
+// NewOTel makes a new OTel SpanLogger with a log.Logger to send logs to. The provided context will have the logger attached
 // to it and can be retrieved with FromContext.
-func New(ctx context.Context, logger log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
-	return spanlogger.New(ctx, logger, method, resolver, kvps...)
+func NewOTel(ctx context.Context, logger log.Logger, tracer trace.Tracer, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
+	return spanlogger.NewOTel(ctx, logger, tracer, method, resolver, kvps...)
 }
 
 // FromContext returns a span logger using the current parent span.

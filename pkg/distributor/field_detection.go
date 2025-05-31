@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	trace      = []byte("trace")
+	traceBytes = []byte("trace")
 	traceAbbrv = []byte("trc")
 	debug      = []byte("debug")
 	debugAbbrv = []byte("dbg")
@@ -196,7 +196,7 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	}
 
 	switch {
-	case bytes.EqualFold(v, trace), bytes.EqualFold(v, traceAbbrv):
+	case bytes.EqualFold(v, traceBytes), bytes.EqualFold(v, traceAbbrv):
 		return constants.LogLevelTrace
 	case bytes.EqualFold(v, debug), bytes.EqualFold(v, debugAbbrv):
 		return constants.LogLevelDebug

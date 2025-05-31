@@ -11,9 +11,10 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
@@ -329,10 +330,11 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 }
 
 func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker) (int, []logproto.Entry, []entryWithError) {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
-		defer sp.LogKV("event", "stream finished to store entries")
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("stream started to store entries", trace.WithAttributes(
+		attribute.String("labels", s.labelsString)),
+	)
+	defer sp.AddEvent("stream finished to store entries")
 
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
@@ -498,10 +500,10 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 }
 
 func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "stream started to cut chunk")
-		defer sp.LogKV("event", "stream finished to cut chunk")
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("stream started to cut chunk")
+	defer sp.AddEvent("stream finished to cut chunk")
+
 	// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 	chunk := &s.chunks[len(s.chunks)-1]
 	err := chunk.chunk.Close()

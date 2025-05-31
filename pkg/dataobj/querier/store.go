@@ -12,10 +12,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -32,8 +34,11 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/tracing"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/querier")
 
 var (
 	_ querier.Store = &Store{}
@@ -182,27 +187,29 @@ type object struct {
 
 // objectsForTimeRange returns data objects for the given time range.
 func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time, logger log.Logger) ([]object, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "objectsForTimeRange")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "objectsForTimeRange")
+	defer span.End()
 
-	span.SetTag("from", from)
-	span.SetTag("through", through)
+	span.SetAttributes(
+		attribute.String("from", from.String()),
+		attribute.String("through", through.String()),
+	)
 
 	files, err := s.metastore.DataObjects(ctx, from, through)
 	if err != nil {
 		return nil, err
 	}
 
-	logParams := []interface{}{
+	level.Debug(logger).Log(
 		"msg", "found data objects for time range",
 		"count", len(files),
 		"from", from,
 		"through", through,
-	}
-	level.Debug(logger).Log(logParams...)
-
-	span.LogKV(logParams...)
-	span.LogKV("files", files)
+	)
+	span.AddEvent("found data objects for time range", trace.WithAttributes(
+		attribute.Int("count", len(files)),
+		attribute.StringSlice("files", files)),
+	)
 
 	objects := make([]object, 0, len(files))
 	for _, path := range files {
@@ -250,10 +257,11 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
-			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectLogs")
-			defer span.Finish()
-			span.SetTag("object", obj.object.path)
-			span.SetTag("sections", len(obj.logReaders))
+			ctx, span := tracer.Start(ctx, "object selectLogs", trace.WithAttributes(
+				attribute.String("object", obj.object.path),
+				attribute.Int("sections", len(obj.logReaders)),
+			))
+			defer span.End()
 
 			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicates, req)
 			if err != nil {
@@ -307,10 +315,12 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
-			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectSamples")
-			defer span.Finish()
-			span.SetTag("object", obj.object.path)
-			span.SetTag("sections", len(obj.logReaders))
+			ctx, span := tracer.Start(ctx, "object selectSamples", trace.WithAttributes(
+				attribute.String("object", obj.object.path),
+				attribute.Int("sections", len(obj.logReaders)),
+			))
+
+			defer span.End()
 
 			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicates, expr)
 			if err != nil {
@@ -379,8 +389,8 @@ func shardObjects(
 	shard logql.Shard,
 	logger log.Logger,
 ) ([]*shardedObject, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "shardObjects")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "shardObjects")
+	defer span.End()
 
 	metadatas, err := fetchSectionsStats(ctx, objects)
 	if err != nil {
@@ -443,9 +453,8 @@ func shardObjects(
 	}
 
 	level.Debug(logger).Log(logParams...)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(logParams...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(logParams)...)
 
 	return shardedReaders, nil
 }
@@ -505,10 +514,16 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate streams
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("msg", "starting selectLogs in section", "index", i)
-				defer sp.LogKV("msg", "selectLogs section done", "index", i)
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("starting selectLogs in section", trace.WithAttributes(
+				attribute.Int("index", i),
+			))
+			defer func() {
+				sp.AddEvent("selectLogs section done", trace.WithAttributes(
+					attribute.Int("index", i),
+				))
+			}()
+
 			iter, err := newEntryIterator(ctx, s.streams, reader, req)
 			if err != nil {
 				return err
@@ -538,10 +553,16 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate stre
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("msg", "starting selectSamples in section", "index", i)
-				defer sp.LogKV("msg", "selectSamples section done", "index", i)
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("starting selectSamples in section", trace.WithAttributes(
+				attribute.Int("index", i),
+			))
+			defer func() {
+				sp.AddEvent("selectSamples section done", trace.WithAttributes(
+					attribute.Int("index", i),
+				))
+			}()
+
 			// extractors is not thread safe, so we need to create a new one for each object
 			extractors, err := expr.Extractors()
 			if err != nil {
@@ -576,10 +597,10 @@ func (s *shardedObject) setPredicate(streamsPredicate streams.RowPredicate, logs
 }
 
 func (s *shardedObject) matchStreams(ctx context.Context) error {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("msg", "starting matchStreams")
-		defer sp.LogKV("msg", "matchStreams done")
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("starting matchStreams")
+	defer sp.AddEvent("matchStreams done")
+
 	streamsPtr := streamsPool.Get().(*[]streams.Stream)
 	defer streamsPool.Put(streamsPtr)
 	streams := *streamsPtr
@@ -609,10 +630,11 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 
 // fetchSectionsStats retrieves section count of objects.
 func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats, error) {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("msg", "fetching metadata", "objects", len(objects))
-		defer sp.LogKV("msg", "fetched metadata")
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("fetching metadata", trace.WithAttributes(
+		attribute.Int("objects", len(objects)),
+	))
+	defer sp.AddEvent("fetched metadata")
 
 	res := make([]sectionsStats, 0, len(objects))
 

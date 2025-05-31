@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	otlptranslate "github.com/prometheus/otlptranslator"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,7 +33,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -580,13 +580,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var ingestionBlockedError error
 
 	func() {
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogKV("event", "start to validate request")
-			defer func() {
-				sp.LogKV("event", "finished to validate request")
-			}()
-		}
+		sp := trace.SpanFromContext(ctx)
+		sp.AddEvent("start to validate request")
+		defer sp.AddEvent("finished to validate request")
 
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
@@ -788,13 +784,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		ingesterDescs := map[string]ring.InstanceDesc{}
 
 		if err := func() error {
-			sp := opentracing.SpanFromContext(ctx)
-			if sp != nil {
-				sp.LogKV("event", "started to query ingesters ring")
-				defer func() {
-					sp.LogKV("event", "finished to query ingesters ring")
-				}()
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("started to query ingesters ring")
+			defer sp.AddEvent("finished to query ingesters ring")
 
 			for i, stream := range streams {
 				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
@@ -822,9 +814,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
 				// This is to make sure all ingesters get samples even if we return early
 				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				if sp := opentracing.SpanFromContext(ctx); sp != nil {
-					localCtx = opentracing.ContextWithSpan(localCtx, sp)
-				}
+				sp := trace.SpanFromContext(ctx)
+				localCtx = trace.ContextWithSpan(localCtx, sp)
+
 				select {
 				case <-ctx.Done():
 					cancel()

@@ -15,13 +15,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -814,18 +815,17 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(
-			"function", "instance.GetStats",
-			"from", from,
-			"through", through,
-			"matchers", syntax.MatchersString(matchers),
-			"streams", res.Streams,
-			"chunks", res.Chunks,
-			"bytes", res.Bytes,
-			"entries", res.Entries,
-		)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(
+		attribute.String("function", "instance.GetStats"),
+		attribute.String("from", from.String()),
+		attribute.String("through", through.String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int64("streams", int64(res.Streams)),
+		attribute.Int64("chunks", int64(res.Chunks)),
+		attribute.Int64("bytes", int64(res.Bytes)),
+		attribute.Int64("entries", int64(res.Entries)),
+	)
 
 	return res, nil
 }
@@ -1133,7 +1133,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
@@ -1162,9 +1162,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		stats.Reset()
 		metadata.Reset()
 
-		if sp != nil {
-			sp.LogKV("event", "sent batch", "size", size)
-		}
+		sp.AddEvent("sent batch", trace.WithAttributes(attribute.Int("size", int(size))))
 	}
 
 	return nil
