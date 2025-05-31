@@ -341,7 +341,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			}
 
 			// Assign the Partition IDs.
-			s.partitionManager.Assign(context.Background(), tt.assignedPartitions)
+			s.partitionManager.Assign(tt.assignedPartitions)
 
 			// Call ExceedsLimits.
 			req := &proto.ExceedsLimitsRequest{
@@ -433,7 +433,7 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 	}
 
 	// Assign the Partition IDs.
-	s.partitionManager.Assign(context.Background(), []int32{0})
+	s.partitionManager.Assign([]int32{0})
 
 	// Run concurrent requests
 	concurrency := 10
