@@ -138,8 +138,8 @@ github.com/IBM/go-sdk-core/v5 v5.19.1 h1:sleVks1O4XjgF4YEGvyDh6PZbP6iZhlTPeDkQc8
 github.com/IBM/go-sdk-core/v5 v5.19.1/go.mod h1:Q3BYO6iDA2zweQPDGbNTtqft5tDcEpm6RTuqMlPcvbw=
 github.com/IBM/ibm-cos-sdk-go v1.12.2 h1:71A4tDl8u6BZ548h71ecEe7fw5bBA7ECTVqYmeSQWQA=
 github.com/IBM/ibm-cos-sdk-go v1.12.2/go.mod h1:ODYcmrmdpjo5hVguq9RbD6xmC8xb1XZMG7NefUbJNcc=
-github.com/IBM/sarama v1.45.1 h1:nY30XqYpqyXOXSNoe2XCgjj9jklGM1Ye94ierUb1jQ0=
-github.com/IBM/sarama v1.45.1/go.mod h1:qifDhA3VWSrQ1TjSMyxDl3nYL3oX2C83u+G6L79sq4w=
+github.com/IBM/sarama v1.45.2 h1:8m8LcMCu3REcwpa7fCP6v2fuPuzVwXDAM2DOv3CBrKw=
+github.com/IBM/sarama v1.45.2/go.mod h1:ppaoTcVdGv186/z6MEKsMm70A5fwJfRTpstI37kVn3Y=
 github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573 h1:DCPjdUAi+jcGnL7iN+A7uNY8xG584oMRuisYh/VE21E=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573/go.mod h1:SMqIBi+SuiQH32bvyjngEewEeXoPfKMgWlBDaYf6fck=
