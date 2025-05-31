@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
@@ -171,10 +172,10 @@ func (p *fakeParser) parseRequest(
 	_ string,
 	_ *http.Request,
 	_ push.Limits,
+	_ *runtime.TenantConfigs,
 	_ int,
 	_ push.UsageTracker,
 	_ push.StreamResolver,
-	_ bool,
 	_ log.Logger,
 ) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
