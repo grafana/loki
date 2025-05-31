@@ -467,7 +467,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 	})
 	if err != nil {
 		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
-			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", string(ce.ChunkID))
+			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", ce.ChunkID)
 			return false, true, nil
 		}
 		return false, false, err
