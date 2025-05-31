@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"sync"
@@ -14,6 +15,10 @@ import (
 
 // The number of stripe locks.
 const numStripes = 64
+
+var (
+	errOutsideActiveWindow = errors.New("outside active time window")
+)
 
 var (
 	tenantStreamsDesc = prometheus.NewDesc(
@@ -124,7 +129,23 @@ func (s *usageStore) IterTenant(tenant string, fn iterateFunc) {
 	})
 }
 
-func (s *usageStore) Update(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
+	if !s.withinActiveWindow(seenAt) {
+		return errOutsideActiveWindow
+	}
+	var (
+		partition    = s.getPartitionForHash(metadata.StreamHash)
+		bucketStart  = seenAt.Truncate(s.bucketSize).UnixNano()
+		bucketCutoff = seenAt.Add(-s.rateWindow).UnixNano()
+	)
+	s.withLock(tenant, func(i int) {
+		s.storeStream(i, tenant, partition, metadata.StreamHash,
+			metadata.TotalSize, seenAt, bucketStart, bucketCutoff)
+	})
+	return nil
+}
+
+func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
@@ -264,6 +285,8 @@ func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 }
 
 func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
+	s.checkInitMap(i, tenant, partition)
+
 	// Check if the stream already exists in the metadata
 	recorded, ok := s.stripes[i][tenant][partition][streamHash]
 
@@ -364,19 +387,30 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 	return int32(hash % uint64(s.numPartitions))
 }
 
+// withinActiveWindow returns true if t is within the active window.
+func (s *usageStore) withinActiveWindow(t time.Time) bool {
+	return s.clock.Now().Add(-s.activeWindow).Before(t)
+}
+
+// checkInitMap checks if the maps for the tenant and partition are
+// initialized, and if not, initializes them. It must not be called without
+// the stripe lock for i.
+func (s *usageStore) checkInitMap(i int, tenant string, partition int32) {
+	if _, ok := s.stripes[i][tenant]; !ok {
+		s.stripes[i][tenant] = make(tenantUsage)
+	}
+	if _, ok := s.stripes[i][tenant][partition]; !ok {
+		s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
+	}
+}
+
 // Used in tests.
 func (s *usageStore) set(tenant string, stream streamUsage) {
 	partition := s.getPartitionForHash(stream.hash)
 	s.withLock(tenant, func(i int) {
-		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(tenantUsage)
-		}
-		if _, ok := s.stripes[i][tenant][partition]; !ok {
-			s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
-		}
+		s.checkInitMap(i, tenant, partition)
 		s.stripes[i][tenant][partition][stream.hash] = stream
 	})
-
 }
 
 // streamLimitExceeded returns a condFunc that checks if the number of active
