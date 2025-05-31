@@ -106,6 +106,10 @@ func (ms Int32Slice) Append(elms ...int32) {
 func (ms Int32Slice) MoveTo(dest Int32Slice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = nil
 }
