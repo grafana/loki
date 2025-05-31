@@ -148,7 +148,7 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
 
-				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
 					for _, sample := range samples {
 						lbs := sample.Labels
 						f := sample.Value

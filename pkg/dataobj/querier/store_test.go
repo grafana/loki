@@ -377,8 +377,21 @@ func TestStore_SelectLogs(t *testing.T) {
 		},
 	}
 
+	emptyLabelAdapters := logproto.EmptyLabelAdapters()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Make sure all empty label sets use an empty slice, rather than nil, to make assertions below easier.
+			for i := range tt.want {
+				if len(tt.want[i].Entry.Parsed) == 0 {
+					tt.want[i].Entry.Parsed = emptyLabelAdapters
+				}
+
+				if len(tt.want[i].Entry.StructuredMetadata) == 0 {
+					tt.want[i].Entry.StructuredMetadata = emptyLabelAdapters
+				}
+			}
+
 			it, err := store.SelectLogs(ctx, logql.SelectLogParams{
 				QueryRequest: &logproto.QueryRequest{
 					Start:     tt.start,

@@ -711,47 +711,47 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"unixToTime days",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
-			labels.Labels{
-				{Name: "bar", Value: "19503"},
-				{Name: "foo", Value: epochDay19503.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "19503"),
+			labels.FromStrings(
+				"bar", "19503",
+				"foo", epochDay19503.String(),
+			),
 		},
 		{
 			"unixToTime seconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
-			labels.Labels{
-				{Name: "bar", Value: "1679577215"},
-				{Name: "foo", Value: epochSeconds1679577215.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1679577215"),
+			labels.FromStrings(
+				"bar", "1679577215",
+				"foo", epochSeconds1679577215.String(),
+			),
 		},
 		{
 			"unixToTime milliseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: epochMilliseconds1257894000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1257894000000"),
+			labels.FromStrings(
+				"bar", "1257894000000",
+				"foo", epochMilliseconds1257894000000.String(),
+			),
 		},
 		{
 			"unixToTime microseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1673798889902000"},
-				{Name: "foo", Value: epochMicroseconds1673798889902000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1673798889902000"),
+			labels.FromStrings(
+				"bar", "1673798889902000",
+				"foo", epochMicroseconds1673798889902000.String(),
+			),
 		},
 		{
 			"unixToTime nanoseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1000000000000000000"},
-				{Name: "foo", Value: epochNanoseconds1000000000000000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1000000000000000000"),
+			labels.FromStrings(
+				"bar", "1000000000000000000",
+				"foo", epochNanoseconds1000000000000000000.String(),
+			),
 		},
 	}
 
