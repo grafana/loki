@@ -318,6 +318,20 @@ func (v Value) SetEmptySlice() Slice {
 	return newSlice(&av.ArrayValue.Values, v.getState())
 }
 
+// MoveTo moves the Value from current overriding the destination and
+// resetting the current instance to empty value.
+// Calling this function on zero-initialized Value will cause a panic.
+func (v Value) MoveTo(dest Value) {
+	v.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if v.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = *v.getOrig()
+	v.getOrig().Value = nil
+}
+
 // CopyTo copies the Value instance overriding the destination.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) CopyTo(dest Value) {
