@@ -28,8 +28,10 @@ import (
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
-type Option func(config)
-type config interface{}
+type (
+	Option func(config)
+	config interface{}
+)
 
 // WithChunk sets the chunk size for reading in json records. The default is to
 // read in one row per record batch as a single object. If chunk size is set to
@@ -72,7 +74,7 @@ type JSONReader struct {
 
 	bldr *RecordBuilder
 
-	refs int64
+	refs atomic.Int64
 	cur  arrow.Record
 	err  error
 
@@ -93,9 +95,10 @@ func NewJSONReader(r io.Reader, schema *arrow.Schema, opts ...Option) *JSONReade
 	rr := &JSONReader{
 		r:      json.NewDecoder(r),
 		schema: schema,
-		refs:   1,
 		chunk:  1,
 	}
+	rr.refs.Add(1)
+
 	for _, o := range opts {
 		o(rr)
 	}
@@ -126,13 +129,13 @@ func (r *JSONReader) Schema() *arrow.Schema { return r.schema }
 func (r *JSONReader) Record() arrow.Record { return r.cur }
 
 func (r *JSONReader) Retain() {
-	atomic.AddInt64(&r.refs, 1)
+	r.refs.Add(1)
 }
 
 func (r *JSONReader) Release() {
-	debug.Assert(atomic.LoadInt64(&r.refs) > 0, "too many releases")
+	debug.Assert(r.refs.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&r.refs, -1) == 0 {
+	if r.refs.Add(-1) == 0 {
 		if r.cur != nil {
 			r.cur.Release()
 			r.bldr.Release()
@@ -186,7 +189,7 @@ func (r *JSONReader) next1() bool {
 }
 
 func (r *JSONReader) nextn() bool {
-	var n = 0
+	n := 0
 
 	for i := 0; i < r.chunk && !r.done; i, n = i+1, n+1 {
 		if !r.readNext() {
@@ -200,6 +203,4 @@ func (r *JSONReader) nextn() bool {
 	return n > 0
 }
 
-var (
-	_ RecordReader = (*JSONReader)(nil)
-)
+var _ RecordReader = (*JSONReader)(nil)
