@@ -206,9 +206,34 @@
       "description": "Regional Endpoint",
       "endpointUrl": "https://storage.us-west4.rep.googleapis.com/",
       "location": "us-west4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast2.rep.googleapis.com/",
+      "location": "northamerica-northeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-east1.rep.googleapis.com/",
+      "location": "southamerica-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-west1.rep.googleapis.com/",
+      "location": "southamerica-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-central1.rep.googleapis.com/",
+      "location": "me-central1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast1.rep.googleapis.com/",
+      "location": "northamerica-northeast1"
     }
   ],
-  "etag": "\"363938303832303939373531303639383731\"",
+  "etag": "\"3138323537363430373936393234303439393430\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4479,7 +4504,7 @@
       }
     }
   },
-  "revision": "20250312",
+  "revision": "20250416",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {

@@ -957,6 +957,23 @@ func (r1 *PX) isDuplicate(_r2 RR) bool {
 	return true
 }
 
+func (r1 *RESINFO) isDuplicate(_r2 RR) bool {
+	r2, ok := _r2.(*RESINFO)
+	if !ok {
+		return false
+	}
+	_ = r2
+	if len(r1.Txt) != len(r2.Txt) {
+		return false
+	}
+	for i := 0; i < len(r1.Txt); i++ {
+		if r1.Txt[i] != r2.Txt[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (r1 *RFC3597) isDuplicate(_r2 RR) bool {
 	r2, ok := _r2.(*RFC3597)
 	if !ok {
