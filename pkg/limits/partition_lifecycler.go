@@ -48,7 +48,7 @@ func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
-		l.partitionManager.Assign(ctx, partitions)
+		l.partitionManager.Assign(partitions)
 		for _, partition := range partitions {
 			if err := l.determineStateFromOffsets(ctx, partition); err != nil {
 				level.Error(l.logger).Log(
@@ -64,11 +64,11 @@ func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
-func (l *partitionLifecycler) Revoke(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
+func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
-		l.partitionManager.Revoke(ctx, partitions)
+		l.partitionManager.Revoke(partitions)
 		l.usage.EvictPartitions(partitions)
 		return
 	}
