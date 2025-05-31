@@ -756,6 +756,8 @@ lokiCanary:
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
+  # -- If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.
+  lokiurl: null
   # -- The name of the label to look for at loki when doing the checks.
   labelname: pod
   # -- Additional annotations for the `loki-canary` Daemonset
