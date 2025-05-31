@@ -72,10 +72,70 @@ func TestUsageStore_Update(t *testing.T) {
 	}
 	// Metadata outside the active time window returns an error.
 	time1 := clock.Now().Add(-DefaultActiveWindow)
-	require.EqualError(t, s.Update("tenant1", metadata, time1), "outside active time window")
+	require.EqualError(t, s.Update("tenant", metadata, time1), "outside active time window")
 	// Metadata within the active time window is accepted.
 	time2 := clock.Now()
-	require.NoError(t, s.Update("tenant1", metadata, time2))
+	require.NoError(t, s.Update("tenant", metadata, time2))
+}
+
+// This test asserts that we update the correct rate buckets, and as rate
+// buckets are implemented as a circular list, when we reach the end of
+// list the next bucket is the start of the list.
+func TestUsageStore_UpdateRateBuckets(t *testing.T) {
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	metadata := &proto.StreamMetadata{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}
+	// Metadata at clock.Now() should update the first rate bucket because
+	// the mocked clock starts at 2024-01-01T00:00:00Z.
+	time1 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time1))
+	stream, ok := s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected := newRateBuckets(DefaultRateWindow, time.Minute)
+	expected[0].timestamp = time1.UnixNano()
+	expected[0].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
+	// Advance the clock forward to the next bucket. Should update the second
+	// bucket and leave the first bucket unmodified.
+	clock.Advance(time.Minute)
+	time2 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time2))
+	stream, ok = s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected[1].timestamp = time2.UnixNano()
+	expected[1].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
+	// Update the second bucket again. Its size should be incremented from 100
+	// to 200.
+	require.NoError(t, s.Update("tenant", metadata, time2))
+	stream, ok = s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected[1].size = 200
+	require.Equal(t, expected, stream.rateBuckets)
+	// Advance the clock to the last bucket.
+	clock.Advance(3 * time.Minute)
+	time3 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time3))
+	stream, ok = s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected[4].timestamp = time3.UnixNano()
+	expected[4].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
+	// Advance the clock one last one. It should wrap around to the start of
+	// the list and replace the original bucket with time1.
+	clock.Advance(time.Minute)
+	time4 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time4))
+	stream, ok = s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected[0].timestamp = time4.UnixNano()
+	expected[0].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
 }
 
 func TestUsageStore_UpdateBulk(t *testing.T) {
@@ -245,4 +305,8 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 		actual = append(actual, partition)
 	})
 	require.ElementsMatch(t, expected, actual)
+}
+
+func newRateBuckets(rateWindow, bucketSize time.Duration) []rateBucket {
+	return make([]rateBucket, int(rateWindow/bucketSize))
 }

@@ -85,8 +85,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 					Partitions: []kgo.FetchPartition{{
 						Partition: 1,
 						Records: []*kgo.Record{{
-							Key:   []byte("tenant"),
-							Value: b,
+							Key:       []byte("tenant"),
+							Value:     b,
+							Timestamp: clock.Now(),
 						}},
 					}},
 				}},
