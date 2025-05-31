@@ -246,3 +246,7 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	})
 	require.ElementsMatch(t, expected, actual)
 }
+
+func newRateBuckets(rateWindow, bucketSize time.Duration) []rateBucket {
+	return make([]rateBucket, int(rateWindow/bucketSize))
+}
