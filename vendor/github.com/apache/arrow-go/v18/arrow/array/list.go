@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -51,7 +50,7 @@ var _ ListLike = (*List)(nil)
 // NewListData returns a new List array value, from data.
 func NewListData(data arrow.ArrayData) *List {
 	a := &List{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -183,7 +182,7 @@ var _ ListLike = (*LargeList)(nil)
 // NewLargeListData returns a new LargeList array value, from data.
 func NewLargeListData(data arrow.ArrayData) *LargeList {
 	a := new(LargeList)
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -337,30 +336,34 @@ type LargeListBuilder struct {
 // The created list builder will create a list whose elements will be of type etype.
 func NewListBuilder(mem memory.Allocator, etype arrow.DataType) *ListBuilder {
 	offsetBldr := NewInt32Builder(mem)
-	return &ListBuilder{
+	lb := &ListBuilder{
 		baseListBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, etype),
 			offsets:         offsetBldr,
 			dt:              arrow.ListOf(etype),
 			appendOffsetVal: func(o int) { offsetBldr.Append(int32(o)) },
 		},
 	}
+	lb.refCount.Add(1)
+	return lb
 }
 
 // NewListBuilderWithField takes a field to use for the child rather than just
 // a datatype to allow for more customization.
 func NewListBuilderWithField(mem memory.Allocator, field arrow.Field) *ListBuilder {
 	offsetBldr := NewInt32Builder(mem)
-	return &ListBuilder{
+	lb := &ListBuilder{
 		baseListBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, field.Type),
 			offsets:         offsetBldr,
 			dt:              arrow.ListOfField(field),
 			appendOffsetVal: func(o int) { offsetBldr.Append(int32(o)) },
 		},
 	}
+	lb.refCount.Add(1)
+	return lb
 }
 
 func (b *baseListBuilder) Type() arrow.DataType {
@@ -381,38 +384,42 @@ func (b *baseListBuilder) Type() arrow.DataType {
 // The created list builder will create a list whose elements will be of type etype.
 func NewLargeListBuilder(mem memory.Allocator, etype arrow.DataType) *LargeListBuilder {
 	offsetBldr := NewInt64Builder(mem)
-	return &LargeListBuilder{
+	llb := &LargeListBuilder{
 		baseListBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, etype),
 			offsets:         offsetBldr,
 			dt:              arrow.LargeListOf(etype),
 			appendOffsetVal: func(o int) { offsetBldr.Append(int64(o)) },
 		},
 	}
+	llb.refCount.Add(1)
+	return llb
 }
 
 // NewLargeListBuilderWithField takes a field rather than just an element type
 // to allow for more customization of the final type of the LargeList Array
 func NewLargeListBuilderWithField(mem memory.Allocator, field arrow.Field) *LargeListBuilder {
 	offsetBldr := NewInt64Builder(mem)
-	return &LargeListBuilder{
+	llb := &LargeListBuilder{
 		baseListBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, field.Type),
 			offsets:         offsetBldr,
 			dt:              arrow.LargeListOfField(field),
 			appendOffsetVal: func(o int) { offsetBldr.Append(int64(o)) },
 		},
 	}
+	llb.refCount.Add(1)
+	return llb
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *baseListBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -420,7 +427,6 @@ func (b *baseListBuilder) Release() {
 		b.values.Release()
 		b.offsets.Release()
 	}
-
 }
 
 func (b *baseListBuilder) appendNextOffset() {
@@ -646,7 +652,7 @@ var _ VarLenListLike = (*ListView)(nil)
 
 func NewListViewData(data arrow.ArrayData) *ListView {
 	a := &ListView{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -793,7 +799,7 @@ var _ VarLenListLike = (*LargeListView)(nil)
 // NewLargeListViewData returns a new LargeListView array value, from data.
 func NewLargeListViewData(data arrow.ArrayData) *LargeListView {
 	a := new(LargeListView)
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -931,8 +937,10 @@ type offsetsAndSizes interface {
 	sizeAt(slot int64) int64
 }
 
-var _ offsetsAndSizes = (*ListView)(nil)
-var _ offsetsAndSizes = (*LargeListView)(nil)
+var (
+	_ offsetsAndSizes = (*ListView)(nil)
+	_ offsetsAndSizes = (*LargeListView)(nil)
+)
 
 func (a *ListView) offsetAt(slot int64) int64 { return int64(a.offsets[int64(a.data.offset)+slot]) }
 
@@ -1081,9 +1089,9 @@ type LargeListViewBuilder struct {
 func NewListViewBuilder(mem memory.Allocator, etype arrow.DataType) *ListViewBuilder {
 	offsetBldr := NewInt32Builder(mem)
 	sizeBldr := NewInt32Builder(mem)
-	return &ListViewBuilder{
+	lvb := &ListViewBuilder{
 		baseListViewBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, etype),
 			offsets:         offsetBldr,
 			sizes:           sizeBldr,
@@ -1092,6 +1100,8 @@ func NewListViewBuilder(mem memory.Allocator, etype arrow.DataType) *ListViewBui
 			appendSizeVal:   func(s int) { sizeBldr.Append(int32(s)) },
 		},
 	}
+	lvb.refCount.Add(1)
+	return lvb
 }
 
 // NewListViewBuilderWithField takes a field to use for the child rather than just
@@ -1099,9 +1109,9 @@ func NewListViewBuilder(mem memory.Allocator, etype arrow.DataType) *ListViewBui
 func NewListViewBuilderWithField(mem memory.Allocator, field arrow.Field) *ListViewBuilder {
 	offsetBldr := NewInt32Builder(mem)
 	sizeBldr := NewInt32Builder(mem)
-	return &ListViewBuilder{
+	lvb := &ListViewBuilder{
 		baseListViewBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, field.Type),
 			offsets:         offsetBldr,
 			sizes:           sizeBldr,
@@ -1110,6 +1120,8 @@ func NewListViewBuilderWithField(mem memory.Allocator, field arrow.Field) *ListV
 			appendSizeVal:   func(s int) { sizeBldr.Append(int32(s)) },
 		},
 	}
+	lvb.refCount.Add(1)
+	return lvb
 }
 
 func (b *baseListViewBuilder) Type() arrow.DataType {
@@ -1131,9 +1143,9 @@ func (b *baseListViewBuilder) Type() arrow.DataType {
 func NewLargeListViewBuilder(mem memory.Allocator, etype arrow.DataType) *LargeListViewBuilder {
 	offsetBldr := NewInt64Builder(mem)
 	sizeBldr := NewInt64Builder(mem)
-	return &LargeListViewBuilder{
+	llvb := &LargeListViewBuilder{
 		baseListViewBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, etype),
 			offsets:         offsetBldr,
 			sizes:           sizeBldr,
@@ -1142,6 +1154,8 @@ func NewLargeListViewBuilder(mem memory.Allocator, etype arrow.DataType) *LargeL
 			appendSizeVal:   func(s int) { sizeBldr.Append(int64(s)) },
 		},
 	}
+	llvb.refCount.Add(1)
+	return llvb
 }
 
 // NewLargeListViewBuilderWithField takes a field rather than just an element type
@@ -1149,9 +1163,9 @@ func NewLargeListViewBuilder(mem memory.Allocator, etype arrow.DataType) *LargeL
 func NewLargeListViewBuilderWithField(mem memory.Allocator, field arrow.Field) *LargeListViewBuilder {
 	offsetBldr := NewInt64Builder(mem)
 	sizeBldr := NewInt64Builder(mem)
-	return &LargeListViewBuilder{
+	llvb := &LargeListViewBuilder{
 		baseListViewBuilder{
-			builder:         builder{refCount: 1, mem: mem},
+			builder:         builder{mem: mem},
 			values:          NewBuilder(mem, field.Type),
 			offsets:         offsetBldr,
 			sizes:           sizeBldr,
@@ -1160,14 +1174,17 @@ func NewLargeListViewBuilderWithField(mem memory.Allocator, field arrow.Field) *
 			appendSizeVal:   func(o int) { sizeBldr.Append(int64(o)) },
 		},
 	}
+
+	llvb.refCount.Add(1)
+	return llvb
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *baseListViewBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil

@@ -161,7 +161,8 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
 // This uses the gRPC-specific bi-directional read API, which is in private
-// preview; please contact your account manager if interested.
+// preview; please contact your account manager if interested. The option
+// [experimental.WithGRPCBidiReads] must be selected in order to use this API.
 func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
