@@ -9,6 +9,7 @@ import (
 	snappylib "github.com/golang/snappy"
 	flatelib "github.com/klauspost/compress/flate"
 	gziplib "github.com/klauspost/compress/gzip"
+	s2lib "github.com/klauspost/compress/s2"
 	zstdlib "github.com/klauspost/compress/zstd"
 	lz4lib "github.com/pierrec/lz4/v4"
 )
@@ -47,6 +48,8 @@ var (
 	zstd = ZstdPool{}
 	// snappy is the snappy compression pool
 	snappy = SnappyPool{}
+	// s2 is the s2 compression pool
+	s2 = S2Pool{}
 	// noop is the no compression pool
 	noop = NoopPool{}
 )
@@ -79,6 +82,8 @@ func GetPool(enc Codec) ReaderWriterPool {
 		return &flate
 	case Zstd:
 		return &zstd
+	case S2:
+		return &s2
 	default:
 		panic("unknown encoding")
 	}
@@ -302,6 +307,46 @@ func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
 
 // PutWriter places back in the pool a CompressionWriter
 func (pool *LZ4Pool) PutWriter(writer io.WriteCloser) {
+	pool.writers.Put(writer)
+}
+
+type S2Pool struct {
+	readers sync.Pool
+	writers sync.Pool
+}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *S2Pool) GetReader(src io.Reader) (io.Reader, error) {
+	if r := pool.readers.Get(); r != nil {
+		reader := r.(*s2lib.Reader)
+		reader.Reset(src)
+		return reader, nil
+	}
+	opts := []s2lib.ReaderOption{s2lib.ReaderAllocBlock(4 * 1024)}
+	return s2lib.NewReader(src, opts...), nil
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *S2Pool) PutReader(reader io.Reader) {
+	r := reader.(*s2lib.Reader)
+	// Reset to free reference to the underlying reader
+	r.Reset(nil)
+	pool.readers.Put(reader)
+}
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *S2Pool) GetWriter(dst io.Writer) io.WriteCloser {
+	if w := pool.writers.Get(); w != nil {
+		writer := w.(*s2lib.Writer)
+		writer.Reset(dst)
+		return writer
+	}
+	opts := []s2lib.WriterOption{s2lib.WriterConcurrency(1)}
+	return s2lib.NewWriter(dst, opts...)
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *S2Pool) PutWriter(writer io.WriteCloser) {
 	pool.writers.Put(writer)
 }
 

@@ -764,7 +764,7 @@ func TestValidate(t *testing.T) {
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
 			},
-			expectedErr: "invalid encoding: bad-enc, supported: none, gzip, lz4-64k, snappy, lz4-256k, lz4-1M, lz4, flate, zstd",
+			expectedErr: "invalid encoding: bad-enc, supported: none, gzip, lz4-64k, snappy, lz4-256k, lz4-1M, lz4, flate, zstd, s2",
 		},
 		{
 			in: Config{

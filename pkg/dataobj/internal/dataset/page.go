@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -137,6 +138,15 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			return nil
 		}}, nil
 
+	case datasetmd.COMPRESSION_TYPE_S2:
+		sr := s2Pool.Get().(*s2.Reader)
+		sr.Reset(compressedValuesReader)
+		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			sr.Reset(nil) // Allow releasing the buffer.
+			s2Pool.Put(sr)
+			return nil
+		}}, nil
+
 	default:
 		// We do *not* want to panic here, as we may be trying to read a page from
 		// a newer format.
@@ -147,6 +157,12 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 var snappyPool = sync.Pool{
 	New: func() any {
 		return snappy.NewReader(nil)
+	},
+}
+
+var s2Pool = sync.Pool{
+	New: func() any {
+		return s2.NewReader(nil)
 	},
 }
 
