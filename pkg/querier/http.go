@@ -293,7 +293,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	return resp, nil
 }
 
-// filterAggregatedMetrics adds a matcher to exclude aggregated metrics unless explicitly requested
+// filterAggregatedMetrics adds a matcher to exclude aggregated metrics and patterns unless explicitly requested
 func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, error) {
 	// cannot add filter to an empty matcher set
 	if len(groups) == 0 {
@@ -303,6 +303,15 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 	noAggMetrics, err := labels.NewMatcher(
 		labels.MatchEqual,
 		constants.AggregatedMetricLabel,
+		"",
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	noPatterns, err := labels.NewMatcher(
+		labels.MatchEqual,
+		constants.PatternLabel,
 		"",
 	)
 	if err != nil {
@@ -319,16 +328,23 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 		}
 
 		aggMetricsRequested := false
+		patternsRequested := false
 		for _, m := range grp {
 			if m.Name == constants.AggregatedMetricLabel {
 				aggMetricsRequested = true
 				aggMetricsRequestedInAnyGroup = true
-				break
+			}
+			if m.Name == constants.PatternLabel {
+				patternsRequested = true
+				aggMetricsRequestedInAnyGroup = true
 			}
 		}
 
 		if !aggMetricsRequested {
 			grp = append(grp, noAggMetrics)
+		}
+		if !patternsRequested {
+			grp = append(grp, noPatterns)
 		}
 
 		newGroups = append(newGroups, syntax.MatchersString(grp))
@@ -343,7 +359,7 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 			keys = append(keys, label.Key)
 		}
 
-		if slices.Contains(keys, constants.AggregatedMetricLabel) {
+		if slices.Contains(keys, constants.AggregatedMetricLabel) || slices.Contains(keys, constants.PatternLabel) {
 			resp.Series = slices.Delete(resp.Series, i, i+1)
 			i--
 		}
@@ -355,7 +371,7 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
 	newLabels := make([]string, 0, len(labels))
 	for _, label := range labels {
-		if label == constants.AggregatedMetricLabel {
+		if label == constants.AggregatedMetricLabel || label == constants.PatternLabel {
 			continue
 		}
 		newLabels = append(newLabels, label)

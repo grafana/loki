@@ -33,17 +33,18 @@ import (
 const readBatchSize = 1024
 
 type Config struct {
-	Enabled              bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig     ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig         clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	ConcurrentFlushes    int                   `yaml:"concurrent_flushes"`
-	FlushCheckPeriod     time.Duration         `yaml:"flush_check_period"`
-	MaxClusters          int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
-	MaxEvictionRatio     float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
-	Aggregation          aggregation.Config    `yaml:"aggregation,omitempty" doc:"description=Configures the aggregation and storage behavior of the pattern ingester."`
-	TeeConfig            TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
-	ConnectionTimeout    time.Duration         `yaml:"connection_timeout"`
-	MaxAllowedLineLength int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	Enabled              bool                     `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig     ring.LifecyclerConfig    `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig         clientpool.Config        `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes    int                      `yaml:"concurrent_flushes"`
+	FlushCheckPeriod     time.Duration            `yaml:"flush_check_period"`
+	MaxClusters          int                      `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio     float64                  `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
+	MetricAggregation    aggregation.Config       `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	PatternPersistence   PatternPersistenceConfig `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
+	TeeConfig            TeeConfig                `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout    time.Duration            `yaml:"connection_timeout"`
+	MaxAllowedLineLength int                      `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -53,7 +54,8 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
-	cfg.Aggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.metric-aggregation.")
+	cfg.PatternPersistence.RegisterFlagsWithPrefix(fs, "pattern-ingester.pattern-persistence.")
 	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
 
 	fs.BoolVar(
@@ -150,7 +152,8 @@ func (cfg *Config) Validate() error {
 
 type Limits interface {
 	drain.Limits
-	aggregation.Limits
+	MetricAggregationEnabled(userID string) bool
+	PatternPersistenceEnabled(userID string) bool
 }
 
 type Ingester struct {
@@ -295,14 +298,14 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	downsampleTicker := time.NewTimer(i.cfg.Aggregation.SamplePeriod)
+	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.SamplePeriod)
 	defer downsampleTicker.Stop()
 	for {
 		select {
 		case <-flushTicker.C:
 			i.sweepUsers(false, true)
 		case t := <-downsampleTicker.C:
-			downsampleTicker.Reset(i.cfg.Aggregation.SamplePeriod)
+			downsampleTicker.Reset(i.cfg.MetricAggregation.SamplePeriod)
 			now := model.TimeFromUnixNano(t.UnixNano())
 			i.downsampleMetrics(now)
 		case <-i.loopQuit:
@@ -390,7 +393,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		var err error
 		var writer aggregation.EntryWriter
 
-		aggCfg := i.cfg.Aggregation
+		aggCfg := i.cfg.MetricAggregation
 		if i.limits.MetricAggregationEnabled(instanceID) {
 			metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
 			writer, err = aggregation.NewPush(

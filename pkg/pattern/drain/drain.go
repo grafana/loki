@@ -306,7 +306,7 @@ func (d *Drain) writePattern(
 	}
 
 	newLbls := labels.Labels{
-		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
+		labels.Label{Name: constants.PatternLabel, Value: service},
 	}
 
 	newStructuredMetadata := []logproto.LabelAdapter{

@@ -491,22 +491,23 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-eviction-ratio
   [max_eviction_ratio: <float> | default = 0.25]
 
-  # Configures the aggregation and storage behavior of the pattern ingester.
-  aggregation:
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
     # How often to sample metrics and patterns from raw push observations.
-    # CLI flag: -pattern-ingester.aggregation.downsample-period
+    # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
     [sample_period: <duration> | default = 10s]
 
     # The address of the Loki instance to push aggregated metrics to.
-    # CLI flag: -pattern-ingester.aggregation.loki-address
+    # CLI flag: -pattern-ingester.metric-aggregation.loki-address
     [loki_address: <string> | default = ""]
 
     # The timeout for writing to Loki.
-    # CLI flag: -pattern-ingester.aggregation.timeout
+    # CLI flag: -pattern-ingester.metric-aggregation.timeout
     [timeout: <duration> | default = 10s]
 
     # How long to wait in between pushes to Loki.
-    # CLI flag: -pattern-ingester.aggregation.push-period
+    # CLI flag: -pattern-ingester.metric-aggregation.push-period
     [push_period: <duration> | default = 30s]
 
     # The HTTP client configuration for pushing metrics to Loki.
@@ -632,32 +633,204 @@ pattern_ingester:
         [: <map of string to Header>]
 
     # Whether to use TLS for pushing metrics to Loki.
-    # CLI flag: -pattern-ingester.aggregation.tls
+    # CLI flag: -pattern-ingester.metric-aggregation.tls
     [use_tls: <boolean> | default = false]
 
     # The basic auth configuration for pushing metrics to Loki.
     basic_auth:
       # Basic auth username for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.aggregation.basic-auth.username
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.username
       [username: <string> | default = ""]
 
       # Basic auth password for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.aggregation.basic-auth.password
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.password
       [password: <string> | default = ""]
 
     # The backoff configuration for pushing metrics to Loki.
     backoff_config:
       # Minimum delay when backing off.
-      # CLI flag: -pattern-ingester.aggregation.backoff-min-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-min-period
       [min_period: <duration> | default = 100ms]
 
       # Maximum delay when backing off.
-      # CLI flag: -pattern-ingester.aggregation.backoff-max-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-max-period
       [max_period: <duration> | default = 10s]
 
       # Number of times to backoff and retry before failing.
-      # CLI flag: -pattern-ingester.aggregation.backoff-retries
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-retries
       [max_retries: <int> | default = 10]
+
+  # Configures how detected patterns are pushed back to Loki for persistence.
+  pattern_persistence:
+    # Whether pattern persistence is enabled.
+    # CLI flag: -pattern-ingester.pattern-persistence.enabled
+    [enabled: <boolean> | default = false]
+
+    # The address of the Loki instance to push patterns to.
+    # CLI flag: -pattern-ingester.pattern-persistence.loki-address
+    [loki_address: <string> | default = ""]
+
+    # The timeout for writing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.timeout
+    [timeout: <duration> | default = 10s]
+
+    # How long to wait between pattern pushes to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.push-period
+    [push_period: <duration> | default = 1m]
+
+    # The HTTP client configuration for pushing patterns to Loki.
+    http_client_config:
+      basic_auth:
+        [username: <string> | default = ""]
+
+        [username_file: <string> | default = ""]
+
+        [username_ref: <string> | default = ""]
+
+        [password: <string> | default = ""]
+
+        [password_file: <string> | default = ""]
+
+        [password_ref: <string> | default = ""]
+
+      authorization:
+        [type: <string> | default = ""]
+
+        [credentials: <string> | default = ""]
+
+        [credentials_file: <string> | default = ""]
+
+        [credentials_ref: <string> | default = ""]
+
+      oauth2:
+        [client_id: <string> | default = ""]
+
+        [client_secret: <string> | default = ""]
+
+        [client_secret_file: <string> | default = ""]
+
+        [client_secret_ref: <string> | default = ""]
+
+        [scopes: <list of strings>]
+
+        [token_url: <string> | default = ""]
+
+        [endpoint_params: <map of string to string>]
+
+        tls_config:
+          [ca: <string> | default = ""]
+
+          [cert: <string> | default = ""]
+
+          [key: <string> | default = ""]
+
+          [ca_file: <string> | default = ""]
+
+          [cert_file: <string> | default = ""]
+
+          [key_file: <string> | default = ""]
+
+          [ca_ref: <string> | default = ""]
+
+          [cert_ref: <string> | default = ""]
+
+          [key_ref: <string> | default = ""]
+
+          [server_name: <string> | default = ""]
+
+          [insecure_skip_verify: <boolean>]
+
+          [min_version: <int>]
+
+          [max_version: <int>]
+
+        proxy_url:
+          [url: <url>]
+
+        [no_proxy: <string> | default = ""]
+
+        [proxy_from_environment: <boolean>]
+
+        [proxy_connect_header: <map of string to list of strings>]
+
+      [bearer_token: <string> | default = ""]
+
+      [bearer_token_file: <string> | default = ""]
+
+      tls_config:
+        [ca: <string> | default = ""]
+
+        [cert: <string> | default = ""]
+
+        [key: <string> | default = ""]
+
+        [ca_file: <string> | default = ""]
+
+        [cert_file: <string> | default = ""]
+
+        [key_file: <string> | default = ""]
+
+        [ca_ref: <string> | default = ""]
+
+        [cert_ref: <string> | default = ""]
+
+        [key_ref: <string> | default = ""]
+
+        [server_name: <string> | default = ""]
+
+        [insecure_skip_verify: <boolean>]
+
+        [min_version: <int>]
+
+        [max_version: <int>]
+
+      [follow_redirects: <boolean>]
+
+      [enable_http2: <boolean>]
+
+      proxy_url:
+        [url: <url>]
+
+      [no_proxy: <string> | default = ""]
+
+      [proxy_from_environment: <boolean>]
+
+      [proxy_connect_header: <map of string to list of strings>]
+
+      http_headers:
+        [: <map of string to Header>]
+
+    # Whether to use TLS for pushing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.tls
+    [use_tls: <boolean> | default = false]
+
+    # The basic auth configuration for pushing patterns to Loki.
+    basic_auth:
+      # Basic auth username for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.username
+      [username: <string> | default = ""]
+
+      # Basic auth password for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.password
+      [password: <string> | default = ""]
+
+    # The backoff configuration for pushing patterns to Loki.
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-retries
+      [max_retries: <int> | default = 10]
+
+    # The maximum number of patterns to accumulate before pushing.
+    # CLI flag: -pattern-ingester.pattern-persistence.batch-size
+    [batch_size: <int> | default = 1000]
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
@@ -4160,7 +4333,9 @@ otlp_config:
 # sampled for bytes, line count, and patterns. These metrics will be written
 # back into Loki as a special __aggregated_metric__ stream.
 # CLI flag: -limits.aggregation-enabled
-[aggregation_enabled: <boolean> | default = false]
+[metric_aggregation_enabled: <boolean> | default = false]
+
+[pattern_persistence_enabled: <boolean>]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

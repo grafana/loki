@@ -27,37 +27,37 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
 	fs.DurationVar(
 		&cfg.SamplePeriod,
-		prefix+"aggregation.downsample-period",
+		prefix+"downsample-period",
 		10*time.Second,
 		"How often to sample metrics and patterns from raw push observations.",
 	)
 	fs.StringVar(
 		&cfg.LokiAddr,
-		prefix+"aggregation.loki-address",
+		prefix+"loki-address",
 		"",
 		"Loki address to send aggregations to.",
 	)
 	fs.DurationVar(
 		&cfg.WriteTimeout,
-		prefix+"aggregation.timeout",
+		prefix+"timeout",
 		10*time.Second,
 		"How long to wait write response from Loki",
 	)
 	fs.DurationVar(
 		&cfg.PushPeriod,
-		prefix+"aggregation.push-period",
+		prefix+"push-period",
 		30*time.Second,
 		"How long to wait write response from Loki",
 	)
 	fs.BoolVar(
 		&cfg.UseTLS,
-		prefix+"aggregation.tls",
+		prefix+"tls",
 		false,
 		"Does the loki connection use TLS?",
 	)
 
-	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+"aggregation", fs)
-	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+"aggregation.", fs)
+	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+".", fs)
+	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+".", fs)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -100,4 +100,5 @@ func (s *secretValue) String() string { return string(*s) }
 
 type Limits interface {
 	MetricAggregationEnabled(userID string) bool
+	PatternPersistenceEnabled(userID string) bool
 }

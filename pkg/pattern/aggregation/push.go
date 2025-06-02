@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/backoff"
 
@@ -208,7 +206,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		serviceLimit = 1000
 	}
 
-	services := make([]string, 0, serviceLimit)
 	for s, entries := range entriesByStream {
 		lbls, err := syntax.ParseLabels(s)
 		if err != nil {
@@ -220,10 +217,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 			Entries: entries,
 			Hash:    lbls.Hash(),
 		})
-
-		if len(services) < serviceLimit {
-			services = append(services, lbls.Get(constants.AggregatedMetricLabel))
-		}
 	}
 
 	if len(streams) == 0 {
@@ -247,7 +240,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
 		"num_service", len(entriesByStream),
-		"first_1k_services", strings.Join(services, ","),
 		"num_streams", len(streams),
 		"num_entries", len(entries),
 	)
@@ -394,11 +386,7 @@ func AggregatedMetricEntry(
 		totalCount,
 	)
 
-	for _, l := range lbls {
-		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
-	}
-
-	return base
+	return internalEntry(base, lbls)
 }
 
 func PatternEntry(
@@ -414,6 +402,13 @@ func PatternEntry(
 		url.QueryEscape(pattern),
 	)
 
+	return internalEntry(base, lbls)
+}
+
+func internalEntry(
+	base string,
+	lbls labels.Labels,
+) string {
 	for _, l := range lbls {
 		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
 	}

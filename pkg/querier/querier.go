@@ -160,7 +160,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
 	if err != nil {
-		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
 			return iter.NoopEntryIterator, nil
 		}
 		return nil, err
