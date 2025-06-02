@@ -6745,6 +6745,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.lokiurl</td>
+			<td>string</td>
+			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for canary pods</td>
