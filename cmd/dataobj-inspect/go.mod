@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 replace github.com/grafana/loki/v3 => ../..
 
-require github.com/grafana/loki/v3 v3.5.0
+require github.com/grafana/loki/v3 v3.5.1
 
 require (
 	github.com/axiomhq/hyperloglog v0.2.5 // indirect

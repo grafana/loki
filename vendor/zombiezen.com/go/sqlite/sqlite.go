@@ -869,7 +869,12 @@ func (stmt *Stmt) ColumnCount() int {
 //
 // https://sqlite.org/c3ref/column_name.html
 func (stmt *Stmt) ColumnName(col int) string {
-	return libc.GoString(lib.Xsqlite3_column_name(stmt.conn.tls, stmt.stmt, int32(col)))
+	for name, namedCol := range stmt.colNames {
+		if namedCol == col {
+			return name
+		}
+	}
+	return ""
 }
 
 // BindParamCount reports the number of parameters in stmt.

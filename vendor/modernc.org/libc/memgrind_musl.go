@@ -77,7 +77,9 @@ func Xmalloc(t *TLS, size Tsize_t) uintptr {
 		trc("t=%v size=%v, (%v:)", t, size, origin(2))
 	}
 	if size == 0 {
-		return 0
+		// malloc(0) should return unique pointers
+		// (often expected and gnulib replaces malloc if malloc(0) returns 0)
+		size = 1
 	}
 
 	allocatorMu.Lock()
@@ -113,18 +115,18 @@ func Xmalloc(t *TLS, size Tsize_t) uintptr {
 // void *calloc(size_t nmemb, size_t size);
 func Xcalloc(t *TLS, n, size Tsize_t) uintptr {
 	if __ccgo_strace {
-		trc("t=%v size=%v, (%v:)", t, size, origin(2))
+		trc("t=%v n=%v size=%v, (%v:)", t, n, size, origin(2))
 	}
 	rq := int(n * size)
 	if rq == 0 {
-		return 0
+		rq = 1
 	}
 
 	allocatorMu.Lock()
 
 	defer allocatorMu.Unlock()
 
-	p, err := allocator.UintptrCalloc(int(n * size))
+	p, err := allocator.UintptrCalloc(rq)
 	// 	if dmesgs {
 	// 		dmesg("%v: %v -> %#x, %v", origin(1), n*size, p, err)
 	// 	}
@@ -267,6 +269,17 @@ func UsableSize(p uintptr) Tsize_t {
 	}
 
 	return Tsize_t(memory.UintptrUsableSize(p))
+}
+
+type MemAllocatorStat struct {
+	Allocs int
+	Bytes  int
+	Mmaps  int
+}
+
+// MemStat no-op for this build tag
+func MemStat() MemAllocatorStat {
+	return MemAllocatorStat{}
 }
 
 func Xmalloc_usable_size(tls *TLS, p uintptr) (r Tsize_t) {
