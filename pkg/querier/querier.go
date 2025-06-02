@@ -228,6 +228,14 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
+	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
+	if err != nil {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
+			return iter.NoopSampleIterator, nil
+		}
+		return nil, err
+	}
+
 	params.SampleQueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)

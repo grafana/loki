@@ -455,14 +455,14 @@ func Test_MetricAggregationEnabled(t *testing.T) {
 		{
 			name: "when true",
 			yaml: `
-aggregation_enabled: true
+metric_aggregation_enabled: true
 `,
 			expected: true,
 		},
 		{
 			name: "when false",
 			yaml: `
-aggregation_enabled: false
+metric_aggregation_enabled: false
 `,
 			expected: false,
 		},
@@ -474,6 +474,39 @@ aggregation_enabled: false
 			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
 
 			actual := overrides.MetricAggregationEnabled("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_PatternPersistenceEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected bool
+	}{
+		{
+			name: "when true",
+			yaml: `
+pattern_persistence_enabled: true
+`,
+			expected: true,
+		},
+		{
+			name: "when false",
+			yaml: `
+pattern_persistence_enabled: false
+`,
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternPersistenceEnabled("fake")
 			require.Equal(t, tc.expected, actual)
 		})
 	}
