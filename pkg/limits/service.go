@@ -26,9 +26,6 @@ const (
 	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
-
-	// Kafka
-	consumerGroup = "ingest-limits"
 )
 
 // MetadataTopic returns the metadata topic name for the given topic.
@@ -135,13 +132,13 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
-	kCfg.Topic = MetadataTopic(kCfg.Topic)
+	kCfg.Topic = cfg.Topic
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
 
 	offsetManager, err := partition.NewKafkaOffsetManager(
 		kCfg,
-		"ingest-limits",
+		cfg.ConsumerGroup,
 		logger,
 		prometheus.NewRegistry(),
 	)
@@ -157,8 +154,8 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	)
 
 	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
-		kgo.ConsumerGroup(consumerGroup),
-		kgo.ConsumeTopics(kCfg.Topic),
+		kgo.ConsumerGroup(cfg.ConsumerGroup),
+		kgo.ConsumeTopics(cfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(s.clock.Now().Add(-s.cfg.ActiveWindow).UnixMilli())),
 		kgo.DisableAutoCommit(),
