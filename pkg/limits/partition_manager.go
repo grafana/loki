@@ -1,7 +1,6 @@
 package limits
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -74,7 +73,7 @@ func newPartitionManager(reg prometheus.Registerer) (*partitionManager, error) {
 }
 
 // Assign assigns the partitions.
-func (m *partitionManager) Assign(_ context.Context, partitions []int32) {
+func (m *partitionManager) Assign(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -170,7 +169,7 @@ func (m *partitionManager) SetReady(partition int32) bool {
 }
 
 // Revoke deletes the partitions.
-func (m *partitionManager) Revoke(_ context.Context, partitions []int32) {
+func (m *partitionManager) Revoke(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
