@@ -13,29 +13,29 @@ func TestTTLCache_Get(t *testing.T) {
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// The value should be absent.
-	value, ok := c.get("foo")
+	value, ok := c.Get("foo")
 	require.Equal(t, "", value)
 	require.False(t, ok)
 	// Set the value and it should be present.
-	c.set("foo", "bar")
-	value, ok = c.get("foo")
+	c.Set("foo", "bar")
+	value, ok = c.Get("foo")
 	require.Equal(t, "bar", value)
 	require.True(t, ok)
 	// Advance the time to be 1 second before the expiration time.
 	clock.Advance(59 * time.Second)
-	value, ok = c.get("foo")
+	value, ok = c.Get("foo")
 	require.Equal(t, "bar", value)
 	require.True(t, ok)
 	// Advance the time to be equal to the expiration time, the value should
 	// be absent.
 	clock.Advance(time.Second)
-	value, ok = c.get("foo")
+	value, ok = c.Get("foo")
 	require.Equal(t, "", value)
 	require.False(t, ok)
 	// Advance the time past the expiration time, the value should still be
 	// absent.
 	clock.Advance(time.Second)
-	value, ok = c.get("foo")
+	value, ok = c.Get("foo")
 	require.Equal(t, "", value)
 	require.False(t, ok)
 }
@@ -44,20 +44,20 @@ func TestTTLCache_Set(t *testing.T) {
 	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
-	c.set("foo", "bar")
+	c.Set("foo", "bar")
 	item1, ok := c.items["foo"]
 	require.True(t, ok)
 	require.Equal(t, c.clock.Now().Add(time.Minute), item1.expiresAt)
 	// Set should refresh the expiration time.
 	clock.Advance(time.Second)
-	c.set("foo", "bar")
+	c.Set("foo", "bar")
 	item2, ok := c.items["foo"]
 	require.True(t, ok)
 	require.Greater(t, item2.expiresAt, item1.expiresAt)
 	require.Equal(t, item2.expiresAt, item1.expiresAt.Add(time.Second))
 	// Set should replace the value.
-	c.set("foo", "baz")
-	value, ok := c.get("foo")
+	c.Set("foo", "baz")
+	value, ok := c.Get("foo")
 	require.True(t, ok)
 	require.Equal(t, "baz", value)
 }
@@ -67,13 +67,13 @@ func TestTTLCache_Delete(t *testing.T) {
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// Set the value and it should be present.
-	c.set("foo", "bar")
-	value, ok := c.get("foo")
+	c.Set("foo", "bar")
+	value, ok := c.Get("foo")
 	require.True(t, ok)
 	require.Equal(t, "bar", value)
 	// Delete the value, it should be absent.
-	c.delete("foo")
-	value, ok = c.get("foo")
+	c.Delete("foo")
+	value, ok = c.Get("foo")
 	require.False(t, ok)
 	require.Equal(t, "", value)
 }
@@ -83,25 +83,25 @@ func TestTTLCache_Reset(t *testing.T) {
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// Set two values, both should be present.
-	c.set("foo", "bar")
-	value, ok := c.get("foo")
+	c.Set("foo", "bar")
+	value, ok := c.Get("foo")
 	require.True(t, ok)
 	require.Equal(t, "bar", value)
-	c.set("bar", "baz")
-	value, ok = c.get("bar")
+	c.Set("bar", "baz")
+	value, ok = c.Get("bar")
 	require.True(t, ok)
 	require.Equal(t, "baz", value)
 	// Reset the cache, all should be absent.
-	c.reset()
-	value, ok = c.get("foo")
+	c.Reset()
+	value, ok = c.Get("foo")
 	require.False(t, ok)
 	require.Equal(t, "", value)
-	value, ok = c.get("bar")
+	value, ok = c.Get("bar")
 	require.False(t, ok)
 	require.Equal(t, "", value)
 	// Should be able to set values following a reset.
-	c.set("baz", "qux")
-	value, ok = c.get("baz")
+	c.Set("baz", "qux")
+	value, ok = c.Get("baz")
 	require.True(t, ok)
 	require.Equal(t, "qux", value)
 }
@@ -110,13 +110,13 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
-	c.set("foo", "bar")
+	c.Set("foo", "bar")
 	_, ok := c.items["foo"]
 	require.True(t, ok)
 	// Advance the clock and update foo, it should not be evicted as its
 	// expiration time should be refreshed.
 	clock.Advance(time.Minute)
-	c.set("foo", "bar")
+	c.Set("foo", "bar")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
 	eviction1 := clock.Now()
@@ -125,7 +125,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	// the TTL (30 seconds) since the last eviction, no eviction should
 	// be run.
 	clock.Advance(15 * time.Second)
-	c.set("bar", "baz")
+	c.Set("bar", "baz")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
 	_, ok = c.items["bar"]
@@ -135,7 +135,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	// since the last eviction, an eviction should be run, but no items should
 	// be evicted.
 	clock.Advance(16 * time.Second)
-	c.set("baz", "qux")
+	c.Set("baz", "qux")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
 	_, ok = c.items["bar"]
@@ -148,7 +148,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	// than half the TTL (seconds) since the last eviction, no eviction should
 	// be run.
 	clock.Advance(15 * time.Second)
-	c.set("qux", "corge")
+	c.Set("qux", "corge")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
 	_, ok = c.items["bar"]
@@ -162,7 +162,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	// half the TTL since the last eviction, an eviction should be run and
 	// this time foo should be evicted as it has expired.
 	clock.Advance(16 * time.Second)
-	c.set("corge", "jorge")
+	c.Set("corge", "jorge")
 	_, ok = c.items["foo"]
 	require.False(t, ok)
 	_, ok = c.items["bar"]
@@ -177,7 +177,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 	require.Equal(t, eviction3, c.lastEvictedAt)
 	// Advance the clock one whole minute. All items should be expired.
 	clock.Advance(time.Minute)
-	c.set("foo", "bar")
+	c.Set("foo", "bar")
 	_, ok = c.items["foo"]
 	require.True(t, ok)
 	_, ok = c.items["bar"]
@@ -195,12 +195,12 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 func TestNopCache(t *testing.T) {
 	c := newNopCache[string, string]()
 	// The value should be absent.
-	value, ok := c.get("foo")
+	value, ok := c.Get("foo")
 	require.Equal(t, "", value)
 	require.False(t, ok)
 	// Despite setting the value, it should still be absent.
-	c.set("foo", "bar")
-	value, ok = c.get("foo")
+	c.Set("foo", "bar")
+	value, ok = c.Get("foo")
 	require.Equal(t, "", value)
 	require.False(t, ok)
 }

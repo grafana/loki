@@ -289,6 +289,7 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	req.SetContext(ctx.Ctx)
 	if err = cli.SendRequest(req, resp); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||

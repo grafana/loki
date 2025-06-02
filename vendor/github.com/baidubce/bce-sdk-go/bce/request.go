@@ -49,10 +49,11 @@ func (b *Body) ContentMD5() string { return b.contentMD5 }
 // calculates the content-md5 of the byte stream and store the size as well as the stream.
 //
 // PARAMS:
-//     - stream: byte stream
+//   - stream: byte stream
+//
 // RETURNS:
-//     - *Body: the return Body object
-//     - error: error if any specific error occurs
+//   - *Body: the return Body object
+//   - error: error if any specific error occurs
 func NewBodyFromBytes(stream []byte) (*Body, error) {
 	buf := bytes.NewBuffer(stream)
 	size := int64(buf.Len())
@@ -68,10 +69,11 @@ func NewBodyFromBytes(stream []byte) (*Body, error) {
 // calculates the content-md5 of the byte stream and store the size as well as the stream.
 //
 // PARAMS:
-//     - str: the input string
+//   - str: the input string
+//
 // RETURNS:
-//     - *Body: the return Body object
-//     - error: error if any specific error occurs
+//   - *Body: the return Body object
+//   - error: error if any specific error occurs
 func NewBodyFromString(str string) (*Body, error) {
 	buf := bytes.NewBufferString(str)
 	size := int64(len(str))
@@ -87,10 +89,11 @@ func NewBodyFromString(str string) (*Body, error) {
 // it calculates the content-md5 of the byte stream and store the size as well as the stream.
 //
 // PARAMS:
-//     - fname: the given file name
+//   - fname: the given file name
+//
 // RETURNS:
-//     - *Body: the return Body object
-//     - error: error if any specific error occurs
+//   - *Body: the return Body object
+//   - error: error if any specific error occurs
 func NewBodyFromFile(fname string) (*Body, error) {
 	file, err := os.Open(fname)
 	if err != nil {
@@ -114,12 +117,13 @@ func NewBodyFromFile(fname string) (*Body, error) {
 // It calculates the content-md5 of the given content and store the size as well as the stream.
 //
 // PARAMS:
-//     - file: the input file pointer
-//     - off: offset of current section body
-//     - size: current section body size
+//   - file: the input file pointer
+//   - off: offset of current section body
+//   - size: current section body size
+//
 // RETURNS:
-//     - *Body: the return Body object
-//     - error: error if any specific error occurs
+//   - *Body: the return Body object
+//   - error: error if any specific error occurs
 func NewBodyFromSectionFile(file *os.File, off, size int64) (*Body, error) {
 	if _, err := file.Seek(off, 0); err != nil {
 		return nil, err
@@ -139,11 +143,12 @@ func NewBodyFromSectionFile(file *os.File, off, size int64) (*Body, error) {
 // It calculates the content-md5 of the given content and store the size as well as the stream.
 //
 // PARAMS:
-//     - r: the input reader
-//     - size: the size to be read, -1 is read all
+//   - r: the input reader
+//   - size: the size to be read, -1 is read all
+//
 // RETURNS:
-//     - *Body: the return Body object
-//     - error: error if any specific error occurs
+//   - *Body: the return Body object
+//   - error: error if any specific error occurs
 func NewBodyFromSizedReader(r io.Reader, size int64) (*Body, error) {
 	var buffer bytes.Buffer
 	var rlen int64
