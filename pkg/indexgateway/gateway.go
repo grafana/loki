@@ -539,7 +539,7 @@ func (g *Gateway) boundedShards(
 	sp.AddEvent("send shards response", trace.WithAttributes(
 		attribute.Int("shards", len(resp.Shards)),
 	))
-	
+
 	var refCt int
 	for _, grp := range resp.ChunkGroups {
 		refCt += len(grp.Refs)
