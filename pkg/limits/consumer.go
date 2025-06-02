@@ -94,7 +94,7 @@ func newConsumer(
 	}
 }
 
-func (c *consumer) run(ctx context.Context) {
+func (c *consumer) Run(ctx context.Context) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -140,7 +140,7 @@ func (c *consumer) processFetchTopicPartition(ctx context.Context) func(kgo.Fetc
 		// We need the state of the partition so we can discard any records
 		// that we produced (unless replaying) and mark a replaying partition
 		// as ready once it has finished replaying.
-		state, ok := c.partitionManager.getState(p.Partition)
+		state, ok := c.partitionManager.GetState(p.Partition)
 		if !ok {
 			c.recordsDiscarded.Add(float64(len(p.Records)))
 			level.Warn(logger).Log("msg", "discarding records for partition as the partition is not assigned to this client")
@@ -160,7 +160,7 @@ func (c *consumer) processFetchTopicPartition(ctx context.Context) func(kgo.Fetc
 				level.Error(logger).Log("msg", "failed to run readiness check", "err", err.Error())
 			} else if passed {
 				level.Debug(logger).Log("msg", "passed readiness check, partition is ready")
-				c.partitionManager.setReady(p.Partition)
+				c.partitionManager.SetReady(p.Partition)
 			}
 		}
 	}
@@ -177,7 +177,7 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	c.usage.update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	c.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
 	return nil
 }
 
@@ -185,8 +185,8 @@ type partitionReadinessCheck func(partition int32, r *kgo.Record) (bool, error)
 
 // newOffsetReadinessCheck marks a partition as ready if the target offset
 // has been reached.
-func newOffsetReadinessCheck(partitionManager *partitionManager) partitionReadinessCheck {
+func newOffsetReadinessCheck(m *partitionManager) partitionReadinessCheck {
 	return func(partition int32, r *kgo.Record) (bool, error) {
-		return partitionManager.targetOffsetReached(partition, r.Offset), nil
+		return m.TargetOffsetReached(partition, r.Offset), nil
 	}
 }

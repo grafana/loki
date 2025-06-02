@@ -57,8 +57,8 @@ func newRingGatherer(
 	}
 }
 
-// exceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (g *ringGatherer) exceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
+func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -242,7 +242,7 @@ func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 			// We use a cache to eliminate redundant gRPC requests for
 			// GetAssignedPartitions as the set of assigned partitions is
 			// expected to be stable outside consumer rebalances.
-			if resp, ok := g.assignedPartitionsCache.get(instance.Addr); ok {
+			if resp, ok := g.assignedPartitionsCache.Get(instance.Addr); ok {
 				responseCh <- getAssignedPartitionsResponse{
 					addr:     instance.Addr,
 					response: resp,
@@ -259,7 +259,7 @@ func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			g.assignedPartitionsCache.set(instance.Addr, resp)
+			g.assignedPartitionsCache.Set(instance.Addr, resp)
 			responseCh <- getAssignedPartitionsResponse{
 				addr:     instance.Addr,
 				response: resp,

@@ -152,7 +152,7 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
 	defer span.Finish()
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -339,7 +339,7 @@ func (q *querySizeLimiter) guessLimitName() string {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, q.logger)
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
