@@ -70,4 +70,8 @@ const (
 
 	BoltDBShipperType = "boltdb-shipper"
 	TSDBType          = "tsdb"
+
+	// DataObjType is the type of index for the dataobj storage.
+	// NB: it's only used in code and should be otherwise inacessible from the config file.
+	DataObjType = "dataobj"
 )
