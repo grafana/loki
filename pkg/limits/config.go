@@ -15,7 +15,7 @@ const (
 	DefaultActiveWindow  = 2 * time.Hour
 	DefaultRateWindow    = 5 * time.Minute
 	DefaultBucketSize    = 1 * time.Minute
-	DefaultEvictInterval = 30 * time.Minute
+	DefaultEvictInterval = 10 * time.Minute
 	DefaultNumPartitions = 64
 	DefaultConsumerGroup = "ingest-limits"
 )

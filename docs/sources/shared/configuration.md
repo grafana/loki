@@ -925,7 +925,7 @@ ingest_limits:
 
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
-  [eviction_interval: <duration> | default = 30m]
+  [eviction_interval: <duration> | default = 10m]
 
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.

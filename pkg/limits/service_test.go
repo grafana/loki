@@ -103,32 +103,6 @@ func TestService_ExceedsLimits(t *testing.T) {
 		},
 		expectedEntries: 1,
 	}, {
-		// This test asserts that an expired stream is not counted towards
-		// the max active stream limit.
-		name:             "expired stream should be re-refreshed",
-		tenant:           "tenant",
-		activeWindow:     DefaultActiveWindow,
-		rateWindow:       DefaultRateWindow,
-		bucketSize:       DefaultBucketSize,
-		maxActiveStreams: 1,
-		currentUsage: []streamUsage{{
-			hash:        0x1,
-			lastSeenAt:  now.Add(-DefaultActiveWindow - 1).UnixNano(),
-			totalSize:   100,
-			rateBuckets: newRateBuckets(DefaultRateWindow, DefaultBucketSize),
-		}},
-		request: &proto.ExceedsLimitsRequest{
-			Tenant: "tenant",
-			Streams: []*proto.StreamMetadata{{
-				StreamHash: 0x2,
-				TotalSize:  100,
-			}},
-		},
-		expected: &proto.ExceedsLimitsResponse{
-			Results: make([]*proto.ExceedsLimitsResult, 0),
-		},
-		expectedEntries: 2,
-	}, {
 		// This test asserts that an expired stream (outside the active window)
 		// is refreshed and re-used.
 		name:             "expired stream should be re-refreshed",

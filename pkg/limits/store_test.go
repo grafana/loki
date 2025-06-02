@@ -249,7 +249,8 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 				require.NoError(t, s.Update("tenant", stream, clock.Now()))
 			}
 			limits := MockLimits{MaxGlobalStreams: test.maxGlobalStreams}
-			accepted, rejected := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
+			accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
+			require.NoError(t, err)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
