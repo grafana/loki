@@ -82,7 +82,7 @@ func main() {
 			chunkMetas := make([]index.ChunkMeta, 0, len(s.Chunks()))
 			for _, chunk := range s.Chunks() {
 				chunkMetas = append(chunkMetas, index.ChunkMeta{
-					Checksum: extractChecksumFromChunkID(chunk.ChunkID),
+					Checksum: extractChecksumFromChunkID([]byte(chunk.ChunkID)),
 					MinTime:  int64(chunk.From),
 					MaxTime:  int64(chunk.Through),
 					KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB

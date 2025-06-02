@@ -33,6 +33,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	"github.com/grafana/dskit/clusterutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
@@ -403,20 +405,39 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
-		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
-		middleware.HTTPGRPCTracingInterceptor(router), // This must appear after the OpenTracingServerInterceptor.
-		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
 	}
+
+	if opentracing.IsGlobalTracerRegistered() {
+		grpcMiddleware = append(grpcMiddleware,
+			otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
+		)
+	}
+
+	grpcMiddleware = append(grpcMiddleware,
+		middleware.HTTPGRPCTracingInterceptor(router), // This must appear after the OpenTracingServerInterceptor, if that's configured.
+		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
+	)
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
 	if cfg.ClusterValidation.GRPC.Enabled {
-		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation, logger))
+		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(
+			cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation,
+			metrics.InvalidClusterRequests, logger,
+		))
 	}
 
 	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
 		serverLog.StreamServerInterceptor,
-		otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
-		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
 	}
+
+	if opentracing.IsGlobalTracerRegistered() {
+		grpcStreamMiddleware = append(grpcStreamMiddleware,
+			otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
+		)
+	}
+
+	grpcStreamMiddleware = append(grpcStreamMiddleware,
+		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
+	)
 	grpcStreamMiddleware = append(grpcStreamMiddleware, cfg.GRPCStreamMiddleware...)
 
 	grpcKeepAliveOptions := keepalive.ServerParameters{
@@ -439,6 +460,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpcStreamMiddleware = append(grpcStreamMiddleware, grpcServerLimit.StreamServerInterceptor)
 	}
 
+	metrics.GRPCConcurrentStreamsLimit.WithLabelValues().Set(float64(cfg.GRPCServerMaxConcurrentStreams))
 	grpcOptions := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(grpcMiddleware...),
 		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
@@ -448,6 +470,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GRPCServerMaxConcurrentStreams)),
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
 	if grpcServerLimit != nil {
@@ -463,6 +486,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 				metrics.ReceivedMessageSize,
 				metrics.SentMessageSize,
 				metrics.InflightRequests,
+				metrics.GRPCConcurrentStreamsByConnMax,
 			)),
 		)
 	}
@@ -570,7 +594,11 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 		httpMiddleware = append(defaultHTTPMiddleware, cfg.HTTPMiddleware...)
 	}
 	if cfg.ClusterValidation.HTTP.Enabled {
-		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths, cfg.ClusterValidation.HTTP.SoftValidation, logger))
+		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(
+			cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths,
+			cfg.ClusterValidation.HTTP.SoftValidation,
+			metrics.InvalidClusterRequests, logger,
+		))
 	}
 
 	return httpMiddleware, nil

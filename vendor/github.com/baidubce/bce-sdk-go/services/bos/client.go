@@ -19,6 +19,7 @@
 package bos
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -153,6 +154,12 @@ func (c *Client) ListBuckets() (*api.ListBucketsResult, error) {
 	return api.ListBuckets(c, c.BosContext)
 }
 
+// ListBucketsWithContext - support to cancel request by context.Context
+func (c *Client) ListBucketsWithContext(ctx context.Context) (*api.ListBucketsResult, error) {
+	c.BosContext.Ctx = ctx
+	return api.ListBuckets(c, c.BosContext)
+}
+
 // ListObjects - list all objects of the given bucket
 //
 // PARAMS:
@@ -169,6 +176,13 @@ func (c *Client) ListObjects(bucket string,
 
 func (c *Client) ListObjectVersions(bucket string, args *api.ListObjectsArgs) (*api.ListObjectsResult, error) {
 	return api.ListObjectsVersions(c, bucket, args, c.BosContext)
+}
+
+// ListObjectsWithContext - support to cancel request by context.Context
+func (c *Client) ListObjectsWithContext(ctx context.Context, bucket string,
+	args *api.ListObjectsArgs) (*api.ListObjectsResult, error) {
+	c.BosContext.Ctx = ctx
+	return api.ListObjects(c, bucket, args, c.BosContext)
 }
 
 // SimpleListObjects - list all objects of the given bucket with simple arguments
@@ -203,6 +217,13 @@ func (c *Client) SimpleListObjects(bucket, prefix string, maxKeys int, marker,
 // RETURNS:
 //   - error: nil if exists and have authority otherwise the specific error
 func (c *Client) HeadBucket(bucket string) error {
+	err, _ := api.HeadBucket(c, bucket, c.BosContext)
+	return err
+}
+
+// HeadBucket - support to cancel request by context.Context
+func (c *Client) HeadBucketWithContext(ctx context.Context, bucket string) error {
+	c.BosContext.Ctx = ctx
 	err, _ := api.HeadBucket(c, bucket, c.BosContext)
 	return err
 }
@@ -901,6 +922,14 @@ func (c *Client) PutObject(bucket, object string, body *bce.Body,
 	return etag, err
 }
 
+// PutObjectWithContext - support to cancel request by context.Context
+func (c *Client) PutObjectWithContext(ctx context.Context, bucket, object string, body *bce.Body,
+	args *api.PutObjectArgs) (string, error) {
+	c.BosContext.Ctx = ctx
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	return etag, err
+}
+
 // BasicPutObject - the basic interface of uploading an object
 //
 // PARAMS:
@@ -935,7 +964,18 @@ func (c *Client) PutObjectFromBytes(bucket, object string, bytesArr []byte,
 	}
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
+}
 
+// PutObjectFromBytesWithContext - support to cancel request by context.Context
+func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, object string,
+	bytesArr []byte, args *api.PutObjectArgs) (string, error) {
+	body, err := bce.NewBodyFromBytes(bytesArr)
+	if err != nil {
+		return "", err
+	}
+	c.BosContext.Ctx = ctx
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	return etag, err
 }
 
 // PutObjectFromString - upload a new object or rewrite the existed object from a string
@@ -955,6 +995,18 @@ func (c *Client) PutObjectFromString(bucket, object, content string,
 	if err != nil {
 		return "", err
 	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	return etag, err
+}
+
+// PutObjectFromStringWithContext - support to cancel request by context.Context
+func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
+	bucket, object, content string, args *api.PutObjectArgs) (string, error) {
+	body, err := bce.NewBodyFromString(content)
+	if err != nil {
+		return "", err
+	}
+	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
 
@@ -981,6 +1033,18 @@ func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 	return etag, err
 }
 
+// PutObjectFromFileWithContext - support to cancel request by context.Context
+func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
+	bucket, object, fileName string, args *api.PutObjectArgs) (string, error) {
+	body, err := bce.NewBodyFromFile(fileName)
+	if err != nil {
+		return "", err
+	}
+	c.BosContext.Ctx = ctx
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	return etag, err
+}
+
 // PutObjectFromStream - upload a new object or rewrite the existed object from stream
 //
 // PARAMS:
@@ -998,6 +1062,18 @@ func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 	if err != nil {
 		return "", err
 	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	return etag, err
+}
+
+// PutObjectFromStreamWithContext - support to cancel request by context.Context
+func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, object string,
+	reader io.Reader, args *api.PutObjectArgs) (string, error) {
+	body, err := bce.NewBodyFromSizedReader(reader, -1)
+	if err != nil {
+		return "", err
+	}
+	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
 }
@@ -1037,6 +1113,14 @@ func (c *Client) CopyObject(bucket, object, srcBucket, srcObject string,
 	return api.CopyObject(c, bucket, object, source, args, c.BosContext)
 }
 
+// CopyObjectWithContext - support to cancel request by context.Context
+func (c *Client) CopyObjectWithContext(ctx context.Context, bucket, object, srcBucket, srcObject string,
+	args *api.CopyObjectArgs) (*api.CopyObjectResult, error) {
+	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
+	c.BosContext.Ctx = ctx
+	return api.CopyObject(c, bucket, object, source, args, c.BosContext)
+}
+
 // BasicCopyObject - the basic interface of copying a object to another one
 //
 // PARAMS:
@@ -1068,6 +1152,13 @@ func (c *Client) BasicCopyObject(bucket, object, srcBucket,
 //   - error: any error if it occurs
 func (c *Client) GetObject(bucket, object string, args map[string]string,
 	ranges ...int64) (*api.GetObjectResult, error) {
+	return api.GetObject(c, bucket, object, c.BosContext, args, ranges...)
+}
+
+// GetObjectWithContext - support to cancel request by context.Context
+func (c *Client) GetObjectWithContext(ctx context.Context, bucket, object string,
+	args map[string]string, ranges ...int64) (*api.GetObjectResult, error) {
+	c.BosContext.Ctx = ctx
 	return api.GetObject(c, bucket, object, c.BosContext, args, ranges...)
 }
 
@@ -1117,6 +1208,31 @@ func (c *Client) BasicGetObjectToFile(bucket, object, filePath string) error {
 	return nil
 }
 
+// GetObjectToFileWithContext - support to cancel request by context.Context
+func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object, filePath string) error {
+	c.BosContext.Ctx = ctx
+	res, err := api.GetObject(c, bucket, object, c.BosContext, nil)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	file, fileErr := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if fileErr != nil {
+		return fileErr
+	}
+	defer file.Close()
+
+	written, writeErr := io.CopyN(file, res.Body, res.ContentLength)
+	if writeErr != nil {
+		return writeErr
+	}
+	if written != res.ContentLength {
+		return fmt.Errorf("written content size does not match the response content")
+	}
+	return nil
+}
+
 // GetObjectMeta - get the given object metadata
 //
 // PARAMS:
@@ -1128,6 +1244,13 @@ func (c *Client) BasicGetObjectToFile(bucket, object, filePath string) error {
 //     https://cloud.baidu.com/doc/BOS/API.html#GetObjectMeta.E6.8E.A5.E5.8F.A3
 //   - error: any error if it occurs
 func (c *Client) GetObjectMeta(bucket, object string) (*api.GetObjectMetaResult, error) {
+	return api.GetObjectMeta(c, bucket, object, c.BosContext)
+}
+
+// GetObjectMetaWithContext - support to cancel request by context.Context
+func (c *Client) GetObjectMetaWithContext(ctx context.Context,
+	bucket, object string) (*api.GetObjectMetaResult, error) {
+	c.BosContext.Ctx = ctx
 	return api.GetObjectMeta(c, bucket, object, c.BosContext)
 }
 
@@ -1145,6 +1268,13 @@ func (c *Client) SelectObject(bucket, object string, args *api.SelectObjectArgs)
 	return api.SelectObject(c, bucket, object, args, c.BosContext)
 }
 
+// SelectObjectWithContext - support to cancel request by context.Context
+func (c *Client) SelectObjectWithContext(ctx context.Context, bucket, object string,
+	args *api.SelectObjectArgs) (*api.SelectObjectResult, error) {
+	c.BosContext.Ctx = ctx
+	return api.SelectObject(c, bucket, object, args, c.BosContext)
+}
+
 // FetchObject - fetch the object content from the given source and store
 //
 // PARAMS:
@@ -1158,6 +1288,13 @@ func (c *Client) SelectObject(bucket, object string, args *api.SelectObjectArgs)
 //   - error: any error if it occurs
 func (c *Client) FetchObject(bucket, object, source string,
 	args *api.FetchObjectArgs) (*api.FetchObjectResult, error) {
+	return api.FetchObject(c, bucket, object, source, args, c.BosContext)
+}
+
+// FetchObjectWithContext - support to cancel request by context.Context
+func (c *Client) FetchObjectWithContext(ctx context.Context, bucket, object, source string,
+	args *api.FetchObjectArgs) (*api.FetchObjectResult, error) {
+	c.BosContext.Ctx = ctx
 	return api.FetchObject(c, bucket, object, source, args, c.BosContext)
 }
 
@@ -1206,6 +1343,13 @@ func (c *Client) SimpleFetchObject(bucket, object, source, mode,
 //   - error: any error if it occurs
 func (c *Client) AppendObject(bucket, object string, content *bce.Body,
 	args *api.AppendObjectArgs) (*api.AppendObjectResult, error) {
+	return api.AppendObject(c, bucket, object, content, args, c.BosContext)
+}
+
+// AppendObjectWithContext - support to cancel request by context.Context
+func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object string,
+	content *bce.Body, args *api.AppendObjectArgs) (*api.AppendObjectResult, error) {
+	c.BosContext.Ctx = ctx
 	return api.AppendObject(c, bucket, object, content, args, c.BosContext)
 }
 
@@ -1415,6 +1559,13 @@ func (c *Client) UploadPart(bucket, object, uploadId string, partNumber int,
 	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
 }
 
+// UploadPartWithContext - support to cancel request by context.Context
+func (c *Client) UploadPartWithContext(ctx context.Context, bucket, object, uploadId string,
+	partNumber int, content *bce.Body, args *api.UploadPartArgs) (string, error) {
+	c.BosContext.Ctx = ctx
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
+}
+
 // BasicUploadPart - basic interface to upload the single part in the multipart upload process
 //
 // PARAMS:
@@ -1450,6 +1601,13 @@ func (c *Client) UploadPartFromBytes(bucket, object, uploadId string, partNumber
 	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
 }
 
+// UploadPartFromBytesWithContext - support to cancel request by context.Context
+func (c *Client) UploadPartFromBytesWithContext(ctx context.Context, bucket, object, uploadId string,
+	partNumber int, content []byte, args *api.UploadPartArgs) (string, error) {
+	c.BosContext.Ctx = ctx
+	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
+}
+
 // UploadPartCopy - copy the multipart object
 //
 // PARAMS:
@@ -1467,6 +1625,14 @@ func (c *Client) UploadPartFromBytes(bucket, object, uploadId string, partNumber
 func (c *Client) UploadPartCopy(bucket, object, srcBucket, srcObject, uploadId string,
 	partNumber int, args *api.UploadPartCopyArgs) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
+	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, c.BosContext)
+}
+
+// UploadPartCopyWithContext - support to cancel request by context.Context
+func (c *Client) UploadPartCopyWithContext(ctx context.Context, bucket, object, srcBucket, srcObject, uploadId string,
+	partNumber int, args *api.UploadPartCopyArgs) (*api.CopyObjectResult, error) {
+	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
+	c.BosContext.Ctx = ctx
 	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, c.BosContext)
 }
 
@@ -1559,6 +1725,13 @@ func (c *Client) ListParts(bucket, object, uploadId string,
 	return api.ListParts(c, bucket, object, uploadId, args, c.BosContext)
 }
 
+// ListPartsWithContext - support to cancel request by context.Context
+func (c *Client) ListPartsWithContext(ctx context.Context, bucket, object, uploadId string,
+	args *api.ListPartsArgs) (*api.ListPartsResult, error) {
+	c.BosContext.Ctx = ctx
+	return api.ListParts(c, bucket, object, uploadId, args, c.BosContext)
+}
+
 // BasicListParts - basic interface to list the successfully uploaded parts info by upload id
 //
 // PARAMS:
@@ -1584,6 +1757,13 @@ func (c *Client) BasicListParts(bucket, object, uploadId string) (*api.ListParts
 //   - error: nil if ok otherwise the specific error
 func (c *Client) ListMultipartUploads(bucket string,
 	args *api.ListMultipartUploadsArgs) (*api.ListMultipartUploadsResult, error) {
+	return api.ListMultipartUploads(c, bucket, args, c.BosContext)
+}
+
+// ListMultipartUploadsWithContext - support to cancel request by context.Context
+func (c *Client) ListMultipartUploadsWithContext(ctx context.Context, bucket string,
+	args *api.ListMultipartUploadsArgs) (*api.ListMultipartUploadsResult, error) {
+	c.BosContext.Ctx = ctx
 	return api.ListMultipartUploads(c, bucket, args, c.BosContext)
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -332,7 +333,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []index.Query,
 func (s *storageClientV1) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	const null = string('\xff')
 
-	log, ctx := spanlogger.New(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	log, ctx := spanlogger.New(ctx, util_log.Logger, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer log.Finish()
 
 	table := s.client.Open(query.TableName)

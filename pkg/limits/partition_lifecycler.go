@@ -44,11 +44,11 @@ func newPartitionLifecycler(
 }
 
 // Assign implements kgo.OnPartitionsAssigned.
-func (l *partitionLifecycler) assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
+func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
-		l.partitionManager.assign(ctx, partitions)
+		l.partitionManager.Assign(partitions)
 		for _, partition := range partitions {
 			if err := l.determineStateFromOffsets(ctx, partition); err != nil {
 				level.Error(l.logger).Log(
@@ -56,7 +56,7 @@ func (l *partitionLifecycler) assign(ctx context.Context, _ *kgo.Client, topics 
 					"partition", partition,
 					"err", err,
 				)
-				l.partitionManager.setReady(partition)
+				l.partitionManager.SetReady(partition)
 			}
 		}
 		return
@@ -64,12 +64,12 @@ func (l *partitionLifecycler) assign(ctx context.Context, _ *kgo.Client, topics 
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
-func (l *partitionLifecycler) revoke(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
+func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
 	// We expect the client to just consume one topic.
 	// TODO(grobinson): Figure out what to do if this is not the case.
 	for _, partitions := range topics {
-		l.partitionManager.revoke(ctx, partitions)
-		l.usage.evictPartitions(partitions)
+		l.partitionManager.Revoke(partitions)
+		l.usage.EvictPartitions(partitions)
 		return
 	}
 }
@@ -110,18 +110,18 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 		// partition has never produced a record, or all records that have
 		// been produced have been deleted due to the retention period.
 		level.Debug(logger).Log("msg", "no records in partition, partition is ready")
-		l.partitionManager.setReady(partition)
+		l.partitionManager.SetReady(partition)
 		return nil
 	}
 	if nextOffset == lastProducedOffset {
 		level.Debug(logger).Log("msg", "no records within window size, partition is ready")
-		l.partitionManager.setReady(partition)
+		l.partitionManager.SetReady(partition)
 		return nil
 	}
 	// Since we want to fetch all records up to and including the last
 	// produced record, we must fetch all records up to and including the
 	// last produced offset - 1.
 	level.Debug(logger).Log("msg", "partition is replaying")
-	l.partitionManager.setReplaying(partition, lastProducedOffset-1)
+	l.partitionManager.SetReplaying(partition, lastProducedOffset-1)
 	return nil
 }
