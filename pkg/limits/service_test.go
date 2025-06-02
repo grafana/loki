@@ -165,7 +165,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 				BucketSize:    test.bucketSize,
 				NumPartitions: 1,
 			}
-			limits := MockLimits{
+			limits := mockLimits{
 				MaxGlobalStreams: test.maxActiveStreams,
 			}
 			store, err := newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
