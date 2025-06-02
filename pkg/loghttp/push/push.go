@@ -328,6 +328,11 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
+		// Increment OTLP exporter streams metric if exporter=OTLP label is present
+		if lbs.Has("exporter") && lbs.Get("exporter") == "OTLP" {
+			otlpExporterStreams.WithLabelValues(userID).Inc()
+		}
+
 		if lbs.Has(constants.AggregatedMetricLabel) {
 			pushStats.IsAggregatedMetric = true
 		}
