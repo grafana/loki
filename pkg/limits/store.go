@@ -48,6 +48,7 @@ type usageStore struct {
 	activeWindow  time.Duration
 	rateWindow    time.Duration
 	bucketSize    time.Duration
+	numBuckets    int
 	numPartitions int
 	stripes       []map[string]tenantUsage
 	locks         []stripeLock
@@ -88,6 +89,7 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
 		bucketSize:    bucketSize,
+		numBuckets:    int(rateWindow / bucketSize),
 		numPartitions: numPartitions,
 		stripes:       make([]map[string]tenantUsage, numStripes),
 		locks:         make([]stripeLock, numStripes),
@@ -129,18 +131,39 @@ func (s *usageStore) IterTenant(tenant string, fn iterateFunc) {
 	})
 }
 
+// Get finds the stream for the tenant. It returns false if the stream does
+// not exist.
+func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
+	var (
+		stream streamUsage
+		ok     bool
+	)
+	s.withRLock(tenant, func(i int) {
+		var (
+			partition  = s.getPartitionForHash(streamHash)
+			partitions tenantUsage
+			streams    map[uint64]streamUsage
+		)
+		partitions, ok = s.stripes[i][tenant]
+		if !ok {
+			return
+		}
+		streams, ok = partitions[partition]
+		if !ok {
+			return
+		}
+		stream, ok = streams[streamHash]
+	})
+	return stream, ok
+}
+
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
 	if !s.withinActiveWindow(seenAt) {
 		return errOutsideActiveWindow
 	}
-	var (
-		partition    = s.getPartitionForHash(metadata.StreamHash)
-		bucketStart  = seenAt.Truncate(s.bucketSize).UnixNano()
-		bucketCutoff = seenAt.Add(-s.rateWindow).UnixNano()
-	)
+	partition := s.getPartitionForHash(metadata.StreamHash)
 	s.withLock(tenant, func(i int) {
-		s.storeStream(i, tenant, partition, metadata.StreamHash,
-			metadata.TotalSize, seenAt, bucketStart, bucketCutoff)
+		s.recordMetadata(i, tenant, partition, metadata, seenAt)
 	})
 	return nil
 }
@@ -150,11 +173,8 @@ func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, 
 		// Calculate the cutoff for the window size
 		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
 		// Get the bucket for this timestamp using the configured interval duration
-		bucketStart = lastSeenAt.Truncate(s.bucketSize).UnixNano()
-		// Calculate the rate window cutoff for cleaning up old buckets
-		bucketCutoff = lastSeenAt.Add(-s.rateWindow).UnixNano()
-		stored       = make([]*proto.StreamMetadata, 0, len(streams))
-		rejected     = make([]*proto.StreamMetadata, 0, len(streams))
+		stored   = make([]*proto.StreamMetadata, 0, len(streams))
+		rejected = make([]*proto.StreamMetadata, 0, len(streams))
 	)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
@@ -190,14 +210,9 @@ func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, 
 					rejected = append(rejected, stream)
 					continue
 				}
-
-				// If the stream is stored and expired, reset the stream
-				if found && recorded.lastSeenAt < cutoff {
-					s.stripes[i][tenant][partition][stream.StreamHash] = streamUsage{hash: stream.StreamHash, lastSeenAt: lastSeenAt.UnixNano()}
-				}
 			}
 
-			s.storeStream(i, tenant, partition, stream.StreamHash, stream.TotalSize, lastSeenAt, bucketStart, bucketCutoff)
+			s.recordMetadata(i, tenant, partition, stream, lastSeenAt)
 
 			stored = append(stored, stream)
 		}
@@ -284,61 +299,39 @@ func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	}
 }
 
-func (s *usageStore) storeStream(i int, tenant string, partition int32, streamHash, recTotalSize uint64, recordTime time.Time, bucketStart, bucketCutOff int64) {
+func (s *usageStore) recordMetadata(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition)
-
-	// Check if the stream already exists in the metadata
-	recorded, ok := s.stripes[i][tenant][partition][streamHash]
-
-	// Create new stream metadata with the initial interval
-	if !ok {
-		s.stripes[i][tenant][partition][streamHash] = streamUsage{
-			hash:        streamHash,
-			lastSeenAt:  recordTime.UnixNano(),
-			totalSize:   recTotalSize,
-			rateBuckets: []rateBucket{{timestamp: bucketStart, size: recTotalSize}},
-		}
-		return
+	streamHash, totalSize := metadata.StreamHash, metadata.TotalSize
+	// Get the stats for the stream.
+	stream, ok := s.stripes[i][tenant][partition][streamHash]
+	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
+	// If the stream does not exist, or it has expired, reset it.
+	if !ok || stream.lastSeenAt < cutoff {
+		stream.hash = streamHash
+		stream.totalSize = 0
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
-
-	// Update total size
-	totalSize := recTotalSize + recorded.totalSize
-
-	// Update or add size for the current bucket
-	updated := false
-	sb := make([]rateBucket, 0, len(recorded.rateBuckets)+1)
-
-	// Only keep buckets within the rate window and update the current bucket
-	for _, bucket := range recorded.rateBuckets {
-		// Clean up buckets outside the rate window
-		if bucket.timestamp < bucketCutOff {
-			continue
-		}
-
-		if bucket.timestamp == bucketStart {
-			// Update existing bucket
-			sb = append(sb, rateBucket{
-				timestamp: bucketStart,
-				size:      bucket.size + recTotalSize,
-			})
-			updated = true
-		} else {
-			// Keep other buckets within the rate window as is
-			sb = append(sb, bucket)
-		}
+	seenAtUnixNano := seenAt.UnixNano()
+	if stream.lastSeenAt <= seenAtUnixNano {
+		stream.lastSeenAt = seenAtUnixNano
 	}
-
-	// Add new bucket if it wasn't updated
-	if !updated {
-		sb = append(sb, rateBucket{
-			timestamp: bucketStart,
-			size:      recTotalSize,
-		})
+	stream.totalSize += totalSize
+	// rate buckets are implemented as a circular list. To update a rate
+	// bucket we must first calculate the bucket index.
+	bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	bucketIdx := int(bucketNum % int64(s.numBuckets))
+	bucket := stream.rateBuckets[bucketIdx]
+	// Once we have found the bucket, we then need to check if it is an old
+	// bucket outside the rate window. If it is, we must reset it before we
+	// can re-use it.
+	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	if bucket.timestamp < bucketStart {
+		bucket.timestamp = bucketStart
+		bucket.size = 0
 	}
-
-	recorded.totalSize = totalSize
-	recorded.rateBuckets = sb
-	s.stripes[i][tenant][partition][streamHash] = recorded
+	bucket.size += totalSize
+	stream.rateBuckets[bucketIdx] = bucket
+	s.stripes[i][tenant][partition][streamHash] = stream
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
