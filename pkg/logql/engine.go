@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -38,6 +40,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
+
+var tracer = otel.Tracer("pkg/logql")
 
 const (
 	DefaultBlockedQueryMessage = "blocked by policy"
@@ -246,16 +250,16 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "query.Exec")
+	defer sp.End()
 
-	sp.LogKV(
-		"type", GetRangeType(q.params),
-		"query", q.params.QueryString(),
-		"start", q.params.Start(),
-		"end", q.params.End(),
-		"step", q.params.Step(),
-		"length", q.params.End().Sub(q.params.Start()),
+	sp.SetAttributes(
+		attribute.String("type", string(GetRangeType(q.params))),
+		attribute.String("query", q.params.QueryString()),
+		attribute.String("start", q.params.Start().String()),
+		attribute.String("end", q.params.End().String()),
+		attribute.String("step", q.params.Step().String()),
+		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
 	if q.logExecQuery {
@@ -291,7 +295,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	sp.LogKV(statResult.KVList()...)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
 

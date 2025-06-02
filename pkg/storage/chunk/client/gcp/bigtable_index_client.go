@@ -13,8 +13,9 @@ import (
 	"cloud.google.com/go/bigtable"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/middleware"
-	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -81,6 +82,7 @@ func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg config.Schema
 	if err != nil {
 		return nil, err
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
@@ -109,6 +111,7 @@ func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg config
 	if err != nil {
 		return nil, err
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toOptions(dialOpts)...)
 	if err != nil {
 		return nil, err
@@ -219,8 +222,8 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch index.Wri
 }
 
 func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "QueryPages")
+	defer sp.End()
 
 	// A limitation of this approach is that this only fetches whole rows; but
 	// whatever, we filter them in the cache on the client.  But for unit tests to
@@ -333,7 +336,10 @@ func (s *storageClientV1) QueryPages(ctx context.Context, queries []index.Query,
 func (s *storageClientV1) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	const null = string('\xff')
 
-	log, ctx := spanlogger.New(ctx, util_log.Logger, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	log, ctx := spanlogger.NewOTel(ctx, util_log.Logger, tracer, "QueryPages",
+		"tableName", query.TableName,
+		"hashValue", query.HashValue,
+	)
 	defer log.Finish()
 
 	table := s.client.Open(query.TableName)
