@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/common/config"
 )
 
-// PatternPersistenceConfig contains the configuration for pushing detected patterns back to Loki
-type PatternPersistenceConfig struct {
+// PersistenceConfig contains the configuration for pushing detected patterns back to Loki
+type PersistenceConfig struct {
 	Enabled          bool                    `yaml:"enabled,omitempty" doc:"description=Whether pattern persistence is enabled."`
 	LokiAddr         string                  `yaml:"loki_address,omitempty" doc:"description=The address of the Loki instance to push patterns to."`
 	WriteTimeout     time.Duration           `yaml:"timeout,omitempty" doc:"description=The timeout for writing patterns to Loki."`
@@ -22,11 +22,11 @@ type PatternPersistenceConfig struct {
 }
 
 // RegisterFlags registers pattern push related flags.
-func (cfg *PatternPersistenceConfig) RegisterFlags(fs *flag.FlagSet) {
+func (cfg *PersistenceConfig) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(fs, "")
 }
 
-func (cfg *PatternPersistenceConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
+func (cfg *PersistenceConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
 	fs.BoolVar(
 		&cfg.Enabled,
 		prefix+"enabled",
@@ -64,8 +64,8 @@ func (cfg *PatternPersistenceConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, p
 		"Maximum number of patterns to accumulate before pushing",
 	)
 
-	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix + ".", fs)
-	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix + ".", fs)
+	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+".", fs)
+	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+".", fs)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
