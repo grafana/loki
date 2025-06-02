@@ -31,6 +31,81 @@ func LogErrorWithContext(ctx context.Context, message string, f func() error) {
 // Errors used to construct it.
 type MultiError []error
 
+// GRPCStatus implements the interface expected by grpcutil.ErrorToStatusCode.
+// It returns the highest priority gRPC status from the constituent errors.
+// Priority order: client errors (4xx codes) > server errors (5xx codes) > other codes.
+// Within each category, higher numeric codes take precedence.
+//
+// Note: This works with Loki's HTTP-over-gRPC implementation where gRPC codes
+// are actually HTTP status codes internally, allowing us to use simple integer
+// division to classify error types.
+func (es MultiError) GRPCStatus() *status.Status {
+	if len(es) == 0 {
+		return nil
+	}
+
+	var highestStatus *status.Status
+	var highestCode codes.Code = codes.OK
+
+	for _, err := range es {
+		// status.FromError already checks for GRPCStatus() interface internally
+		if s, ok := status.FromError(err); ok {
+			currentCode := s.Code()
+
+			// Skip if we couldn't extract a meaningful status
+			if currentCode == codes.OK {
+				continue
+			}
+
+			// Determine if current error should take precedence
+			if shouldTakePrecedence(currentCode, highestCode) {
+				highestCode = currentCode
+				highestStatus = s
+			}
+		}
+	}
+
+	return highestStatus
+}
+
+// shouldTakePrecedence determines if newCode should take precedence over currentCode
+// Priority: client errors (4xx) > server errors (5xx) > other codes
+// Within each category, higher codes take precedence
+func shouldTakePrecedence(newCode, currentCode codes.Code) bool {
+	if currentCode == codes.OK {
+		return true
+	}
+
+	// Define client error codes (4xx equivalent)
+	newIsClient := isClientError(newCode)
+	currentIsClient := isClientError(currentCode)
+
+	// Define server error codes (5xx equivalent)
+	newIsServer := isServerError(newCode)
+	currentIsServer := isServerError(currentCode)
+
+	// Client errors take precedence over server errors
+	if newIsClient && currentIsServer {
+		return true
+	}
+	if currentIsClient && newIsServer {
+		return false
+	}
+
+	// Within the same category, higher codes take precedence
+	return newCode > currentCode
+}
+
+// isClientError returns true for gRPC codes that represent client errors (4xx equivalent)
+func isClientError(code codes.Code) bool {
+	return int(code)/100 == 4
+}
+
+// isServerError returns true for gRPC codes that represent server errors (5xx equivalent)
+func isServerError(code codes.Code) bool {
+	return int(code)/100 == 5
+}
+
 // Returns a concatenated string of the contained errors
 func (es MultiError) Error() string {
 	var buf bytes.Buffer
