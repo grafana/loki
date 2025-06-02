@@ -129,6 +129,9 @@ func (cfg *Config) Validate() error {
 	if cfg.NumPartitions <= 0 {
 		return errors.New("num-partitions must be greater than 0")
 	}
+	if cfg.ConsumerGroup == "" {
+		return errors.New("consumer-group must be set")
+	}
 	if cfg.Topic == "" {
 		return errors.New("topic must be set")
 	}
