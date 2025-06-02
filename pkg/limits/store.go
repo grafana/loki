@@ -163,56 +163,48 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
+	if !s.withinActiveWindow(seenAt) {
+		return nil, nil, errOutsideActiveWindow
+	}
 	var (
-		cutoff           = lastSeenAt.Add(-s.activeWindow).UnixNano()
-		maxActiveStreams = uint64(limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
-		stored           = make([]*proto.StreamMetadata, 0, len(streams))
-		rejected         = make([]*proto.StreamMetadata, 0, len(streams))
+		accepted   = make([]*proto.StreamMetadata, 0, len(metadata))
+		rejected   = make([]*proto.StreamMetadata, 0, len(metadata))
+		cutoff     = seenAt.Add(-s.activeWindow).UnixNano()
+		maxStreams = uint64(limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
 	)
 	s.withLock(tenant, func(i int) {
-		if _, ok := s.stripes[i][tenant]; !ok {
-			s.stripes[i][tenant] = make(tenantUsage)
-		}
-
-		activeStreams := make(map[int32]uint64)
-
-		for _, stream := range streams {
-			partition := s.getPartitionForHash(stream.StreamHash)
-
-			if _, ok := s.stripes[i][tenant][partition]; !ok {
-				s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
-			}
-
-			// Count as active streams all streams that are not expired.
-			if _, ok := activeStreams[partition]; !ok {
-				for _, stored := range s.stripes[i][tenant][partition] {
-					if stored.lastSeenAt >= cutoff {
-						activeStreams[partition]++
-					}
+		for _, m := range metadata {
+			partition := s.getPartitionForHash(m.StreamHash)
+			s.checkInitMap(i, tenant, partition)
+			streams := s.stripes[i][tenant][partition]
+			stream, ok := streams[m.StreamHash]
+			// If the stream does not exist, or exists but has expired,
+			// we need to check if accepting it would exceed the maximum
+			// stream limit.
+			if !ok || stream.lastSeenAt < cutoff {
+				if ok {
+					// The stream has expired, delete it so it doesn't count
+					// towards the active streams.
+					delete(streams, m.StreamHash)
 				}
-			}
-
-			recorded, found := s.stripes[i][tenant][partition][stream.StreamHash]
-
-			// If the stream is new or expired, check if it exceeds the limit.
-			// If limit is not exceeded and the stream is expired, reset the stream.
-			if !found || (recorded.lastSeenAt < cutoff) {
-				activeStreams[partition]++
-
-				if activeStreams[partition] > maxActiveStreams {
-					rejected = append(rejected, stream)
+				// Get the total number of streams, including expired
+				// streams. While we would like to count just the number of
+				// active streams, this would mean iterating all streams
+				// in the partition which is O(N) instead of O(1). Instead,
+				// we accept that expired streams will be counted towards the
+				// limit until evicted.
+				numStreams := uint64(len(s.stripes[i][tenant][partition]))
+				if numStreams >= maxStreams {
+					rejected = append(rejected, m)
 					continue
 				}
 			}
-
-			s.recordMetadata(i, tenant, partition, stream, lastSeenAt)
-
-			stored = append(stored, stream)
+			s.recordMetadata(i, tenant, partition, m, seenAt)
+			accepted = append(accepted, m)
 		}
 	})
-
-	return stored, rejected
+	return accepted, rejected, nil
 }
 
 // Evict evicts all streams that have not been seen within the window.

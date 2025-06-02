@@ -318,7 +318,10 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	}
 	streams = streams[:valid]
 
-	accepted, rejected := s.usage.UpdateCond(req.Tenant, streams, s.clock.Now(), s.limits)
+	accepted, rejected, err := s.usage.UpdateCond(req.Tenant, streams, s.clock.Now(), s.limits)
+	if err != nil {
+		return nil, err
+	}
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
