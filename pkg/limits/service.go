@@ -28,11 +28,6 @@ const (
 	RingName = "ingest-limits"
 )
 
-// MetadataTopic returns the metadata topic name for the given topic.
-func MetadataTopic(topic string) string {
-	return topic + ".metadata"
-}
-
 type metrics struct {
 	tenantStreamEvictionsTotal *prometheus.CounterVec
 
