@@ -38,7 +38,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response      httpTenantLimitsResponse
 	)
 
-	s.usage.ForTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
 		if stream.lastSeenAt >= cutoff {
 			activeStreams++
 
