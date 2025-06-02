@@ -61,7 +61,24 @@ func TestUsageStore_ForTenant(t *testing.T) {
 	require.ElementsMatch(t, expected2, actual2)
 }
 
-func TestUsageStore_Store(t *testing.T) {
+func TestUsageStore_Update(t *testing.T) {
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	metadata := &proto.StreamMetadata{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}
+	// Metadata outside the active time window returns an error.
+	time1 := clock.Now().Add(-DefaultActiveWindow)
+	require.EqualError(t, s.Update("tenant1", metadata, time1), "outside active time window")
+	// Metadata within the active time window is accepted.
+	time2 := clock.Now()
+	require.NoError(t, s.Update("tenant1", metadata, time2))
+}
+
+func TestUsageStore_UpdateBulk(t *testing.T) {
 	tests := []struct {
 		name             string
 		numPartitions    int
@@ -168,9 +185,9 @@ func TestUsageStore_Store(t *testing.T) {
 			require.NoError(t, err)
 			clock := quartz.NewMock(t)
 			s.clock = clock
-			s.Update("tenant", test.seed, clock.Now(), nil)
+			s.UpdateCond("tenant", test.seed, clock.Now(), nil)
 			streamLimitCond := streamLimitExceeded(test.maxGlobalStreams)
-			accepted, rejected := s.Update("tenant", test.streams, clock.Now(), streamLimitCond)
+			accepted, rejected := s.UpdateCond("tenant", test.streams, clock.Now(), streamLimitCond)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})

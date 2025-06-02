@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -26,15 +27,17 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		b, err := sameZoneRecord.Marshal()
 		require.NoError(t, err)
 		// Set up a mock kafka that will return the record during the first poll.
-		k := mockKafka{
+		clock := quartz.NewMock(t)
+		kafka := mockKafka{
 			fetches: []kgo.Fetches{{{
 				Topics: []kgo.FetchTopic{{
 					Topic: "test",
 					Partitions: []kgo.FetchPartition{{
 						Partition: 1,
 						Records: []*kgo.Record{{
-							Key:   []byte("tenant"),
-							Value: b,
+							Key:       []byte("tenant"),
+							Value:     b,
+							Timestamp: clock.Now(),
 						}},
 					}},
 				}},
@@ -51,7 +54,8 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		// was stored.
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
-		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
+		u.clock = clock
+		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
@@ -72,8 +76,9 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		}
 		b, err := sameZoneRecord.Marshal()
 		require.NoError(t, err)
+		clock := quartz.NewMock(t)
 		// Set up a mock kafka that will return the record during the first poll.
-		k := mockKafka{
+		kafka := mockKafka{
 			fetches: []kgo.Fetches{{{
 				Topics: []kgo.FetchTopic{{
 					Topic: "test",
@@ -98,7 +103,8 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		// was discarded.
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
-		c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
+		u.clock = clock
+		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
@@ -130,9 +136,10 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	}
 	b2, err := otherZoneRecord.Marshal()
 	require.NoError(t, err)
+	clock := quartz.NewMock(t)
 	// Set up a mock kafka that will return the records over two consecutive
 	// polls.
-	k := mockKafka{
+	kafka := mockKafka{
 		fetches: []kgo.Fetches{{{
 			// First poll.
 			Topics: []kgo.FetchTopic{{
@@ -140,9 +147,10 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 				Partitions: []kgo.FetchPartition{{
 					Partition: 1,
 					Records: []*kgo.Record{{
-						Key:    []byte("tenant"),
-						Value:  b1,
-						Offset: 1,
+						Key:       []byte("tenant"),
+						Value:     b1,
+						Timestamp: clock.Now(),
+						Offset:    1,
 					}},
 				}},
 			}},
@@ -153,9 +161,10 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 				Partitions: []kgo.FetchPartition{{
 					Partition: 1,
 					Records: []*kgo.Record{{
-						Key:    []byte("tenant"),
-						Value:  b2,
-						Offset: 2,
+						Key:       []byte("tenant"),
+						Value:     b2,
+						Timestamp: clock.Now(),
+						Offset:    2,
 					}},
 				}},
 			}},
@@ -173,7 +182,8 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	// We don't need the usage store for this test.
 	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 	require.NoError(t, err)
-	c := newConsumer(&k, m, u, newOffsetReadinessCheck(m), "zone1",
+	u.clock = clock
+	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	require.NoError(t, c.pollFetches(ctx))
