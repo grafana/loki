@@ -463,10 +463,11 @@ func TestIngestLimits_ExceedsLimits_Concurrent(t *testing.T) {
 func TestNew(t *testing.T) {
 	cfg := Config{
 		KafkaConfig: kafka.Config{
-			Topic:        "test-topic",
 			WriteTimeout: 10 * time.Second,
 		},
-		ActiveWindow: time.Hour,
+		ConsumerGroup: "test-consumer-group",
+		Topic:         "test-topic.metadata",
+		ActiveWindow:  time.Hour,
 		LifecyclerConfig: ring.LifecyclerConfig{
 			RingConfig: ring.Config{
 				KVStore: kv.Config{

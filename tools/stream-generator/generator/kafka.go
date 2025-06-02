@@ -107,7 +107,7 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 				Key:       []byte(tenant),
 				Value:     b,
 				Partition: partitionID,
-				Topic:     limits.MetadataTopic(s.cfg.Kafka.Topic),
+				Topic:     s.cfg.Kafka.Topic,
 			}
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
