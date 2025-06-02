@@ -38,11 +38,6 @@ var (
 // iterateFunc is a closure called for each stream.
 type iterateFunc func(tenant string, partition int32, stream streamUsage)
 
-// condFunc is a function that is called for each stream passed to update,
-// and is often used to check if a stream can be stored (for example, with
-// the max series limit). It should return true if the stream can be stored.
-type condFunc func(acc float64, stream *proto.StreamMetadata) bool
-
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
@@ -135,12 +130,12 @@ func (s *usageStore) IterTenant(tenant string, fn iterateFunc) {
 // not exist.
 func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
 	var (
-		stream streamUsage
-		ok     bool
+		partition = s.getPartitionForHash(streamHash)
+		stream    streamUsage
+		ok        bool
 	)
 	s.withRLock(tenant, func(i int) {
 		var (
-			partition  = s.getPartitionForHash(streamHash)
 			partitions tenantUsage
 			streams    map[uint64]streamUsage
 		)
@@ -168,20 +163,19 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, cond condFunc) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
+func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, lastSeenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata) {
 	var (
-		// Calculate the cutoff for the window size
-		cutoff = lastSeenAt.Add(-s.activeWindow).UnixNano()
-		// Get the bucket for this timestamp using the configured interval duration
-		stored   = make([]*proto.StreamMetadata, 0, len(streams))
-		rejected = make([]*proto.StreamMetadata, 0, len(streams))
+		cutoff           = lastSeenAt.Add(-s.activeWindow).UnixNano()
+		maxActiveStreams = uint64(limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
+		stored           = make([]*proto.StreamMetadata, 0, len(streams))
+		rejected         = make([]*proto.StreamMetadata, 0, len(streams))
 	)
 	s.withLock(tenant, func(i int) {
 		if _, ok := s.stripes[i][tenant]; !ok {
 			s.stripes[i][tenant] = make(tenantUsage)
 		}
 
-		activeStreams := make(map[int32]int)
+		activeStreams := make(map[int32]uint64)
 
 		for _, stream := range streams {
 			partition := s.getPartitionForHash(stream.StreamHash)
@@ -206,7 +200,7 @@ func (s *usageStore) UpdateCond(tenant string, streams []*proto.StreamMetadata, 
 			if !found || (recorded.lastSeenAt < cutoff) {
 				activeStreams[partition]++
 
-				if cond != nil && !cond(float64(activeStreams[partition]), stream) {
+				if activeStreams[partition] > maxActiveStreams {
 					rejected = append(rejected, stream)
 					continue
 				}
@@ -404,13 +398,4 @@ func (s *usageStore) set(tenant string, stream streamUsage) {
 		s.checkInitMap(i, tenant, partition)
 		s.stripes[i][tenant][partition][stream.hash] = stream
 	})
-}
-
-// streamLimitExceeded returns a condFunc that checks if the number of active
-// streams exceeds the given limit. If it does, the stream is added to the
-// results map.
-func streamLimitExceeded(limit uint64) condFunc {
-	return func(acc float64, _ *proto.StreamMetadata) bool {
-		return acc <= float64(limit)
-	}
 }

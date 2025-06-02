@@ -302,12 +302,6 @@ func (s *Service) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedP
 // ExceedsLimits implements the proto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
 func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	var (
-		lastSeenAt = s.clock.Now()
-		// Calculate the max active streams per tenant per partition
-		maxActiveStreams = uint64(s.limits.MaxGlobalStreamsPerUser(req.Tenant) / s.cfg.NumPartitions)
-	)
-
 	streams := req.Streams
 	valid := 0
 	for _, stream := range streams {
@@ -324,8 +318,7 @@ func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsReq
 	}
 	streams = streams[:valid]
 
-	cond := streamLimitExceeded(maxActiveStreams)
-	accepted, rejected := s.usage.UpdateCond(req.Tenant, streams, lastSeenAt, cond)
+	accepted, rejected := s.usage.UpdateCond(req.Tenant, streams, s.clock.Now(), s.limits)
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
