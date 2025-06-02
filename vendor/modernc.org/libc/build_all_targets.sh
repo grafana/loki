@@ -1,5 +1,5 @@
 set -e
-for tag in none libc.dmesg libc.membrk libc.memgrind libc.strace
+for tag in none libc.dmesg libc.membrk libc.memgrind libc.strace libc.memexpvar
 do
 	echo "-tags=$tag"
 	echo "GOOS=darwin GOARCH=amd64"
@@ -8,15 +8,18 @@ do
 	echo "GOOS=darwin GOARCH=arm64"
 	GOOS=darwin GOARCH=arm64 go build -tags=$tag -v ./...
 	GOOS=darwin GOARCH=arm64 go test -tags=$tag -c -o /dev/null
-	echo "GOOS=freebsd GOARCH=386"
-	GOOS=freebsd GOARCH=386 go build -tags=$tag -v ./...
-	GOOS=freebsd GOARCH=386 go test -tags=$tag -c -o /dev/null
+	#TODO echo "GOOS=freebsd GOARCH=386"
+	#TODO GOOS=freebsd GOARCH=386 go build -tags=$tag -v ./...
+	#TODO GOOS=freebsd GOARCH=386 go test -tags=$tag -c -o /dev/null
 	echo "GOOS=freebsd GOARCH=amd64"
 	GOOS=freebsd GOARCH=amd64 go build -tags=$tag -v ./...
 	GOOS=freebsd GOARCH=amd64 go test -tags=$tag -c -o /dev/null
-	echo "GOOS=freebsd GOARCH=arm"
-	GOOS=freebsd GOARCH=arm go build -tags=$tag -v ./...
-	GOOS=freebsd GOARCH=arm go test -tags=$tag -c -o /dev/null
+	echo "GOOS=freebsd GOARCH=arm64"
+	GOOS=freebsd GOARCH=arm64 go build -tags=$tag -v ./...
+	GOOS=freebsd GOARCH=arm64 go test -tags=$tag -c -o /dev/null
+	#TODO echo "GOOS=freebsd GOARCH=arm"
+	#TODO GOOS=freebsd GOARCH=arm go build -tags=$tag -v ./...
+	#TODO GOOS=freebsd GOARCH=arm go test -tags=$tag -c -o /dev/null
 	echo "GOOS=linux GOARCH=386"
 	GOOS=linux GOARCH=386 go build -tags=$tag -v ./...
 	GOOS=linux GOARCH=386 go test -tags=$tag -c -o /dev/null

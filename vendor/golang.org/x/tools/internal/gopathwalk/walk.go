@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -195,10 +196,8 @@ func (w *walker) getIgnoredDirs(path string) []string {
 
 // shouldSkipDir reports whether the file should be skipped or not.
 func (w *walker) shouldSkipDir(dir string) bool {
-	for _, ignoredDir := range w.ignoredDirs {
-		if dir == ignoredDir {
-			return true
-		}
+	if slices.Contains(w.ignoredDirs, dir) {
+		return true
 	}
 	if w.skip != nil {
 		// Check with the user specified callback.

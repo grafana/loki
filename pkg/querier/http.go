@@ -370,7 +370,7 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 		return nil, err
 	}
 	if resp == nil { // Some stores don't implement this
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, q.logger)).Log(
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
 		return &logproto.DetectedFieldsResponse{
@@ -431,7 +431,7 @@ func WrapQuerySpanAndTimeout(call string, limits querier_limits.Limits) middlewa
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
 			defer sp.Finish()
-			log := spanlogger.FromContext(req.Context())
+			log := spanlogger.FromContext(req.Context(), utillog.Logger)
 			defer log.Finish()
 
 			tenants, err := tenant.TenantIDs(ctx)
