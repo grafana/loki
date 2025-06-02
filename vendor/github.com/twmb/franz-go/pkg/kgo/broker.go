@@ -24,22 +24,15 @@ import (
 )
 
 type pinReq struct {
-	kmsg.Request
 	min    int16
 	max    int16
 	pinMin bool
 	pinMax bool
 }
 
-func (p *pinReq) SetVersion(v int16) {
-	if p.pinMin && v < p.min {
-		v = p.min
-	}
-	if p.pinMax && v > p.max {
-		v = p.max
-	}
-	p.Request.SetVersion(v)
-}
+var ctxPinReq = func() *string { v := "pin_req"; return &v }()
+
+type forceOpenReq struct{ kmsg.Request }
 
 type promisedReq struct {
 	ctx     context.Context
@@ -175,15 +168,22 @@ type broker struct {
 // multiple connections are opening at once) and then forever stored for a
 // broker.
 type brokerVersions struct {
-	versions [kmsg.MaxKey + 1]int16
+	maxVers  [kmsg.MaxKey + 1]int16
+	minVers  [kmsg.MaxKey + 1]int16
+	features map[string]int16
 }
 
 func newBrokerVersions() *brokerVersions {
-	var v brokerVersions
-	for i := range &v.versions {
-		v.versions[i] = -1
+	v := &brokerVersions{
+		features: make(map[string]int16),
 	}
-	return &v
+	for i := range &v.maxVers {
+		v.maxVers[i] = -1
+	}
+	for i := range &v.minVers {
+		v.minVers[i] = -1
+	}
+	return v
 }
 
 func (*brokerVersions) len() int { return kmsg.MaxKey + 1 }
@@ -319,57 +319,76 @@ start:
 		return
 	}
 
-	// If v.versions[0] is non-negative, then we loaded API
+	// If v.maxVers[0] is non-negative, then we loaded API
 	// versions. If the version for this request is negative, we
 	// know the broker cannot handle this request.
-	if v.versions[0] >= 0 && v.versions[req.Key()] < 0 {
+	if v.maxVers[0] >= 0 && v.maxVers[req.Key()] < 0 {
 		pr.promise(nil, errBrokerTooOld)
 		return
 	}
 
 	ourMax := req.MaxVersion()
+	ourMin := int16(-1)
+	if pr, ok := pr.ctx.Value(ctxPinReq).(*pinReq); ok {
+		if pr.pinMax && pr.max < ourMax {
+			ourMax = pr.max
+		}
+		if pr.pinMin {
+			ourMin = pr.min
+		}
+	}
+
+	// If we have no broker versions, we are pinned pre 0.10.0 and did not
+	// issue ApiVersions.
+	if brokerMax := v.maxVers[req.Key()]; brokerMax >= 0 && brokerMax < ourMax {
+		ourMax = brokerMax
+	}
+	if brokerMin := v.minVers[req.Key()]; brokerMin >= 0 && brokerMin > ourMin {
+		ourMin = brokerMin
+	}
+
 	if b.cl.cfg.maxVersions != nil {
 		userMax, _ := b.cl.cfg.maxVersions.LookupMaxKeyVersion(req.Key()) // we validated HasKey above
 		if userMax < ourMax {
 			ourMax = userMax
 		}
 	}
-
-	// If brokerMax is negative at this point, we have no api
-	// versions because the client is pinned pre 0.10.0 and we
-	// stick with our max.
-	version := ourMax
-	if brokerMax := v.versions[req.Key()]; brokerMax >= 0 && brokerMax < ourMax {
-		version = brokerMax
-	}
-
-	minVersion := int16(-1)
-
-	// If the version now (after potential broker downgrading) is
-	// lower than we desire, we fail the request for the broker is
-	// too old.
 	if b.cl.cfg.minVersions != nil {
-		minVersion, _ = b.cl.cfg.minVersions.LookupMaxKeyVersion(req.Key())
-		if minVersion > -1 && version < minVersion {
-			pr.promise(nil, errBrokerTooOld)
+		userMin, _ := b.cl.cfg.minVersions.LookupMaxKeyVersion(req.Key())
+		if userMin > ourMax {
+			pr.promise(nil, fmt.Errorf("request key %d version returned has max version %d below the user defined min of %d", req.Key(), ourMax, userMin))
 			return
+		}
+		if userMin > ourMin {
+			ourMin = userMin
 		}
 	}
 
-	req.SetVersion(version) // always go for highest version
-	setVersion := req.GetVersion()
-	if minVersion > -1 && setVersion < minVersion {
-		pr.promise(nil, fmt.Errorf("request key %d version returned %d below the user defined min of %d", req.Key(), setVersion, minVersion))
+	// * If we pinned the min high, higher than the broker's max version or
+	//   the user max version, we fail early with errBrokerTooOld. Resharding
+	//   relies on this error.
+	//
+	// * If the user set min too high, we already handle that and return a
+	//   targeted non-retryable error just above. We only pin max if we
+	//   cannot reissue with a higher version, so no matter what, if the
+	//   user min is higher than pinned max or broker max, we cannot retry.
+	//
+	// * Pinned max is lower than broker's min: We should not get here from
+	//   sharded requests because those *start* high and then downgrade,
+	//   except for AddPartitionsToTxn which outright should not be issued on
+	//   newer brokers (and newer brokers support older requests). Worst
+	//   case, after three spins, the request will stop retrying and fail.
+	//
+	// * If the user pinned max lower than the broker min AND there is no
+	//   pinning, this error should be "errBrokerTooNew". This is quite
+	//   unlikely and requires more logic above to differentiate pinned maxes
+	//   vs broker maxes. Technically the broker isn't too old, but we keep
+	//   it simple here.
+	if ourMin > -1 && ourMin > ourMax {
+		pr.promise(nil, errBrokerTooOld) // this error is relied on for sharding
 		return
 	}
-	if version < setVersion {
-		// If we want to set an old version, but the request is pinned
-		// high, we need to fail with errBrokerTooOld. The broker wants
-		// an old version, we want a high version. We rely on this
-		// error in backcompat request sharding.
-		pr.promise(nil, errBrokerTooOld)
-		return
-	}
+	req.SetVersion(ourMax)
 
 	if !cxn.expiry.IsZero() && time.Now().After(cxn.expiry) {
 		// If we are after the reauth time, try to reauth. We
@@ -406,6 +425,16 @@ start:
 		pr.promise(nil, pr.ctx.Err())
 		return
 	default:
+	}
+
+	if _, isForceOpen := req.(*forceOpenReq); isForceOpen {
+		// We issue ApiVersions with v0; we could try to bound the
+		// version by going to the start above, but it really does
+		// not matter much.
+		kreq := kmsg.NewPtrApiVersionsRequest()
+		kreq.ClientSoftwareName = b.cl.cfg.softwareName
+		kreq.ClientSoftwareVersion = b.cl.cfg.softwareVersion
+		req = kreq
 	}
 
 	// Produce requests (and only produce requests) can be written
@@ -499,7 +528,8 @@ func (p bufPool) put(b []byte) { p.p.Put(&b) }
 func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerCxn, error) {
 	var (
 		pcxn         = &b.cxnNormal
-		isProduceCxn bool // see docs on brokerCxn.discard for why we do this
+		isProduceCxn bool
+		isFetchCxn   bool
 		reqKey       = req.Key()
 		_, isTimeout = req.(kmsg.TimeoutRequest)
 	)
@@ -509,6 +539,7 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		isProduceCxn = true
 	case reqKey == 1:
 		pcxn = &b.cxnFetch
+		isFetchCxn = true
 	case reqKey == 11 || reqKey == 14: // join || sync
 		pcxn = &b.cxnGroup
 	case isTimeout:
@@ -519,7 +550,19 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		return *pcxn, nil
 	}
 
+	var tries int
+	start := time.Now()
+doConnect:
+	tries++
 	conn, err := b.connect(ctx)
+	defer func() {
+		since := time.Since(start)
+		b.cl.cfg.hooks.each(func(h Hook) {
+			if h, ok := h.(HookBrokerConnect); ok {
+				h.OnBrokerConnect(b.meta, since, conn, err)
+			}
+		})
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -532,12 +575,28 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		conn:   conn,
 		deadCh: make(chan struct{}),
 	}
-	if err = cxn.init(isProduceCxn); err != nil {
+	if err = cxn.init(isProduceCxn, tries); err != nil {
+		// EventHubs does not handle v4 and resets the connection. We
+		// retry twice. On the first and second attempt, we try our max
+		// version possible (as should be allowed). On the third try,
+		// we downgrade to v0.
+		if er := (*errApiVersionsReset)(nil); errors.As(err, &er) {
+			if tries < 3 {
+				tries++
+				goto doConnect
+			}
+		}
 		b.cl.cfg.logger.Log(LogLevelDebug, "connection initialization failed", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
 		cxn.closeConn()
 		return nil, err
 	}
 	b.cl.cfg.logger.Log(LogLevelDebug, "connection initialized successfully", "addr", b.addr, "broker", logID(b.meta.NodeID))
+
+	if isProduceCxn {
+		b.cl.metrics.observeRate(&b.cl.metrics.pConnCreation)
+	} else if isFetchCxn {
+		b.cl.metrics.observeRate(&b.cl.metrics.cConnCreation)
+	}
 
 	b.reapMu.Lock()
 	defer b.reapMu.Unlock()
@@ -623,14 +682,7 @@ func (b *broker) reapConnections(idleTimeout time.Duration) (total int) {
 // connect connects to the broker's addr, returning the new connection.
 func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 	b.cl.cfg.logger.Log(LogLevelDebug, "opening connection to broker", "addr", b.addr, "broker", logID(b.meta.NodeID))
-	start := time.Now()
 	conn, err := b.cl.cfg.dialFn(ctx, "tcp", b.addr)
-	since := time.Since(start)
-	b.cl.cfg.hooks.each(func(h Hook) {
-		if h, ok := h.(HookBrokerConnect); ok {
-			h.OnBrokerConnect(b.meta, since, conn, err)
-		}
-	})
 	if err != nil {
 		if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "operation was canceled") {
 			if errors.Is(err, io.EOF) {
@@ -680,11 +732,11 @@ type brokerCxn struct {
 	deadCh chan struct{}
 }
 
-func (cxn *brokerCxn) init(isProduceCxn bool) error {
+func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 	hasVersions := cxn.b.loadVersions() != nil
 	if !hasVersions {
 		if cxn.b.cl.cfg.maxVersions == nil || cxn.b.cl.cfg.maxVersions.HasKey(18) {
-			if err := cxn.requestAPIVersions(); err != nil {
+			if err := cxn.requestAPIVersions(tries); err != nil {
 				if !errors.Is(err, ErrClientClosed) && !isRetryableBrokerErr(err) {
 					cxn.cl.cfg.logger.Log(LogLevelError, "unable to request api versions", "broker", logID(cxn.b.meta.NodeID), "err", err)
 				}
@@ -710,14 +762,15 @@ func (cxn *brokerCxn) init(isProduceCxn bool) error {
 	return nil
 }
 
-func (cxn *brokerCxn) requestAPIVersions() error {
-	maxVersion := int16(3)
-
-	// If the user configured a max versions, we check that the key exists
-	// before entering this function. Thus, we expect exists to be true,
-	// but we still doubly check it for sanity (as well as userMax, which
-	// can only be non-negative based off of LookupMaxKeyVersion's API).
-	if cxn.cl.cfg.maxVersions != nil {
+func (cxn *brokerCxn) requestAPIVersions(tries int) error {
+	maxVersion := int16(4)
+	if tries >= 3 { // on the third try, we pin to v0; see above in cxn initialization
+		maxVersion = 0
+	} else if cxn.cl.cfg.maxVersions != nil {
+		// If the user configured a max versions, we check that the key exists
+		// before entering this function. Thus, we expect exists to be true,
+		// but we still doubly check it for sanity (as well as userMax, which
+		// can only be non-negative based off of LookupMaxKeyVersion's API).
 		userMax, exists := cxn.cl.cfg.maxVersions.LookupMaxKeyVersion(18) // 18 == api versions
 		if exists && userMax >= 0 {
 			maxVersion = userMax
@@ -740,6 +793,9 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
+		if strings.HasSuffix(err.Error(), "connection reset by peer") {
+			return &errApiVersionsReset{err}
+		}
 		return err
 	}
 	if len(rawResp) < 2 {
@@ -752,20 +808,29 @@ start:
 	// Version 0 and an UNSUPPORTED_VERSION error.
 	//
 	// Pre Kafka 2.4, we have to retry the request with version 0.
-	// Post, Kafka replies with all versions.
+	// Post, Kafka replies with the version we should retry with (KIP-511).
 	if rawResp[1] == 35 {
 		if maxVersion == 0 {
 			return errors.New("broker replied with UNSUPPORTED_VERSION to an ApiVersions request of version 0")
 		}
-		srawResp := string(rawResp)
-		if srawResp == "\x00\x23\x00\x00\x00\x00" ||
-			// EventHubs erroneously replies with v1, so we check
-			// for that as well.
-			srawResp == "\x00\x23\x00\x00\x00\x00\x00\x00\x00\x00" {
-			cxn.cl.cfg.logger.Log(LogLevelDebug, "broker does not know our ApiVersions version, downgrading to version 0 and retrying", "broker", logID(cxn.b.meta.NodeID))
-			maxVersion = 0
-			goto start
+
+		resp.Version = 0
+		if err = resp.ReadFrom(rawResp); err != nil {
+			return fmt.Errorf("unable to read ApiVersions response: %w", err)
 		}
+		switch {
+		case len(resp.ApiKeys) == 0:
+			maxVersion = 0
+			cxn.cl.cfg.logger.Log(LogLevelDebug, "broker does not know our ApiVersions version, downgrading to version 0 and retrying", "broker", logID(cxn.b.meta.NodeID))
+			goto start
+		case len(resp.ApiKeys) == 1 && resp.ApiKeys[0].ApiKey == 18:
+			maxVersion = resp.ApiKeys[0].MaxVersion
+			cxn.cl.cfg.logger.Log(LogLevelDebug, fmt.Sprintf("broker does not know our ApiVersions version but replied version %[1]d, downgrading to version %[1]d and retrying", maxVersion), "broker", logID(cxn.b.meta.NodeID))
+			goto start
+		default:
+			// Should not hit this case, but we hope the broker replied with all keys
+		}
+		resp = req.ResponseKind().(*kmsg.ApiVersionsResponse)
 		resp.Version = 0
 	}
 
@@ -781,8 +846,15 @@ start:
 		if key.ApiKey > kmsg.MaxKey || key.ApiKey < 0 {
 			continue
 		}
-		v.versions[key.ApiKey] = key.MaxVersion
+		v.maxVers[key.ApiKey] = key.MaxVersion
+		v.minVers[key.ApiKey] = key.MinVersion
 	}
+	if resp.FinalizedFeaturesEpoch != -1 {
+		for _, feat := range resp.FinalizedFeatures {
+			v.features[feat.Name] = feat.MaxVersionLevel
+		}
+	}
+
 	cxn.b.storeVersions(v)
 	return nil
 }
@@ -799,9 +871,9 @@ func (cxn *brokerCxn) sasl() error {
 	req := kmsg.NewPtrSASLHandshakeRequest()
 
 start:
-	if mechanism.Name() != "GSSAPI" && v.versions[req.Key()] >= 0 {
+	if mechanism.Name() != "GSSAPI" && v.maxVers[req.Key()] >= 0 {
 		req.Mechanism = mechanism.Name()
-		req.Version = v.versions[req.Key()]
+		req.Version = v.maxVers[req.Key()]
 		cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLHandshakeRequest", "broker", logID(cxn.b.meta.NodeID))
 		corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 		if writeErr != nil {
@@ -888,7 +960,7 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 		} else {
 			req := kmsg.NewPtrSASLAuthenticateRequest()
 			req.SASLAuthBytes = clientWrite
-			req.Version = cxn.b.loadVersions().versions[req.Key()]
+			req.Version = cxn.b.loadVersions().maxVers[req.Key()]
 			cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLAuthenticate", "broker", logID(cxn.b.meta.NodeID), "version", req.Version, "step", step)
 
 			// Lifetime: we take the timestamp before we write our
@@ -915,10 +987,7 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 					return err
 				}
 
-				if err = kerr.ErrorForCode(resp.ErrorCode); err != nil {
-					if resp.ErrorMessage != nil {
-						return fmt.Errorf("%s: %w", *resp.ErrorMessage, err)
-					}
+				if err := errCodeMessage(resp.ErrorCode, resp.ErrorMessage); err != nil {
 					return err
 				}
 				challenge = resp.SASLAuthBytes
@@ -1235,6 +1304,16 @@ func (cxn *brokerCxn) readResponse(
 			})
 		}
 	})
+
+	if readErr == nil {
+		latencyMillis := (writeWait + timeToWrite + readWait + timeToRead).Milliseconds()
+		if key == 0 { //nolint:staticcheck // tagged switch not needed for one case...
+			cxn.b.cl.metrics.observeNodeTime(cxn.b.meta.NodeID, &cxn.b.cl.metrics.pReqLatency, latencyMillis)
+		} else if key == 1 {
+			cxn.b.cl.metrics.observeNodeTime(cxn.b.meta.NodeID, &cxn.b.cl.metrics.cReqLatency, latencyMillis)
+		}
+	}
+
 	if logger := cxn.cl.cfg.logger; logger.Level() >= LogLevelDebug {
 		logger.Log(LogLevelDebug, fmt.Sprintf("read %s v%d", kmsg.NameForKey(key), version), "broker", logID(cxn.b.meta.NodeID), "bytes_read", bytesRead, "read_wait", readWait, "time_to_read", timeToRead, "err", readErr)
 	}
@@ -1476,6 +1555,11 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 		return
 	}
 
+	if pr.resp.Key() == 18 && len(rawResp) > 2 && rawResp[1] == 35 {
+		cxn.b.cl.cfg.logger.Log(LogLevelDebug, "ApiVersions response returned with UNSUPPORTED_VERSION error at byte 1, downgraded to v0 to deserialize response")
+		pr.resp.SetVersion(0)
+	}
+
 	cxn.successes++
 	readErr := pr.resp.ReadFrom(rawResp)
 
@@ -1487,6 +1571,9 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 		if throttleResponse, ok := pr.resp.(kmsg.ThrottleResponse); ok {
 			millis, throttlesAfterResp := throttleResponse.Throttle()
 			if millis > 0 {
+				if pr.resp.Key() == 0 {
+					cxn.b.cl.metrics.observeTime(&cxn.b.cl.metrics.pThrottle, int64(millis))
+				}
 				cxn.b.cl.cfg.logger.Log(LogLevelInfo, "broker is throttling us in response", "broker", logID(cxn.b.meta.NodeID), "req", kmsg.Key(pr.resp.Key()).Name(), "throttle_millis", millis, "throttles_after_resp", throttlesAfterResp)
 				if throttlesAfterResp {
 					throttleUntil := time.Now().Add(time.Millisecond * time.Duration(millis)).UnixNano()

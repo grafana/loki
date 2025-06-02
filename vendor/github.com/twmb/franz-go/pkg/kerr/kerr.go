@@ -190,21 +190,19 @@ var (
 	MismatchedEndpointType             = &Error{"MISMATCHED_ENDPOINT_TYPE", 114, false, "The request was sent to an endpoint of the wrong type."}
 	UnsupportedEndpointType            = &Error{"UNSUPPORTED_ENDPOINT_TYPE", 115, false, "This endpoint type is not supported yet."}
 	UnknownControllerID                = &Error{"UNKNOWN_CONTROLLER_ID", 116, false, "This controller ID is not known"}
-
-	// UnknownSubscriptionID              = &Error{"UNKNOWN_SUBSCRIPTION_ID", 117, false, "Client sent a push telemetry request with an invalid or outdated subscription ID."}
-	// TelemetryTooLarge                  = &Error{"TELEMETRY_TOO_LARGE", 118, false, "Client sent a push telemetry request larger than the maximum size the broker will accept."}
-	// InvalidRegistration                = &Error{"INVALID_REGISTRATION", 119, false, "The controller has considered the broker registration to be invalid."}
-
-	TransactionAbortable = &Error{"TRANSACTION_ABORTABLE", 120, false, "The server encountered an error with the transaction. The client can abort the transaction to continue using this transactional ID."}
-
-	// InvalidRecordState                 = &Error{"INVALID_RECORD_STATE", 121, false, "The record state is invalid. The acknowledgement of delivery could not be completed."}
-	// ShareSessionNowFound               = &Error{"SHARE_SESSION_NOT_FOUND", 122, false, "The share session was not found."}
-	// InvalidShareSessionEpoch           = &Error{"INVALID_SHARE_SESSION_EPOCH", 123, false, "The share session epoch is invalid."}
-	// FencedStateEpoch                   = &Error{"FENCED_STATE_EPOCH", 124, false, "The share coordinator rejected the request because the share-group state epoch did not match."}
-	// InvalidVoterKey                    = &Error{"INVALID_VOTER_KEY", 125, false, "The voter key doesn't match the receiving replica's key."}
-	// DuplicateVoter                     = &Error{"DUPLICATE_VOTER", 126, false, "The voter is already part of the set of voters."}
-	// VoterNotFound                      = &Error{"VOTER_NOT_FOUND", 127, false, "The voter is not part of the set of voters."}
-	// InvalidRegularExpression           = &Error{"INVALID_REGULAR_EXPRESSION", 128, false, "The regular expression is not valid."}
+	UnknownSubscriptionID              = &Error{"UNKNOWN_SUBSCRIPTION_ID", 117, false, "Client sent a push telemetry request with an invalid or outdated subscription ID."}
+	TelemetryTooLarge                  = &Error{"TELEMETRY_TOO_LARGE", 118, false, "Client sent a push telemetry request larger than the maximum size the broker will accept."}
+	InvalidRegistration                = &Error{"INVALID_REGISTRATION", 119, false, "The controller has considered the broker registration to be invalid."}
+	TransactionAbortable               = &Error{"TRANSACTION_ABORTABLE", 120, false, "The server encountered an error with the transaction. The client can abort the transaction to continue using this transactional ID."}
+	InvalidRecordState                 = &Error{"INVALID_RECORD_STATE", 121, false, "The record state is invalid. The acknowledgement of delivery could not be completed."}
+	ShareSessionNotFound               = &Error{"SHARE_SESSION_NOT_FOUND", 122, false, "The share session was not found."}
+	InvalidShareSessionEpoch           = &Error{"INVALID_SHARE_SESSION_EPOCH", 123, false, "The share session epoch is invalid."}
+	FencedStateEpoch                   = &Error{"FENCED_STATE_EPOCH", 124, false, "The share coordinator rejected the request because the share-group state epoch did not match."}
+	InvalidVoterKey                    = &Error{"INVALID_VOTER_KEY", 125, false, "The voter key doesn't match the receiving replica's key."}
+	DuplicateVoter                     = &Error{"DUPLICATE_VOTER", 126, false, "The voter is already part of the set of voters."}
+	VoterNotFound                      = &Error{"VOTER_NOT_FOUND", 127, false, "The voter is not part of the set of voters."}
+	InvalidRegularExpression           = &Error{"INVALID_REGULAR_EXPRESSION", 128, false, "The regular expression is not valid."}
+	RebootstrapRequired                = &Error{"REBOOTSTRAP_REQUIRED", 129, false, "Client metadata is stale, client should rebootstrap to obtain new metadata."}
 )
 
 var code2err = map[int16]error{
@@ -326,10 +324,17 @@ var code2err = map[int16]error{
 	114: MismatchedEndpointType,     // KIP-919, v3.7
 	115: UnsupportedEndpointType,    // ""
 	116: UnknownControllerID,        // ""
-
-	// 117: UnknownSubscriptionID,      // KIP-714 f1819f448 KAFKA-15778 & KAFKA-15779
-	// 118: TelemetryTooLarge,          // ""
-	// 119: InvalidRegistration,        // KIP-858 f467f6bb4 KAFKA-15361
-
-	120: TransactionAbortable, // KIP-890 2e8d69b78 KAFKA-16314
+	117: UnknownSubscriptionID,      // KIP-714 f1819f448 KAFKA-15778 & KAFKA-15779
+	118: TelemetryTooLarge,          // ""
+	119: InvalidRegistration,        // KIP-858 f467f6bb4 KAFKA-15361
+	120: TransactionAbortable,       // KIP-890 2e8d69b78 KAFKA-16314
+	121: InvalidRecordState,
+	122: ShareSessionNotFound,
+	123: InvalidShareSessionEpoch,
+	124: FencedStateEpoch,
+	125: InvalidVoterKey,
+	126: DuplicateVoter,
+	127: VoterNotFound,
+	128: InvalidRegularExpression,
+	129: RebootstrapRequired,
 }

@@ -495,6 +495,9 @@ func (cl *Client) BeginTransaction() error {
 	}
 
 	cl.producer.inTxn = true
+	if !cl.producer.tx890p2 {
+		cl.producer.tx890p2 = cl.supportsKIP890p2()
+	}
 	cl.producer.producingTxn.Store(true) // allow produces for txns now
 	cl.cfg.logger.Log(LogLevelInfo, "beginning transaction", "transactional_id", *cl.cfg.txnID)
 
@@ -505,268 +508,54 @@ func (cl *Client) BeginTransaction() error {
 type EndBeginTxnHow uint8
 
 const (
-	// EndBeginTxnSafe ensures a "safe" execution of EndAndBeginTransaction
-	// at the expense of speed. This option blocks all produce requests and
-	// only resumes produce requests when onEnd finishes. Note that some
-	// produce requests may have finished successfully and records that
-	// were a part of a transaction may have their promises waiting to be
-	// called: not all promises are guaranteed to be called.
+	// EndBeginTxnSafe ensures a safe execution of EndAndBeginTransaction.
+	// This option blocks all produce requests and only resumes produce
+	// requests when onEnd finishes. Note that some produce requests may
+	// have finished successfully and records that were a part of a
+	// transaction may have their promises waiting to be called.
 	EndBeginTxnSafe EndBeginTxnHow = iota
 
-	// EndBeginTxnUnsafe opts for less safe EndAndBeginTransaction flow to
-	// achieve higher throughput. This option allows produce requests to
-	// continue while EndTxn actually commits. This is unsafe because a
-	// produce request itself only half begins a transaction. Internally,
-	// AddPartitionsToTxn actually begins a transaction. If your
-	// application dies before the client is able to successfully issue
-	// AddPartitionsToTxn, then a transaction will have partially begun
-	// within Kafka: the partial transaction will prevent the partition
-	// from being consumable past where the transaction begun, and the
-	// transaction will not timeout. You will have to restart your
-	// application with the SAME transactional ID and produce to all the
-	// same partitions to ensure to resume the transaction and unstick the
-	// partitions.
-	//
-	// Also note: this option does not work on all broker implementations.
-	// This relies on Kafka internals. Some brokers (notably Redpanda) are
-	// more strict with enforcing transaction correctness and this option
-	// cannot be used and will cause errors.
+	// EndBeginTxnUnsafe is a no-op.
 	//
 	// Deprecated: Kafka 3.6 removed support for the hacky behavior that
 	// this option was abusing. Thus, as of Kafka 3.6, this option does not
 	// work against Kafka. This option also has never worked for Redpanda
 	// because Redpanda always strictly validated that partitions were a
-	// part of a transaction. Later versions of Kafka and Redpanda will
-	// remove the need for AddPartitionsToTxn at all and thus this option
-	// ultimately will be unnecessary anyway.
+	// part of a transaction.
 	EndBeginTxnUnsafe
 )
 
-// EndAndBeginTransaction is a combination of EndTransaction and
-// BeginTransaction, and relaxes the restriction that the client must have no
-// buffered records. This function does not flush nor abort any buffered
-// records. It is ok to concurrently produce while this function executes.
-//
-// This function has different safety guarantees which are up to the user to
-// decide. See the documentation on EndBeginTxnHow for which you would like to
-// choose.
+// EndAndBeginTransaction is a combination of Flush, EndTransaction, and
+// BeginTransaction. You cannot concurrently produce during this function.
 //
 // The onEnd function is called with your input context and the result of
-// EndTransaction. Promises are paused while onEnd executes. If onEnd returns
-// an error, BeginTransaction is not called and this function returns the
-// result of onEnd. Otherwise, this function returns the result of
-// BeginTransaction. See the documentation on EndTransaction and
-// BeginTransaction for further details. It is invalid to call this function
-// more than once at a time, and it is invalid to call concurrent with
-// EndTransaction or BeginTransaction.
+// Flush, or EndTransaction if Flush is successful. If onEnd returns an error,
+// BeginTransaction is not called and this function returns the result of
+// onEnd. Otherwise, this function returns the result of BeginTransaction. See
+// the documentation on EndTransaction and BeginTransaction for further
+// details. It is invalid to call this function more than once at a time, and
+// it is invalid to call concurrent with EndTransaction or BeginTransaction.
+//
+// This function used to serve more purpose, allowing you to produce
+// concurrently while calling this and avoiding flushing, but the internal
+// optimizations are no longer valid as of Kafka 4.0 due to KIP-890 changing
+// some internal semantics.
 func (cl *Client) EndAndBeginTransaction(
 	ctx context.Context,
-	how EndBeginTxnHow,
+	_ EndBeginTxnHow,
 	commit TransactionEndTry,
 	onEnd func(context.Context, error) error,
 ) (rerr error) {
-	if g := cl.consumer.g; g != nil {
-		return errors.New("cannot use EndAndBeginTransaction with EOS")
-	}
-
-	cl.producer.txnMu.Lock()
-	defer cl.producer.txnMu.Unlock()
-
-	// From BeginTransaction: if we return with no error, we begin.  Unlike
-	// BeginTransaction, we do not error if in a transaction, because we
-	// expect to be in one.
 	defer func() {
+		rerr = onEnd(ctx, rerr)
 		if rerr == nil {
-			needRecover, didRecover, err := cl.maybeRecoverProducerID(ctx)
-			if needRecover && !didRecover {
-				cl.cfg.logger.Log(LogLevelInfo, "unable to begin transaction due to unrecoverable producer id error", "err", err)
-				rerr = fmt.Errorf("producer ID has a fatal, unrecoverable error, err: %w", err)
-				return
-			}
-			cl.producer.inTxn = true
-			cl.cfg.logger.Log(LogLevelInfo, "beginning transaction", "transactional_id", *cl.cfg.txnID)
+			rerr = cl.BeginTransaction()
 		}
 	}()
-
-	// If end/beginning safely, we have to pause AddPartitionsToTxn and
-	// ProduceRequest, and we only resume after the user's onEnd has been
-	// called.
-	if how == EndBeginTxnSafe {
-		if err := cl.producer.pause(ctx); err != nil {
-			return err
-		}
-		defer cl.producer.resume()
-	}
-
-	// Before BeginTransaction, we block promises & call onEnd with whatever
-	// the return error is.
-	cl.producer.promisesMu.Lock()
-	var promisesUnblocked bool
-	unblockPromises := func() {
-		if promisesUnblocked {
-			return
-		}
-		promisesUnblocked = true
-		defer cl.producer.promisesMu.Unlock()
-		rerr = onEnd(ctx, rerr)
-	}
-	defer unblockPromises()
-
-	if !cl.producer.inTxn {
-		return nil
-	}
-
-	var anyAdded bool
-	var readd map[string][]int32
-	for topic, parts := range cl.producer.topics.load() {
-		for i, part := range parts.load().partitions {
-			if part.records.addedToTxn.Swap(false) {
-				if how == EndBeginTxnUnsafe {
-					if readd == nil {
-						readd = make(map[string][]int32)
-					}
-					readd[topic] = append(readd[topic], int32(i))
-				}
-				anyAdded = true
-			}
-		}
-	}
-	anyAdded = anyAdded || cl.producer.readded
-
-	// EndTxn when no txn was started returns INVALID_TXN_STATE.
-	if !anyAdded {
-		cl.cfg.logger.Log(LogLevelDebug, "no records were produced during the commit; thus no transaction was began; ending without doing anything")
-		return nil
-	}
-
-	// From EndTransaction: if the pid has an error, we may try to recover.
-	id, epoch, err := cl.producerID(ctx2fn(ctx))
-	if err != nil {
-		if commit {
-			return kerr.OperationNotAttempted
-		}
-		if _, didRecover, _ := cl.maybeRecoverProducerID(ctx); didRecover {
-			return nil
-		}
-	}
-	cl.cfg.logger.Log(LogLevelInfo, "ending transaction",
-		"transactional_id", *cl.cfg.txnID,
-		"producer_id", id,
-		"epoch", epoch,
-		"commit", commit,
-	)
-	cl.producer.readded = false
-	err = cl.doWithConcurrentTransactions(ctx, "EndTxn", func() error {
-		req := kmsg.NewPtrEndTxnRequest()
-		req.TransactionalID = *cl.cfg.txnID
-		req.ProducerID = id
-		req.ProducerEpoch = epoch
-		req.Commit = bool(commit)
-		resp, err := req.RequestWith(ctx, cl)
-		if err != nil {
-			return err
-		}
-
-		// When ending a transaction, if the user is using unsafe mode,
-		// there is a logic race where the user can actually end before
-		// AddPartitionsToTxn is issued. This should be rare and is
-		// most likely only to happen whenever a new transaction is
-		// starting from a not-in-transaction state (i.e., the first
-		// transaction). If we see InvalidTxnState in unsafe mode, we
-		// assume that a transaction was not actually begun and we
-		// return success.
-		//
-		// In Kafka, InvalidTxnState is also returned when producing
-		// non-transactional records from a producer that is currently
-		// in a transaction.
-		//
-		// All other cases it is returned is in EndTxn:
-		//   * state == CompleteCommit and EndTxn != commit
-		//   * state == CompleteAbort and EndTxn != abort
-		//   * state == PrepareCommit and EndTxn != commit (otherwise, returns concurrent transactions)
-		//   * state == PrepareAbort and EndTxn != abort (otherwise, returns concurrent transactions)
-		//   * state == Empty
-		//
-		// This basically guards against the final case, all others are
-		// Kafka internal state transitioning and we should never hit
-		// them.
-		if how == EndBeginTxnUnsafe && resp.ErrorCode == kerr.InvalidTxnState.Code {
-			return nil
-		}
-		return kerr.ErrorForCode(resp.ErrorCode)
-	})
-	var ke *kerr.Error
-	if errors.As(err, &ke) && !ke.Retriable {
-		cl.failProducerID(id, epoch, err)
-	}
-	if err != nil || how != EndBeginTxnUnsafe {
+	if err := cl.Flush(ctx); err != nil {
 		return err
 	}
-	unblockPromises()
-
-	// If we are end/beginning unsafely, then we need to re-add all
-	// partitions to a new transaction immediately. Timing makes it
-	// impossible to know what was truly added before EndTxn, so we
-	// pessimistically assume that every partition must be re-added.
-	//
-	// We track readd before the txn and swap those to un-added, but we
-	// also need to track anything that is newly added that raced with our
-	// EndTxn.  We swap before the txn to ensure that *eventually*,
-	// partitions will be tracked as not in a transaction if people stop
-	// producing.
-	//
-	// We do this before the user callback because we *need* to start a new
-	// transaction within Kafka to ensure there will be a timeout. Per the
-	// unsafe aspect, the client could die or this request could error and
-	// there could be a stranded txn within Kafka's ProducerStateManager,
-	// but ideally the user will reconnect with the same txnal id.
-	cl.producer.readded = true
-	return cl.doWithConcurrentTransactions(ctx, "AddPartitionsToTxn", func() error {
-		req := kmsg.NewPtrAddPartitionsToTxnRequest()
-		req.TransactionalID = *cl.cfg.txnID
-		req.ProducerID = id
-		req.ProducerEpoch = epoch
-
-		for topic, parts := range cl.producer.topics.load() {
-			for i, part := range parts.load().partitions {
-				if part.records.addedToTxn.Load() {
-					readd[topic] = append(readd[topic], int32(i))
-				}
-			}
-		}
-
-		ps := make(map[int32]struct{})
-		for topic, parts := range readd {
-			t := kmsg.NewAddPartitionsToTxnRequestTopic()
-			t.Topic = topic
-			for _, part := range parts {
-				ps[part] = struct{}{}
-			}
-			for p := range ps {
-				t.Partitions = append(t.Partitions, p)
-				delete(ps, p)
-			}
-			if len(t.Partitions) > 0 {
-				req.Topics = append(req.Topics, t)
-			}
-		}
-
-		resp, err := req.RequestWith(ctx, cl)
-		if err != nil {
-			return err
-		}
-
-		for i := range resp.Topics {
-			t := &resp.Topics[i]
-			for j := range t.Partitions {
-				p := &t.Partitions[j]
-				if err := kerr.ErrorForCode(p.ErrorCode); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
+	return cl.EndTransaction(ctx, commit)
 }
 
 // AbortBufferedRecords fails all unflushed records with ErrAborted and waits
@@ -839,12 +628,16 @@ func (cl *Client) UnsafeAbortBufferedRecords() {
 // If the producer ID has an error and you are trying to commit, this will
 // return with kerr.OperationNotAttempted. If this happened, retry
 // EndTransaction with TryAbort. If this returns kerr.TransactionAbortable, you
-// can retry with TryAbort. No other error is retryable, and you should not
-// retry with TryAbort.
+// can retry with TryAbort. You should not retry this function on any other
+// error.
 //
-// If records failed with UnknownProducerID and your Kafka version is at least
-// 2.5, then aborting here will potentially allow the client to recover for
-// more production.
+// It may be possible for the client to recover in a new transaction via
+// BeginTransaction if an error is returned from this function:
+//
+//   - Before Kafka 4.0, InvalidProducerIDMapping and InvalidProducerEpoch
+//     are recoverable
+//   - UnknownProducerID is recoverable for Kafka 2.5+
+//   - TransactionAbortable is always recoverable (after aborting)
 //
 // Note that canceling the context will likely leave the client in an
 // undesirable state, because canceling the context may cancel the in-flight
@@ -889,11 +682,6 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 		}
 	}
 
-	// If the user previously used EndAndBeginTransaction with
-	// EndBeginTxnUnsafe, we may have to end a transaction even though
-	// nothing may be in it.
-	anyAdded = anyAdded || cl.producer.readded
-
 	// If no partition was added to a transaction, then we have nothing to commit.
 	//
 	// Note that anyAdded is true if the producer ID was failed, meaning we will
@@ -921,23 +709,63 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 
 	cl.cfg.logger.Log(LogLevelInfo, "ending transaction",
 		"transactional_id", *cl.cfg.txnID,
+		"commit", commit,
 		"producer_id", id,
 		"epoch", epoch,
-		"commit", commit,
 	)
 
-	cl.producer.readded = false
 	err = cl.doWithConcurrentTransactions(ctx, "EndTxn", func() error {
 		req := kmsg.NewPtrEndTxnRequest()
 		req.TransactionalID = *cl.cfg.txnID
 		req.ProducerID = id
 		req.ProducerEpoch = epoch
 		req.Commit = bool(commit)
+		ctx := ctx // capture a local ctx variable in case we introduce concurrency above later
+		if !cl.producer.tx890p2 {
+			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
+		}
 		resp, err := req.RequestWith(ctx, cl)
 		if err != nil {
 			return err
 		}
-		return kerr.ErrorForCode(resp.ErrorCode)
+		if err = kerr.ErrorForCode(resp.ErrorCode); err != nil {
+			return err
+		}
+		if resp.Version >= 5 && resp.ProducerID >= 0 {
+			cl.producer.id.Store(&producerID{
+				id:    resp.ProducerID,
+				epoch: resp.ProducerEpoch,
+			})
+			cl.resetAllProducerSequences()
+			cl.cfg.logger.Log(LogLevelInfo, "end transaction response successfully received",
+				"transactional_id", *cl.cfg.txnID,
+				"commit", commit,
+				"prior_id", id,
+				"prior_epoch", epoch,
+				"new_id", resp.ProducerID,
+				"new_epoch", resp.ProducerEpoch,
+			)
+		} else {
+			cl.cfg.logger.Log(LogLevelInfo, "end transaction response successfully received",
+				"transactional_id", *cl.cfg.txnID,
+				"commit", commit,
+				"producer_id", id,
+				"epoch", epoch,
+			)
+			if !cl.producer.tx890p2 && cl.supportsKIP890p2() {
+				cl.cfg.logger.Log(LogLevelInfo, "end transaction noticed the cluster now supports KIP-890p2, reloading the producer ID and opting in",
+					"transactional_id", *cl.cfg.txnID,
+					"producer_id", id,
+					"epoch", epoch,
+				)
+				cl.producer.id.Store(&producerID{
+					id:    id,
+					epoch: epoch,
+					err:   errReloadProducerID,
+				})
+			}
+		}
+		return nil
 	})
 
 	// If the returned error is still a Kafka error, this is fatal and we
@@ -974,10 +802,18 @@ func (cl *Client) maybeRecoverProducerID(ctx context.Context) (necessary, did bo
 		return true, false, err
 	}
 
-	kip360 := cl.producer.idVersion >= 3 && (errors.Is(ke, kerr.UnknownProducerID) || errors.Is(ke, kerr.InvalidProducerIDMapping))
-	kip588 := cl.producer.idVersion >= 4 && errors.Is(ke, kerr.InvalidProducerEpoch /* || err == kerr.TransactionTimedOut when implemented in Kafka */)
+	var recoverable bool
+	if cl.supportsKeyVersion(int16(kmsg.EndTxn), 5) {
+		// As of KIP-890 / Kafka 4.0, InvalidProducerIDMapping and
+		// InvalidProducerEpoch are NOT recoverable. Only
+		// UnknownProducerID and TransactionAbortable are.
+		recoverable = errors.Is(ke, kerr.UnknownProducerID) || errors.Is(ke, kerr.TransactionAbortable)
+	} else {
+		kip360 := cl.producer.idVersion >= 3 && (errors.Is(ke, kerr.UnknownProducerID) || errors.Is(ke, kerr.InvalidProducerIDMapping))
+		kip588 := cl.producer.idVersion >= 4 && errors.Is(ke, kerr.InvalidProducerEpoch /* || err == kerr.TransactionTimedOut when implemented in Kafka */)
+		recoverable = kip360 || kip588
+	}
 
-	recoverable := kip360 || kip588
 	if !recoverable {
 		return true, false, err // fatal, unrecoverable
 	}
@@ -1101,12 +937,19 @@ func (cl *Client) commitTransactionOffsets(
 		return g
 	}
 
+	tx890p2 := cl.producer.tx890p2 // requires mu
+
 	if !g.offsetsAddedToTxn {
-		if err := cl.addOffsetsToTxn(ctx, g.cfg.group); err != nil {
-			if onDone != nil {
-				onDone(nil, nil, err)
+		// We only need to issue the AddOffsetsToTxn request if we are
+		// pre-KIP-890p2, or if we are KIP-890p2 but for some reason
+		// the broker does not support TxnOffsetCommit v5+.
+		if !tx890p2 || !cl.supportsKeyVersion(int16(kmsg.TxnOffsetCommit), 5) {
+			if err := cl.addOffsetsToTxn(ctx, g.cfg.group); err != nil {
+				if onDone != nil {
+					onDone(nil, nil, err)
+				}
+				return g
 			}
-			return g
 		}
 		g.offsetsAddedToTxn = true
 	}
@@ -1124,7 +967,7 @@ func (cl *Client) commitTransactionOffsets(
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.commitTxn(ctx, req, unblockJoinSync)
+	g.commitTxn(ctx, tx890p2, req, unblockJoinSync)
 	return g
 }
 
@@ -1175,7 +1018,7 @@ func (cl *Client) addOffsetsToTxn(ctx context.Context, group string) error {
 // commitTxn is ALMOST EXACTLY THE SAME as commit, but changed for txn types
 // and we avoid updateCommitted. We avoid updating because we manually
 // SetOffsets when ending the transaction.
-func (g *groupConsumer) commitTxn(ctx context.Context, req *kmsg.TxnOffsetCommitRequest, onDone func(*kmsg.TxnOffsetCommitRequest, *kmsg.TxnOffsetCommitResponse, error)) {
+func (g *groupConsumer) commitTxn(ctx context.Context, tx890p2 bool, req *kmsg.TxnOffsetCommitRequest, onDone func(*kmsg.TxnOffsetCommitRequest, *kmsg.TxnOffsetCommitResponse, error)) {
 	if onDone == nil { // note we must always call onDone
 		onDone = func(_ *kmsg.TxnOffsetCommitRequest, _ *kmsg.TxnOffsetCommitResponse, _ error) {}
 	}
@@ -1221,15 +1064,18 @@ func (g *groupConsumer) commitTxn(ctx context.Context, req *kmsg.TxnOffsetCommit
 		}
 		g.cl.cfg.logger.Log(LogLevelDebug, "issuing txn offset commit", "uncommitted", req)
 
-		var resp *kmsg.TxnOffsetCommitResponse
-		var err error
-		if len(req.Topics) > 0 {
-			resp, err = req.RequestWith(commitCtx, g.cl)
+		start := time.Now()
+		ctx := ctx // capture a local ctx variable; do not use the shared one that is concurrently read above
+		if !tx890p2 {
+			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
 		}
+		resp, err := req.RequestWith(ctx, g.cl)
 		if err != nil {
 			onDone(req, nil, err)
 			return
 		}
+		g.cl.metrics.observeTime(&g.cl.metrics.cCommitLatency, time.Since(start).Milliseconds())
+
 		onDone(req, resp, nil)
 	}()
 }
