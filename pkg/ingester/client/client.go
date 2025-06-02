@@ -73,7 +73,7 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	opts = append(opts, dialOpts...)
 

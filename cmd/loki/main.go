@@ -92,7 +92,7 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-		
+
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
