@@ -4424,7 +4424,7 @@ These are values which allow you to control aspects of Loki's operation, most co
 
 # Log a commutative hash of the labels for all streams in a push request. In
 # some cases this can potentially be used as an identifier of the agent sending
-# the stream. Calculating hashes is expensive so only enable as needed.
+# the stream. Calculating hashes is epensive so only enable as needed.
 # CLI flag: -operation-config.log-hash-of-labels
 [log_hash_of_labels: <boolean> | default = false]
 
