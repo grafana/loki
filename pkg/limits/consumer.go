@@ -172,13 +172,23 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 		c.recordsInvalid.Inc()
 		return fmt.Errorf("corrupted record: %w", err)
 	}
-	if state == partitionReady && c.zone == s.Zone {
-		// Discard our own records so we don't count the same streams twice.
+	if c.shouldDiscardRecord(state, &s) {
 		c.recordsDiscarded.Inc()
 		return nil
 	}
-	c.usage.Update(s.Tenant, []*proto.StreamMetadata{s.Metadata}, r.Timestamp, nil)
+	if err := c.usage.Update(s.Tenant, s.Metadata, r.Timestamp); err != nil {
+		if errors.Is(err, errOutsideActiveWindow) {
+			c.recordsDiscarded.Inc()
+		} else {
+			return err
+		}
+	}
 	return nil
+}
+
+func (c *consumer) shouldDiscardRecord(state partitionState, s *proto.StreamMetadataRecord) bool {
+	// Discard our own records so we don't count the same streams twice.
+	return state == partitionReady && c.zone == s.Zone
 }
 
 type partitionReadinessCheck func(partition int32, r *kgo.Record) (bool, error)
