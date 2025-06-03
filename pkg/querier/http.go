@@ -13,12 +13,12 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -30,6 +30,7 @@ import (
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -144,9 +145,8 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		resLength = len(resp.Values)
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
@@ -195,9 +195,8 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
@@ -222,9 +221,8 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordStatsQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
@@ -250,9 +248,8 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordShardsQueryMetrics(
@@ -283,9 +280,8 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
@@ -429,8 +425,9 @@ func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.De
 func WrapQuerySpanAndTimeout(call string, limits querier_limits.Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
-			defer sp.Finish()
+			ctx, sp := tracer.Start(req.Context(), call)
+			defer sp.End()
+
 			log := spanlogger.FromContext(req.Context(), utillog.Logger)
 			defer log.Finish()
 

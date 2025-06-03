@@ -925,7 +925,7 @@ ingest_limits:
 
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
-  [eviction_interval: <duration> | default = 30m]
+  [eviction_interval: <duration> | default = 10m]
 
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
@@ -1068,6 +1068,15 @@ ingest_limits:
     # ID to register in the ring.
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
+
+  # The consumer group for the Kafka topic used to read stream metadata records.
+  # CLI flag: -ingest-limits.consumer-group
+  [consumer_group: <string> | default = "ingest-limits"]
+
+  # The topic for the Kafka topic used to read and write stream metadata
+  # records.
+  # CLI flag: -ingest-limits.topic
+  [topic: <string> | default = ""]
 
 ingest_limits_frontend:
   client_config:
@@ -4422,10 +4431,26 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request
 [log_push_request: <boolean> | default = false]
 
+# Log a commutative hash of the labels for all streams in a push request. In
+# some cases this can potentially be used as an identifier of the agent sending
+# the stream. Calculating hashes is epensive so only enable as needed.
+# CLI flag: -operation-config.log-hash-of-labels
+[log_hash_of_labels: <boolean> | default = false]
+
 # Log every stream in a push request (very verbose, recommend to enable via
 # runtime config only).
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
+
+# Only show streams that match a provided IP address, LogPushRequestStreams must
+# be enabled. Can be used multiple times to filter by multiple IPs.
+# CLI flag: -operation-config.filter-push-request-streams-ips
+[filter_push_request_streams_ips: <list of strings> | default = []]
+
+# Log service name discovery (very verbose, recommend to enable via runtime
+# config only).
+# CLI flag: -operation-config.log-service-name-discovery
+[log_service_name_discovery: <boolean> | default = false]
 
 # Log metrics for duplicate lines received.
 # CLI flag: -operation-config.log-duplicate-metrics

@@ -1,6 +1,6 @@
 package core
 
-// (C) Copyright IBM Corp. 2019, 2024.
+// (C) Copyright IBM Corp. 2019, 2025.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authen
 		authenticator, err = newCloudPakForDataAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_MCSP) {
 		authenticator, err = newMCSPAuthenticatorFromMap(properties)
+	} else if strings.EqualFold(authType, AUTHTYPE_MCSPV2) {
+		authenticator, err = newMCSPV2AuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_NOAUTH) {
 		authenticator, err = NewNoAuthAuthenticator()
 	} else {
