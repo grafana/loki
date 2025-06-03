@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
+	"golang.org/x/sync/errgroup"
 )
 
 // newDecoder creates a new [decoder] for the given [dataobj.SectionReader].
@@ -53,43 +54,51 @@ func (rd *decoder) Pages(ctx context.Context, columns []*streamsmd.ColumnDesc) r
 			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
 		}
 
+		g, ctx := errgroup.WithContext(ctx)
 		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
 
-			var (
-				windowOffset = window.Start().GetInfo().MetadataOffset
-				windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
-			)
-
-			rc, err := rd.sr.DataRange(ctx, int64(windowOffset), int64(windowSize))
-			if err != nil {
-				return fmt.Errorf("reading column data: %w", err)
-			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
-				return fmt.Errorf("read column data: %w", err)
-			}
-
-			for _, wp := range window {
-				// Find the slice in the data for this column.
+			g.Go(func() error {
 				var (
-					columnOffset = wp.Data.GetInfo().MetadataOffset
-					dataOffset   = columnOffset - windowOffset
+					windowOffset = window.Start().GetInfo().MetadataOffset
+					windowSize   = (window.End().GetInfo().MetadataOffset + window.End().GetInfo().MetadataSize) - windowOffset
 				)
 
-				r := bytes.NewReader(data[dataOffset : dataOffset+wp.Data.GetInfo().MetadataSize])
-
-				md, err := decodeStreamsColumnMetadata(r)
+				rc, err := rd.sr.DataRange(ctx, int64(windowOffset), int64(windowSize))
 				if err != nil {
-					return err
+					return fmt.Errorf("reading column data: %w", err)
+				}
+				data, err := readAndClose(rc, windowSize)
+				if err != nil {
+					return fmt.Errorf("read column data: %w", err)
 				}
 
-				// wp.Index is the position of the column in the original pages
-				// slice; this retains the proper order of data in results.
-				results[wp.Index] = md.Pages
-			}
+				for _, wp := range window {
+					// Find the slice in the data for this column.
+					var (
+						columnOffset = wp.Data.GetInfo().MetadataOffset
+						dataOffset   = columnOffset - windowOffset
+					)
+
+					r := bytes.NewReader(data[dataOffset : dataOffset+wp.Data.GetInfo().MetadataSize])
+
+					md, err := decodeStreamsColumnMetadata(r)
+					if err != nil {
+						return err
+					}
+
+					// wp.Index is the position of the column in the original pages
+					// slice; this retains the proper order of data in results.
+					results[wp.Index] = md.Pages
+				}
+
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return err
 		}
 
 		for _, data := range results {

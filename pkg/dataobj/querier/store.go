@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -201,7 +202,7 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	}
 
 	level.Debug(logger).Log(
-		"msg", "found data objects for time range",
+		"msg", "found index objects for time range",
 		"count", len(files),
 		"from", from,
 		"through", through,
@@ -218,6 +219,22 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 			return nil, fmt.Errorf("getting object from bucket: %w", err)
 		}
 		objects = append(objects, object{Object: obj, path: path})
+	}
+	return objects, nil
+}
+
+// objectsForTimeRange returns data objects for the given time range.
+func (s *Store) objectsFromIndexes(ctx context.Context, indexes []object, logger log.Logger) ([]object, error) {
+	ctx, span := tracer.Start(ctx, "objectsFromIndexes")
+	defer span.End()
+
+	objects := make([]object, 0, len(indexes))
+	for _, index := range indexes {
+		obj, err := dataobj.FromBucket(ctx, s.bucket, index.path)
+		if err != nil {
+			return nil, fmt.Errorf("getting object from bucket: %w", err)
+		}
+		objects = append(objects, object{Object: obj, path: index.path})
 	}
 	return objects, nil
 }
@@ -647,6 +664,8 @@ func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats,
 				stats.StreamsSections++
 			case logs.CheckSection(section):
 				stats.LogsSections++
+			case pointers.CheckSection(section):
+				stats.PointerSections++
 			}
 		}
 
@@ -659,6 +678,7 @@ func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats,
 type sectionsStats struct {
 	StreamsSections int
 	LogsSections    int
+	PointerSections int
 }
 
 // streamPredicate creates a dataobj.StreamsPredicate from a list of matchers and a time range

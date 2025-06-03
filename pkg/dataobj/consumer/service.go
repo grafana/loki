@@ -15,7 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing/indexobj"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
@@ -34,6 +37,7 @@ type Service struct {
 	client *consumer.Client
 
 	eventsProducerClient *kgo.Client
+	eventConsumerClient  *kgo.Client
 
 	cfg    Config
 	bucket objstore.Bucket
@@ -61,35 +65,61 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		},
 	}
 
-	consumerClient, err := consumer.NewGroupClient(
-		kafkaCfg,
-		partitionRing,
-		groupName,
-		logger,
-		reg,
-		kgo.InstanceID(instanceID),
-		kgo.SessionTimeout(3*time.Minute),
-		kgo.RebalanceTimeout(5*time.Minute),
-		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
-		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
-			s.handlePartitionsRevoked(m)
-		}),
-	)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create consumer", "err", err)
-		return nil
+	if cfg.PartitionProcessingEnabled {
+		consumerClient, err := consumer.NewGroupClient(
+			kafkaCfg,
+			partitionRing,
+			groupName,
+			logger,
+			reg,
+			kgo.InstanceID(instanceID),
+			kgo.SessionTimeout(3*time.Minute),
+			kgo.RebalanceTimeout(5*time.Minute),
+			kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
+			kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
+				s.handlePartitionsRevoked(m)
+			}),
+		)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to create consumer", "err", err)
+			return nil
+		}
+
+		eventsKafkaCfg := kafkaCfg
+		eventsKafkaCfg.Topic = "loki.metastore-events"
+		eventsKafkaCfg.AutoCreateTopicDefaultPartitions = 1
+		eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to create producer", "err", err)
+			return nil
+		}
+		s.client = consumerClient
+		s.eventsProducerClient = eventsProducerClient
 	}
 
-	eventsKafkaCfg := kafkaCfg
-	eventsKafkaCfg.Topic = "loki.metastore-events"
-	eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create producer", "err", err)
-		return nil
+	if cfg.IndexBuildingEnabled {
+		consumerCfg := kafkaCfg
+		consumerCfg.AutoCreateTopicEnabled = true
+		consumerCfg.AutoCreateTopicDefaultPartitions = 1
+		eventConsumerClient, err := client.NewReaderClient(
+			"eventReader",
+			consumerCfg,
+			logger,
+			reg,
+			kgo.ConsumeTopics("loki.metastore-events"),
+			kgo.InstanceID(instanceID),
+			kgo.SessionTimeout(3*time.Minute),
+			kgo.ConsumerGroup("metastore-event-reader"),
+			kgo.RebalanceTimeout(5*time.Minute),
+			kgo.DisableAutoCommit(),
+		)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to create consumer", "err", err)
+			return nil
+		}
+		s.eventConsumerClient = eventConsumerClient
 	}
 
-	s.client = consumerClient
-	s.eventsProducerClient = eventsProducerClient
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
@@ -150,54 +180,95 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 }
 
 func (s *Service) run(ctx context.Context) error {
-	for {
-		fetches := s.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		if !s.cfg.IndexBuildingEnabled {
 			return nil
 		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			var multiErr error
-			for _, err := range errs {
-				multiErr = errors.Join(multiErr, err.Err)
-			}
-			level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
-			continue
-		}
-		if fetches.Empty() {
-			continue
+		builderCfg := indexobj.BuilderConfig{
+			TargetObjectSize:        64 * 1024 * 1024, // 64MB
+			TargetSectionSize:       16 * 1024 * 1024, // 16MB
+			TargetPageSize:          128 * 1024,       // 128KB
+			BufferSize:              64 * 1024 * 1024, // 64MB
+			SectionStripeMergeLimit: 1024,
 		}
 
-		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
-			s.partitionMtx.RLock()
-			handlers, ok := s.partitionHandlers[ftp.Topic]
-			if !ok {
+		indexBuilder := indexing.NewIndexBuilder(ctx, s.logger, s.eventConsumerClient, builderCfg, s.cfg.UploaderConfig, s.bucket, "loki.metastore-events", s.reg, s.cfg.IndexBuildingEventsPerIndex, s.cfg.IndexStoragePrefix)
+		indexBuilder.Start()
+		defer indexBuilder.Stop()
+		for {
+			fetches := s.eventConsumerClient.PollRecords(ctx, -1)
+			if fetches.IsClientClosed() || ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if errs := fetches.Errors(); len(errs) > 0 {
+				level.Error(s.logger).Log("msg", "error fetching records", "err", errs)
+				continue
+			}
+			if fetches.Empty() {
+				continue
+			}
+			fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
+				indexBuilder.Append(ftp.Records)
+			})
+		}
+	})
+
+	g.Go(func() error {
+		if !s.cfg.PartitionProcessingEnabled {
+			return nil
+		}
+		for {
+			fetches := s.client.PollRecords(ctx, -1)
+			if fetches.IsClientClosed() || ctx.Err() != nil {
+				return nil
+			}
+			if errs := fetches.Errors(); len(errs) > 0 {
+				var multiErr error
+				for _, err := range errs {
+					multiErr = errors.Join(multiErr, err.Err)
+				}
+				level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
+				continue
+			}
+			if fetches.Empty() {
+				continue
+			}
+
+			fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
+				s.partitionMtx.RLock()
+				handlers, ok := s.partitionHandlers[ftp.Topic]
+				if !ok {
+					s.partitionMtx.RUnlock()
+					return
+				}
+				processor, ok := handlers[ftp.Partition]
 				s.partitionMtx.RUnlock()
-				return
-			}
-			processor, ok := handlers[ftp.Partition]
-			s.partitionMtx.RUnlock()
-			if !ok {
-				return
-			}
+				if !ok {
+					return
+				}
 
-			// Collect all records for this partition
-			records := ftp.Records
-			if len(records) == 0 {
-				return
-			}
+				// Collect all records for this partition
+				records := ftp.Records
+				if len(records) == 0 {
+					return
+				}
 
-			// Calculate total bytes in this batch
-			var totalBytes int64
-			for _, record := range records {
-				totalBytes += int64(len(record.Value))
-			}
+				// Calculate total bytes in this batch
+				var totalBytes int64
+				for _, record := range records {
+					totalBytes += int64(len(record.Value))
+				}
 
-			// Update metrics
-			processor.metrics.addBytesProcessed(totalBytes)
+				// Update metrics
+				processor.metrics.addBytesProcessed(totalBytes)
 
-			_ = processor.Append(records)
-		})
-	}
+				_ = processor.Append(records)
+			})
+		}
+	})
+
+	return g.Wait()
 }
 
 func (s *Service) stopping(failureCase error) error {

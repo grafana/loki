@@ -83,7 +83,6 @@ func (ds *columnsDataset) ListPages(ctx context.Context, columns []dataset.Colum
 				return err
 			}
 		}
-
 		return nil
 	})
 }

@@ -240,7 +240,7 @@ func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, t
 // It handles the case where the topic already exists.
 func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant string, shard int32) error {
 	topic := r.codec.Encode(tenant, shard)
-	replicationFactor := 2 // TODO: expose RF
+	replicationFactor := 1 // TODO: expose RF
 
 	_, err, _ := r.sflight.Do(topic, func() (interface{}, error) {
 		return r.admin.CreateTopic(

@@ -69,6 +69,13 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
+	// Init stats object and use the context, otherwise we create a new one every time we increment a stat.
+	var statistics *stats.Context
+	if stats.IsPresent(ctx) {
+		statistics = stats.FromContext(ctx)
+	} else {
+		statistics, ctx = stats.NewContext(ctx)
+	}
 
 	if !r.ready {
 		err := r.init(ctx)
@@ -127,9 +134,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	r.dl.SetReadRange(readRange)
 
 	var (
-		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
-		passCount  int // tracks how many rows passed the predicate
-		statistics = stats.FromContext(ctx)
+		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
+		passCount int // tracks how many rows passed the predicate
 	)
 
 	// If there are no predicates, read all columns in the dataset

@@ -75,7 +75,12 @@ func (m *mockBucket) Upload(_ context.Context, name string, r io.Reader) error {
 	m.uploads[name] = data
 	return nil
 }
-func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
+func (m *mockBucket) Iter(_ context.Context, _ string, fn func(string) error, _ ...objstore.IterOption) error {
+	for k := range m.uploads {
+		if err := fn(k); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (m *mockBucket) Name() string { return "mock" }

@@ -5,14 +5,15 @@ package pointersmd
 
 import (
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
-	datasetmd "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
+
+	proto "github.com/gogo/protobuf/proto"
+	datasetmd "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

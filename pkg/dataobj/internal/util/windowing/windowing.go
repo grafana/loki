@@ -23,7 +23,7 @@ const (
 	// storage, 16MB is chosen over 8MB, as it will lead to fewer requests.
 	//
 	// [recommendations]: https://docs.aws.amazon.com/whitepapers/latest/s3-optimizing-performance-best-practices/use-byte-range-fetches.html
-	S3WindowSize = 16_000_000
+	S3WindowSize = 64_000_000
 )
 
 // Element is a single element within a window.
