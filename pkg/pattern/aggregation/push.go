@@ -243,8 +243,8 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		attribute.Int("num_streams", len(streams)),
 		attribute.Int("num_entries", len(entries)),
 	))
-  
-  level.Debug(p.logger).Log(
+
+	level.Debug(p.logger).Log(
 		"msg", "built aggregation payload",
 		"num_service", len(entriesByStream),
 		"num_streams", len(streams),
