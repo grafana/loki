@@ -146,7 +146,7 @@ func TestService_ExceedsLimits(t *testing.T) {
 			require.NoError(t, err)
 			store.clock = clock
 			for _, stream := range test.currentUsage {
-				store.set(test.tenant, stream)
+				store.setForTests(test.tenant, stream)
 			}
 			m, err := newPartitionManager(reg)
 			require.NoError(t, err)
