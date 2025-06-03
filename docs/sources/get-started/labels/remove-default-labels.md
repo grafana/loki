@@ -12,7 +12,7 @@ When Grafana Loki first started supporting OpenTelemetry, we selected a set of [
 - `k8s.pod.name`
 - `service.instance.id`
 
-Because removing these resource attributes from labels would be a breaking change for existing users, they have not yet been deprecated. If you are a new user of Grafana Loki, we recommend that you modify your Grafana Ally or OpenTelemetry Collector configuration to convert these resource attributes from index labels to structured metadata.
+Because removing these resource attributes from labels would be a breaking change for existing users, they have not yet been deprecated. If you are a new user of Grafana Loki, we recommend that you modify your Grafana Alloy or OpenTelemetry Collector configuration to convert these resource attributes from index labels to structured metadata.
 
 ## Alloy configuration file example
 
