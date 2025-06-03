@@ -140,9 +140,25 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 				return true, nil
 			}
 		}
-		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
+		var symbols symbols
+		if !structuredMetadata.IsEmpty() {
+			var err error
+			symbols, err = hb.symbolizer.Add(structuredMetadata)
+			if err != nil {
+				return false, err
+			}
+		}
+		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
 	} else {
-		e.entries = []nsEntry{{line, hb.symbolizer.Add(structuredMetadata)}}
+		var symbols symbols
+		if !structuredMetadata.IsEmpty() {
+			var err error
+			symbols, err = hb.symbolizer.Add(structuredMetadata)
+			if err != nil {
+				return false, err
+			}
+		}
+		e.entries = []nsEntry{{line, symbols}}
 	}
 
 	// Update hb metdata
