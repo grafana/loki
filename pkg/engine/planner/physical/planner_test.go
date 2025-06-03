@@ -75,3 +75,54 @@ func TestPlanner_Convert(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 }
+
+func TestPlanner_Convert_RangeAggregations(t *testing.T) {
+	// logical plan for count_over_time({ app="users" } | age > 21[5m])
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: logical.NewLiteral(int64(21)),
+			Op:    types.BinaryOpGt,
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		[]logical.ColumnRef{*logical.NewColumnRef("label1", types.ColumnTypeAmbiguous), *logical.NewColumnRef("label2", types.ColumnTypeMetadata)},
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		nil,           // Step
+		time.Minute*5, // Range
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	catalog := &catalog{
+		streamsByObject: map[string][]int64{
+			"obj1": {1, 2},
+			"obj2": {3, 4},
+		},
+	}
+	planner := NewPlanner(catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
