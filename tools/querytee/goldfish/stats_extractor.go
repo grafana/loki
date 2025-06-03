@@ -86,13 +86,14 @@ func (e *StatsExtractor) generateResponseHash(resp loghttp.QueryResponse) string
 	h.Write(responseBytes)
 
 	return strconv.FormatUint(uint64(h.Sum32()), 16)
+
 }
 
 // CompareStats compares two QueryStats and returns performance differences.
 // Returns a map of metric names to comparison details including ratios where applicable.
 // Division by zero is handled by omitting ratio calculations when the denominator is zero.
-func (e *StatsExtractor) CompareStats(cellA, cellB QueryStats) map[string]interface{} {
-	differences := make(map[string]interface{})
+func (e *StatsExtractor) CompareStats(cellA, cellB QueryStats) map[string]any {
+	differences := make(map[string]any)
 
 	// Compare execution times
 	if cellA.ExecTimeMs != cellB.ExecTimeMs {
