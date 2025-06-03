@@ -18,10 +18,6 @@ Because removing these resource attributes from labels would be a breaking chang
 
 If you are using [Grafana Alloy](https://grafana.com/docs/alloy/latest/) to collect logs, the following example shows how to update your `alloy.config` file to demote `k8s.pod.name` from an index label to structured metadata.
 
-https://grafana.com/docs/alloy/latest/tutorials/logs-and-relabeling-basics/
-
-Alloy config file
-
 ```alloy
 // discovery.kubernetes allows you to find scrape targets from Kubernetes resources.
 // It watches cluster state and ensures targets are continually synced with what is currently running in your cluster.
