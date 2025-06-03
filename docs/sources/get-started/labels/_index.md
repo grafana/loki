@@ -101,7 +101,7 @@ The default list of resource attributes to store as labels can be configured usi
 
 {{< admonition type="caution" >}}
 Because of the potential for high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), `k8s.pod.name` and `service.instance.id` are no longer recommended as default labels. But because removing these resource attributes from the default labels would be a breaking change for existing users, they have not yet been deprecated as default labels. If you are a new user of Grafana Loki, we recommend that you modify your Alloy or OpenTelemetry Collector configuration to convert `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
-For sample configurations, refer to [Remove default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/remove-default-labels))
+For sample configurations, refer to [Remove default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/remove-default-labels).
 {{< /admonition >}}
 
 ## Labeling is iterative
